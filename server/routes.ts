@@ -1,16 +1,196 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { lotFormSchema } from "@shared/schema";
+import { z } from "zod";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  const DEFAULT_COLD_STORAGE_ID = "cs-default";
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // Dashboard stats
+  app.get("/api/dashboard/stats", async (req, res) => {
+    try {
+      const stats = await storage.getDashboardStats(DEFAULT_COLD_STORAGE_ID);
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch dashboard stats" });
+    }
+  });
+
+  // Chambers
+  app.get("/api/chambers", async (req, res) => {
+    try {
+      const chambers = await storage.getChambers(DEFAULT_COLD_STORAGE_ID);
+      res.json(chambers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch chambers" });
+    }
+  });
+
+  // Lots
+  app.get("/api/lots", async (req, res) => {
+    try {
+      const lots = await storage.getAllLots(DEFAULT_COLD_STORAGE_ID);
+      res.json(lots);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch lots" });
+    }
+  });
+
+  app.post("/api/lots", async (req, res) => {
+    try {
+      const validatedData = lotFormSchema.parse(req.body);
+      
+      const lot = await storage.createLot({
+        ...validatedData,
+        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        remainingSize: validatedData.size,
+      });
+      
+      res.status(201).json(lot);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Validation error", details: error.errors });
+      } else {
+        res.status(500).json({ error: "Failed to create lot" });
+      }
+    }
+  });
+
+  app.get("/api/lots/search", async (req, res) => {
+    try {
+      const { type, query } = req.query;
+      
+      if (!type || !query) {
+        return res.status(400).json({ error: "Missing type or query parameter" });
+      }
+      
+      const validTypes = ["phone", "lotNo", "size"];
+      if (!validTypes.includes(type as string)) {
+        return res.status(400).json({ error: "Invalid search type" });
+      }
+      
+      const lots = await storage.searchLots(
+        type as "phone" | "lotNo" | "size",
+        query as string,
+        DEFAULT_COLD_STORAGE_ID
+      );
+      
+      res.json(lots);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to search lots" });
+    }
+  });
+
+  app.get("/api/lots/:id", async (req, res) => {
+    try {
+      const lot = await storage.getLot(req.params.id);
+      if (!lot) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+      res.json(lot);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch lot" });
+    }
+  });
+
+  app.patch("/api/lots/:id", async (req, res) => {
+    try {
+      const lot = await storage.getLot(req.params.id);
+      if (!lot) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+
+      const previousData = {
+        farmerName: lot.farmerName,
+        village: lot.village,
+        tehsil: lot.tehsil,
+        district: lot.district,
+        contactNumber: lot.contactNumber,
+        remarks: lot.remarks,
+      };
+
+      const updatedLot = await storage.updateLot(req.params.id, req.body);
+
+      await storage.createEditHistory({
+        lotId: lot.id,
+        changeType: "edit",
+        previousData: JSON.stringify(previousData),
+        newData: JSON.stringify(req.body),
+      });
+
+      res.json(updatedLot);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update lot" });
+    }
+  });
+
+  app.post("/api/lots/:id/partial-sale", async (req, res) => {
+    try {
+      const lot = await storage.getLot(req.params.id);
+      if (!lot) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+
+      const { quantitySold, pricePerBag } = req.body;
+
+      if (typeof quantitySold !== "number" || quantitySold <= 0) {
+        return res.status(400).json({ error: "Invalid quantity sold" });
+      }
+
+      if (quantitySold > lot.remainingSize) {
+        return res.status(400).json({ error: "Quantity exceeds remaining size" });
+      }
+
+      const previousData = {
+        remainingSize: lot.remainingSize,
+      };
+
+      const newRemainingSize = lot.remainingSize - quantitySold;
+      const totalPrice = quantitySold * pricePerBag;
+
+      await storage.updateLot(req.params.id, {
+        remainingSize: newRemainingSize,
+      });
+
+      await storage.createEditHistory({
+        lotId: lot.id,
+        changeType: "partial_sale",
+        previousData: JSON.stringify(previousData),
+        newData: JSON.stringify({ remainingSize: newRemainingSize }),
+        soldQuantity: quantitySold,
+        pricePerBag,
+        totalPrice,
+      });
+
+      const updatedLot = await storage.getLot(req.params.id);
+      res.json(updatedLot);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to process partial sale" });
+    }
+  });
+
+  app.get("/api/lots/:id/history", async (req, res) => {
+    try {
+      const history = await storage.getLotHistory(req.params.id);
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch lot history" });
+    }
+  });
+
+  // Analytics
+  app.get("/api/analytics/quality", async (req, res) => {
+    try {
+      const stats = await storage.getQualityStats(DEFAULT_COLD_STORAGE_ID);
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch quality stats" });
+    }
+  });
 
   return httpServer;
 }
