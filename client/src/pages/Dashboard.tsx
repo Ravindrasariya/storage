@@ -50,8 +50,8 @@ export default function Dashboard() {
           <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-cold-storage-name">
             {coldStorage?.name || t("dashboard")}
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your cold storage operations efficiently
+          <p className="text-xs text-muted-foreground mt-1">
+            by <span className="text-green-600 dark:text-green-400 font-medium">Krashu</span><span className="text-orange-500 dark:text-orange-400 font-medium">Ved</span>
           </p>
         </div>
         <SettingsDialog />
