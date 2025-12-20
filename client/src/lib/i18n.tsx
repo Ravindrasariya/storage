@@ -119,6 +119,7 @@ const translations: Translations = {
   paymentStatus: { en: "Payment Status", hi: "भुगतान स्थिति" },
   paid: { en: "Paid", hi: "भुगतान किया" },
   due: { en: "Due", hi: "बाकी" },
+  overallPayment: { en: "Overall Payment", hi: "कुल भुगतान" },
   totalPaid: { en: "Total Paid", hi: "कुल भुगतान" },
   totalDue: { en: "Total Due", hi: "कुल बाकी" },
   paymentSummary: { en: "Payment Summary", hi: "भुगतान सारांश" },
