@@ -108,6 +108,19 @@ const translations: Translations = {
   // Up for Sale
   upForSale: { en: "Up for Sale", hi: "बिक्री के लिए" },
   markForSale: { en: "Mark for Sale", hi: "बिक्री के लिए चिह्नित करें" },
+  
+  // Sale/Payment
+  sold: { en: "Sold", hi: "बेचा गया" },
+  markAsSold: { en: "Mark as Sold", hi: "बेचा गया चिह्नित करें" },
+  confirmSale: { en: "Confirm Sale", hi: "बिक्री की पुष्टि करें" },
+  storageCharge: { en: "Storage Charge", hi: "भंडारण शुल्क" },
+  paymentStatus: { en: "Payment Status", hi: "भुगतान स्थिति" },
+  paid: { en: "Paid", hi: "भुगतान किया" },
+  due: { en: "Due", hi: "बाकी" },
+  totalPaid: { en: "Total Paid", hi: "कुल भुगतान" },
+  totalDue: { en: "Total Due", hi: "कुल बाकी" },
+  paymentSummary: { en: "Payment Summary", hi: "भुगतान सारांश" },
+  available: { en: "Available", hi: "उपलब्ध" },
 };
 
 interface I18nContextType {

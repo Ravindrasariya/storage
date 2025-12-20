@@ -10,6 +10,7 @@ import type {
   InsertLotEditHistory,
   DashboardStats,
   QualityStats,
+  PaymentStats,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -39,6 +40,12 @@ export interface IStorage {
   
   // Quality Stats
   getQualityStats(coldStorageId: string): Promise<QualityStats>;
+  
+  // Payment Stats
+  getPaymentStats(coldStorageId: string): Promise<PaymentStats>;
+  
+  // Sale Operations
+  finalizeSale(lotId: string, paymentStatus: "due" | "paid"): Promise<Lot | undefined>;
   
   // Cold Storage Management
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
@@ -131,6 +138,10 @@ export class MemStorage implements IStorage {
       dm: insertLot.dm ?? null,
       remarks: insertLot.remarks ?? null,
       upForSale: insertLot.upForSale ?? 0,
+      saleStatus: insertLot.saleStatus ?? "available",
+      paymentStatus: insertLot.paymentStatus ?? null,
+      saleCharge: insertLot.saleCharge ?? null,
+      soldAt: insertLot.soldAt ?? null,
       createdAt: new Date(),
     };
     this.lots.set(id, lot);
@@ -251,7 +262,7 @@ export class MemStorage implements IStorage {
 
     const chamberMap = new Map(chambers.map(c => [c.id, c.name]));
     const saleLots = lots
-      .filter((lot) => lot.upForSale === 1 && lot.remainingSize > 0)
+      .filter((lot) => lot.upForSale === 1 && lot.remainingSize > 0 && lot.saleStatus !== "sold")
       .map((lot) => ({
         id: lot.id,
         lotNo: lot.lotNo,
@@ -262,6 +273,7 @@ export class MemStorage implements IStorage {
         remainingSize: lot.remainingSize,
         bagType: lot.bagType,
         type: lot.type,
+        rate: lot.bagType === "wafer" ? (coldStorage?.waferRate || 0) : (coldStorage?.seedRate || 0),
       }));
 
     return {
@@ -353,6 +365,52 @@ export class MemStorage implements IStorage {
         .filter((lot) => lot.quality === "good")
         .reduce((sum, lot) => sum + lot.size, 0),
     };
+  }
+
+  async getPaymentStats(coldStorageId: string): Promise<PaymentStats> {
+    const lots = await this.getAllLots(coldStorageId);
+    const soldLots = lots.filter((lot) => lot.saleStatus === "sold");
+
+    const paidLots = soldLots.filter((lot) => lot.paymentStatus === "paid");
+    const dueLots = soldLots.filter((lot) => lot.paymentStatus === "due");
+
+    return {
+      totalPaid: paidLots.reduce((sum, lot) => sum + (lot.saleCharge || 0), 0),
+      totalDue: dueLots.reduce((sum, lot) => sum + (lot.saleCharge || 0), 0),
+      paidCount: paidLots.length,
+      dueCount: dueLots.length,
+    };
+  }
+
+  async finalizeSale(lotId: string, paymentStatus: "due" | "paid"): Promise<Lot | undefined> {
+    const lot = this.lots.get(lotId);
+    if (!lot || lot.saleStatus === "sold") return undefined;
+
+    const coldStorage = await this.getColdStorage(lot.coldStorageId);
+    if (!coldStorage) return undefined;
+
+    const rate = lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate;
+    const saleCharge = rate * lot.remainingSize;
+
+    const bagsToRemove = lot.remainingSize;
+    const updatedLot: Lot = {
+      ...lot,
+      saleStatus: "sold",
+      paymentStatus,
+      saleCharge,
+      soldAt: new Date(),
+      upForSale: 0,
+      remainingSize: 0,
+    };
+
+    this.lots.set(lotId, updatedLot);
+
+    const chamber = await this.getChamber(lot.chamberId);
+    if (chamber) {
+      await this.updateChamberFill(chamber.id, Math.max(0, chamber.currentFill - bagsToRemove));
+    }
+
+    return updatedLot;
   }
 }
 

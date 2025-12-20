@@ -190,6 +190,29 @@ export async function registerRoutes(
     }
   });
 
+  // Finalize Sale
+  const finalizeSaleSchema = z.object({
+    paymentStatus: z.enum(["due", "paid"]),
+  });
+
+  app.post("/api/lots/:id/finalize-sale", async (req, res) => {
+    try {
+      const validatedData = finalizeSaleSchema.parse(req.body);
+      
+      const lot = await storage.finalizeSale(req.params.id, validatedData.paymentStatus);
+      if (!lot) {
+        return res.status(404).json({ error: "Lot not found or already sold" });
+      }
+      
+      res.json(lot);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid payment status", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to finalize sale" });
+    }
+  });
+
   // Analytics
   app.get("/api/analytics/quality", async (req, res) => {
     try {
@@ -197,6 +220,15 @@ export async function registerRoutes(
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch quality stats" });
+    }
+  });
+
+  app.get("/api/analytics/payments", async (req, res) => {
+    try {
+      const stats = await storage.getPaymentStats(DEFAULT_COLD_STORAGE_ID);
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch payment stats" });
     }
   });
 

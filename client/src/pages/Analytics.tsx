@@ -6,8 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QualityChart } from "@/components/QualityChart";
 import { QualitySummaryCards } from "@/components/QualitySummaryCards";
-import { ArrowLeft, BarChart3 } from "lucide-react";
-import type { QualityStats } from "@shared/schema";
+import { ArrowLeft, BarChart3, IndianRupee, CheckCircle, Clock } from "lucide-react";
+import type { QualityStats, PaymentStats } from "@shared/schema";
 
 export default function Analytics() {
   const { t } = useI18n();
@@ -15,6 +15,10 @@ export default function Analytics() {
 
   const { data: stats, isLoading } = useQuery<QualityStats>({
     queryKey: ["/api/analytics/quality"],
+  });
+
+  const { data: paymentStats } = useQuery<PaymentStats>({
+    queryKey: ["/api/analytics/payments"],
   });
 
   if (isLoading) {
@@ -52,6 +56,59 @@ export default function Analytics() {
             Quality analysis and insights
           </p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
+              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-muted-foreground">{t("totalPaid")}</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
+                Rs. {(paymentStats?.totalPaid || 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {paymentStats?.paidCount || 0} lots
+              </p>
+            </div>
+          </div>
+        </Card>
+        
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50">
+              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-muted-foreground">{t("totalDue")}</p>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-total-due">
+                Rs. {(paymentStats?.totalDue || 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {paymentStats?.dueCount || 0} lots
+              </p>
+            </div>
+          </div>
+        </Card>
+        
+        <Card className="p-4 sm:col-span-2 lg:col-span-1">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+              <IndianRupee className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-muted-foreground">{t("paymentSummary")}</p>
+              <p className="text-2xl font-bold" data-testid="text-total-revenue">
+                Rs. {((paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {(paymentStats?.paidCount || 0) + (paymentStats?.dueCount || 0)} total sold lots
+              </p>
+            </div>
+          </div>
+        </Card>
       </div>
 
       <QualitySummaryCards

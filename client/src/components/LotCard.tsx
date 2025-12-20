@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Edit, Phone, MapPin, Package, Layers, ShoppingCart } from "lucide-react";
+import { Edit, Phone, MapPin, Package, Layers, ShoppingCart, CheckCircle, Clock } from "lucide-react";
 import type { Lot } from "@shared/schema";
 
 interface LotCardProps {
@@ -49,6 +49,32 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
             <Badge variant="outline" className={getBagTypeColor(lot.bagType)}>
               {t(lot.bagType)}
             </Badge>
+            {lot.saleStatus === "sold" && (
+              <Badge 
+                variant="outline" 
+                className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-400"
+                data-testid={`badge-sold-${lot.id}`}
+              >
+                <CheckCircle className="h-3 w-3 mr-1" />
+                {t("sold")}
+              </Badge>
+            )}
+            {lot.saleStatus === "sold" && lot.paymentStatus && (
+              <Badge 
+                variant="outline" 
+                className={lot.paymentStatus === "paid" 
+                  ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400"
+                  : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400"
+                }
+                data-testid={`badge-payment-${lot.id}`}
+              >
+                {lot.paymentStatus === "paid" ? (
+                  <><CheckCircle className="h-3 w-3 mr-1" />{t("paid")}</>
+                ) : (
+                  <><Clock className="h-3 w-3 mr-1" />{t("due")}</>
+                )}
+              </Badge>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
@@ -89,6 +115,12 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
               <span className="text-muted-foreground">{t("remaining")}: </span>
               <span className="font-bold text-chart-1">{lot.remainingSize} {t("bags")}</span>
             </div>
+            {lot.saleStatus === "sold" && lot.saleCharge && (
+              <div>
+                <span className="text-muted-foreground">{t("storageCharge")}: </span>
+                <span className="font-bold text-chart-2">Rs. {lot.saleCharge.toLocaleString()}</span>
+              </div>
+            )}
           </div>
 
           {lot.remarks && (
@@ -99,7 +131,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
         </div>
 
         <div className="flex sm:flex-col gap-2 shrink-0">
-          {lot.remainingSize > 0 && onToggleSale && (
+          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onToggleSale && (
             <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
               <Switch
                 id={`sale-toggle-${lot.id}`}
@@ -123,7 +155,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
             <Edit className="h-4 w-4" />
             {t("edit")}
           </Button>
-          {lot.remainingSize > 0 && (
+          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && (
             <Button
               variant="secondary"
               size="sm"

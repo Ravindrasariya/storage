@@ -46,6 +46,10 @@ export const lots = pgTable("lots", {
   dm: real("dm"), // Only if Quality Check (Dry Matter)
   remarks: text("remarks"),
   upForSale: integer("up_for_sale").notNull().default(0), // 0 = not for sale, 1 = up for sale
+  saleStatus: text("sale_status").notNull().default("available"), // available, sold
+  paymentStatus: text("payment_status"), // due, paid (only set when sold)
+  saleCharge: real("sale_charge"), // Total storage charge when sold
+  soldAt: timestamp("sold_at"), // When the lot was sold
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -114,6 +118,7 @@ export interface SaleLotInfo {
   remainingSize: number;
   bagType: string;
   type: string;
+  rate: number;
 }
 
 // Dashboard stats type
@@ -153,4 +158,12 @@ export interface QualityStats {
   totalPoor: number;
   totalMedium: number;
   totalGood: number;
+}
+
+// Payment stats type for analytics
+export interface PaymentStats {
+  totalPaid: number;
+  totalDue: number;
+  paidCount: number;
+  dueCount: number;
 }
