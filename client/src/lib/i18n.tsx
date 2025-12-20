@@ -99,6 +99,9 @@ const translations: Translations = {
   required: { en: "Required", hi: "आवश्यक" },
   confirm: { en: "Confirm", hi: "पुष्टि करें" },
   quantity: { en: "Quantity", hi: "मात्रा" },
+  filters: { en: "Filters", hi: "फ़िल्टर" },
+  all: { en: "All", hi: "सभी" },
+  coldChargesDue: { en: "Cold Charges Due", hi: "कोल्ड स्टोरेज शुल्क बाकी" },
   
   // Settings
   freeCapacity: { en: "Free", hi: "खाली" },

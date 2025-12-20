@@ -62,7 +62,7 @@ export async function registerRoutes(
 
   app.get("/api/lots/search", async (req, res) => {
     try {
-      const { type, query, lotNo, size } = req.query;
+      const { type, query, lotNo, size, quality, paymentDue } = req.query;
       
       const validTypes = ["phone", "lotNoSize"];
       if (!validTypes.includes(type as string)) {
@@ -85,6 +85,16 @@ export async function registerRoutes(
           query as string,
           DEFAULT_COLD_STORAGE_ID
         );
+      }
+      
+      // Apply quality filter
+      if (quality && ["poor", "medium", "good"].includes(quality as string)) {
+        lots = lots.filter((lot) => lot.quality === quality);
+      }
+      
+      // Apply payment due filter (lots that are sold with payment status "due")
+      if (paymentDue === "true") {
+        lots = lots.filter((lot) => lot.saleStatus === "sold" && lot.paymentStatus === "due");
       }
       
       res.json(lots);

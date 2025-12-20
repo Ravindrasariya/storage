@@ -27,7 +27,8 @@ import { LotCard } from "@/components/LotCard";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory } from "@shared/schema";
 
 export default function SearchEdit() {
@@ -39,6 +40,8 @@ export default function SearchEdit() {
   const [searchQuery, setSearchQuery] = useState("");
   const [lotNoQuery, setLotNoQuery] = useState("");
   const [sizeQuery, setSizeQuery] = useState("");
+  const [qualityFilter, setQualityFilter] = useState<string>("all");
+  const [paymentDueFilter, setPaymentDueFilter] = useState(false);
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -85,6 +88,14 @@ export default function SearchEdit() {
       } else {
         url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}`;
       }
+      
+      if (qualityFilter && qualityFilter !== "all") {
+        url += `&quality=${encodeURIComponent(qualityFilter)}`;
+      }
+      if (paymentDueFilter) {
+        url += `&paymentDue=true`;
+      }
+      
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -294,6 +305,40 @@ export default function SearchEdit() {
             </div>
           )}
         </Tabs>
+
+        <div className="border-t pt-4 mt-4">
+          <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
+            <Filter className="h-4 w-4" />
+            <span>{t("filters")}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">{t("quality")}:</Label>
+              <Select value={qualityFilter} onValueChange={setQualityFilter}>
+                <SelectTrigger className="w-32" data-testid="select-quality-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("all")}</SelectItem>
+                  <SelectItem value="poor">{t("poor")}</SelectItem>
+                  <SelectItem value="medium">{t("medium")}</SelectItem>
+                  <SelectItem value="good">{t("good")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="payment-due-filter"
+                checked={paymentDueFilter}
+                onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
+                data-testid="checkbox-payment-due"
+              />
+              <Label htmlFor="payment-due-filter" className="text-sm cursor-pointer">
+                {t("coldChargesDue")}
+              </Label>
+            </div>
+          </div>
+        </div>
       </Card>
 
       {isSearching ? (
