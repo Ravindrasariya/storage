@@ -7,13 +7,17 @@ import { RatesCard } from "@/components/RatesCard";
 import { UpForSaleList } from "@/components/UpForSaleList";
 import { Warehouse, BarChart3, Users, Package, Boxes } from "lucide-react";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import type { DashboardStats } from "@shared/schema";
+import type { DashboardStats, ColdStorage } from "@shared/schema";
 
 export default function Dashboard() {
   const { t } = useI18n();
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
+  });
+
+  const { data: coldStorage } = useQuery<ColdStorage>({
+    queryKey: ["/api/cold-storage"],
   });
 
   if (isLoading) {
@@ -43,7 +47,9 @@ export default function Dashboard() {
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{t("dashboard")}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-cold-storage-name">
+            {coldStorage?.name || t("dashboard")}
+          </h1>
           <p className="text-muted-foreground mt-1">
             Manage your cold storage operations efficiently
           </p>

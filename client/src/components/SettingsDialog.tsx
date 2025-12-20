@@ -94,6 +94,7 @@ export function SettingsDialog() {
 
     try {
       await updateSettingsMutation.mutateAsync({
+        name: settings.name,
         totalCapacity: settings.totalCapacity,
         waferRate: settings.waferRate,
         seedRate: settings.seedRate,
@@ -176,6 +177,23 @@ export function SettingsDialog() {
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          <Card className="p-4 space-y-4">
+            <h4 className="font-semibold">{t("coldStorageName")}</h4>
+            <div className="space-y-2">
+              <Label>{t("name")}</Label>
+              <Input
+                value={settings?.name || ""}
+                onChange={(e) =>
+                  setSettings((prev) =>
+                    prev ? { ...prev, name: e.target.value } : null
+                  )
+                }
+                placeholder={t("coldStorageName")}
+                data-testid="input-cold-storage-name"
+              />
+            </div>
+          </Card>
+
           <Card className="p-4 space-y-4">
             <h4 className="font-semibold">{t("overallCapacity")}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

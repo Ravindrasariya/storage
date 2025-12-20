@@ -102,6 +102,8 @@ const translations: Translations = {
   filters: { en: "Filters", hi: "फ़िल्टर" },
   all: { en: "All", hi: "सभी" },
   coldChargesDue: { en: "Cold Charges Due", hi: "कोल्ड स्टोरेज शुल्क बाकी" },
+  coldStorageName: { en: "Cold Storage Name", hi: "कोल्ड स्टोरेज का नाम" },
+  name: { en: "Name", hi: "नाम" },
   
   // Settings
   freeCapacity: { en: "Free", hi: "खाली" },
