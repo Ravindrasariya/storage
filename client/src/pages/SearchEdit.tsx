@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -68,6 +68,18 @@ export default function SearchEdit() {
   const { data: chambers } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
   });
+
+  const isInitialMount = useRef(true);
+  
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (hasSearched) {
+      handleSearch();
+    }
+  }, [qualityFilter, paymentDueFilter]);
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
     acc[chamber.id] = chamber.name;
