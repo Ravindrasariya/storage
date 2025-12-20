@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { ShoppingCart, Phone, MapPin, Package, Check } from "lucide-react";
+import { ShoppingCart, Phone, MapPin, Package, Check, Minus } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +29,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const { toast } = useToast();
   const [selectedLot, setSelectedLot] = useState<SaleLotInfo | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "due">("paid");
+  const [saleMode, setSaleMode] = useState<"full" | "partial">("full");
+  const [partialQuantity, setPartialQuantity] = useState<number>(0);
+  const [partialPrice, setPartialPrice] = useState<number>(0);
 
   const finalizeSaleMutation = useMutation({
     mutationFn: async ({ lotId, paymentStatus }: { lotId: string; paymentStatus: "paid" | "due" }) => {
@@ -41,7 +45,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         title: t("success"),
         description: "Lot marked as sold successfully",
       });
-      setSelectedLot(null);
+      resetDialog();
     },
     onError: () => {
       toast({
@@ -52,13 +56,58 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     },
   });
 
+  const partialSaleMutation = useMutation({
+    mutationFn: async ({ lotId, quantity, pricePerBag }: { lotId: string; quantity: number; pricePerBag: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      toast({
+        title: t("success"),
+        description: "Partial sale recorded successfully",
+      });
+      resetDialog();
+    },
+    onError: () => {
+      toast({
+        title: t("error"),
+        description: "Failed to record partial sale",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resetDialog = () => {
+    setSelectedLot(null);
+    setSaleMode("full");
+    setPartialQuantity(0);
+    setPartialPrice(0);
+    setPaymentStatus("paid");
+  };
+
   const handleConfirmSale = () => {
     if (selectedLot) {
-      finalizeSaleMutation.mutate({
-        lotId: selectedLot.id,
-        paymentStatus,
-      });
+      if (saleMode === "partial") {
+        partialSaleMutation.mutate({
+          lotId: selectedLot.id,
+          quantity: partialQuantity,
+          pricePerBag: partialPrice,
+        });
+      } else {
+        finalizeSaleMutation.mutate({
+          lotId: selectedLot.id,
+          paymentStatus,
+        });
+      }
     }
+  };
+
+  const openSaleDialog = (lot: SaleLotInfo, mode: "full" | "partial") => {
+    setSelectedLot(lot);
+    setSaleMode(mode);
+    setPartialQuantity(0);
+    setPartialPrice(lot.rate);
   };
 
   const calculateCharge = (lot: SaleLotInfo) => {
@@ -132,14 +181,26 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="text-xs text-muted-foreground">
                     {lot.chamberName} | {lot.bagType} | {lot.type}
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => setSelectedLot(lot)}
-                    data-testid={`button-sold-${lot.id}`}
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    {t("sold")}
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openSaleDialog(lot, "partial")}
+                      data-testid={`button-partial-${lot.id}`}
+                    >
+                      <Minus className="h-4 w-4 mr-1" />
+                      {t("partialSale")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openSaleDialog(lot, "full")}
+                      data-testid={`button-sold-${lot.id}`}
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      {t("sold")}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -147,16 +208,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         </div>
       </Card>
 
-      <Dialog open={!!selectedLot} onOpenChange={(open) => !open && setSelectedLot(null)}>
+      <Dialog open={!!selectedLot} onOpenChange={(open) => !open && resetDialog()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("confirmSale")}</DialogTitle>
+            <DialogTitle>{saleMode === "partial" ? t("partialSale") : t("confirmSale")}</DialogTitle>
             <DialogDescription>
               {selectedLot && `${selectedLot.farmerName} - ${selectedLot.lotNo}`}
             </DialogDescription>
           </DialogHeader>
           
-          {selectedLot && (
+          {selectedLot && saleMode === "full" && (
             <div className="space-y-4 py-4">
               <div className="p-4 rounded-lg bg-muted">
                 <div className="flex justify-between items-center">
@@ -194,20 +255,67 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
             </div>
           )}
 
+          {selectedLot && saleMode === "partial" && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 rounded-lg bg-muted text-sm">
+                <span className="text-muted-foreground">{t("remaining")}: </span>
+                <span className="font-bold">{selectedLot.remainingSize} {t("bags")}</span>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t("quantity")}</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={selectedLot.remainingSize}
+                  value={partialQuantity || ""}
+                  onChange={(e) => setPartialQuantity(Number(e.target.value))}
+                  placeholder={`Max: ${selectedLot.remainingSize}`}
+                  data-testid="input-partial-quantity"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t("pricePerBag")}</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={partialPrice || ""}
+                  onChange={(e) => setPartialPrice(Number(e.target.value))}
+                  data-testid="input-partial-price"
+                />
+              </div>
+
+              {partialQuantity > 0 && partialPrice > 0 && (
+                <div className="p-4 rounded-lg bg-muted">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Total:</span>
+                    <span className="text-2xl font-bold text-chart-2">
+                      Rs. {(partialQuantity * partialPrice).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setSelectedLot(null)}
+              onClick={resetDialog}
               data-testid="button-cancel-sale"
             >
               {t("cancel")}
             </Button>
             <Button
               onClick={handleConfirmSale}
-              disabled={finalizeSaleMutation.isPending}
+              disabled={
+                (saleMode === "full" && finalizeSaleMutation.isPending) ||
+                (saleMode === "partial" && (partialSaleMutation.isPending || partialQuantity <= 0 || partialQuantity > (selectedLot?.remainingSize || 0) || partialPrice <= 0))
+              }
               data-testid="button-confirm-sale"
             >
-              {finalizeSaleMutation.isPending ? t("loading") : t("confirmSale")}
+              {(finalizeSaleMutation.isPending || partialSaleMutation.isPending) ? t("loading") : t("confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

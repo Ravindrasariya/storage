@@ -97,6 +97,8 @@ const translations: Translations = {
   error: { en: "Error", hi: "त्रुटि" },
   success: { en: "Success", hi: "सफलता" },
   required: { en: "Required", hi: "आवश्यक" },
+  confirm: { en: "Confirm", hi: "पुष्टि करें" },
+  quantity: { en: "Quantity", hi: "मात्रा" },
   
   // Settings
   freeCapacity: { en: "Free", hi: "खाली" },
