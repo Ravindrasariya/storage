@@ -280,9 +280,9 @@ export default function LotEntry() {
                     <FormControl>
                       <Input
                         type="number"
-                        min={1}
+                        min={0}
                         {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                         data-testid="input-size"
                       />
                     </FormControl>
@@ -377,9 +377,9 @@ export default function LotEntry() {
                     <FormControl>
                       <Input
                         type="number"
-                        min={1}
+                        min={0}
                         {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                         data-testid="input-floor"
                       />
                     </FormControl>

@@ -297,7 +297,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <Label>{t("quantity")}</Label>
                 <Input
                   type="number"
-                  min={1}
+                  min={0}
                   max={selectedLot.remainingSize}
                   value={partialQuantity || ""}
                   onChange={(e) => setPartialQuantity(Number(e.target.value))}

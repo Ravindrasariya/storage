@@ -487,7 +487,7 @@ export default function SearchEdit() {
               <Label>{t("quantitySold")}</Label>
               <Input
                 type="number"
-                min={1}
+                min={0}
                 max={selectedLot?.remainingSize || 0}
                 value={saleForm.quantitySold || ""}
                 onChange={(e) =>
