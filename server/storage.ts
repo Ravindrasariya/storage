@@ -26,7 +26,7 @@ export interface IStorage {
   createLot(lot: InsertLot): Promise<Lot>;
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
-  searchLots(type: "phone" | "lotNo" | "size", query: string, coldStorageId: string): Promise<Lot[]>;
+  searchLots(type: "phone" | "lotNo" | "size" | "lotNoSize", query: string, coldStorageId: string): Promise<Lot[]>;
   getAllLots(coldStorageId: string): Promise<Lot[]>;
   
   // Lot Edit History
@@ -155,7 +155,7 @@ export class MemStorage implements IStorage {
   }
 
   async searchLots(
-    type: "phone" | "lotNo" | "size",
+    type: "phone" | "lotNo" | "size" | "lotNoSize",
     query: string,
     coldStorageId: string
   ): Promise<Lot[]> {
@@ -174,6 +174,14 @@ export class MemStorage implements IStorage {
         const sizeQuery = parseFloat(query);
         if (isNaN(sizeQuery)) return [];
         return allLots.filter((lot) => lot.size >= sizeQuery);
+      case "lotNoSize":
+        const numericQuery = parseInt(query, 10);
+        const isNumeric = !isNaN(numericQuery);
+        return allLots.filter((lot) => {
+          const matchesLotNo = lot.lotNo.toLowerCase().includes(query.toLowerCase());
+          const matchesSize = isNumeric && lot.size === numericQuery;
+          return matchesLotNo || matchesSize;
+        });
       default:
         return [];
     }
@@ -210,14 +218,24 @@ export class MemStorage implements IStorage {
     const chambers = await this.getChambers(coldStorageId);
     const lots = await this.getAllLots(coldStorageId);
 
-    const usedCapacity = lots.reduce((sum, lot) => sum + lot.remainingSize, 0);
+    const currentUtilization = lots.reduce((sum, lot) => sum + lot.remainingSize, 0);
+    const peakUtilization = lots.reduce((sum, lot) => sum + lot.size, 0);
     const uniqueFarmers = new Set(lots.map((lot) => lot.contactNumber));
-    const waferBags = lots
+    
+    const totalWaferBags = lots
+      .filter((lot) => lot.bagType === "wafer")
+      .reduce((sum, lot) => sum + lot.size, 0);
+    const remainingWaferBags = lots
       .filter((lot) => lot.bagType === "wafer")
       .reduce((sum, lot) => sum + lot.remainingSize, 0);
-    const seedBags = lots
+    const totalSeedBags = lots
+      .filter((lot) => lot.bagType === "seed")
+      .reduce((sum, lot) => sum + lot.size, 0);
+    const remainingSeedBags = lots
       .filter((lot) => lot.bagType === "seed")
       .reduce((sum, lot) => sum + lot.remainingSize, 0);
+    
+    const remainingLots = lots.filter((lot) => lot.remainingSize > 0).length;
 
     const chamberStats = chambers.map((chamber) => {
       const chamberLots = lots.filter((lot) => lot.chamberId === chamber.id);
@@ -235,11 +253,16 @@ export class MemStorage implements IStorage {
 
     return {
       totalCapacity: coldStorage?.totalCapacity || 0,
-      usedCapacity,
+      usedCapacity: currentUtilization,
+      peakUtilization,
+      currentUtilization,
       totalFarmers: uniqueFarmers.size,
       totalLots: lots.length,
-      totalWaferBags: waferBags,
-      totalSeedBags: seedBags,
+      remainingLots,
+      totalWaferBags,
+      remainingWaferBags,
+      totalSeedBags,
+      remainingSeedBags,
       waferRate: coldStorage?.waferRate || 0,
       seedRate: coldStorage?.seedRate || 0,
       chamberStats,

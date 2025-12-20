@@ -104,10 +104,15 @@ export type LotFormData = z.infer<typeof lotFormSchema>;
 export interface DashboardStats {
   totalCapacity: number;
   usedCapacity: number;
+  peakUtilization: number; // Peak bags ever stored
+  currentUtilization: number; // Current bags stored
   totalFarmers: number;
   totalLots: number;
+  remainingLots: number; // Lots with remaining bags
   totalWaferBags: number;
+  remainingWaferBags: number;
   totalSeedBags: number;
+  remainingSeedBags: number;
   waferRate: number;
   seedRate: number;
   chamberStats: {

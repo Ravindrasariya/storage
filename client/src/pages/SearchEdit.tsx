@@ -27,7 +27,7 @@ import { LotCard } from "@/components/LotCard";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Ruler } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package } from "lucide-react";
 import type { Lot, Chamber, LotEditHistory } from "@shared/schema";
 
 export default function SearchEdit() {
@@ -35,7 +35,7 @@ export default function SearchEdit() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const [searchType, setSearchType] = useState<"phone" | "lotNo" | "size">("phone");
+  const [searchType, setSearchType] = useState<"phone" | "lotNoSize">("phone");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -225,18 +225,14 @@ export default function SearchEdit() {
 
       <Card className="p-4 sm:p-6">
         <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)}>
-          <TabsList className="grid w-full grid-cols-3 mb-4">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
             <TabsTrigger value="phone" className="gap-2" data-testid="tab-search-phone">
               <Phone className="h-4 w-4" />
               <span className="hidden sm:inline">{t("phoneNumber")}</span>
             </TabsTrigger>
-            <TabsTrigger value="lotNo" className="gap-2" data-testid="tab-search-lot">
+            <TabsTrigger value="lotNoSize" className="gap-2" data-testid="tab-search-lot">
               <Package className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("lotNumber")}</span>
-            </TabsTrigger>
-            <TabsTrigger value="size" className="gap-2" data-testid="tab-search-size">
-              <Ruler className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("size")}</span>
+              <span className="hidden sm:inline">{t("lotNumber")} / {t("size")}</span>
             </TabsTrigger>
           </TabsList>
 
@@ -245,9 +241,7 @@ export default function SearchEdit() {
               placeholder={
                 searchType === "phone"
                   ? "Enter phone number..."
-                  : searchType === "lotNo"
-                  ? "Enter lot number..."
-                  : "Enter size..."
+                  : "Enter lot number or size..."
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

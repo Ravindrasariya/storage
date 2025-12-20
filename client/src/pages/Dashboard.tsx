@@ -1,13 +1,11 @@
 import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
 import { ChamberChart } from "@/components/ChamberChart";
 import { BagTypeChart } from "@/components/BagTypeChart";
 import { RatesCard } from "@/components/RatesCard";
-import { Plus, Warehouse, BarChart3, Users, Package, Boxes } from "lucide-react";
+import { BarChart3, Users, Package, Boxes } from "lucide-react";
 import { CapacityGauge } from "@/components/CapacityGauge";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import type { DashboardStats } from "@shared/schema";
@@ -55,30 +53,14 @@ export default function Dashboard() {
             Manage your cold storage operations efficiently
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <SettingsDialog />
-          <Link href="/new-lot">
-            <Button size="lg" className="gap-2 w-full sm:w-auto" data-testid="button-add-lot">
-              <Plus className="h-5 w-5" />
-              {t("addNewLot")}
-            </Button>
-          </Link>
-        </div>
+        <SettingsDialog />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard
-          title={t("overallCapacity")}
-          value={stats?.totalCapacity.toLocaleString() || "0"}
-          subtitle={t("bags")}
-          icon={Warehouse}
-          colorClass="bg-blue-50 dark:bg-blue-950/30"
-          testId="text-total-capacity"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard
           title={t("capacityUsed")}
-          value={`${usedPercentage}%`}
-          subtitle={`${stats?.usedCapacity.toLocaleString() || 0} ${t("bags")}`}
+          value={`${stats?.peakUtilization?.toLocaleString() || 0} / ${stats?.currentUtilization?.toLocaleString() || 0}`}
+          subtitle={`Peak / Current ${t("bags")}`}
           icon={BarChart3}
           colorClass="bg-emerald-50 dark:bg-emerald-950/30"
           testId="text-capacity-used"
@@ -92,21 +74,24 @@ export default function Dashboard() {
         />
         <StatCard
           title={t("totalLots")}
-          value={stats?.totalLots || 0}
+          value={`${stats?.totalLots || 0} / ${stats?.remainingLots || 0}`}
+          subtitle="Total / Remaining"
           icon={Package}
           colorClass="bg-orange-50 dark:bg-orange-950/30"
           testId="text-total-lots"
         />
         <StatCard
           title={t("wafer") + " " + t("bags")}
-          value={stats?.totalWaferBags.toLocaleString() || 0}
+          value={`${stats?.totalWaferBags?.toLocaleString() || 0} / ${stats?.remainingWaferBags?.toLocaleString() || 0}`}
+          subtitle="Total / Remaining"
           icon={Boxes}
           colorClass="bg-cyan-50 dark:bg-cyan-950/30"
           testId="text-wafer-bags"
         />
         <StatCard
           title={t("seed") + " " + t("bags")}
-          value={stats?.totalSeedBags.toLocaleString() || 0}
+          value={`${stats?.totalSeedBags?.toLocaleString() || 0} / ${stats?.remainingSeedBags?.toLocaleString() || 0}`}
+          subtitle="Total / Remaining"
           icon={Boxes}
           colorClass="bg-amber-50 dark:bg-amber-950/30"
           testId="text-seed-bags"

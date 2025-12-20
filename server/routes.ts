@@ -68,13 +68,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Missing type or query parameter" });
       }
       
-      const validTypes = ["phone", "lotNo", "size"];
+      const validTypes = ["phone", "lotNo", "size", "lotNoSize"];
       if (!validTypes.includes(type as string)) {
         return res.status(400).json({ error: "Invalid search type" });
       }
       
       const lots = await storage.searchLots(
-        type as "phone" | "lotNo" | "size",
+        type as "phone" | "lotNo" | "size" | "lotNoSize",
         query as string,
         DEFAULT_COLD_STORAGE_ID
       );
