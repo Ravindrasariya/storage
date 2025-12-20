@@ -115,6 +115,8 @@ const translations: Translations = {
   // Up for Sale
   upForSale: { en: "Up for Sale", hi: "बिक्री के लिए" },
   markForSale: { en: "Mark for Sale", hi: "बिक्री के लिए चिह्नित करें" },
+  removeFromSale: { en: "Remove from Sale", hi: "बिक्री से हटाएं" },
+  removedFromSale: { en: "Removed from sale list", hi: "बिक्री सूची से हटाया गया" },
   
   // Sale/Payment
   sold: { en: "Sold", hi: "बेचा गया" },

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { ShoppingCart, Phone, MapPin, Package, Check, Minus } from "lucide-react";
+import { ShoppingCart, Phone, MapPin, Package, Check, Minus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -85,6 +85,27 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setPartialPrice(0);
     setPaymentStatus("paid");
   };
+
+  const removeFromSaleMutation = useMutation({
+    mutationFn: async (lotId: string) => {
+      return apiRequest("PATCH", `/api/lots/${lotId}`, { upForSale: 0 });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      toast({
+        title: t("success"),
+        description: t("removedFromSale"),
+      });
+    },
+    onError: () => {
+      toast({
+        title: t("error"),
+        description: "Failed to remove from sale",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleConfirmSale = () => {
     if (selectedLot) {
@@ -181,7 +202,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="text-xs text-muted-foreground">
                     {lot.chamberName} | {lot.bagType} | {lot.type}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
                     <Button
                       size="sm"
                       variant="outline"
@@ -199,6 +220,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     >
                       <Check className="h-4 w-4 mr-1" />
                       {t("sold")}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => removeFromSaleMutation.mutate(lot.id)}
+                      disabled={removeFromSaleMutation.isPending}
+                      data-testid={`button-remove-sale-${lot.id}`}
+                      title={t("removeFromSale")}
+                    >
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
