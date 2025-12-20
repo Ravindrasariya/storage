@@ -37,6 +37,7 @@ const translations: Translations = {
   village: { en: "Village", hi: "गाँव" },
   tehsil: { en: "Tehsil", hi: "तहसील" },
   district: { en: "District", hi: "जिला" },
+  state: { en: "State", hi: "राज्य" },
   contactNumber: { en: "Contact Number", hi: "संपर्क नंबर" },
   lotInformation: { en: "Lot Information", hi: "लॉट जानकारी" },
   lotNo: { en: "Lot No", hi: "लॉट नंबर" },

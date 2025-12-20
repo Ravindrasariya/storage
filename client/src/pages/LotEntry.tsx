@@ -47,6 +47,7 @@ export default function LotEntry() {
       village: "",
       tehsil: "",
       district: "",
+      state: "",
       contactNumber: "",
       lotNo: "",
       size: 1,
@@ -168,6 +169,7 @@ export default function LotEntry() {
                       <Input
                         {...field}
                         placeholder="Enter 10-digit number"
+                        maxLength={10}
                         data-testid="input-contact"
                       />
                     </FormControl>
@@ -213,13 +215,30 @@ export default function LotEntry() {
                 control={form.control}
                 name="district"
                 render={({ field }) => (
-                  <FormItem className="sm:col-span-2">
+                  <FormItem>
                     <FormLabel>{t("district")} *</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
                         placeholder="Enter district"
                         data-testid="input-district"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="state"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("state")} *</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="Enter state"
+                        data-testid="input-state"
                       />
                     </FormControl>
                     <FormMessage />

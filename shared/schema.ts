@@ -29,6 +29,7 @@ export const lots = pgTable("lots", {
   village: text("village").notNull(),
   tehsil: text("tehsil").notNull(),
   district: text("district").notNull(),
+  state: text("state").notNull(),
   contactNumber: text("contact_number").notNull(),
   lotNo: text("lot_no").notNull(),
   size: integer("size").notNull(), // Original lot size (bags)
@@ -83,6 +84,7 @@ export const lotFormSchema = z.object({
   village: z.string().min(1, "Village is required"),
   tehsil: z.string().min(1, "Tehsil is required"),
   district: z.string().min(1, "District is required"),
+  state: z.string().min(1, "State is required"),
   contactNumber: z.string().regex(/^\d{10}$/, "Contact number must be exactly 10 digits"),
   lotNo: z.string().min(1, "Lot number is required"),
   size: z.number().min(1, "Size must be at least 1"),
