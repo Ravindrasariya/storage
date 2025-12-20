@@ -64,13 +64,16 @@ export async function registerRoutes(
     try {
       const { type, query, lotNo, size, quality, paymentDue } = req.query;
       
-      const validTypes = ["phone", "lotNoSize"];
+      const validTypes = ["phone", "lotNoSize", "filter"];
       if (!validTypes.includes(type as string)) {
         return res.status(400).json({ error: "Invalid search type" });
       }
       
       let lots;
-      if (type === "lotNoSize") {
+      if (type === "filter") {
+        // Get all lots and apply filters
+        lots = await storage.getAllLots(DEFAULT_COLD_STORAGE_ID);
+      } else if (type === "lotNoSize") {
         lots = await storage.searchLotsByLotNoAndSize(
           lotNo as string || "",
           size as string || "",

@@ -36,7 +36,7 @@ export default function SearchEdit() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const [searchType, setSearchType] = useState<"phone" | "lotNoSize">("phone");
+  const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "filter">("phone");
   const [searchQuery, setSearchQuery] = useState("");
   const [lotNoQuery, setLotNoQuery] = useState("");
   const [sizeQuery, setSizeQuery] = useState("");
@@ -89,13 +89,16 @@ export default function SearchEdit() {
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
     if (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) return;
+    if (searchType === "filter" && qualityFilter === "all" && !paymentDueFilter) return;
     
     setIsSearching(true);
     setHasSearched(true);
     
     try {
       let url: string;
-      if (searchType === "lotNoSize") {
+      if (searchType === "filter") {
+        url = `/api/lots/search?type=filter`;
+      } else if (searchType === "lotNoSize") {
         url = `/api/lots/search?type=lotNoSize&lotNo=${encodeURIComponent(lotNoQuery)}&size=${encodeURIComponent(sizeQuery)}`;
       } else {
         url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}`;
@@ -265,7 +268,7 @@ export default function SearchEdit() {
 
       <Card className="p-4 sm:p-6">
         <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)}>
-          <TabsList className="grid w-full grid-cols-2 mb-4">
+          <TabsList className="grid w-full grid-cols-3 mb-4">
             <TabsTrigger value="phone" className="gap-2" data-testid="tab-search-phone">
               <Phone className="h-4 w-4" />
               <span className="hidden sm:inline">{t("phoneNumber")}</span>
@@ -273,6 +276,10 @@ export default function SearchEdit() {
             <TabsTrigger value="lotNoSize" className="gap-2" data-testid="tab-search-lot">
               <Package className="h-4 w-4" />
               <span className="hidden sm:inline">{t("lotNumber")} x {t("size")}</span>
+            </TabsTrigger>
+            <TabsTrigger value="filter" className="gap-2" data-testid="tab-search-filter">
+              <Filter className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("filters")}</span>
             </TabsTrigger>
           </TabsList>
 
@@ -291,7 +298,7 @@ export default function SearchEdit() {
                 {t("search")}
               </Button>
             </div>
-          ) : (
+          ) : searchType === "lotNoSize" ? (
             <div className="flex items-center gap-2">
               <Input
                 placeholder={t("lotNumber")}
@@ -315,9 +322,44 @@ export default function SearchEdit() {
                 {t("search")}
               </Button>
             </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm">{t("quality")}:</Label>
+                  <Select value={qualityFilter} onValueChange={setQualityFilter}>
+                    <SelectTrigger className="w-32" data-testid="select-quality-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t("all")}</SelectItem>
+                      <SelectItem value="poor">{t("poor")}</SelectItem>
+                      <SelectItem value="medium">{t("medium")}</SelectItem>
+                      <SelectItem value="good">{t("good")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="payment-due-filter-main"
+                    checked={paymentDueFilter}
+                    onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
+                    data-testid="checkbox-payment-due-main"
+                  />
+                  <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer">
+                    {t("coldChargesDue")}
+                  </Label>
+                </div>
+              </div>
+              <Button onClick={handleSearch} disabled={isSearching || (qualityFilter === "all" && !paymentDueFilter)} data-testid="button-search-filter">
+                <Search className="h-4 w-4 mr-2" />
+                {t("search")}
+              </Button>
+            </div>
           )}
         </Tabs>
 
+        {searchType !== "filter" && (
         <div className="border-t pt-4 mt-4">
           <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
             <Filter className="h-4 w-4" />
@@ -327,7 +369,7 @@ export default function SearchEdit() {
             <div className="flex items-center gap-2">
               <Label className="text-sm">{t("quality")}:</Label>
               <Select value={qualityFilter} onValueChange={setQualityFilter}>
-                <SelectTrigger className="w-32" data-testid="select-quality-filter">
+                <SelectTrigger className="w-32" data-testid="select-quality-filter-secondary">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -351,6 +393,7 @@ export default function SearchEdit() {
             </div>
           </div>
         </div>
+        )}
       </Card>
 
       {isSearching ? (
