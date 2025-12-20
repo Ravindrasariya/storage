@@ -35,7 +35,7 @@ export const lots = pgTable("lots", {
   remainingSize: integer("remaining_size").notNull(), // After partial sales
   chamberId: varchar("chamber_id").notNull(),
   floor: integer("floor").notNull(),
-  position: real("position").notNull(), // Fractional position
+  position: text("position").notNull(), // Position like "12/5", "12A/5"
   type: text("type").notNull(), // Jyoti, SC3, etc.
   bagType: text("bag_type").notNull(), // wafer or seed
   quality: text("quality").notNull(), // poor, medium, good
@@ -88,7 +88,7 @@ export const lotFormSchema = z.object({
   size: z.number().min(1, "Size must be at least 1"),
   chamberId: z.string().min(1, "Chamber is required"),
   floor: z.number().min(1, "Floor is required"),
-  position: z.number().min(0, "Position must be 0 or greater"),
+  position: z.string().min(1, "Position is required"),
   type: z.string().min(1, "Type is required"),
   bagType: z.enum(["wafer", "seed"]),
   quality: z.enum(["poor", "medium", "good"]),

@@ -52,7 +52,7 @@ export default function LotEntry() {
       size: 1,
       chamberId: "",
       floor: 1,
-      position: 0,
+      position: "",
       type: "",
       bagType: "wafer",
       quality: "medium",
@@ -376,12 +376,9 @@ export default function LotEntry() {
                     <FormLabel>{t("position")} *</FormLabel>
                     <FormControl>
                       <Input
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        placeholder="e.g. 1.5"
+                        type="text"
+                        placeholder="e.g. 12/5, 12A/5"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                         data-testid="input-position"
                       />
                     </FormControl>
