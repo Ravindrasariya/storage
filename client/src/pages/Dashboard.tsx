@@ -5,7 +5,6 @@ import { StatCard } from "@/components/StatCard";
 import { ChamberChart } from "@/components/ChamberChart";
 import { RatesCard } from "@/components/RatesCard";
 import { UpForSaleList } from "@/components/UpForSaleList";
-import { CapacityGauge } from "@/components/CapacityGauge";
 import { Warehouse, BarChart3, Users, Package, Boxes } from "lucide-react";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import type { DashboardStats } from "@shared/schema";
@@ -102,11 +101,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <CapacityGauge
-          totalCapacity={stats?.totalCapacity || 0}
-          usedCapacity={stats?.usedCapacity || 0}
-        />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChamberChart chambers={stats?.chamberStats || []} />
         <RatesCard
           waferRate={stats?.waferRate || 0}
