@@ -7,7 +7,9 @@ import { StatCard } from "@/components/StatCard";
 import { ChamberChart } from "@/components/ChamberChart";
 import { BagTypeChart } from "@/components/BagTypeChart";
 import { RatesCard } from "@/components/RatesCard";
-import { Plus, Warehouse, BarChart3, Users, Package, Boxes, Phone } from "lucide-react";
+import { Plus, Warehouse, BarChart3, Users, Package, Boxes } from "lucide-react";
+import { CapacityGauge } from "@/components/CapacityGauge";
+import { SettingsDialog } from "@/components/SettingsDialog";
 import type { DashboardStats } from "@shared/schema";
 
 export default function Dashboard() {
@@ -52,21 +54,16 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1">
             Manage your cold storage operations efficiently
           </p>
-          <a 
-            href="tel:8882589392" 
-            className="inline-flex items-center gap-2 mt-2 text-sm text-chart-1 hover:underline"
-            data-testid="link-help-contact"
-          >
-            <Phone className="h-4 w-4" />
-            {t("needHelp")}: 8882589392
-          </a>
         </div>
-        <Link href="/new-lot">
-          <Button size="lg" className="gap-2 w-full sm:w-auto" data-testid="button-add-lot">
-            <Plus className="h-5 w-5" />
-            {t("addNewLot")}
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <SettingsDialog />
+          <Link href="/new-lot">
+            <Button size="lg" className="gap-2 w-full sm:w-auto" data-testid="button-add-lot">
+              <Plus className="h-5 w-5" />
+              {t("addNewLot")}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -116,32 +113,22 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChamberChart chambers={stats?.chamberStats || []} />
-        <div className="space-y-6">
-          <BagTypeChart
-            waferBags={stats?.totalWaferBags || 0}
-            seedBags={stats?.totalSeedBags || 0}
-          />
-          <RatesCard
-            waferRate={stats?.waferRate || 0}
-            seedRate={stats?.seedRate || 0}
-          />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <CapacityGauge
+          totalCapacity={stats?.totalCapacity || 0}
+          usedCapacity={stats?.usedCapacity || 0}
+        />
+        <BagTypeChart
+          waferBags={stats?.totalWaferBags || 0}
+          seedBags={stats?.totalSeedBags || 0}
+        />
+        <RatesCard
+          waferRate={stats?.waferRate || 0}
+          seedRate={stats?.seedRate || 0}
+        />
       </div>
 
-      <div className="flex justify-center pt-4">
-        <Link href="/new-lot">
-          <Button
-            size="lg"
-            className="gap-2 text-lg px-8 py-6 shadow-lg"
-            data-testid="button-add-lot-large"
-          >
-            <Plus className="h-6 w-6" />
-            {t("addNewLot")}
-          </Button>
-        </Link>
-      </div>
+      <ChamberChart chambers={stats?.chamberStats || []} />
     </div>
   );
 }

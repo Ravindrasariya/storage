@@ -192,5 +192,60 @@ export async function registerRoutes(
     }
   });
 
+  // Cold Storage Settings
+  app.get("/api/cold-storage", async (req, res) => {
+    try {
+      const coldStorage = await storage.getColdStorage(DEFAULT_COLD_STORAGE_ID);
+      res.json(coldStorage);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch cold storage" });
+    }
+  });
+
+  app.patch("/api/cold-storage", async (req, res) => {
+    try {
+      const updated = await storage.updateColdStorage(DEFAULT_COLD_STORAGE_ID, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update cold storage" });
+    }
+  });
+
+  // Chamber management
+  app.post("/api/chambers", async (req, res) => {
+    try {
+      const { name, capacity, coldStorageId } = req.body;
+      const chamber = await storage.createChamber({
+        name,
+        capacity,
+        coldStorageId: coldStorageId || DEFAULT_COLD_STORAGE_ID,
+      });
+      res.status(201).json(chamber);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create chamber" });
+    }
+  });
+
+  app.patch("/api/chambers/:id", async (req, res) => {
+    try {
+      const updated = await storage.updateChamber(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update chamber" });
+    }
+  });
+
+  app.delete("/api/chambers/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteChamber(req.params.id);
+      if (!deleted) {
+        return res.status(400).json({ error: "Cannot delete chamber with existing lots" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete chamber" });
+    }
+  });
+
   return httpServer;
 }

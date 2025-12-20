@@ -38,6 +38,14 @@ export interface IStorage {
   
   // Quality Stats
   getQualityStats(coldStorageId: string): Promise<QualityStats>;
+  
+  // Cold Storage Management
+  updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
+  
+  // Chamber Management
+  createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
+  updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined>;
+  deleteChamber(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -117,6 +125,10 @@ export class MemStorage implements IStorage {
       ...insertLot,
       id,
       remainingSize: insertLot.remainingSize ?? insertLot.size,
+      assayerImage: insertLot.assayerImage ?? null,
+      reducingSugar: insertLot.reducingSugar ?? null,
+      dm: insertLot.dm ?? null,
+      remarks: insertLot.remarks ?? null,
       createdAt: new Date(),
     };
     this.lots.set(id, lot);
@@ -178,6 +190,9 @@ export class MemStorage implements IStorage {
     const history: LotEditHistory = {
       ...insertHistory,
       id,
+      soldQuantity: insertHistory.soldQuantity ?? null,
+      pricePerBag: insertHistory.pricePerBag ?? null,
+      totalPrice: insertHistory.totalPrice ?? null,
       changedAt: new Date(),
     };
     this.editHistory.set(id, history);
@@ -229,6 +244,43 @@ export class MemStorage implements IStorage {
       seedRate: coldStorage?.seedRate || 0,
       chamberStats,
     };
+  }
+
+  async updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined> {
+    const coldStorage = this.coldStorages.get(id);
+    if (!coldStorage) return undefined;
+    const updated = { ...coldStorage, ...updates };
+    this.coldStorages.set(id, updated);
+    return updated;
+  }
+
+  async createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber> {
+    const id = `ch-${randomUUID().slice(0, 8)}`;
+    const chamber: Chamber = {
+      id,
+      name: data.name,
+      capacity: data.capacity,
+      currentFill: 0,
+      coldStorageId: data.coldStorageId,
+    };
+    this.chambers.set(id, chamber);
+    return chamber;
+  }
+
+  async updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined> {
+    const chamber = this.chambers.get(id);
+    if (!chamber) return undefined;
+    const updated = { ...chamber, ...updates };
+    this.chambers.set(id, updated);
+    return updated;
+  }
+
+  async deleteChamber(id: string): Promise<boolean> {
+    const lots = Array.from(this.lots.values()).filter((lot) => lot.chamberId === id);
+    if (lots.length > 0) {
+      return false;
+    }
+    return this.chambers.delete(id);
   }
 
   async getQualityStats(coldStorageId: string): Promise<QualityStats> {

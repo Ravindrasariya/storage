@@ -96,6 +96,13 @@ const translations: Translations = {
   error: { en: "Error", hi: "त्रुटि" },
   success: { en: "Success", hi: "सफलता" },
   required: { en: "Required", hi: "आवश्यक" },
+  
+  // Settings
+  freeCapacity: { en: "Free", hi: "खाली" },
+  settings: { en: "Settings", hi: "सेटिंग्स" },
+  addChamber: { en: "Add Chamber", hi: "कक्ष जोड़ें" },
+  rate: { en: "Rate", hi: "दर" },
+  chambers: { en: "Chambers", hi: "कक्ष" },
 };
 
 interface I18nContextType {

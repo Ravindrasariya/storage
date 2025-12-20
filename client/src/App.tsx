@@ -44,8 +44,8 @@ function Navigation() {
         return (
           <Link key={item.href} href={item.href}>
             <Button
-              variant={isActive ? "secondary" : "ghost"}
-              className="gap-2 justify-start w-full sm:w-auto"
+              variant={isActive ? "default" : "ghost"}
+              className={`gap-2 justify-start w-full sm:w-auto ${isActive ? "bg-chart-1 hover:bg-chart-1/90" : ""}`}
               onClick={onClick}
               data-testid={`nav-${item.href.replace("/", "") || "dashboard"}`}
             >
