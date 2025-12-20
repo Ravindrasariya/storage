@@ -83,7 +83,7 @@ export const lotFormSchema = z.object({
   village: z.string().min(1, "Village is required"),
   tehsil: z.string().min(1, "Tehsil is required"),
   district: z.string().min(1, "District is required"),
-  contactNumber: z.string().min(10, "Valid contact number required"),
+  contactNumber: z.string().regex(/^\d{10}$/, "Contact number must be exactly 10 digits"),
   lotNo: z.string().min(1, "Lot number is required"),
   size: z.number().min(1, "Size must be at least 1"),
   chamberId: z.string().min(1, "Chamber is required"),
