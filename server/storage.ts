@@ -129,6 +129,7 @@ export class MemStorage implements IStorage {
       reducingSugar: insertLot.reducingSugar ?? null,
       dm: insertLot.dm ?? null,
       remarks: insertLot.remarks ?? null,
+      upForSale: insertLot.upForSale ?? 0,
       createdAt: new Date(),
     };
     this.lots.set(id, lot);
@@ -251,6 +252,21 @@ export class MemStorage implements IStorage {
       };
     });
 
+    const chamberMap = new Map(chambers.map(c => [c.id, c.name]));
+    const saleLots = lots
+      .filter((lot) => lot.upForSale === 1 && lot.remainingSize > 0)
+      .map((lot) => ({
+        id: lot.id,
+        lotNo: lot.lotNo,
+        farmerName: lot.farmerName,
+        contactNumber: lot.contactNumber,
+        village: lot.village,
+        chamberName: chamberMap.get(lot.chamberId) || "Unknown",
+        remainingSize: lot.remainingSize,
+        bagType: lot.bagType,
+        type: lot.type,
+      }));
+
     return {
       totalCapacity: coldStorage?.totalCapacity || 0,
       usedCapacity: currentUtilization,
@@ -266,6 +282,7 @@ export class MemStorage implements IStorage {
       waferRate: coldStorage?.waferRate || 0,
       seedRate: coldStorage?.seedRate || 0,
       chamberStats,
+      saleLots,
     };
   }
 

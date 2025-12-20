@@ -44,6 +44,7 @@ export const lots = pgTable("lots", {
   reducingSugar: real("reducing_sugar"), // Only if Quality Check
   dm: real("dm"), // Only if Quality Check (Dry Matter)
   remarks: text("remarks"),
+  upForSale: integer("up_for_sale").notNull().default(0), // 0 = not for sale, 1 = up for sale
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -100,6 +101,19 @@ export const lotFormSchema = z.object({
 
 export type LotFormData = z.infer<typeof lotFormSchema>;
 
+// Sale lot info for dashboard
+export interface SaleLotInfo {
+  id: string;
+  lotNo: string;
+  farmerName: string;
+  contactNumber: string;
+  village: string;
+  chamberName: string;
+  remainingSize: number;
+  bagType: string;
+  type: string;
+}
+
 // Dashboard stats type
 export interface DashboardStats {
   totalCapacity: number;
@@ -122,6 +136,7 @@ export interface DashboardStats {
     currentFill: number;
     fillPercentage: number;
   }[];
+  saleLots: SaleLotInfo[];
 }
 
 // Quality stats type

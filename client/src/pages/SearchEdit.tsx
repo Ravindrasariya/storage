@@ -123,17 +123,19 @@ export default function SearchEdit() {
   };
 
   const updateLotMutation = useMutation({
-    mutationFn: async (data: { id: string; updates: Partial<Lot> }) => {
+    mutationFn: async (data: { id: string; updates: Partial<Lot>; silent?: boolean }) => {
       return apiRequest("PATCH", `/api/lots/${data.id}`, data.updates);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({
-        title: t("success"),
-        description: "Lot updated successfully",
-      });
-      setEditDialogOpen(false);
+      if (!variables.silent) {
+        toast({
+          title: t("success"),
+          description: "Lot updated successfully",
+        });
+        setEditDialogOpen(false);
+      }
       handleSearch();
     },
     onError: (error: Error) => {
@@ -144,6 +146,14 @@ export default function SearchEdit() {
       });
     },
   });
+
+  const handleToggleSale = (lot: Lot, upForSale: boolean) => {
+    updateLotMutation.mutate({
+      id: lot.id,
+      updates: { upForSale: upForSale ? 1 : 0 },
+      silent: true,
+    });
+  };
 
   const partialSaleMutation = useMutation({
     mutationFn: async (data: { lotId: string; quantitySold: number; pricePerBag: number }) => {
@@ -277,6 +287,7 @@ export default function SearchEdit() {
                 chamberName={chamberMap[lot.chamberId] || "Unknown"}
                 onEdit={handleEditClick}
                 onPartialSale={handlePartialSaleClick}
+                onToggleSale={handleToggleSale}
               />
             ))}
           </div>

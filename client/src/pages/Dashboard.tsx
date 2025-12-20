@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
 import { ChamberChart } from "@/components/ChamberChart";
-import { BagTypeChart } from "@/components/BagTypeChart";
 import { RatesCard } from "@/components/RatesCard";
-import { BarChart3, Users, Package, Boxes } from "lucide-react";
+import { UpForSaleList } from "@/components/UpForSaleList";
 import { CapacityGauge } from "@/components/CapacityGauge";
+import { Warehouse, BarChart3, Users, Package, Boxes } from "lucide-react";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import type { DashboardStats } from "@shared/schema";
 
@@ -40,10 +40,6 @@ export default function Dashboard() {
     );
   }
 
-  const usedPercentage = stats
-    ? Math.round((stats.usedCapacity / stats.totalCapacity) * 100)
-    : 0;
-
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -56,7 +52,15 @@ export default function Dashboard() {
         <SettingsDialog />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <StatCard
+          title={t("overallCapacity")}
+          value={stats?.totalCapacity.toLocaleString() || "0"}
+          subtitle={t("bags")}
+          icon={Warehouse}
+          colorClass="bg-blue-50 dark:bg-blue-950/30"
+          testId="text-total-capacity"
+        />
         <StatCard
           title={t("capacityUsed")}
           value={`${stats?.peakUtilization?.toLocaleString() || 0} / ${stats?.currentUtilization?.toLocaleString() || 0}`}
@@ -103,17 +107,14 @@ export default function Dashboard() {
           totalCapacity={stats?.totalCapacity || 0}
           usedCapacity={stats?.usedCapacity || 0}
         />
-        <BagTypeChart
-          waferBags={stats?.totalWaferBags || 0}
-          seedBags={stats?.totalSeedBags || 0}
-        />
+        <ChamberChart chambers={stats?.chamberStats || []} />
         <RatesCard
           waferRate={stats?.waferRate || 0}
           seedRate={stats?.seedRate || 0}
         />
       </div>
 
-      <ChamberChart chambers={stats?.chamberStats || []} />
+      <UpForSaleList saleLots={stats?.saleLots || []} />
     </div>
   );
 }

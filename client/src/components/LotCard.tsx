@@ -2,7 +2,9 @@ import { useI18n } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Edit, Phone, MapPin, Package, Layers } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Edit, Phone, MapPin, Package, Layers, ShoppingCart } from "lucide-react";
 import type { Lot } from "@shared/schema";
 
 interface LotCardProps {
@@ -10,9 +12,10 @@ interface LotCardProps {
   chamberName: string;
   onEdit: (lot: Lot) => void;
   onPartialSale: (lot: Lot) => void;
+  onToggleSale?: (lot: Lot, upForSale: boolean) => void;
 }
 
-export function LotCard({ lot, chamberName, onEdit, onPartialSale }: LotCardProps) {
+export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale }: LotCardProps) {
   const { t } = useI18n();
 
   const getQualityColor = (quality: string) => {
@@ -96,6 +99,20 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale }: LotCardProp
         </div>
 
         <div className="flex sm:flex-col gap-2 shrink-0">
+          {lot.remainingSize > 0 && onToggleSale && (
+            <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
+              <Switch
+                id={`sale-toggle-${lot.id}`}
+                checked={lot.upForSale === 1}
+                onCheckedChange={(checked) => onToggleSale(lot, checked)}
+                data-testid={`switch-sale-${lot.id}`}
+              />
+              <Label htmlFor={`sale-toggle-${lot.id}`} className="text-xs flex items-center gap-1 cursor-pointer">
+                <ShoppingCart className="h-3 w-3" />
+                {t("upForSale")}
+              </Label>
+            </div>
+          )}
           <Button
             variant="outline"
             size="sm"

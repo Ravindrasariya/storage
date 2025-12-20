@@ -103,6 +103,10 @@ const translations: Translations = {
   addChamber: { en: "Add Chamber", hi: "कक्ष जोड़ें" },
   rate: { en: "Rate", hi: "दर" },
   chambers: { en: "Chambers", hi: "कक्ष" },
+  
+  // Up for Sale
+  upForSale: { en: "Up for Sale", hi: "बिक्री के लिए" },
+  markForSale: { en: "Mark for Sale", hi: "बिक्री के लिए चिह्नित करें" },
 };
 
 interface I18nContextType {
