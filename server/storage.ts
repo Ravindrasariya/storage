@@ -26,7 +26,8 @@ export interface IStorage {
   createLot(lot: InsertLot): Promise<Lot>;
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
-  searchLots(type: "phone" | "lotNo" | "size" | "lotNoSize", query: string, coldStorageId: string): Promise<Lot[]>;
+  searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]>;
+  searchLotsByLotNoAndSize(lotNo: string, size: string, coldStorageId: string): Promise<Lot[]>;
   getAllLots(coldStorageId: string): Promise<Lot[]>;
   
   // Lot Edit History
@@ -156,7 +157,7 @@ export class MemStorage implements IStorage {
   }
 
   async searchLots(
-    type: "phone" | "lotNo" | "size" | "lotNoSize",
+    type: "phone",
     query: string,
     coldStorageId: string
   ): Promise<Lot[]> {
@@ -164,28 +165,24 @@ export class MemStorage implements IStorage {
       (lot) => lot.coldStorageId === coldStorageId
     );
 
-    switch (type) {
-      case "phone":
-        return allLots.filter((lot) => lot.contactNumber.includes(query));
-      case "lotNo":
-        return allLots.filter((lot) =>
-          lot.lotNo.toLowerCase().includes(query.toLowerCase())
-        );
-      case "size":
-        const sizeQuery = parseFloat(query);
-        if (isNaN(sizeQuery)) return [];
-        return allLots.filter((lot) => lot.size >= sizeQuery);
-      case "lotNoSize":
-        const numericQuery = parseInt(query, 10);
-        const isNumeric = !isNaN(numericQuery);
-        return allLots.filter((lot) => {
-          const matchesLotNo = lot.lotNo.toLowerCase().includes(query.toLowerCase());
-          const matchesSize = isNumeric && lot.size === numericQuery;
-          return matchesLotNo || matchesSize;
-        });
-      default:
-        return [];
-    }
+    return allLots.filter((lot) => lot.contactNumber.includes(query));
+  }
+
+  async searchLotsByLotNoAndSize(
+    lotNo: string,
+    size: string,
+    coldStorageId: string
+  ): Promise<Lot[]> {
+    const allLots = Array.from(this.lots.values()).filter(
+      (lot) => lot.coldStorageId === coldStorageId
+    );
+
+    return allLots.filter((lot) => {
+      const matchesLotNo = !lotNo || lot.lotNo.toLowerCase().includes(lotNo.toLowerCase());
+      const sizeNum = parseInt(size, 10);
+      const matchesSize = !size || isNaN(sizeNum) || lot.size === sizeNum;
+      return matchesLotNo && matchesSize;
+    });
   }
 
   async getAllLots(coldStorageId: string): Promise<Lot[]> {

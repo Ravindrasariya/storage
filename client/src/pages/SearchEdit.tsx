@@ -37,6 +37,8 @@ export default function SearchEdit() {
 
   const [searchType, setSearchType] = useState<"phone" | "lotNoSize">("phone");
   const [searchQuery, setSearchQuery] = useState("");
+  const [lotNoQuery, setLotNoQuery] = useState("");
+  const [sizeQuery, setSizeQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -70,15 +72,20 @@ export default function SearchEdit() {
   }, {} as Record<string, string>) || {};
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+    if (searchType === "phone" && !searchQuery.trim()) return;
+    if (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) return;
     
     setIsSearching(true);
     setHasSearched(true);
     
     try {
-      const response = await fetch(
-        `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}`
-      );
+      let url: string;
+      if (searchType === "lotNoSize") {
+        url = `/api/lots/search?type=lotNoSize&lotNo=${encodeURIComponent(lotNoQuery)}&size=${encodeURIComponent(sizeQuery)}`;
+      } else {
+        url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}`;
+      }
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setSearchResults(data);
@@ -242,28 +249,50 @@ export default function SearchEdit() {
             </TabsTrigger>
             <TabsTrigger value="lotNoSize" className="gap-2" data-testid="tab-search-lot">
               <Package className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("lotNumber")} / {t("size")}</span>
+              <span className="hidden sm:inline">{t("lotNumber")} x {t("size")}</span>
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex gap-2">
-            <Input
-              placeholder={
-                searchType === "phone"
-                  ? "Enter phone number..."
-                  : "Enter lot number or size..."
-              }
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="flex-1"
-              data-testid="input-search"
-            />
-            <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
-              <Search className="h-4 w-4 mr-2" />
-              {t("search")}
-            </Button>
-          </div>
+          {searchType === "phone" ? (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter phone number..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="flex-1"
+                data-testid="input-search-phone"
+              />
+              <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
+                <Search className="h-4 w-4 mr-2" />
+                {t("search")}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder={t("lotNumber")}
+                value={lotNoQuery}
+                onChange={(e) => setLotNoQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="flex-1"
+                data-testid="input-search-lotno"
+              />
+              <span className="text-lg font-semibold text-muted-foreground">x</span>
+              <Input
+                placeholder={t("size")}
+                value={sizeQuery}
+                onChange={(e) => setSizeQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="flex-1"
+                data-testid="input-search-size"
+              />
+              <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
+                <Search className="h-4 w-4 mr-2" />
+                {t("search")}
+              </Button>
+            </div>
+          )}
         </Tabs>
       </Card>
 

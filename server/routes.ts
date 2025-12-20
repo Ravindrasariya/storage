@@ -62,22 +62,30 @@ export async function registerRoutes(
 
   app.get("/api/lots/search", async (req, res) => {
     try {
-      const { type, query } = req.query;
+      const { type, query, lotNo, size } = req.query;
       
-      if (!type || !query) {
-        return res.status(400).json({ error: "Missing type or query parameter" });
-      }
-      
-      const validTypes = ["phone", "lotNo", "size", "lotNoSize"];
+      const validTypes = ["phone", "lotNoSize"];
       if (!validTypes.includes(type as string)) {
         return res.status(400).json({ error: "Invalid search type" });
       }
       
-      const lots = await storage.searchLots(
-        type as "phone" | "lotNo" | "size" | "lotNoSize",
-        query as string,
-        DEFAULT_COLD_STORAGE_ID
-      );
+      let lots;
+      if (type === "lotNoSize") {
+        lots = await storage.searchLotsByLotNoAndSize(
+          lotNo as string || "",
+          size as string || "",
+          DEFAULT_COLD_STORAGE_ID
+        );
+      } else {
+        if (!query) {
+          return res.status(400).json({ error: "Missing query parameter" });
+        }
+        lots = await storage.searchLots(
+          type as "phone",
+          query as string,
+          DEFAULT_COLD_STORAGE_ID
+        );
+      }
       
       res.json(lots);
     } catch (error) {
