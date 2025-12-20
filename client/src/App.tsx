@@ -64,7 +64,12 @@ function Navigation() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-chart-1">
             <Snowflake className="h-6 w-6" />
-            <span className="font-bold text-lg hidden sm:block">{t("appTitle")}</span>
+            <div className="hidden sm:block">
+              <span className="font-bold text-lg">{t("appTitle")}</span>
+              <p className="text-xs text-muted-foreground">
+                by <span className="text-green-600 dark:text-green-400 font-medium">Krashu</span><span className="text-orange-500 dark:text-orange-400 font-medium">Ved</span>
+              </p>
+            </div>
           </div>
         </div>
 
