@@ -129,6 +129,14 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
                 </span>
               </div>
             )}
+            {lot.paymentStatus === "paid" && lot.saleStatus !== "sold" && lot.saleCharge && (
+              <div>
+                <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
+                <span className="font-bold text-green-600 dark:text-green-400">
+                  Rs. {lot.saleCharge.toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
 
           {lot.remarks && (

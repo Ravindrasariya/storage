@@ -395,6 +395,35 @@ export default function SearchEdit() {
             </div>
           </div>
 
+          {selectedLot?.paymentStatus === "due" && selectedLot?.saleCharge && (
+            <div className="border-t pt-4">
+              <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{t("coldChargesDue")}</p>
+                    <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                      Rs. {selectedLot.saleCharge.toLocaleString()}
+                    </p>
+                  </div>
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      updateLotMutation.mutate({
+                        id: selectedLot.id,
+                        updates: { paymentStatus: "paid" },
+                        silent: false,
+                      });
+                    }}
+                    disabled={updateLotMutation.isPending}
+                    data-testid="button-mark-as-paid"
+                  >
+                    {t("markAsPaid")}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="border-t pt-4">
             <h3 className="font-semibold mb-3">{t("editHistory")}</h3>
             <EditHistoryAccordion history={editHistory} />
