@@ -156,7 +156,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Lot not found" });
       }
 
-      const { quantitySold, pricePerBag } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -173,9 +173,15 @@ export async function registerRoutes(
       const newRemainingSize = lot.remainingSize - quantitySold;
       const totalPrice = quantitySold * pricePerBag;
 
-      await storage.updateLot(req.params.id, {
+      const updateData: { remainingSize: number; paymentStatus?: string } = {
         remainingSize: newRemainingSize,
-      });
+      };
+      
+      if (paymentStatus && (paymentStatus === "due" || paymentStatus === "paid")) {
+        updateData.paymentStatus = paymentStatus;
+      }
+      
+      await storage.updateLot(req.params.id, updateData);
 
       await storage.createEditHistory({
         lotId: lot.id,

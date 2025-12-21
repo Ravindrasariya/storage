@@ -57,8 +57,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag }: { lotId: string; quantity: number; pricePerBag: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -114,6 +114,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           lotId: selectedLot.id,
           quantity: partialQuantity,
           pricePerBag: partialPrice,
+          paymentStatus,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -327,6 +328,28 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   </div>
                 </div>
               )}
+
+              <div className="space-y-2">
+                <Label>{t("paymentStatus")}</Label>
+                <RadioGroup
+                  value={paymentStatus}
+                  onValueChange={(value) => setPaymentStatus(value as "paid" | "due")}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="paid" id="partial-paid" data-testid="radio-partial-paid" />
+                    <Label htmlFor="partial-paid" className="text-green-600 font-medium">
+                      {t("paid")}
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="due" id="partial-due" data-testid="radio-partial-due" />
+                    <Label htmlFor="partial-due" className="text-amber-600 font-medium">
+                      {t("due")}
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
             </div>
           )}
 
