@@ -369,14 +369,26 @@ export class MemStorage implements IStorage {
 
   async getPaymentStats(coldStorageId: string): Promise<PaymentStats> {
     const lots = await this.getAllLots(coldStorageId);
-    const soldLots = lots.filter((lot) => lot.saleStatus === "sold");
+    const coldStorage = await this.getColdStorage(coldStorageId);
+    
+    // Include all lots with payment status (both sold and partial sales)
+    const lotsWithPayment = lots.filter((lot) => lot.paymentStatus);
 
-    const paidLots = soldLots.filter((lot) => lot.paymentStatus === "paid");
-    const dueLots = soldLots.filter((lot) => lot.paymentStatus === "due");
+    const paidLots = lotsWithPayment.filter((lot) => lot.paymentStatus === "paid");
+    const dueLots = lotsWithPayment.filter((lot) => lot.paymentStatus === "due");
+
+    // Calculate charges - use saleCharge if available, otherwise calculate based on rate and bags sold
+    const calculateCharge = (lot: Lot) => {
+      if (lot.saleCharge) return lot.saleCharge;
+      if (!coldStorage) return 0;
+      const rate = lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate;
+      const bagsSold = lot.size - lot.remainingSize;
+      return rate * bagsSold;
+    };
 
     return {
-      totalPaid: paidLots.reduce((sum, lot) => sum + (lot.saleCharge || 0), 0),
-      totalDue: dueLots.reduce((sum, lot) => sum + (lot.saleCharge || 0), 0),
+      totalPaid: paidLots.reduce((sum, lot) => sum + calculateCharge(lot), 0),
+      totalDue: dueLots.reduce((sum, lot) => sum + calculateCharge(lot), 0),
       paidCount: paidLots.length,
       dueCount: dueLots.length,
     };

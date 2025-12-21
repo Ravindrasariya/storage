@@ -11,7 +11,7 @@ interface LotCardProps {
   lot: Lot;
   chamberName: string;
   onEdit: (lot: Lot) => void;
-  onPartialSale: (lot: Lot) => void;
+  onPartialSale?: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
 }
 
@@ -59,7 +59,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
                 {t("sold")}
               </Badge>
             )}
-            {lot.saleStatus === "sold" && lot.paymentStatus && (
+            {lot.paymentStatus && (
               <Badge 
                 variant="outline" 
                 className={lot.paymentStatus === "paid" 
@@ -155,7 +155,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
             <Edit className="h-4 w-4" />
             {t("edit")}
           </Button>
-          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && (
+          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onPartialSale && (
             <Button
               variant="secondary"
               size="sm"

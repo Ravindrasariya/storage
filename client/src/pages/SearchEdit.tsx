@@ -47,7 +47,6 @@ export default function SearchEdit() {
   const [isSearching, setIsSearching] = useState(false);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [partialSaleDialogOpen, setPartialSaleDialogOpen] = useState(false);
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
   const [editHistory, setEditHistory] = useState<LotEditHistory[]>([]);
 
@@ -58,11 +57,6 @@ export default function SearchEdit() {
     district: "",
     contactNumber: "",
     remarks: "",
-  });
-
-  const [saleForm, setSaleForm] = useState({
-    quantitySold: 0,
-    pricePerBag: 0,
   });
 
   const { data: chambers } = useQuery<Chamber[]>({
@@ -149,12 +143,6 @@ export default function SearchEdit() {
     setEditDialogOpen(true);
   };
 
-  const handlePartialSaleClick = (lot: Lot) => {
-    setSelectedLot(lot);
-    setSaleForm({ quantitySold: 0, pricePerBag: 0 });
-    setPartialSaleDialogOpen(true);
-  };
-
   const updateLotMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<Lot>; silent?: boolean }) => {
       return apiRequest("PATCH", `/api/lots/${data.id}`, data.updates);
@@ -188,62 +176,11 @@ export default function SearchEdit() {
     });
   };
 
-  const partialSaleMutation = useMutation({
-    mutationFn: async (data: { lotId: string; quantitySold: number; pricePerBag: number }) => {
-      return apiRequest("POST", `/api/lots/${data.lotId}/partial-sale`, {
-        quantitySold: data.quantitySold,
-        pricePerBag: data.pricePerBag,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({
-        title: t("success"),
-        description: "Partial sale recorded successfully",
-      });
-      setPartialSaleDialogOpen(false);
-      handleSearch();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: t("error"),
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
   const handleEditSubmit = () => {
     if (!selectedLot) return;
     updateLotMutation.mutate({
       id: selectedLot.id,
       updates: editForm,
-    });
-  };
-
-  const handlePartialSaleSubmit = () => {
-    if (!selectedLot) return;
-    if (saleForm.quantitySold <= 0 || saleForm.quantitySold > selectedLot.remainingSize) {
-      toast({
-        title: t("error"),
-        description: "Invalid quantity",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (saleForm.pricePerBag <= 0) {
-      toast({
-        title: t("error"),
-        description: "Price per bag must be greater than 0",
-        variant: "destructive",
-      });
-      return;
-    }
-    partialSaleMutation.mutate({
-      lotId: selectedLot.id,
-      quantitySold: saleForm.quantitySold,
-      pricePerBag: saleForm.pricePerBag,
     });
   };
 
@@ -379,7 +316,6 @@ export default function SearchEdit() {
                 lot={lot}
                 chamberName={chamberMap[lot.chamberId] || "Unknown"}
                 onEdit={handleEditClick}
-                onPartialSale={handlePartialSaleClick}
                 onToggleSale={handleToggleSale}
               />
             ))}
@@ -474,104 +410,6 @@ export default function SearchEdit() {
               data-testid="button-save-edit"
             >
               {updateLotMutation.isPending ? t("loading") : t("save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={partialSaleDialogOpen} onOpenChange={setPartialSaleDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("partialSale")}</DialogTitle>
-            <DialogDescription>
-              {selectedLot?.farmerName} - {t("lotNo")}: {selectedLot?.lotNo}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">{t("originalSize")}</span>
-                <span className="font-bold">{selectedLot?.size} {t("bags")}</span>
-              </div>
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-muted-foreground">{t("remaining")}</span>
-                <span className="font-bold text-chart-1">
-                  {selectedLot?.remainingSize} {t("bags")}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("quantitySold")}</Label>
-              <Input
-                type="number"
-                min={0}
-                max={selectedLot?.remainingSize || 0}
-                value={saleForm.quantitySold || ""}
-                onChange={(e) =>
-                  setSaleForm({
-                    ...saleForm,
-                    quantitySold: parseInt(e.target.value) || 0,
-                  })
-                }
-                data-testid="input-quantity-sold"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("pricePerBag")}</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={saleForm.pricePerBag || ""}
-                onChange={(e) =>
-                  setSaleForm({
-                    ...saleForm,
-                    pricePerBag: parseFloat(e.target.value) || 0,
-                  })
-                }
-                data-testid="input-price-per-bag"
-              />
-            </div>
-
-            {saleForm.quantitySold > 0 && saleForm.pricePerBag > 0 && (
-              <div className="p-4 bg-chart-3/10 rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">{t("totalPrice")}</span>
-                  <span className="text-2xl font-bold text-chart-3">
-                    ₹{(saleForm.quantitySold * saleForm.pricePerBag).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center mt-2 text-sm">
-                  <span className="text-muted-foreground">After sale remaining</span>
-                  <span className="font-medium">
-                    {(selectedLot?.remainingSize || 0) - saleForm.quantitySold} {t("bags")}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setPartialSaleDialogOpen(false)}
-            >
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={handlePartialSaleSubmit}
-              disabled={
-                partialSaleMutation.isPending ||
-                saleForm.quantitySold <= 0 ||
-                saleForm.quantitySold > (selectedLot?.remainingSize || 0) ||
-                saleForm.pricePerBag <= 0
-              }
-              data-testid="button-confirm-sale"
-            >
-              {partialSaleMutation.isPending ? t("loading") : t("submit")}
             </Button>
           </DialogFooter>
         </DialogContent>
