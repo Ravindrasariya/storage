@@ -121,6 +121,14 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
                 <span className="font-bold text-chart-2">Rs. {lot.saleCharge.toLocaleString()}</span>
               </div>
             )}
+            {lot.paymentStatus === "due" && lot.saleStatus !== "sold" && lot.saleCharge && (
+              <div>
+                <span className="text-muted-foreground">{t("coldChargesDue")}: </span>
+                <span className="font-bold text-amber-600 dark:text-amber-400">
+                  Rs. {lot.saleCharge.toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
 
           {lot.remarks && (
