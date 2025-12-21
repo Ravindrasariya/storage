@@ -358,42 +358,6 @@ export default function SearchEdit() {
             </div>
           )}
         </Tabs>
-
-        {searchType !== "filter" && (
-        <div className="border-t pt-4 mt-4">
-          <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
-            <Filter className="h-4 w-4" />
-            <span>{t("filters")}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Label className="text-sm">{t("quality")}:</Label>
-              <Select value={qualityFilter} onValueChange={setQualityFilter}>
-                <SelectTrigger className="w-32" data-testid="select-quality-filter-secondary">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("all")}</SelectItem>
-                  <SelectItem value="poor">{t("poor")}</SelectItem>
-                  <SelectItem value="medium">{t("medium")}</SelectItem>
-                  <SelectItem value="good">{t("good")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="payment-due-filter"
-                checked={paymentDueFilter}
-                onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
-                data-testid="checkbox-payment-due"
-              />
-              <Label htmlFor="payment-due-filter" className="text-sm cursor-pointer">
-                {t("coldChargesDue")}
-              </Label>
-            </div>
-          </div>
-        </div>
-        )}
       </Card>
 
       {isSearching ? (
