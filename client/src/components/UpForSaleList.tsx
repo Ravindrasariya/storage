@@ -165,74 +165,77 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               className="p-4 rounded-lg border bg-card"
               data-testid={`sale-lot-${lot.id}`}
             >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-base" data-testid={`sale-farmer-${lot.id}`}>
-                      {lot.farmerName}
-                    </span>
-                    <Badge variant="outline" className="text-xs">
-                      {lot.lotNo}
-                    </Badge>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-base" data-testid={`sale-farmer-${lot.id}`}>
+                        {lot.farmerName}
+                      </span>
+                      <Badge variant="outline" className="text-xs">
+                        {lot.lotNo}
+                      </Badge>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
-                    <span className="flex items-center gap-1">
-                      <Phone className="h-3 w-3" />
-                      {lot.contactNumber}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {lot.village}
-                    </span>
-                  </div>
-                  <div className="mt-2 text-sm">
-                    <span className="text-muted-foreground">{t("storageCharge")}: </span>
-                    <span className="font-medium text-chart-2">
-                      Rs. {calculateCharge(lot).toLocaleString()}
-                    </span>
-                    <span className="text-muted-foreground text-xs ml-1">
-                      ({lot.remainingSize} x Rs.{lot.rate})
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex items-center gap-1 text-chart-1 font-bold">
+                  <div className="flex items-center gap-1 text-chart-1 font-bold shrink-0">
                     <Package className="h-4 w-4" />
                     <span data-testid={`sale-size-${lot.id}`}>{lot.remainingSize}</span>
                   </div>
-                  <div className="text-xs text-muted-foreground">
+                </div>
+                
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Phone className="h-3 w-3 shrink-0" />
+                    {lot.contactNumber}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    {lot.village}
+                  </span>
+                  <span className="text-xs">
                     {lot.chamberName} | {lot.bagType} | {lot.type}
-                  </div>
-                  <div className="flex gap-1 flex-wrap">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openSaleDialog(lot, "partial")}
-                      data-testid={`button-partial-${lot.id}`}
-                    >
-                      <Minus className="h-4 w-4 mr-1" />
-                      {t("partialSale")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openSaleDialog(lot, "full")}
-                      data-testid={`button-sold-${lot.id}`}
-                    >
-                      <Check className="h-4 w-4 mr-1" />
-                      {t("sold")}
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeFromSaleMutation.mutate(lot.id)}
-                      disabled={removeFromSaleMutation.isPending}
-                      data-testid={`button-remove-sale-${lot.id}`}
-                      title={t("removeFromSale")}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  </span>
+                </div>
+                
+                <div className="text-sm">
+                  <span className="text-muted-foreground">{t("storageCharge")}: </span>
+                  <span className="font-medium text-chart-2">
+                    Rs. {calculateCharge(lot).toLocaleString()}
+                  </span>
+                  <span className="text-muted-foreground text-xs ml-1">
+                    ({lot.remainingSize} x Rs.{lot.rate})
+                  </span>
+                </div>
+                
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openSaleDialog(lot, "partial")}
+                    data-testid={`button-partial-${lot.id}`}
+                  >
+                    <Minus className="h-4 w-4 mr-1" />
+                    {t("partialSale")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openSaleDialog(lot, "full")}
+                    data-testid={`button-sold-${lot.id}`}
+                  >
+                    <Check className="h-4 w-4 mr-1" />
+                    {t("sold")}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => removeFromSaleMutation.mutate(lot.id)}
+                    disabled={removeFromSaleMutation.isPending}
+                    data-testid={`button-remove-sale-${lot.id}`}
+                    title={t("removeFromSale")}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </div>
