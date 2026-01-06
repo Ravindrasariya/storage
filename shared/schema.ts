@@ -47,8 +47,10 @@ export const lots = pgTable("lots", {
   remarks: text("remarks"),
   upForSale: integer("up_for_sale").notNull().default(0), // 0 = not for sale, 1 = up for sale
   saleStatus: text("sale_status").notNull().default("available"), // available, sold
-  paymentStatus: text("payment_status"), // due, paid (only set when sold)
-  saleCharge: real("sale_charge"), // Total storage charge when sold
+  paymentStatus: text("payment_status"), // due, paid (only set when fully sold)
+  saleCharge: real("sale_charge"), // Total storage charge when fully sold
+  totalPaidCharge: real("total_paid_charge").default(0), // Accumulated paid charges from partial sales
+  totalDueCharge: real("total_due_charge").default(0), // Accumulated due charges from partial sales
   soldAt: timestamp("sold_at"), // When the lot was sold
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -63,6 +65,8 @@ export const lotEditHistory = pgTable("lot_edit_history", {
   soldQuantity: integer("sold_quantity"), // For partial sales
   pricePerBag: real("price_per_bag"), // For partial sales
   totalPrice: real("total_price"), // For partial sales
+  salePaymentStatus: text("sale_payment_status"), // For partial sales: 'paid' or 'due'
+  saleCharge: real("sale_charge"), // Storage charge for this partial sale
   changedAt: timestamp("changed_at").notNull().defaultNow(),
 });
 
