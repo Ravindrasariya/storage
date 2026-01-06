@@ -300,45 +300,42 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats> {
-    const allChambers = await this.getChambers(coldStorageId);
-    let allLots = await this.getAllLots(coldStorageId);
+    // Read from salesHistory table (permanent records) instead of lots
+    // This ensures analytics survive season resets
+    const allSales = await this.getSalesHistory(coldStorageId, year ? { year } : undefined);
     
-    // Filter by year if specified (based on createdAt date)
-    if (year) {
-      allLots = allLots.filter((lot) => {
-        const entryYear = new Date(lot.createdAt).getFullYear();
-        return entryYear === year;
-      });
-    }
-
-    const chamberQuality = allChambers.map((chamber) => {
-      const chamberLots = allLots.filter((lot) => lot.chamberId === chamber.id);
+    // Get unique chamber names from sales history
+    const chamberNames = new Set<string>();
+    allSales.forEach(sale => chamberNames.add(sale.chamberName));
+    
+    const chamberQuality = Array.from(chamberNames).map((chamberName) => {
+      const chamberSales = allSales.filter((sale) => sale.chamberName === chamberName);
       return {
-        chamberId: chamber.id,
-        chamberName: chamber.name,
-        poor: chamberLots
-          .filter((lot) => lot.quality === "poor")
-          .reduce((sum, lot) => sum + lot.size, 0),
-        medium: chamberLots
-          .filter((lot) => lot.quality === "medium")
-          .reduce((sum, lot) => sum + lot.size, 0),
-        good: chamberLots
-          .filter((lot) => lot.quality === "good")
-          .reduce((sum, lot) => sum + lot.size, 0),
+        chamberId: chamberName, // Using chamberName as ID since we're reading from history
+        chamberName: chamberName,
+        poor: chamberSales
+          .filter((sale) => sale.quality === "poor")
+          .reduce((sum, sale) => sum + sale.quantitySold, 0),
+        medium: chamberSales
+          .filter((sale) => sale.quality === "medium")
+          .reduce((sum, sale) => sum + sale.quantitySold, 0),
+        good: chamberSales
+          .filter((sale) => sale.quality === "good")
+          .reduce((sum, sale) => sum + sale.quantitySold, 0),
       };
     });
 
     return {
       chamberQuality,
-      totalPoor: allLots
-        .filter((lot) => lot.quality === "poor")
-        .reduce((sum, lot) => sum + lot.size, 0),
-      totalMedium: allLots
-        .filter((lot) => lot.quality === "medium")
-        .reduce((sum, lot) => sum + lot.size, 0),
-      totalGood: allLots
-        .filter((lot) => lot.quality === "good")
-        .reduce((sum, lot) => sum + lot.size, 0),
+      totalPoor: allSales
+        .filter((sale) => sale.quality === "poor")
+        .reduce((sum, sale) => sum + sale.quantitySold, 0),
+      totalMedium: allSales
+        .filter((sale) => sale.quality === "medium")
+        .reduce((sum, sale) => sum + sale.quantitySold, 0),
+      totalGood: allSales
+        .filter((sale) => sale.quality === "good")
+        .reduce((sum, sale) => sum + sale.quantitySold, 0),
     };
   }
 
