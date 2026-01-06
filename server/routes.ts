@@ -321,6 +321,33 @@ export async function registerRoutes(
     }
   });
 
+  // Reset Season
+  app.get("/api/reset-season/check", async (req, res) => {
+    try {
+      const result = await storage.checkResetEligibility(DEFAULT_COLD_STORAGE_ID);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to check reset eligibility" });
+    }
+  });
+
+  app.post("/api/reset-season", async (req, res) => {
+    try {
+      const eligibility = await storage.checkResetEligibility(DEFAULT_COLD_STORAGE_ID);
+      if (!eligibility.canReset) {
+        return res.status(400).json({ 
+          error: "Cannot reset season", 
+          remainingBags: eligibility.remainingBags,
+          remainingLots: eligibility.remainingLots
+        });
+      }
+      await storage.resetSeason(DEFAULT_COLD_STORAGE_ID);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reset season" });
+    }
+  });
+
   // Cold Storage Settings
   app.get("/api/cold-storage", async (req, res) => {
     try {

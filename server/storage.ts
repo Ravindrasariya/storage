@@ -41,6 +41,8 @@ export interface IStorage {
   getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats>;
   getPaymentStats(coldStorageId: string, year?: number): Promise<PaymentStats>;
   getAnalyticsYears(coldStorageId: string): Promise<number[]>;
+  checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }>;
+  resetSeason(coldStorageId: string): Promise<void>;
   finalizeSale(lotId: string, paymentStatus: "due" | "paid", buyerName?: string, pricePerKg?: number): Promise<Lot | undefined>;
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
@@ -393,6 +395,29 @@ export class DatabaseStorage implements IStorage {
       yearSet.add(entryYear);
     });
     return Array.from(yearSet).sort((a, b) => b - a);
+  }
+
+  async checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }> {
+    const allLots = await this.getAllLots(coldStorageId);
+    const lotsWithRemaining = allLots.filter((lot) => lot.remainingSize > 0);
+    const remainingBags = lotsWithRemaining.reduce((sum, lot) => sum + lot.remainingSize, 0);
+    const remainingLots = lotsWithRemaining.length;
+    
+    return {
+      canReset: remainingBags === 0 && remainingLots === 0,
+      remainingBags,
+      remainingLots,
+    };
+  }
+
+  async resetSeason(coldStorageId: string): Promise<void> {
+    // Delete all lots for the cold storage
+    await db.delete(lots).where(eq(lots.coldStorageId, coldStorageId));
+    
+    // Reset all chamber fills to zero
+    await db.update(chambers)
+      .set({ currentFill: 0 })
+      .where(eq(chambers.coldStorageId, coldStorageId));
   }
 
   async finalizeSale(lotId: string, paymentStatus: "due" | "paid", buyerName?: string, pricePerKg?: number): Promise<Lot | undefined> {

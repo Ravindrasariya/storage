@@ -155,6 +155,15 @@ const translations: Translations = {
   potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
+  
+  // Reset Season
+  resetForNextSeason: { en: "Reset for Next Season", hi: "अगले सीज़न के लिए रीसेट करें" },
+  resetWarning: { en: "This option should only be selected when a new season is starting. All data on dashboard and search/edit page will be reset to zero.", hi: "यह विकल्प केवल तभी चुना जाना चाहिए जब नया सीज़न शुरू हो रहा हो। डैशबोर्ड और खोज/संपादन पृष्ठ पर सभी डेटा शून्य पर रीसेट हो जाएगा।" },
+  resetCannotProceed: { en: "Cannot reset: There are still lots with remaining bags. All lots must be sold or emptied before resetting.", hi: "रीसेट नहीं हो सकता: अभी भी बाकी बैग वाले लॉट हैं। रीसेट करने से पहले सभी लॉट बेचे या खाली किए जाने चाहिए।" },
+  resetSuccess: { en: "Season reset successful! Dashboard and lots have been cleared.", hi: "सीज़न रीसेट सफल! डैशबोर्ड और लॉट साफ़ कर दिए गए हैं।" },
+  proceedWithReset: { en: "Proceed with Reset", hi: "रीसेट के साथ आगे बढ़ें" },
+  remainingBags: { en: "Remaining Bags", hi: "बाकी बैग" },
+  remainingLots: { en: "Remaining Lots", hi: "बाकी लॉट" },
 };
 
 interface I18nContextType {

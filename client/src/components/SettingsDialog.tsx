@@ -13,8 +13,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Save, Plus, Trash2 } from "lucide-react";
+import { Settings, Save, Plus, Trash2, RefreshCcw, AlertTriangle } from "lucide-react";
 import type { Chamber } from "@shared/schema";
 
 interface ColdStorageSettings {
@@ -88,6 +99,54 @@ export function SettingsDialog() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
   });
+
+  const resetSeasonMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/reset-season");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
+      toast({
+        title: t("success"),
+        description: t("resetSuccess"),
+      });
+      setOpen(false);
+    },
+    onError: () => {
+      toast({
+        title: t("error"),
+        description: t("resetCannotProceed"),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleResetSeason = async () => {
+    try {
+      const response = await fetch("/api/reset-season/check");
+      const eligibility = await response.json();
+      
+      if (!eligibility.canReset) {
+        toast({
+          title: t("error"),
+          description: `${t("resetCannotProceed")} (${eligibility.remainingLots} ${t("remainingLots")}, ${eligibility.remainingBags} ${t("remainingBags")})`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      await resetSeasonMutation.mutateAsync();
+    } catch (error) {
+      toast({
+        title: t("error"),
+        description: t("resetCannotProceed"),
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleSave = async () => {
     if (!settings) return;
@@ -289,6 +348,49 @@ export function SettingsDialog() {
                 </div>
               ))}
             </div>
+          </Card>
+
+          <Card className="p-4 space-y-4 border-destructive/50">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              <h4 className="font-semibold text-destructive">{t("resetForNextSeason")}</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {t("resetWarning")}
+            </p>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="destructive" 
+                  className="w-full"
+                  data-testid="button-reset-season"
+                >
+                  <RefreshCcw className="h-4 w-4 mr-2" />
+                  {t("resetForNextSeason")}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                    {t("resetForNextSeason")}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("resetWarning")}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleResetSeason}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    data-testid="button-confirm-reset"
+                  >
+                    {t("proceedWithReset")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </Card>
 
           <div className="flex justify-end gap-3">
