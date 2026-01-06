@@ -332,5 +332,52 @@ export async function registerRoutes(
     }
   });
 
+  // Sales History
+  app.get("/api/sales-history", async (req, res) => {
+    try {
+      const { year, farmerName, contactNumber, paymentStatus } = req.query;
+      
+      const filters: {
+        year?: number;
+        farmerName?: string;
+        contactNumber?: string;
+        paymentStatus?: "paid" | "due";
+      } = {};
+      
+      if (year) filters.year = parseInt(year as string);
+      if (farmerName) filters.farmerName = farmerName as string;
+      if (contactNumber) filters.contactNumber = contactNumber as string;
+      if (paymentStatus === "paid" || paymentStatus === "due") {
+        filters.paymentStatus = paymentStatus;
+      }
+      
+      const salesHistory = await storage.getSalesHistory(DEFAULT_COLD_STORAGE_ID, filters);
+      res.json(salesHistory);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sales history" });
+    }
+  });
+
+  app.get("/api/sales-history/years", async (req, res) => {
+    try {
+      const years = await storage.getSalesYears(DEFAULT_COLD_STORAGE_ID);
+      res.json(years);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sales years" });
+    }
+  });
+
+  app.patch("/api/sales-history/:id/mark-paid", async (req, res) => {
+    try {
+      const updated = await storage.markSaleAsPaid(req.params.id);
+      if (!updated) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to mark sale as paid" });
+    }
+  });
+
   return httpServer;
 }
