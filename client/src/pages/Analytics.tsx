@@ -1,24 +1,47 @@
+import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QualityChart } from "@/components/QualityChart";
 import { QualitySummaryCards } from "@/components/QualitySummaryCards";
-import { ArrowLeft, BarChart3, Clock, IndianRupee } from "lucide-react";
+import { ArrowLeft, BarChart3, Clock, IndianRupee, Calendar } from "lucide-react";
 import type { QualityStats, PaymentStats } from "@shared/schema";
 
 export default function Analytics() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
+  const [selectedYear, setSelectedYear] = useState<string>("");
+
+  const { data: years = [] } = useQuery<number[]>({
+    queryKey: ["/api/analytics/years"],
+  });
 
   const { data: stats, isLoading } = useQuery<QualityStats>({
-    queryKey: ["/api/analytics/quality"],
+    queryKey: ["/api/analytics/quality", selectedYear],
+    queryFn: async () => {
+      const url = selectedYear && selectedYear !== "all" 
+        ? `/api/analytics/quality?year=${selectedYear}` 
+        : "/api/analytics/quality";
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch quality stats");
+      return response.json();
+    },
   });
 
   const { data: paymentStats } = useQuery<PaymentStats>({
-    queryKey: ["/api/analytics/payments"],
+    queryKey: ["/api/analytics/payments", selectedYear],
+    queryFn: async () => {
+      const url = selectedYear && selectedYear !== "all" 
+        ? `/api/analytics/payments?year=${selectedYear}` 
+        : "/api/analytics/payments";
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch payment stats");
+      return response.json();
+    },
   });
 
   if (isLoading) {
@@ -41,20 +64,37 @@ export default function Analytics() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/")}
-          data-testid="button-back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{t("analytics")}</h1>
-          <p className="text-muted-foreground mt-1">
-            Quality analysis and insights
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/")}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">{t("analytics")}</h1>
+            <p className="text-muted-foreground mt-1">
+              Quality analysis and insights
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <SelectTrigger className="w-32" data-testid="select-year">
+              <SelectValue placeholder={t("allYears")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("allYears")}</SelectItem>
+              {years.map((year) => (
+                <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

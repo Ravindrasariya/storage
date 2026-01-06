@@ -292,7 +292,9 @@ export async function registerRoutes(
   // Analytics
   app.get("/api/analytics/quality", async (req, res) => {
     try {
-      const stats = await storage.getQualityStats(DEFAULT_COLD_STORAGE_ID);
+      const { year } = req.query;
+      const yearNum = year ? parseInt(year as string) : undefined;
+      const stats = await storage.getQualityStats(DEFAULT_COLD_STORAGE_ID, yearNum);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch quality stats" });
@@ -301,10 +303,21 @@ export async function registerRoutes(
 
   app.get("/api/analytics/payments", async (req, res) => {
     try {
-      const stats = await storage.getPaymentStats(DEFAULT_COLD_STORAGE_ID);
+      const { year } = req.query;
+      const yearNum = year ? parseInt(year as string) : undefined;
+      const stats = await storage.getPaymentStats(DEFAULT_COLD_STORAGE_ID, yearNum);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch payment stats" });
+    }
+  });
+
+  app.get("/api/analytics/years", async (req, res) => {
+    try {
+      const years = await storage.getAnalyticsYears(DEFAULT_COLD_STORAGE_ID);
+      res.json(years);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch analytics years" });
     }
   });
 

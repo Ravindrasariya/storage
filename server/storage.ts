@@ -38,8 +38,9 @@ export interface IStorage {
   createEditHistory(history: InsertLotEditHistory): Promise<LotEditHistory>;
   getLotHistory(lotId: string): Promise<LotEditHistory[]>;
   getDashboardStats(coldStorageId: string): Promise<DashboardStats>;
-  getQualityStats(coldStorageId: string): Promise<QualityStats>;
-  getPaymentStats(coldStorageId: string): Promise<PaymentStats>;
+  getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats>;
+  getPaymentStats(coldStorageId: string, year?: number): Promise<PaymentStats>;
+  getAnalyticsYears(coldStorageId: string): Promise<number[]>;
   finalizeSale(lotId: string, paymentStatus: "due" | "paid", buyerName?: string, pricePerKg?: number): Promise<Lot | undefined>;
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
@@ -296,9 +297,17 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getQualityStats(coldStorageId: string): Promise<QualityStats> {
+  async getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats> {
     const allChambers = await this.getChambers(coldStorageId);
-    const allLots = await this.getAllLots(coldStorageId);
+    let allLots = await this.getAllLots(coldStorageId);
+    
+    // Filter by year if specified (based on createdAt date)
+    if (year) {
+      allLots = allLots.filter((lot) => {
+        const entryYear = new Date(lot.createdAt).getFullYear();
+        return entryYear === year;
+      });
+    }
 
     const chamberQuality = allChambers.map((chamber) => {
       const chamberLots = allLots.filter((lot) => lot.chamberId === chamber.id);
@@ -331,8 +340,16 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getPaymentStats(coldStorageId: string): Promise<PaymentStats> {
-    const allLots = await this.getAllLots(coldStorageId);
+  async getPaymentStats(coldStorageId: string, year?: number): Promise<PaymentStats> {
+    let allLots = await this.getAllLots(coldStorageId);
+    
+    // Filter by year if specified (based on createdAt date)
+    if (year) {
+      allLots = allLots.filter((lot) => {
+        const entryYear = new Date(lot.createdAt).getFullYear();
+        return entryYear === year;
+      });
+    }
     
     let totalPaid = 0;
     let totalDue = 0;
@@ -366,6 +383,16 @@ export class DatabaseStorage implements IStorage {
       paidCount,
       dueCount,
     };
+  }
+
+  async getAnalyticsYears(coldStorageId: string): Promise<number[]> {
+    const allLots = await this.getAllLots(coldStorageId);
+    const yearSet = new Set<number>();
+    allLots.forEach((lot) => {
+      const entryYear = new Date(lot.createdAt).getFullYear();
+      yearSet.add(entryYear);
+    });
+    return Array.from(yearSet).sort((a, b) => b - a);
   }
 
   async finalizeSale(lotId: string, paymentStatus: "due" | "paid", buyerName?: string, pricePerKg?: number): Promise<Lot | undefined> {
