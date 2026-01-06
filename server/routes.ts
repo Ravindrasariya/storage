@@ -240,6 +240,7 @@ export async function registerRoutes(
         buyerName: buyerName || null,
         pricePerKg: pricePerKg || null,
         paymentStatus,
+        entryDate: lot.createdAt,
         saleYear: new Date().getFullYear(),
       });
 

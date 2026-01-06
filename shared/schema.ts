@@ -86,6 +86,7 @@ export const salesHistory = pgTable("sales_history", {
   paymentStatus: text("payment_status").notNull(), // 'paid' or 'due'
   paidAt: timestamp("paid_at"), // When marked as paid
   // Timestamps
+  entryDate: timestamp("entry_date"), // When lot was originally entered in cold storage (nullable for existing records)
   saleYear: integer("sale_year").notNull(),
   soldAt: timestamp("sold_at").notNull().defaultNow(),
 });

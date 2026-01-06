@@ -177,6 +177,7 @@ export default function SalesHistoryPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>{t("entryDate")}</TableHead>
                     <TableHead>{t("saleDate")}</TableHead>
                     <TableHead>{t("farmerName")}</TableHead>
                     <TableHead>{t("contactNumber")}</TableHead>
@@ -196,6 +197,9 @@ export default function SalesHistoryPage() {
                 <TableBody>
                   {salesHistory.map((sale) => (
                     <TableRow key={sale.id} data-testid={`row-sale-${sale.id}`}>
+                      <TableCell className="whitespace-nowrap">
+                        {sale.entryDate ? format(new Date(sale.entryDate), "dd MMM yyyy") : "-"}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {format(new Date(sale.soldAt), "dd MMM yyyy")}
                       </TableCell>

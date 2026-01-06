@@ -141,6 +141,7 @@ const translations: Translations = {
   
   // Sales History
   salesHistory: { en: "History of Sales", hi: "बिक्री का इतिहास" },
+  entryDate: { en: "Entry Date", hi: "प्रवेश तिथि" },
   saleDate: { en: "Sale Date", hi: "बिक्री तिथि" },
   saleType: { en: "Sale Type", hi: "बिक्री प्रकार" },
   fullSale: { en: "Full Sale", hi: "पूर्ण बिक्री" },
