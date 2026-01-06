@@ -487,6 +487,17 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async markSaleAsDue(saleId: string): Promise<SalesHistory | undefined> {
+    const [updated] = await db.update(salesHistory)
+      .set({ 
+        paymentStatus: "due",
+        paidAt: null
+      })
+      .where(eq(salesHistory.id, saleId))
+      .returning();
+    return updated;
+  }
+
   async getSalesYears(coldStorageId: string): Promise<number[]> {
     const results = await db.select({ year: salesHistory.saleYear })
       .from(salesHistory)

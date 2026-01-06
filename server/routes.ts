@@ -410,5 +410,17 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/sales-history/:id/mark-due", async (req, res) => {
+    try {
+      const updated = await storage.markSaleAsDue(req.params.id);
+      if (!updated) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to mark sale as due" });
+    }
+  });
+
   return httpServer;
 }

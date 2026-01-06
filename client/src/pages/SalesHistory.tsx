@@ -46,14 +46,18 @@ export default function SalesHistoryPage() {
     },
   });
 
-  const markPaidMutation = useMutation({
-    mutationFn: async (saleId: string) => {
-      const response = await fetch(`/api/sales-history/${saleId}/mark-paid`, { method: "PATCH" });
-      if (!response.ok) throw new Error("Failed to mark as paid");
+  const togglePaymentMutation = useMutation({
+    mutationFn: async ({ saleId, newStatus }: { saleId: string; newStatus: "paid" | "due" }) => {
+      const endpoint = newStatus === "paid" ? "mark-paid" : "mark-due";
+      const response = await fetch(`/api/sales-history/${saleId}/${endpoint}`, { method: "PATCH" });
+      if (!response.ok) throw new Error("Failed to update payment status");
       return response.json();
     },
-    onSuccess: () => {
-      toast({ title: t("success"), description: t("markAsPaid") });
+    onSuccess: (_, variables) => {
+      toast({ 
+        title: t("success"), 
+        description: variables.newStatus === "paid" ? t("markAsPaid") : t("markedAsDue") 
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
     },
     onError: () => {
@@ -230,16 +234,27 @@ export default function SalesHistoryPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {sale.paymentStatus === "due" && (
+                        {sale.paymentStatus === "due" ? (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => markPaidMutation.mutate(sale.id)}
-                            disabled={markPaidMutation.isPending}
+                            onClick={() => togglePaymentMutation.mutate({ saleId: sale.id, newStatus: "paid" })}
+                            disabled={togglePaymentMutation.isPending}
                             data-testid={`button-mark-paid-${sale.id}`}
                           >
                             <CheckCircle className="h-4 w-4 mr-1" />
                             {t("markAsPaid")}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => togglePaymentMutation.mutate({ saleId: sale.id, newStatus: "due" })}
+                            disabled={togglePaymentMutation.isPending}
+                            data-testid={`button-mark-due-${sale.id}`}
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            {t("markAsDue")}
                           </Button>
                         )}
                       </TableCell>
