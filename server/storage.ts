@@ -492,7 +492,9 @@ export class DatabaseStorage implements IStorage {
       .from(salesHistory)
       .where(eq(salesHistory.coldStorageId, coldStorageId));
     
-    const uniqueYears = [...new Set(results.map(r => r.year))].sort((a, b) => b - a);
+    const yearSet = new Set<number>();
+    results.forEach(r => yearSet.add(r.year));
+    const uniqueYears = Array.from(yearSet).sort((a, b) => b - a);
     return uniqueYears;
   }
 }

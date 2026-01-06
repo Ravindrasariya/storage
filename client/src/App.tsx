@@ -17,11 +17,13 @@ import {
   BarChart3,
   Menu,
   Snowflake,
+  History,
 } from "lucide-react";
 import Dashboard from "@/pages/Dashboard";
 import LotEntry from "@/pages/LotEntry";
 import SearchEdit from "@/pages/SearchEdit";
 import Analytics from "@/pages/Analytics";
+import SalesHistory from "@/pages/SalesHistory";
 import NotFound from "@/pages/not-found";
 import { useState } from "react";
 
@@ -35,6 +37,7 @@ function Navigation() {
     { href: "/new-lot", label: t("newLot"), icon: PlusCircle },
     { href: "/search", label: t("searchEdit"), icon: Search },
     { href: "/analytics", label: t("analytics"), icon: BarChart3 },
+    { href: "/sales-history", label: t("salesHistory"), icon: History },
   ];
 
   const NavLinks = ({ onClick }: { onClick?: () => void }) => (
@@ -106,6 +109,7 @@ function Router() {
       <Route path="/new-lot" component={LotEntry} />
       <Route path="/search" component={SearchEdit} />
       <Route path="/analytics" component={Analytics} />
+      <Route path="/sales-history" component={SalesHistory} />
       <Route component={NotFound} />
     </Switch>
   );
