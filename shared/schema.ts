@@ -55,6 +55,41 @@ export const lots = pgTable("lots", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Sales History - permanent record of all sales
+export const salesHistory = pgTable("sales_history", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  // Farmer/Lot details (copied from lot at time of sale)
+  farmerName: text("farmer_name").notNull(),
+  village: text("village").notNull(),
+  tehsil: text("tehsil").notNull(),
+  district: text("district").notNull(),
+  state: text("state").notNull(),
+  contactNumber: text("contact_number").notNull(),
+  lotNo: text("lot_no").notNull(),
+  lotId: varchar("lot_id").notNull(),
+  chamberName: text("chamber_name").notNull(),
+  floor: integer("floor").notNull(),
+  position: text("position").notNull(),
+  potatoType: text("potato_type").notNull(),
+  bagType: text("bag_type").notNull(),
+  quality: text("quality").notNull(),
+  originalLotSize: integer("original_lot_size").notNull(),
+  // Sale details
+  saleType: text("sale_type").notNull(), // 'partial' or 'full'
+  quantitySold: integer("quantity_sold").notNull(),
+  pricePerBag: real("price_per_bag").notNull(), // Cold storage charge per bag
+  coldStorageCharge: real("cold_storage_charge").notNull(), // Total charge for this sale
+  buyerName: text("buyer_name"),
+  pricePerKg: real("price_per_kg"), // Selling price per kg
+  // Payment tracking
+  paymentStatus: text("payment_status").notNull(), // 'paid' or 'due'
+  paidAt: timestamp("paid_at"), // When marked as paid
+  // Timestamps
+  saleYear: integer("sale_year").notNull(),
+  soldAt: timestamp("sold_at").notNull().defaultNow(),
+});
+
 // Edit history for tracking changes
 export const lotEditHistory = pgTable("lot_edit_history", {
   id: varchar("id").primaryKey(),
@@ -77,6 +112,7 @@ export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ i
 export const insertChamberSchema = createInsertSchema(chambers).omit({ id: true });
 export const insertLotSchema = createInsertSchema(lots).omit({ id: true, createdAt: true });
 export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omit({ id: true, changedAt: true });
+export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, soldAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -87,6 +123,8 @@ export type Lot = typeof lots.$inferSelect;
 export type InsertLot = z.infer<typeof insertLotSchema>;
 export type LotEditHistory = typeof lotEditHistory.$inferSelect;
 export type InsertLotEditHistory = z.infer<typeof insertLotEditHistorySchema>;
+export type SalesHistory = typeof salesHistory.$inferSelect;
+export type InsertSalesHistory = z.infer<typeof insertSalesHistorySchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({
