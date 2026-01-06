@@ -121,19 +121,19 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
                 <span className="font-bold text-chart-2">Rs. {lot.saleCharge.toLocaleString()}</span>
               </div>
             )}
-            {lot.paymentStatus === "due" && lot.saleStatus !== "sold" && lot.saleCharge && (
+            {lot.saleStatus !== "sold" && (lot.totalDueCharge || 0) > 0 && (
               <div>
                 <span className="text-muted-foreground">{t("coldChargesDue")}: </span>
                 <span className="font-bold text-amber-600 dark:text-amber-400">
-                  Rs. {lot.saleCharge.toLocaleString()}
+                  Rs. {(lot.totalDueCharge || 0).toLocaleString()}
                 </span>
               </div>
             )}
-            {lot.paymentStatus === "paid" && lot.saleStatus !== "sold" && lot.saleCharge && (
+            {lot.saleStatus !== "sold" && (lot.totalPaidCharge || 0) > 0 && (
               <div>
                 <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
                 <span className="font-bold text-green-600 dark:text-green-400">
-                  Rs. {lot.saleCharge.toLocaleString()}
+                  Rs. {(lot.totalPaidCharge || 0).toLocaleString()}
                 </span>
               </div>
             )}

@@ -141,6 +141,8 @@ export class MemStorage implements IStorage {
       saleStatus: insertLot.saleStatus ?? "available",
       paymentStatus: insertLot.paymentStatus ?? null,
       saleCharge: insertLot.saleCharge ?? null,
+      totalPaidCharge: insertLot.totalPaidCharge ?? null,
+      totalDueCharge: insertLot.totalDueCharge ?? null,
       soldAt: insertLot.soldAt ?? null,
       createdAt: new Date(),
     };
@@ -210,6 +212,8 @@ export class MemStorage implements IStorage {
       soldQuantity: insertHistory.soldQuantity ?? null,
       pricePerBag: insertHistory.pricePerBag ?? null,
       totalPrice: insertHistory.totalPrice ?? null,
+      salePaymentStatus: insertHistory.salePaymentStatus ?? null,
+      saleCharge: insertHistory.saleCharge ?? null,
       changedAt: new Date(),
     };
     this.editHistory.set(id, history);
@@ -371,26 +375,40 @@ export class MemStorage implements IStorage {
     const lots = await this.getAllLots(coldStorageId);
     const coldStorage = await this.getColdStorage(coldStorageId);
     
-    // Include all lots with payment status (both sold and partial sales)
-    const lotsWithPayment = lots.filter((lot) => lot.paymentStatus);
+    // Calculate totals from all lots (using new separate tracking fields)
+    let totalPaid = 0;
+    let totalDue = 0;
+    let paidCount = 0;
+    let dueCount = 0;
 
-    const paidLots = lotsWithPayment.filter((lot) => lot.paymentStatus === "paid");
-    const dueLots = lotsWithPayment.filter((lot) => lot.paymentStatus === "due");
-
-    // Calculate charges - use saleCharge if available, otherwise calculate based on rate and bags sold
-    const calculateCharge = (lot: Lot) => {
-      if (lot.saleCharge) return lot.saleCharge;
-      if (!coldStorage) return 0;
-      const rate = lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate;
-      const bagsSold = lot.size - lot.remainingSize;
-      return rate * bagsSold;
-    };
+    for (const lot of lots) {
+      // Add from new separate tracking fields (for partial sales)
+      if (lot.totalPaidCharge && lot.totalPaidCharge > 0) {
+        totalPaid += lot.totalPaidCharge;
+        paidCount++;
+      }
+      if (lot.totalDueCharge && lot.totalDueCharge > 0) {
+        totalDue += lot.totalDueCharge;
+        dueCount++;
+      }
+      
+      // Also include fully sold lots using the old saleCharge field
+      if (lot.saleStatus === "sold" && lot.saleCharge) {
+        if (lot.paymentStatus === "paid") {
+          totalPaid += lot.saleCharge;
+          if (!lot.totalPaidCharge) paidCount++;
+        } else if (lot.paymentStatus === "due") {
+          totalDue += lot.saleCharge;
+          if (!lot.totalDueCharge) dueCount++;
+        }
+      }
+    }
 
     return {
-      totalPaid: paidLots.reduce((sum, lot) => sum + calculateCharge(lot), 0),
-      totalDue: dueLots.reduce((sum, lot) => sum + calculateCharge(lot), 0),
-      paidCount: paidLots.length,
-      dueCount: dueLots.length,
+      totalPaid,
+      totalDue,
+      paidCount,
+      dueCount,
     };
   }
 

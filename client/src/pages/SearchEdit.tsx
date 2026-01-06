@@ -395,32 +395,47 @@ export default function SearchEdit() {
             </div>
           </div>
 
-          {selectedLot?.paymentStatus === "due" && selectedLot?.saleCharge && (
-            <div className="border-t pt-4">
-              <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                <div className="flex flex-wrap items-center justify-between gap-4">
+          {selectedLot && ((selectedLot.totalDueCharge || 0) > 0 || (selectedLot.totalPaidCharge || 0) > 0) && (
+            <div className="border-t pt-4 space-y-3">
+              {(selectedLot.totalDueCharge || 0) > 0 && (
+                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{t("coldChargesDue")}</p>
+                      <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                        Rs. {(selectedLot.totalDueCharge || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        updateLotMutation.mutate({
+                          id: selectedLot.id,
+                          updates: { 
+                            totalPaidCharge: (selectedLot.totalPaidCharge || 0) + (selectedLot.totalDueCharge || 0),
+                            totalDueCharge: 0,
+                          },
+                          silent: false,
+                        });
+                      }}
+                      disabled={updateLotMutation.isPending}
+                      data-testid="button-mark-as-paid"
+                    >
+                      {t("markAsPaid")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {(selectedLot.totalPaidCharge || 0) > 0 && (
+                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                   <div>
-                    <p className="text-sm text-muted-foreground">{t("coldChargesDue")}</p>
-                    <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                      Rs. {selectedLot.saleCharge.toLocaleString()}
+                    <p className="text-sm text-muted-foreground">{t("coldChargesPaid")}</p>
+                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      Rs. {(selectedLot.totalPaidCharge || 0).toLocaleString()}
                     </p>
                   </div>
-                  <Button
-                    variant="default"
-                    onClick={() => {
-                      updateLotMutation.mutate({
-                        id: selectedLot.id,
-                        updates: { paymentStatus: "paid" },
-                        silent: false,
-                      });
-                    }}
-                    disabled={updateLotMutation.isPending}
-                    data-testid="button-mark-as-paid"
-                  >
-                    {t("markAsPaid")}
-                  </Button>
                 </div>
-              </div>
+              )}
             </div>
           )}
 

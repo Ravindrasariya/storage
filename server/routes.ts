@@ -178,14 +178,19 @@ export async function registerRoutes(
       const rate = coldStorage ? (lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate) : 0;
       const storageCharge = quantitySold * rate;
 
-      const updateData: { remainingSize: number; paymentStatus?: string; saleCharge?: number } = {
+      const updateData: { 
+        remainingSize: number; 
+        totalPaidCharge?: number; 
+        totalDueCharge?: number;
+      } = {
         remainingSize: newRemainingSize,
       };
       
-      if (paymentStatus && (paymentStatus === "due" || paymentStatus === "paid")) {
-        updateData.paymentStatus = paymentStatus;
-        // Accumulate sale charge for partial sales
-        updateData.saleCharge = (lot.saleCharge || 0) + storageCharge;
+      // Track paid and due charges separately
+      if (paymentStatus === "paid") {
+        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + storageCharge;
+      } else if (paymentStatus === "due") {
+        updateData.totalDueCharge = (lot.totalDueCharge || 0) + storageCharge;
       }
       
       await storage.updateLot(req.params.id, updateData);
@@ -198,6 +203,8 @@ export async function registerRoutes(
         soldQuantity: quantitySold,
         pricePerBag,
         totalPrice,
+        salePaymentStatus: paymentStatus,
+        saleCharge: storageCharge,
       });
 
       const updatedLot = await storage.getLot(req.params.id);
