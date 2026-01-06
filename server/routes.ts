@@ -159,7 +159,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Lot not found" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, buyerName, pricePerKg } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -205,6 +205,8 @@ export async function registerRoutes(
         newData: JSON.stringify({ remainingSize: newRemainingSize }),
         soldQuantity: quantitySold,
         pricePerBag,
+        pricePerKg: pricePerKg || null,
+        buyerName: buyerName || null,
         totalPrice,
         salePaymentStatus: paymentStatus,
         saleCharge: storageCharge,
@@ -229,13 +231,20 @@ export async function registerRoutes(
   // Finalize Sale
   const finalizeSaleSchema = z.object({
     paymentStatus: z.enum(["due", "paid"]),
+    buyerName: z.string().optional(),
+    pricePerKg: z.number().optional(),
   });
 
   app.post("/api/lots/:id/finalize-sale", async (req, res) => {
     try {
       const validatedData = finalizeSaleSchema.parse(req.body);
       
-      const lot = await storage.finalizeSale(req.params.id, validatedData.paymentStatus);
+      const lot = await storage.finalizeSale(
+        req.params.id, 
+        validatedData.paymentStatus,
+        validatedData.buyerName,
+        validatedData.pricePerKg
+      );
       if (!lot) {
         return res.status(404).json({ error: "Lot not found or already sold" });
       }

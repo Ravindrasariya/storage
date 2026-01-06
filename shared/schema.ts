@@ -64,6 +64,8 @@ export const lotEditHistory = pgTable("lot_edit_history", {
   newData: text("new_data").notNull(), // JSON string
   soldQuantity: integer("sold_quantity"), // For partial sales
   pricePerBag: real("price_per_bag"), // For partial sales
+  pricePerKg: real("price_per_kg"), // Selling price per kg (optional)
+  buyerName: text("buyer_name"), // Buyer name (optional)
   totalPrice: real("total_price"), // For partial sales
   salePaymentStatus: text("sale_payment_status"), // For partial sales: 'paid' or 'due'
   saleCharge: real("sale_charge"), // Storage charge for this partial sale

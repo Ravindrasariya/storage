@@ -37,7 +37,7 @@ export interface IStorage {
   getDashboardStats(coldStorageId: string): Promise<DashboardStats>;
   getQualityStats(coldStorageId: string): Promise<QualityStats>;
   getPaymentStats(coldStorageId: string): Promise<PaymentStats>;
-  finalizeSale(lotId: string, paymentStatus: "due" | "paid"): Promise<Lot | undefined>;
+  finalizeSale(lotId: string, paymentStatus: "due" | "paid", buyerName?: string, pricePerKg?: number): Promise<Lot | undefined>;
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
   updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined>;
@@ -355,7 +355,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async finalizeSale(lotId: string, paymentStatus: "due" | "paid"): Promise<Lot | undefined> {
+  async finalizeSale(lotId: string, paymentStatus: "due" | "paid", buyerName?: string, pricePerKg?: number): Promise<Lot | undefined> {
     const lot = await this.getLot(lotId);
     if (!lot || lot.saleStatus === "sold") return undefined;
 
@@ -374,6 +374,21 @@ export class DatabaseStorage implements IStorage {
       upForSale: 0,
       remainingSize: 0,
     }).where(eq(lots.id, lotId)).returning();
+
+    // Create edit history for the final sale
+    await this.createEditHistory({
+      lotId: lot.id,
+      changeType: "final_sale",
+      previousData: JSON.stringify({ remainingSize: lot.remainingSize }),
+      newData: JSON.stringify({ remainingSize: 0, saleStatus: "sold" }),
+      soldQuantity: bagsToRemove,
+      pricePerBag: rate,
+      pricePerKg: pricePerKg || null,
+      buyerName: buyerName || null,
+      totalPrice: saleCharge,
+      salePaymentStatus: paymentStatus,
+      saleCharge: saleCharge,
+    });
 
     const chamber = await this.getChamber(lot.chamberId);
     if (chamber) {

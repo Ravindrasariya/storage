@@ -133,6 +133,9 @@ const translations: Translations = {
   totalDue: { en: "Total Due", hi: "कुल बाकी" },
   paymentSummary: { en: "Payment Summary", hi: "भुगतान सारांश" },
   available: { en: "Available", hi: "उपलब्ध" },
+  buyerName: { en: "Buyer Name", hi: "खरीदार का नाम" },
+  pricePerKg: { en: "Price/kg (Selling Price)", hi: "मूल्य/किग्रा (बिक्री मूल्य)" },
+  optional: { en: "Optional", hi: "वैकल्पिक" },
 };
 
 interface I18nContextType {

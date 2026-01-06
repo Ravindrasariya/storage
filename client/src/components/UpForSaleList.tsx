@@ -32,10 +32,12 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [saleMode, setSaleMode] = useState<"full" | "partial">("full");
   const [partialQuantity, setPartialQuantity] = useState<number>(0);
   const [partialPrice, setPartialPrice] = useState<number>(0);
+  const [buyerName, setBuyerName] = useState<string>("");
+  const [pricePerKg, setPricePerKg] = useState<string>("");
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus }: { lotId: string; paymentStatus: "paid" | "due" }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus });
+    mutationFn: async ({ lotId, paymentStatus, buyerName, pricePerKg }: { lotId: string; paymentStatus: "paid" | "due"; buyerName?: string; pricePerKg?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, buyerName, pricePerKg });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -57,8 +59,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, buyerName, pricePerKg }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due"; buyerName?: string; pricePerKg?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, buyerName, pricePerKg });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -84,6 +86,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setPartialQuantity(0);
     setPartialPrice(0);
     setPaymentStatus("paid");
+    setBuyerName("");
+    setPricePerKg("");
   };
 
   const removeFromSaleMutation = useMutation({
@@ -109,17 +113,22 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
   const handleConfirmSale = () => {
     if (selectedLot) {
+      const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
           lotId: selectedLot.id,
           quantity: partialQuantity,
           pricePerBag: partialPrice,
           paymentStatus,
+          buyerName: buyerName || undefined,
+          pricePerKg: parsedPricePerKg,
         });
       } else {
         finalizeSaleMutation.mutate({
           lotId: selectedLot.id,
           paymentStatus,
+          buyerName: buyerName || undefined,
+          pricePerKg: parsedPricePerKg,
         });
       }
     }
@@ -267,6 +276,30 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
+                <Label>{t("buyerName")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Input
+                  type="text"
+                  value={buyerName}
+                  onChange={(e) => setBuyerName(e.target.value)}
+                  placeholder={t("buyerName")}
+                  data-testid="input-buyer-name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t("pricePerKg")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={pricePerKg}
+                  onChange={(e) => setPricePerKg(e.target.value)}
+                  placeholder={t("pricePerKg")}
+                  data-testid="input-price-per-kg"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label>{t("paymentStatus")}</Label>
                 <RadioGroup
                   value={paymentStatus}
@@ -318,6 +351,30 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   value={partialPrice || ""}
                   onChange={(e) => setPartialPrice(Number(e.target.value))}
                   data-testid="input-partial-price"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t("buyerName")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Input
+                  type="text"
+                  value={buyerName}
+                  onChange={(e) => setBuyerName(e.target.value)}
+                  placeholder={t("buyerName")}
+                  data-testid="input-partial-buyer-name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t("pricePerKg")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={pricePerKg}
+                  onChange={(e) => setPricePerKg(e.target.value)}
+                  placeholder={t("pricePerKg")}
+                  data-testid="input-partial-price-per-kg"
                 />
               </div>
 

@@ -26,9 +26,9 @@ export function EditHistoryAccordion({ history }: EditHistoryAccordionProps) {
           <AccordionTrigger className="text-sm">
             <div className="flex items-center gap-3">
               <Badge
-                variant={entry.changeType === "partial_sale" ? "default" : "secondary"}
+                variant={entry.changeType === "partial_sale" || entry.changeType === "final_sale" ? "default" : "secondary"}
               >
-                {entry.changeType === "partial_sale" ? t("partialSale") : t("edit")}
+                {entry.changeType === "partial_sale" ? t("partialSale") : entry.changeType === "final_sale" ? t("sold") : t("edit")}
               </Badge>
               <span className="text-muted-foreground">
                 {format(new Date(entry.changedAt), "PPp")}
@@ -42,7 +42,7 @@ export function EditHistoryAccordion({ history }: EditHistoryAccordionProps) {
           </AccordionTrigger>
           <AccordionContent>
             <div className="bg-muted/50 rounded-lg p-4 space-y-3 text-sm">
-              {entry.changeType === "partial_sale" && entry.soldQuantity && (
+              {(entry.changeType === "partial_sale" || entry.changeType === "final_sale") && entry.soldQuantity && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <p className="text-muted-foreground">{t("quantitySold")}</p>
@@ -50,12 +50,32 @@ export function EditHistoryAccordion({ history }: EditHistoryAccordionProps) {
                   </div>
                   <div>
                     <p className="text-muted-foreground">{t("pricePerBag")}</p>
-                    <p className="font-medium">₹{entry.pricePerBag}</p>
+                    <p className="font-medium">Rs. {entry.pricePerBag}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">{t("totalPrice")}</p>
-                    <p className="font-medium text-chart-3">₹{entry.totalPrice}</p>
+                    <p className="font-medium text-chart-3">Rs. {entry.totalPrice?.toLocaleString()}</p>
                   </div>
+                  {entry.buyerName && (
+                    <div>
+                      <p className="text-muted-foreground">{t("buyerName")}</p>
+                      <p className="font-medium">{entry.buyerName}</p>
+                    </div>
+                  )}
+                  {entry.pricePerKg && (
+                    <div>
+                      <p className="text-muted-foreground">{t("pricePerKg")}</p>
+                      <p className="font-medium">Rs. {entry.pricePerKg}/kg</p>
+                    </div>
+                  )}
+                  {entry.salePaymentStatus && (
+                    <div>
+                      <p className="text-muted-foreground">{t("paymentStatus")}</p>
+                      <p className={`font-medium ${entry.salePaymentStatus === "paid" ? "text-green-600" : "text-amber-600"}`}>
+                        {t(entry.salePaymentStatus)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
