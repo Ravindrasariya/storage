@@ -59,6 +59,8 @@ export default function SalesHistoryPage() {
         description: variables.newStatus === "paid" ? t("markAsPaid") : t("markedAsDue") 
       });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      // Also invalidate analytics so payment stats update immediately
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to update payment status", variant: "destructive" });

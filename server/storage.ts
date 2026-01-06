@@ -394,19 +394,40 @@ export class DatabaseStorage implements IStorage {
     
     let totalPaid = 0;
     let totalDue = 0;
-    let paidCount = 0;
-    let dueCount = 0;
-
+    
+    // Group sales by lotId to count unique lots, not individual partial sales
+    const lotPaymentMap = new Map<string, { paidAmount: number; dueAmount: number }>();
+    
     for (const sale of allSales) {
       const charge = sale.coldStorageCharge || 0;
+      
+      // Sum up amounts for totals
       if (sale.paymentStatus === "paid") {
         totalPaid += charge;
-        paidCount++;
       } else if (sale.paymentStatus === "due") {
         totalDue += charge;
-        dueCount++;
       }
+      
+      // Track payment status by lot for counting unique lots
+      const existing = lotPaymentMap.get(sale.lotId) || { paidAmount: 0, dueAmount: 0 };
+      if (sale.paymentStatus === "paid") {
+        existing.paidAmount += charge;
+      } else {
+        existing.dueAmount += charge;
+      }
+      lotPaymentMap.set(sale.lotId, existing);
     }
+    
+    // Count unique lots: a lot is "paid" only if all tranches are paid
+    let paidCount = 0;
+    let dueCount = 0;
+    Array.from(lotPaymentMap.values()).forEach((lotStatus) => {
+      if (lotStatus.dueAmount > 0) {
+        dueCount++; // Has any due amount = lot is due
+      } else if (lotStatus.paidAmount > 0) {
+        paidCount++; // All paid = lot is paid
+      }
+    });
 
     return {
       totalPaid,
