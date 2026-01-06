@@ -14,7 +14,7 @@ import type { QualityStats, PaymentStats } from "@shared/schema";
 export default function Analytics() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
-  const [selectedYear, setSelectedYear] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
 
   const { data: years = [] } = useQuery<number[]>({
     queryKey: ["/api/analytics/years"],
