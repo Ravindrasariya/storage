@@ -136,6 +136,23 @@ const translations: Translations = {
   buyerName: { en: "Buyer Name", hi: "खरीदार का नाम" },
   pricePerKg: { en: "Price/kg (Selling Price)", hi: "मूल्य/किग्रा (बिक्री मूल्य)" },
   optional: { en: "Optional", hi: "वैकल्पिक" },
+  
+  // Sales History
+  salesHistory: { en: "History of Sales", hi: "बिक्री का इतिहास" },
+  saleDate: { en: "Sale Date", hi: "बिक्री तिथि" },
+  saleType: { en: "Sale Type", hi: "बिक्री प्रकार" },
+  fullSale: { en: "Full Sale", hi: "पूर्ण बिक्री" },
+  year: { en: "Year", hi: "वर्ष" },
+  allYears: { en: "All Years", hi: "सभी वर्ष" },
+  filterByYear: { en: "Filter by Year", hi: "वर्ष के अनुसार फ़िल्टर करें" },
+  filterByFarmer: { en: "Filter by Farmer", hi: "किसान के अनुसार फ़िल्टर करें" },
+  filterByMobile: { en: "Filter by Mobile", hi: "मोबाइल के अनुसार फ़िल्टर करें" },
+  filterByPayment: { en: "Filter by Payment", hi: "भुगतान के अनुसार फ़िल्टर करें" },
+  noSalesHistory: { en: "No sales history found", hi: "कोई बिक्री इतिहास नहीं मिला" },
+  coldStorageCharge: { en: "Cold Storage Charge", hi: "शीत भंडारण शुल्क" },
+  potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },
+  clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
+  paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
 };
 
 interface I18nContextType {
