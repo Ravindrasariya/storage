@@ -6,6 +6,7 @@ import {
   chambers,
   lots,
   lotEditHistory,
+  salesHistory,
   type ColdStorage,
   type InsertColdStorage,
   type Chamber,
@@ -14,6 +15,8 @@ import {
   type InsertLot,
   type LotEditHistory,
   type InsertLotEditHistory,
+  type SalesHistory,
+  type InsertSalesHistory,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -42,6 +45,16 @@ export interface IStorage {
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
   updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined>;
   deleteChamber(id: string): Promise<boolean>;
+  // Sales History
+  createSalesHistory(data: InsertSalesHistory): Promise<SalesHistory>;
+  getSalesHistory(coldStorageId: string, filters?: {
+    year?: number;
+    farmerName?: string;
+    contactNumber?: string;
+    paymentStatus?: "paid" | "due";
+  }): Promise<SalesHistory[]>;
+  markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
+  getSalesYears(coldStorageId: string): Promise<number[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -396,6 +409,63 @@ export class DatabaseStorage implements IStorage {
     }
 
     return updatedLot;
+  }
+
+  // Sales History Methods
+  async createSalesHistory(data: InsertSalesHistory): Promise<SalesHistory> {
+    const id = randomUUID();
+    const [sale] = await db.insert(salesHistory).values({
+      ...data,
+      id,
+    }).returning();
+    return sale;
+  }
+
+  async getSalesHistory(coldStorageId: string, filters?: {
+    year?: number;
+    farmerName?: string;
+    contactNumber?: string;
+    paymentStatus?: "paid" | "due";
+  }): Promise<SalesHistory[]> {
+    let conditions = [eq(salesHistory.coldStorageId, coldStorageId)];
+    
+    if (filters?.year) {
+      conditions.push(eq(salesHistory.saleYear, filters.year));
+    }
+    if (filters?.farmerName) {
+      conditions.push(ilike(salesHistory.farmerName, `%${filters.farmerName}%`));
+    }
+    if (filters?.contactNumber) {
+      conditions.push(like(salesHistory.contactNumber, `%${filters.contactNumber}%`));
+    }
+    if (filters?.paymentStatus) {
+      conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
+    }
+
+    return db.select()
+      .from(salesHistory)
+      .where(and(...conditions))
+      .orderBy(salesHistory.soldAt);
+  }
+
+  async markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined> {
+    const [updated] = await db.update(salesHistory)
+      .set({ 
+        paymentStatus: "paid",
+        paidAt: new Date()
+      })
+      .where(eq(salesHistory.id, saleId))
+      .returning();
+    return updated;
+  }
+
+  async getSalesYears(coldStorageId: string): Promise<number[]> {
+    const results = await db.select({ year: salesHistory.saleYear })
+      .from(salesHistory)
+      .where(eq(salesHistory.coldStorageId, coldStorageId));
+    
+    const uniqueYears = [...new Set(results.map(r => r.year))].sort((a, b) => b - a);
+    return uniqueYears;
   }
 }
 
