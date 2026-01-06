@@ -1,135 +1,102 @@
 import { randomUUID } from "crypto";
-import type {
-  ColdStorage,
-  InsertColdStorage,
-  Chamber,
-  InsertChamber,
-  Lot,
-  InsertLot,
-  LotEditHistory,
-  InsertLotEditHistory,
-  DashboardStats,
-  QualityStats,
-  PaymentStats,
+import { eq, and, like, ilike } from "drizzle-orm";
+import { db } from "./db";
+import {
+  coldStorages,
+  chambers,
+  lots,
+  lotEditHistory,
+  type ColdStorage,
+  type InsertColdStorage,
+  type Chamber,
+  type InsertChamber,
+  type Lot,
+  type InsertLot,
+  type LotEditHistory,
+  type InsertLotEditHistory,
+  type DashboardStats,
+  type QualityStats,
+  type PaymentStats,
 } from "@shared/schema";
 
 export interface IStorage {
-  // Cold Storage
+  initializeDefaultData(): Promise<void>;
   getColdStorage(id: string): Promise<ColdStorage | undefined>;
   getDefaultColdStorage(): Promise<ColdStorage>;
-  
-  // Chambers
   getChambers(coldStorageId: string): Promise<Chamber[]>;
   getChamber(id: string): Promise<Chamber | undefined>;
   updateChamberFill(id: string, fill: number): Promise<void>;
-  
-  // Lots
   createLot(lot: InsertLot): Promise<Lot>;
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
   searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]>;
   searchLotsByLotNoAndSize(lotNo: string, size: string, coldStorageId: string): Promise<Lot[]>;
   getAllLots(coldStorageId: string): Promise<Lot[]>;
-  
-  // Lot Edit History
   createEditHistory(history: InsertLotEditHistory): Promise<LotEditHistory>;
   getLotHistory(lotId: string): Promise<LotEditHistory[]>;
-  
-  // Dashboard Stats
   getDashboardStats(coldStorageId: string): Promise<DashboardStats>;
-  
-  // Quality Stats
   getQualityStats(coldStorageId: string): Promise<QualityStats>;
-  
-  // Payment Stats
   getPaymentStats(coldStorageId: string): Promise<PaymentStats>;
-  
-  // Sale Operations
   finalizeSale(lotId: string, paymentStatus: "due" | "paid"): Promise<Lot | undefined>;
-  
-  // Cold Storage Management
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
-  
-  // Chamber Management
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
   updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined>;
   deleteChamber(id: string): Promise<boolean>;
 }
 
-export class MemStorage implements IStorage {
-  private coldStorages: Map<string, ColdStorage>;
-  private chambers: Map<string, Chamber>;
-  private lots: Map<string, Lot>;
-  private editHistory: Map<string, LotEditHistory>;
+export class DatabaseStorage implements IStorage {
+  async initializeDefaultData(): Promise<void> {
+    const existingStorage = await db.select().from(coldStorages).where(eq(coldStorages.id, "cs-default"));
+    if (existingStorage.length === 0) {
+      await db.insert(coldStorages).values({
+        id: "cs-default",
+        name: "Main Cold Storage",
+        totalCapacity: 50000,
+        waferRate: 25,
+        seedRate: 30,
+        linkedPhones: ["8882589392"],
+      });
 
-  constructor() {
-    this.coldStorages = new Map();
-    this.chambers = new Map();
-    this.lots = new Map();
-    this.editHistory = new Map();
-    
-    this.initializeDefaultData();
-  }
+      const chamberData = [
+        { id: "ch-1", name: "Chamber A", capacity: 10000, currentFill: 0, coldStorageId: "cs-default" },
+        { id: "ch-2", name: "Chamber B", capacity: 12000, currentFill: 0, coldStorageId: "cs-default" },
+        { id: "ch-3", name: "Chamber C", capacity: 8000, currentFill: 0, coldStorageId: "cs-default" },
+        { id: "ch-4", name: "Chamber D", capacity: 10000, currentFill: 0, coldStorageId: "cs-default" },
+        { id: "ch-5", name: "Chamber E", capacity: 10000, currentFill: 0, coldStorageId: "cs-default" },
+      ];
 
-  private initializeDefaultData() {
-    const defaultColdStorageId = "cs-default";
-    
-    const defaultColdStorage: ColdStorage = {
-      id: defaultColdStorageId,
-      name: "Main Cold Storage",
-      totalCapacity: 50000,
-      waferRate: 25,
-      seedRate: 30,
-      linkedPhones: ["8882589392"],
-    };
-    this.coldStorages.set(defaultColdStorageId, defaultColdStorage);
-
-    const chamberData = [
-      { id: "ch-1", name: "Chamber A", capacity: 10000, currentFill: 0 },
-      { id: "ch-2", name: "Chamber B", capacity: 12000, currentFill: 0 },
-      { id: "ch-3", name: "Chamber C", capacity: 8000, currentFill: 0 },
-      { id: "ch-4", name: "Chamber D", capacity: 10000, currentFill: 0 },
-      { id: "ch-5", name: "Chamber E", capacity: 10000, currentFill: 0 },
-    ];
-
-    chamberData.forEach((ch) => {
-      const chamber: Chamber = {
-        ...ch,
-        coldStorageId: defaultColdStorageId,
-      };
-      this.chambers.set(ch.id, chamber);
-    });
+      for (const ch of chamberData) {
+        await db.insert(chambers).values(ch);
+      }
+    }
   }
 
   async getColdStorage(id: string): Promise<ColdStorage | undefined> {
-    return this.coldStorages.get(id);
+    const [result] = await db.select().from(coldStorages).where(eq(coldStorages.id, id));
+    return result;
   }
 
   async getDefaultColdStorage(): Promise<ColdStorage> {
-    return this.coldStorages.get("cs-default")!;
+    const [result] = await db.select().from(coldStorages).where(eq(coldStorages.id, "cs-default"));
+    return result;
   }
 
   async getChambers(coldStorageId: string): Promise<Chamber[]> {
-    return Array.from(this.chambers.values()).filter(
-      (ch) => ch.coldStorageId === coldStorageId
-    );
+    return db.select().from(chambers).where(eq(chambers.coldStorageId, coldStorageId));
   }
 
   async getChamber(id: string): Promise<Chamber | undefined> {
-    return this.chambers.get(id);
+    const [result] = await db.select().from(chambers).where(eq(chambers.id, id));
+    return result;
   }
 
   async updateChamberFill(id: string, fill: number): Promise<void> {
-    const chamber = this.chambers.get(id);
-    if (chamber) {
-      chamber.currentFill = fill;
-      this.chambers.set(id, chamber);
-    }
+    await db.update(chambers).set({ currentFill: fill }).where(eq(chambers.id, id));
   }
 
   async createLot(insertLot: InsertLot): Promise<Lot> {
     const id = randomUUID();
-    const lot: Lot = {
+    const lotData = {
       ...insertLot,
       id,
       remainingSize: insertLot.remainingSize ?? insertLot.size,
@@ -144,9 +111,9 @@ export class MemStorage implements IStorage {
       totalPaidCharge: insertLot.totalPaidCharge ?? null,
       totalDueCharge: insertLot.totalDueCharge ?? null,
       soldAt: insertLot.soldAt ?? null,
-      createdAt: new Date(),
     };
-    this.lots.set(id, lot);
+
+    const [lot] = await db.insert(lots).values(lotData).returning();
 
     const chamber = await this.getChamber(lot.chamberId);
     if (chamber) {
@@ -157,39 +124,27 @@ export class MemStorage implements IStorage {
   }
 
   async getLot(id: string): Promise<Lot | undefined> {
-    return this.lots.get(id);
+    const [result] = await db.select().from(lots).where(eq(lots.id, id));
+    return result;
   }
 
   async updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined> {
-    const lot = this.lots.get(id);
-    if (!lot) return undefined;
-
-    const updatedLot = { ...lot, ...updates };
-    this.lots.set(id, updatedLot);
-    return updatedLot;
+    const [result] = await db.update(lots).set(updates).where(eq(lots.id, id)).returning();
+    return result;
   }
 
-  async searchLots(
-    type: "phone",
-    query: string,
-    coldStorageId: string
-  ): Promise<Lot[]> {
-    const allLots = Array.from(this.lots.values()).filter(
-      (lot) => lot.coldStorageId === coldStorageId
+  async searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]> {
+    return db.select().from(lots).where(
+      and(
+        eq(lots.coldStorageId, coldStorageId),
+        ilike(lots.contactNumber, `%${query}%`)
+      )
     );
-
-    return allLots.filter((lot) => lot.contactNumber.includes(query));
   }
 
-  async searchLotsByLotNoAndSize(
-    lotNo: string,
-    size: string,
-    coldStorageId: string
-  ): Promise<Lot[]> {
-    const allLots = Array.from(this.lots.values()).filter(
-      (lot) => lot.coldStorageId === coldStorageId
-    );
-
+  async searchLotsByLotNoAndSize(lotNo: string, size: string, coldStorageId: string): Promise<Lot[]> {
+    const allLots = await db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
+    
     return allLots.filter((lot) => {
       const matchesLotNo = !lotNo || lot.lotNo.toLowerCase().includes(lotNo.toLowerCase());
       const sizeNum = parseInt(size, 10);
@@ -199,14 +154,12 @@ export class MemStorage implements IStorage {
   }
 
   async getAllLots(coldStorageId: string): Promise<Lot[]> {
-    return Array.from(this.lots.values()).filter(
-      (lot) => lot.coldStorageId === coldStorageId
-    );
+    return db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
   }
 
   async createEditHistory(insertHistory: InsertLotEditHistory): Promise<LotEditHistory> {
     const id = randomUUID();
-    const history: LotEditHistory = {
+    const historyData = {
       ...insertHistory,
       id,
       soldQuantity: insertHistory.soldQuantity ?? null,
@@ -214,44 +167,44 @@ export class MemStorage implements IStorage {
       totalPrice: insertHistory.totalPrice ?? null,
       salePaymentStatus: insertHistory.salePaymentStatus ?? null,
       saleCharge: insertHistory.saleCharge ?? null,
-      changedAt: new Date(),
     };
-    this.editHistory.set(id, history);
+
+    const [history] = await db.insert(lotEditHistory).values(historyData).returning();
     return history;
   }
 
   async getLotHistory(lotId: string): Promise<LotEditHistory[]> {
-    return Array.from(this.editHistory.values())
-      .filter((h) => h.lotId === lotId)
-      .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime());
+    return db.select().from(lotEditHistory)
+      .where(eq(lotEditHistory.lotId, lotId))
+      .orderBy(lotEditHistory.changedAt);
   }
 
   async getDashboardStats(coldStorageId: string): Promise<DashboardStats> {
     const coldStorage = await this.getColdStorage(coldStorageId);
-    const chambers = await this.getChambers(coldStorageId);
-    const lots = await this.getAllLots(coldStorageId);
+    const allChambers = await this.getChambers(coldStorageId);
+    const allLots = await this.getAllLots(coldStorageId);
 
-    const currentUtilization = lots.reduce((sum, lot) => sum + lot.remainingSize, 0);
-    const peakUtilization = lots.reduce((sum, lot) => sum + lot.size, 0);
-    const uniqueFarmers = new Set(lots.map((lot) => lot.contactNumber));
+    const currentUtilization = allLots.reduce((sum, lot) => sum + lot.remainingSize, 0);
+    const peakUtilization = allLots.reduce((sum, lot) => sum + lot.size, 0);
+    const uniqueFarmers = new Set(allLots.map((lot) => lot.contactNumber));
     
-    const totalWaferBags = lots
+    const totalWaferBags = allLots
       .filter((lot) => lot.bagType === "wafer")
       .reduce((sum, lot) => sum + lot.size, 0);
-    const remainingWaferBags = lots
+    const remainingWaferBags = allLots
       .filter((lot) => lot.bagType === "wafer")
       .reduce((sum, lot) => sum + lot.remainingSize, 0);
-    const totalSeedBags = lots
+    const totalSeedBags = allLots
       .filter((lot) => lot.bagType === "seed")
       .reduce((sum, lot) => sum + lot.size, 0);
-    const remainingSeedBags = lots
+    const remainingSeedBags = allLots
       .filter((lot) => lot.bagType === "seed")
       .reduce((sum, lot) => sum + lot.remainingSize, 0);
     
-    const remainingLots = lots.filter((lot) => lot.remainingSize > 0).length;
+    const remainingLots = allLots.filter((lot) => lot.remainingSize > 0).length;
 
-    const chamberStats = chambers.map((chamber) => {
-      const chamberLots = lots.filter((lot) => lot.chamberId === chamber.id);
+    const chamberStats = allChambers.map((chamber) => {
+      const chamberLots = allLots.filter((lot) => lot.chamberId === chamber.id);
       const currentFill = chamberLots.reduce((sum, lot) => sum + lot.remainingSize, 0);
       return {
         id: chamber.id,
@@ -264,8 +217,8 @@ export class MemStorage implements IStorage {
       };
     });
 
-    const chamberMap = new Map(chambers.map(c => [c.id, c.name]));
-    const saleLots = lots
+    const chamberMap = new Map(allChambers.map(c => [c.id, c.name]));
+    const saleLots = allLots
       .filter((lot) => lot.upForSale === 1 && lot.remainingSize > 0 && lot.saleStatus !== "sold")
       .map((lot) => ({
         id: lot.id,
@@ -286,7 +239,7 @@ export class MemStorage implements IStorage {
       peakUtilization,
       currentUtilization,
       totalFarmers: uniqueFarmers.size,
-      totalLots: lots.length,
+      totalLots: allLots.length,
       remainingLots,
       totalWaferBags,
       remainingWaferBags,
@@ -300,48 +253,42 @@ export class MemStorage implements IStorage {
   }
 
   async updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined> {
-    const coldStorage = this.coldStorages.get(id);
-    if (!coldStorage) return undefined;
-    const updated = { ...coldStorage, ...updates };
-    this.coldStorages.set(id, updated);
-    return updated;
+    const [result] = await db.update(coldStorages).set(updates).where(eq(coldStorages.id, id)).returning();
+    return result;
   }
 
   async createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber> {
     const id = `ch-${randomUUID().slice(0, 8)}`;
-    const chamber: Chamber = {
+    const [chamber] = await db.insert(chambers).values({
       id,
       name: data.name,
       capacity: data.capacity,
       currentFill: 0,
       coldStorageId: data.coldStorageId,
-    };
-    this.chambers.set(id, chamber);
+    }).returning();
     return chamber;
   }
 
   async updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined> {
-    const chamber = this.chambers.get(id);
-    if (!chamber) return undefined;
-    const updated = { ...chamber, ...updates };
-    this.chambers.set(id, updated);
-    return updated;
+    const [result] = await db.update(chambers).set(updates).where(eq(chambers.id, id)).returning();
+    return result;
   }
 
   async deleteChamber(id: string): Promise<boolean> {
-    const lots = Array.from(this.lots.values()).filter((lot) => lot.chamberId === id);
-    if (lots.length > 0) {
+    const chamberLots = await db.select().from(lots).where(eq(lots.chamberId, id));
+    if (chamberLots.length > 0) {
       return false;
     }
-    return this.chambers.delete(id);
+    await db.delete(chambers).where(eq(chambers.id, id));
+    return true;
   }
 
   async getQualityStats(coldStorageId: string): Promise<QualityStats> {
-    const chambers = await this.getChambers(coldStorageId);
-    const lots = await this.getAllLots(coldStorageId);
+    const allChambers = await this.getChambers(coldStorageId);
+    const allLots = await this.getAllLots(coldStorageId);
 
-    const chamberQuality = chambers.map((chamber) => {
-      const chamberLots = lots.filter((lot) => lot.chamberId === chamber.id);
+    const chamberQuality = allChambers.map((chamber) => {
+      const chamberLots = allLots.filter((lot) => lot.chamberId === chamber.id);
       return {
         chamberId: chamber.id,
         chamberName: chamber.name,
@@ -359,30 +306,27 @@ export class MemStorage implements IStorage {
 
     return {
       chamberQuality,
-      totalPoor: lots
+      totalPoor: allLots
         .filter((lot) => lot.quality === "poor")
         .reduce((sum, lot) => sum + lot.size, 0),
-      totalMedium: lots
+      totalMedium: allLots
         .filter((lot) => lot.quality === "medium")
         .reduce((sum, lot) => sum + lot.size, 0),
-      totalGood: lots
+      totalGood: allLots
         .filter((lot) => lot.quality === "good")
         .reduce((sum, lot) => sum + lot.size, 0),
     };
   }
 
   async getPaymentStats(coldStorageId: string): Promise<PaymentStats> {
-    const lots = await this.getAllLots(coldStorageId);
-    const coldStorage = await this.getColdStorage(coldStorageId);
+    const allLots = await this.getAllLots(coldStorageId);
     
-    // Calculate totals from all lots (using new separate tracking fields)
     let totalPaid = 0;
     let totalDue = 0;
     let paidCount = 0;
     let dueCount = 0;
 
-    for (const lot of lots) {
-      // Add from new separate tracking fields (for partial sales)
+    for (const lot of allLots) {
       if (lot.totalPaidCharge && lot.totalPaidCharge > 0) {
         totalPaid += lot.totalPaidCharge;
         paidCount++;
@@ -392,7 +336,6 @@ export class MemStorage implements IStorage {
         dueCount++;
       }
       
-      // Also include fully sold lots using the old saleCharge field
       if (lot.saleStatus === "sold" && lot.saleCharge) {
         if (lot.paymentStatus === "paid") {
           totalPaid += lot.saleCharge;
@@ -413,7 +356,7 @@ export class MemStorage implements IStorage {
   }
 
   async finalizeSale(lotId: string, paymentStatus: "due" | "paid"): Promise<Lot | undefined> {
-    const lot = this.lots.get(lotId);
+    const lot = await this.getLot(lotId);
     if (!lot || lot.saleStatus === "sold") return undefined;
 
     const coldStorage = await this.getColdStorage(lot.coldStorageId);
@@ -423,17 +366,14 @@ export class MemStorage implements IStorage {
     const saleCharge = rate * lot.remainingSize;
 
     const bagsToRemove = lot.remainingSize;
-    const updatedLot: Lot = {
-      ...lot,
+    const [updatedLot] = await db.update(lots).set({
       saleStatus: "sold",
       paymentStatus,
       saleCharge,
       soldAt: new Date(),
       upForSale: 0,
       remainingSize: 0,
-    };
-
-    this.lots.set(lotId, updatedLot);
+    }).where(eq(lots.id, lotId)).returning();
 
     const chamber = await this.getChamber(lot.chamberId);
     if (chamber) {
@@ -444,4 +384,4 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

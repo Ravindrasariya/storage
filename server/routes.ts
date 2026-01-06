@@ -10,6 +10,9 @@ export async function registerRoutes(
 ): Promise<Server> {
   const DEFAULT_COLD_STORAGE_ID = "cs-default";
 
+  // Initialize default data in database
+  await storage.initializeDefaultData();
+
   // Dashboard stats
   app.get("/api/dashboard/stats", async (req, res) => {
     try {
