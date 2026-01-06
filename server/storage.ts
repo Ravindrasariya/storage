@@ -343,39 +343,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPaymentStats(coldStorageId: string, year?: number): Promise<PaymentStats> {
-    let allLots = await this.getAllLots(coldStorageId);
-    
-    // Filter by year if specified (based on createdAt date)
-    if (year) {
-      allLots = allLots.filter((lot) => {
-        const entryYear = new Date(lot.createdAt).getFullYear();
-        return entryYear === year;
-      });
-    }
+    // Read from salesHistory table (permanent records) instead of lots
+    // This ensures analytics survive season resets
+    const allSales = await this.getSalesHistory(coldStorageId, year ? { year } : undefined);
     
     let totalPaid = 0;
     let totalDue = 0;
     let paidCount = 0;
     let dueCount = 0;
 
-    for (const lot of allLots) {
-      if (lot.totalPaidCharge && lot.totalPaidCharge > 0) {
-        totalPaid += lot.totalPaidCharge;
+    for (const sale of allSales) {
+      const charge = sale.coldStorageCharge || 0;
+      if (sale.paymentStatus === "paid") {
+        totalPaid += charge;
         paidCount++;
-      }
-      if (lot.totalDueCharge && lot.totalDueCharge > 0) {
-        totalDue += lot.totalDueCharge;
+      } else if (sale.paymentStatus === "due") {
+        totalDue += charge;
         dueCount++;
-      }
-      
-      if (lot.saleStatus === "sold" && lot.saleCharge) {
-        if (lot.paymentStatus === "paid") {
-          totalPaid += lot.saleCharge;
-          if (!lot.totalPaidCharge) paidCount++;
-        } else if (lot.paymentStatus === "due") {
-          totalDue += lot.saleCharge;
-          if (!lot.totalDueCharge) dueCount++;
-        }
       }
     }
 
@@ -388,13 +372,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAnalyticsYears(coldStorageId: string): Promise<number[]> {
-    const allLots = await this.getAllLots(coldStorageId);
-    const yearSet = new Set<number>();
-    allLots.forEach((lot) => {
-      const entryYear = new Date(lot.createdAt).getFullYear();
-      yearSet.add(entryYear);
-    });
-    return Array.from(yearSet).sort((a, b) => b - a);
+    // Read from salesHistory table (permanent records) instead of lots
+    // This ensures analytics years survive season resets
+    return this.getSalesYears(coldStorageId);
   }
 
   async checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }> {
