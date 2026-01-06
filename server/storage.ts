@@ -300,42 +300,90 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats> {
-    // Read from salesHistory table (permanent records) instead of lots
-    // This ensures analytics survive season resets
+    // Combine data from both lots (current unsold) and salesHistory (sold)
+    // This ensures analytics show current season AND survive resets
+    
+    const allChambers = await this.getChambers(coldStorageId);
+    let allLots = await this.getAllLots(coldStorageId);
     const allSales = await this.getSalesHistory(coldStorageId, year ? { year } : undefined);
     
-    // Get unique chamber names from sales history
-    const chamberNames = new Set<string>();
-    allSales.forEach(sale => chamberNames.add(sale.chamberName));
+    // Filter lots by year if specified
+    if (year) {
+      allLots = allLots.filter((lot) => {
+        const entryYear = new Date(lot.createdAt).getFullYear();
+        return entryYear === year;
+      });
+    }
     
-    const chamberQuality = Array.from(chamberNames).map((chamberName) => {
-      const chamberSales = allSales.filter((sale) => sale.chamberName === chamberName);
-      return {
-        chamberId: chamberName, // Using chamberName as ID since we're reading from history
-        chamberName: chamberName,
-        poor: chamberSales
-          .filter((sale) => sale.quality === "poor")
-          .reduce((sum, sale) => sum + sale.quantitySold, 0),
-        medium: chamberSales
-          .filter((sale) => sale.quality === "medium")
-          .reduce((sum, sale) => sum + sale.quantitySold, 0),
-        good: chamberSales
-          .filter((sale) => sale.quality === "good")
-          .reduce((sum, sale) => sum + sale.quantitySold, 0),
-      };
+    // Build chamber quality map combining both sources
+    const chamberMap = new Map<string, { chamberId: string; chamberName: string; poor: number; medium: number; good: number }>();
+    
+    // Initialize with current chambers
+    allChambers.forEach(chamber => {
+      chamberMap.set(chamber.id, {
+        chamberId: chamber.id,
+        chamberName: chamber.name,
+        poor: 0,
+        medium: 0,
+        good: 0,
+      });
     });
+    
+    // Add unsold lot quantities (remainingSize) from lots table
+    for (const lot of allLots) {
+      const existing = chamberMap.get(lot.chamberId);
+      if (existing) {
+        if (lot.quality === "poor") existing.poor += lot.remainingSize;
+        else if (lot.quality === "medium") existing.medium += lot.remainingSize;
+        else if (lot.quality === "good") existing.good += lot.remainingSize;
+      }
+    }
+    
+    // Add sold quantities from salesHistory table
+    for (const sale of allSales) {
+      // Try to find chamber by name if ID doesn't exist
+      let existing = Array.from(chamberMap.values()).find(c => c.chamberName === sale.chamberName);
+      if (!existing) {
+        // Create entry for historical chamber
+        const historyKey = `history-${sale.chamberName}`;
+        existing = {
+          chamberId: historyKey,
+          chamberName: sale.chamberName,
+          poor: 0,
+          medium: 0,
+          good: 0,
+        };
+        chamberMap.set(historyKey, existing);
+      }
+      if (sale.quality === "poor") existing.poor += sale.quantitySold;
+      else if (sale.quality === "medium") existing.medium += sale.quantitySold;
+      else if (sale.quality === "good") existing.good += sale.quantitySold;
+    }
+    
+    const chamberQuality = Array.from(chamberMap.values()).filter(c => c.poor > 0 || c.medium > 0 || c.good > 0);
+    
+    // Calculate totals from both sources
+    let totalPoor = 0, totalMedium = 0, totalGood = 0;
+    
+    // Add from unsold lots
+    for (const lot of allLots) {
+      if (lot.quality === "poor") totalPoor += lot.remainingSize;
+      else if (lot.quality === "medium") totalMedium += lot.remainingSize;
+      else if (lot.quality === "good") totalGood += lot.remainingSize;
+    }
+    
+    // Add from sold history
+    for (const sale of allSales) {
+      if (sale.quality === "poor") totalPoor += sale.quantitySold;
+      else if (sale.quality === "medium") totalMedium += sale.quantitySold;
+      else if (sale.quality === "good") totalGood += sale.quantitySold;
+    }
 
     return {
       chamberQuality,
-      totalPoor: allSales
-        .filter((sale) => sale.quality === "poor")
-        .reduce((sum, sale) => sum + sale.quantitySold, 0),
-      totalMedium: allSales
-        .filter((sale) => sale.quality === "medium")
-        .reduce((sum, sale) => sum + sale.quantitySold, 0),
-      totalGood: allSales
-        .filter((sale) => sale.quality === "good")
-        .reduce((sum, sale) => sum + sale.quantitySold, 0),
+      totalPoor,
+      totalMedium,
+      totalGood,
     };
   }
 
@@ -369,9 +417,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAnalyticsYears(coldStorageId: string): Promise<number[]> {
-    // Read from salesHistory table (permanent records) instead of lots
-    // This ensures analytics years survive season resets
-    return this.getSalesYears(coldStorageId);
+    // Combine years from both lots (current season) and salesHistory (historical)
+    // This ensures both current and historical years are shown
+    const allLots = await this.getAllLots(coldStorageId);
+    const salesYears = await this.getSalesYears(coldStorageId);
+    
+    const yearSet = new Set<number>(salesYears);
+    allLots.forEach((lot) => {
+      const entryYear = new Date(lot.createdAt).getFullYear();
+      yearSet.add(entryYear);
+    });
+    
+    return Array.from(yearSet).sort((a, b) => b - a);
   }
 
   async checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }> {
