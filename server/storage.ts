@@ -408,6 +408,34 @@ export class DatabaseStorage implements IStorage {
       await this.updateChamberFill(chamber.id, Math.max(0, chamber.currentFill - bagsToRemove));
     }
 
+    // Create permanent sales history record for full sale
+    await this.createSalesHistory({
+      coldStorageId: lot.coldStorageId,
+      farmerName: lot.farmerName,
+      village: lot.village,
+      tehsil: lot.tehsil,
+      district: lot.district,
+      state: lot.state,
+      contactNumber: lot.contactNumber,
+      lotNo: lot.lotNo,
+      lotId: lot.id,
+      chamberName: chamber?.name || "Unknown",
+      floor: lot.floor,
+      position: lot.position,
+      potatoType: lot.type,
+      bagType: lot.bagType,
+      quality: lot.quality,
+      originalLotSize: lot.size,
+      saleType: "full",
+      quantitySold: bagsToRemove,
+      pricePerBag: rate,
+      coldStorageCharge: saleCharge,
+      buyerName: buyerName || null,
+      pricePerKg: pricePerKg || null,
+      paymentStatus,
+      saleYear: new Date().getFullYear(),
+    });
+
     return updatedLot;
   }
 

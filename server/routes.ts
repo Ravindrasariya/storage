@@ -212,6 +212,37 @@ export async function registerRoutes(
         saleCharge: storageCharge,
       });
 
+      // Get chamber for sales history
+      const chamber = await storage.getChamber(lot.chamberId);
+      
+      // Create permanent sales history record
+      await storage.createSalesHistory({
+        coldStorageId: lot.coldStorageId,
+        farmerName: lot.farmerName,
+        village: lot.village,
+        tehsil: lot.tehsil,
+        district: lot.district,
+        state: lot.state,
+        contactNumber: lot.contactNumber,
+        lotNo: lot.lotNo,
+        lotId: lot.id,
+        chamberName: chamber?.name || "Unknown",
+        floor: lot.floor,
+        position: lot.position,
+        potatoType: lot.type,
+        bagType: lot.bagType,
+        quality: lot.quality,
+        originalLotSize: lot.size,
+        saleType: "partial",
+        quantitySold,
+        pricePerBag: rate,
+        coldStorageCharge: storageCharge,
+        buyerName: buyerName || null,
+        pricePerKg: pricePerKg || null,
+        paymentStatus,
+        saleYear: new Date().getFullYear(),
+      });
+
       const updatedLot = await storage.getLot(req.params.id);
       res.json(updatedLot);
     } catch (error) {

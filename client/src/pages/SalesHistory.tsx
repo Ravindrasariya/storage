@@ -48,7 +48,9 @@ export default function SalesHistoryPage() {
 
   const markPaidMutation = useMutation({
     mutationFn: async (saleId: string) => {
-      return apiRequest(`/api/sales-history/${saleId}/mark-paid`, { method: "PATCH" });
+      const response = await fetch(`/api/sales-history/${saleId}/mark-paid`, { method: "PATCH" });
+      if (!response.ok) throw new Error("Failed to mark as paid");
+      return response.json();
     },
     onSuccess: () => {
       toast({ title: t("success"), description: t("markAsPaid") });
@@ -197,12 +199,12 @@ export default function SalesHistoryPage() {
                       <TableCell>{sale.chamberName}</TableCell>
                       <TableCell>{sale.potatoType}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" size="sm">
+                        <Badge variant="outline">
                           {t(sale.bagType)}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={sale.saleType === "full" ? "default" : "secondary"} size="sm">
+                        <Badge variant={sale.saleType === "full" ? "default" : "secondary"}>
                           {sale.saleType === "full" ? t("fullSale") : t("partialSale")}
                         </Badge>
                       </TableCell>
@@ -218,7 +220,6 @@ export default function SalesHistoryPage() {
                         <Badge 
                           variant={sale.paymentStatus === "paid" ? "default" : "destructive"}
                           className={sale.paymentStatus === "paid" ? "bg-green-600" : ""}
-                          size="sm"
                         >
                           {t(sale.paymentStatus)}
                         </Badge>
