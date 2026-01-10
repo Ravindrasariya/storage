@@ -244,8 +244,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       <Badge variant="outline" className="text-xs">
                         {t("lot")} {lot.lotNo} ({lot.originalSize} {t("bags")})
                       </Badge>
-                      <Badge variant="secondary" className="text-xs">
-                        {lot.bagType} | {lot.type}
+                      <Badge variant="secondary" className="text-xs capitalize">
+                        {lot.bagType} | {lot.type} | {lot.quality}
                       </Badge>
                     </div>
                   </div>
