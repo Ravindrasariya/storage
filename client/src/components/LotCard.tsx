@@ -59,16 +59,16 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
                 {t("sold")}
               </Badge>
             )}
-            {lot.paymentStatus && (
+            {(lot.paymentStatus || (lot.totalDueCharge && lot.totalDueCharge > 0)) && (
               <Badge 
                 variant="outline" 
-                className={lot.paymentStatus === "paid" 
+                className={(lot.paymentStatus === "paid" && (!lot.totalDueCharge || lot.totalDueCharge === 0))
                   ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400"
                   : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400"
                 }
                 data-testid={`badge-payment-${lot.id}`}
               >
-                {lot.paymentStatus === "paid" ? (
+                {(lot.paymentStatus === "paid" && (!lot.totalDueCharge || lot.totalDueCharge === 0)) ? (
                   <><CheckCircle className="h-3 w-3 mr-1" />{t("paid")}</>
                 ) : (
                   <><Clock className="h-3 w-3 mr-1" />{t("due")}</>
