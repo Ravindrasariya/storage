@@ -41,6 +41,8 @@ const translations: Translations = {
   state: { en: "State", hi: "राज्य" },
   contactNumber: { en: "Contact Number", hi: "संपर्क नंबर" },
   lotInformation: { en: "Lot Information", hi: "लॉट जानकारी" },
+  lot: { en: "Lot", hi: "लॉट" },
+  addMoreLot: { en: "Add More Lot", hi: "और लॉट जोड़ें" },
   lotNo: { en: "Lot No", hi: "लॉट नंबर" },
   size: { en: "Size (Bags)", hi: "आकार (बैग)" },
   storageLocation: { en: "Storage Location", hi: "भंडारण स्थान" },
