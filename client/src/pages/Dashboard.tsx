@@ -109,6 +109,10 @@ export default function Dashboard() {
         <RatesCard
           waferRate={stats?.waferRate || 0}
           seedRate={stats?.seedRate || 0}
+          waferColdCharge={stats?.waferColdCharge}
+          waferHammali={stats?.waferHammali}
+          seedColdCharge={stats?.seedColdCharge}
+          seedHammali={stats?.seedHammali}
         />
       </div>
 

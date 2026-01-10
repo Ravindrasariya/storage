@@ -5,10 +5,28 @@ import { IndianRupee } from "lucide-react";
 interface RatesCardProps {
   waferRate: number;
   seedRate: number;
+  waferColdCharge?: number;
+  waferHammali?: number;
+  seedColdCharge?: number;
+  seedHammali?: number;
 }
 
-export function RatesCard({ waferRate, seedRate }: RatesCardProps) {
+export function RatesCard({ 
+  waferRate, 
+  seedRate, 
+  waferColdCharge,
+  waferHammali,
+  seedColdCharge,
+  seedHammali
+}: RatesCardProps) {
   const { t } = useI18n();
+
+  const formatRate = (coldCharge?: number, hammali?: number, total?: number) => {
+    if (coldCharge !== undefined && hammali !== undefined) {
+      return `${coldCharge}/${hammali}`;
+    }
+    return total?.toString() || "0";
+  };
 
   return (
     <Card className="p-4 sm:p-6">
@@ -17,16 +35,30 @@ export function RatesCard({ waferRate, seedRate }: RatesCardProps) {
         <div className="p-4 rounded-lg bg-chart-1/10 text-center">
           <div className="flex items-center justify-center gap-1 text-chart-1">
             <IndianRupee className="h-5 w-5" />
-            <span className="text-2xl font-bold" data-testid="text-wafer-rate">{waferRate}</span>
+            <span className="text-2xl font-bold" data-testid="text-wafer-rate">
+              {formatRate(waferColdCharge, waferHammali, waferRate)}
+            </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">{t("wafer")}</p>
+          {waferColdCharge !== undefined && waferHammali !== undefined && (
+            <p className="text-xs text-muted-foreground mt-1">
+              ({t("total")}: {waferRate})
+            </p>
+          )}
         </div>
         <div className="p-4 rounded-lg bg-chart-2/10 text-center">
           <div className="flex items-center justify-center gap-1 text-chart-2">
             <IndianRupee className="h-5 w-5" />
-            <span className="text-2xl font-bold" data-testid="text-seed-rate">{seedRate}</span>
+            <span className="text-2xl font-bold" data-testid="text-seed-rate">
+              {formatRate(seedColdCharge, seedHammali, seedRate)}
+            </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">{t("seed")}</p>
+          {seedColdCharge !== undefined && seedHammali !== undefined && (
+            <p className="text-xs text-muted-foreground mt-1">
+              ({t("total")}: {seedRate})
+            </p>
+          )}
         </div>
       </div>
     </Card>

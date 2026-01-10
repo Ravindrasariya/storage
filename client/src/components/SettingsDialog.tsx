@@ -34,6 +34,10 @@ interface ColdStorageSettings {
   totalCapacity: number;
   waferRate: number;
   seedRate: number;
+  waferColdCharge: number;
+  waferHammali: number;
+  seedColdCharge: number;
+  seedHammali: number;
 }
 
 type ChamberFloorsData = Record<string, ChamberFloor[]>;
@@ -217,8 +221,12 @@ export function SettingsDialog() {
       await updateSettingsMutation.mutateAsync({
         name: settings.name,
         totalCapacity: settings.totalCapacity,
-        waferRate: settings.waferRate,
-        seedRate: settings.seedRate,
+        waferRate: (settings.waferColdCharge || 0) + (settings.waferHammali || 0),
+        seedRate: (settings.seedColdCharge || 0) + (settings.seedHammali || 0),
+        waferColdCharge: settings.waferColdCharge,
+        waferHammali: settings.waferHammali,
+        seedColdCharge: settings.seedColdCharge,
+        seedHammali: settings.seedHammali,
       });
 
       for (const chamber of chamberEdits) {
@@ -386,47 +394,89 @@ export function SettingsDialog() {
 
           <Card className="p-4 space-y-4">
             <h4 className="font-semibold">{t("overallCapacity")}</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>{t("overallCapacity")} ({t("bags")})</Label>
+              <Input
+                type="number"
+                value={settings?.totalCapacity || 0}
+                onChange={(e) =>
+                  setSettings((prev) =>
+                    prev ? { ...prev, totalCapacity: Number(e.target.value) } : null
+                  )
+                }
+                data-testid="input-total-capacity"
+              />
+            </div>
+          </Card>
+
+          <Card className="p-4 space-y-4">
+            <h4 className="font-semibold">{t("wafer")} {t("rate")} (Rs)</h4>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>{t("overallCapacity")} ({t("bags")})</Label>
+                <Label>{t("coldStorageCharge")}</Label>
                 <Input
                   type="number"
-                  value={settings?.totalCapacity || 0}
+                  value={settings?.waferColdCharge || 0}
                   onChange={(e) =>
                     setSettings((prev) =>
-                      prev ? { ...prev, totalCapacity: Number(e.target.value) } : null
+                      prev ? { ...prev, waferColdCharge: Number(e.target.value) } : null
                     )
                   }
-                  data-testid="input-total-capacity"
+                  data-testid="input-wafer-cold-charge"
                 />
               </div>
               <div className="space-y-2">
-                <Label>{t("wafer")} {t("rate")} (Rs)</Label>
+                <Label>{t("hammali")}</Label>
                 <Input
                   type="number"
-                  value={settings?.waferRate || 0}
+                  value={settings?.waferHammali || 0}
                   onChange={(e) =>
                     setSettings((prev) =>
-                      prev ? { ...prev, waferRate: Number(e.target.value) } : null
+                      prev ? { ...prev, waferHammali: Number(e.target.value) } : null
                     )
                   }
-                  data-testid="input-wafer-rate"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("seed")} {t("rate")} (Rs)</Label>
-                <Input
-                  type="number"
-                  value={settings?.seedRate || 0}
-                  onChange={(e) =>
-                    setSettings((prev) =>
-                      prev ? { ...prev, seedRate: Number(e.target.value) } : null
-                    )
-                  }
-                  data-testid="input-seed-rate"
+                  data-testid="input-wafer-hammali"
                 />
               </div>
             </div>
+            <p className="text-sm text-muted-foreground">
+              {t("total")}: Rs {(settings?.waferColdCharge || 0) + (settings?.waferHammali || 0)}
+            </p>
+          </Card>
+
+          <Card className="p-4 space-y-4">
+            <h4 className="font-semibold">{t("seed")} {t("rate")} (Rs)</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t("coldStorageCharge")}</Label>
+                <Input
+                  type="number"
+                  value={settings?.seedColdCharge || 0}
+                  onChange={(e) =>
+                    setSettings((prev) =>
+                      prev ? { ...prev, seedColdCharge: Number(e.target.value) } : null
+                    )
+                  }
+                  data-testid="input-seed-cold-charge"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("hammali")}</Label>
+                <Input
+                  type="number"
+                  value={settings?.seedHammali || 0}
+                  onChange={(e) =>
+                    setSettings((prev) =>
+                      prev ? { ...prev, seedHammali: Number(e.target.value) } : null
+                    )
+                  }
+                  data-testid="input-seed-hammali"
+                />
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {t("total")}: Rs {(settings?.seedColdCharge || 0) + (settings?.seedHammali || 0)}
+            </p>
           </Card>
 
           <Card className="p-4 space-y-4">

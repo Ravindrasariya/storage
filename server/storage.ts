@@ -79,8 +79,12 @@ export class DatabaseStorage implements IStorage {
         id: "cs-default",
         name: "Main Cold Storage",
         totalCapacity: 50000,
-        waferRate: 25,
-        seedRate: 30,
+        waferRate: 165,
+        seedRate: 170,
+        waferColdCharge: 145,
+        waferHammali: 20,
+        seedColdCharge: 150,
+        seedHammali: 20,
         linkedPhones: ["8882589392"],
       });
 
@@ -339,6 +343,10 @@ export class DatabaseStorage implements IStorage {
       remainingSeedBags,
       waferRate: coldStorage?.waferRate || 0,
       seedRate: coldStorage?.seedRate || 0,
+      waferColdCharge: coldStorage?.waferColdCharge || coldStorage?.waferRate || 0,
+      waferHammali: coldStorage?.waferHammali || 0,
+      seedColdCharge: coldStorage?.seedColdCharge || coldStorage?.seedRate || 0,
+      seedHammali: coldStorage?.seedHammali || 0,
       chamberStats,
       saleLots,
     };

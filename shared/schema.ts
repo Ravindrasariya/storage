@@ -7,8 +7,12 @@ export const coldStorages = pgTable("cold_storages", {
   id: varchar("id").primaryKey(),
   name: text("name").notNull(),
   totalCapacity: integer("total_capacity").notNull(), // Total bags capacity
-  waferRate: real("wafer_rate").notNull(), // Per bag rate for wafer
-  seedRate: real("seed_rate").notNull(), // Per bag rate for seed
+  waferRate: real("wafer_rate").notNull(), // Per bag rate for wafer (total)
+  seedRate: real("seed_rate").notNull(), // Per bag rate for seed (total)
+  waferColdCharge: real("wafer_cold_charge"), // Cold storage charge for wafer
+  waferHammali: real("wafer_hammali"), // Hammali charge for wafer
+  seedColdCharge: real("seed_cold_charge"), // Cold storage charge for seed
+  seedHammali: real("seed_hammali"), // Hammali charge for seed
   linkedPhones: text("linked_phones").array().notNull(), // Mobile numbers with access
 });
 
@@ -192,6 +196,10 @@ export interface DashboardStats {
   remainingSeedBags: number;
   waferRate: number;
   seedRate: number;
+  waferColdCharge: number;
+  waferHammali: number;
+  seedColdCharge: number;
+  seedHammali: number;
   chamberStats: {
     id: string;
     name: string;

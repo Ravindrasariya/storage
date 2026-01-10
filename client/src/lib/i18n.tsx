@@ -119,6 +119,9 @@ const translations: Translations = {
   capacity: { en: "Capacity", hi: "क्षमता" },
   rate: { en: "Rate", hi: "दर" },
   chambers: { en: "Chambers", hi: "कक्ष" },
+  coldStorageCharge: { en: "Cold Storage Charge", hi: "कोल्ड स्टोरेज शुल्क" },
+  hammali: { en: "Hammali", hi: "हमाली" },
+  total: { en: "Total", hi: "कुल" },
   
   // Up for Sale
   upForSale: { en: "Up for Sale", hi: "बिक्री के लिए" },
@@ -156,7 +159,6 @@ const translations: Translations = {
   filterByMobile: { en: "Filter by Mobile", hi: "मोबाइल के अनुसार फ़िल्टर करें" },
   filterByPayment: { en: "Filter by Payment", hi: "भुगतान के अनुसार फ़िल्टर करें" },
   noSalesHistory: { en: "No sales history found", hi: "कोई बिक्री इतिहास नहीं मिला" },
-  coldStorageCharge: { en: "Cold Storage Charge", hi: "शीत भंडारण शुल्क" },
   potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
