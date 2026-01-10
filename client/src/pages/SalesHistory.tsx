@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer } from "lucide-react";
 import { EditSaleDialog } from "@/components/EditSaleDialog";
+import { PrintBillDialog } from "@/components/PrintBillDialog";
 import type { SalesHistory } from "@shared/schema";
 
 export default function SalesHistoryPage() {
@@ -23,6 +24,8 @@ export default function SalesHistoryPage() {
   const [buyerFilter, setBuyerFilter] = useState("");
   const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [printingSale, setPrintingSale] = useState<SalesHistory | null>(null);
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
 
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/sales-history/years"],
@@ -51,6 +54,11 @@ export default function SalesHistoryPage() {
   const handleEditSale = (sale: SalesHistory) => {
     setEditingSale(sale);
     setEditDialogOpen(true);
+  };
+
+  const handlePrintSale = (sale: SalesHistory) => {
+    setPrintingSale(sale);
+    setPrintDialogOpen(true);
   };
 
   const clearFilters = () => {
@@ -305,15 +313,26 @@ export default function SalesHistoryPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditSale(sale)}
-                          data-testid={`button-edit-sale-${sale.id}`}
-                        >
-                          <Pencil className="h-4 w-4 mr-1" />
-                          {t("edit")}
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditSale(sale)}
+                            data-testid={`button-edit-sale-${sale.id}`}
+                          >
+                            <Pencil className="h-4 w-4 mr-1" />
+                            {t("edit")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handlePrintSale(sale)}
+                            data-testid={`button-print-sale-${sale.id}`}
+                          >
+                            <Printer className="h-4 w-4 mr-1" />
+                            {t("print")}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -348,6 +367,14 @@ export default function SalesHistoryPage() {
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
       />
+
+      {printingSale && (
+        <PrintBillDialog 
+          sale={printingSale}
+          open={printDialogOpen}
+          onOpenChange={setPrintDialogOpen}
+        />
+      )}
     </div>
   );
 }
