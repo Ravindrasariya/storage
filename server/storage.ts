@@ -357,7 +357,7 @@ export class DatabaseStorage implements IStorage {
           hammali,
         };
       })
-      .sort((a, b) => Number(a.lotNo) - Number(b.lotNo));
+      .sort((a, b) => parseInt(a.lotNo, 10) - parseInt(b.lotNo, 10));
 
     return {
       totalCapacity: coldStorage?.totalCapacity || 0,
