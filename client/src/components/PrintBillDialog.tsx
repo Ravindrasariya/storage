@@ -4,7 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { Printer, FileText, Receipt } from "lucide-react";
+import { Printer, FileText, Receipt, AlertTriangle } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
 
 interface PrintBillDialogProps {
@@ -16,11 +16,22 @@ interface PrintBillDialogProps {
 export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogProps) {
   const { t } = useI18n();
   const [billType, setBillType] = useState<"deduction" | "sales" | null>(null);
+  const [showPaymentWarning, setShowPaymentWarning] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
   });
+
+  const isPaid = sale.paymentStatus === "paid";
+
+  const handleBillTypeSelect = (type: "deduction" | "sales") => {
+    if (!isPaid) {
+      setShowPaymentWarning(true);
+    } else {
+      setBillType(type);
+    }
+  };
 
   const handlePrint = () => {
     if (printRef.current) {
@@ -31,7 +42,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           <!DOCTYPE html>
           <html>
           <head>
-            <title>${billType === "deduction" ? "Cold Storage Deduction Bill" : "Sales Bill"}</title>
+            <title>${billType === "deduction" ? "शीत भण्डार कटौती बिल" : "विक्रय बिल"}</title>
             <style>
               @page {
                 size: A4;
@@ -125,23 +136,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               .payment-status {
                 margin-top: 10px;
                 padding: 6px;
-                background: #f0f0f0;
+                background: #d4edda;
+                color: #155724;
                 border-radius: 4px;
                 text-align: center;
                 font-weight: bold;
                 font-size: 11px;
-              }
-              .payment-status.paid {
-                background: #d4edda;
-                color: #155724;
-              }
-              .payment-status.due {
-                background: #f8d7da;
-                color: #721c24;
-              }
-              .payment-status.partial {
-                background: #fff3cd;
-                color: #856404;
               }
               .footer-note {
                 margin-top: 12px;
@@ -180,105 +180,105 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const renderDeductionBill = () => (
     <div ref={printRef}>
       <div className="bill-header">
-        <h1>{coldStorage?.name || "Cold Storage"}</h1>
-        <h2>Cold Storage Deduction Bill</h2>
+        <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
+        <h2>शीत भण्डार कटौती बिल</h2>
       </div>
 
       <div className="two-column">
         <div className="section">
-          <div className="section-title">Farmer Details</div>
+          <div className="section-title">किसान विवरण</div>
           <div className="info-row">
-            <span className="info-label">Name:</span>
+            <span className="info-label">नाम:</span>
             <span className="info-value">{sale.farmerName}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Contact:</span>
+            <span className="info-label">मोबाइल:</span>
             <span className="info-value">{sale.contactNumber}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Village:</span>
+            <span className="info-label">गाँव:</span>
             <span className="info-value">{sale.village}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">District:</span>
+            <span className="info-label">जिला:</span>
             <span className="info-value">{sale.district}, {sale.state}</span>
           </div>
         </div>
 
         <div className="section">
-          <div className="section-title">Sale Details</div>
+          <div className="section-title">विक्रय विवरण</div>
           <div className="info-row">
-            <span className="info-label">Sale Date:</span>
-            <span className="info-value">{format(new Date(sale.soldAt), "dd MMM yyyy")}</span>
+            <span className="info-label">विक्रय तिथि:</span>
+            <span className="info-value">{format(new Date(sale.soldAt), "dd/MM/yyyy")}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Lot # / Bags:</span>
-            <span className="info-value">{sale.lotNo} ({sale.originalLotSize} bags)</span>
+            <span className="info-label">लॉट नं. / बोरी:</span>
+            <span className="info-value">{sale.lotNo} ({sale.originalLotSize} बोरी)</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Qty Sold:</span>
-            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
+            <span className="info-label">बेची गई:</span>
+            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Buyer:</span>
+            <span className="info-label">खरीदार:</span>
             <span className="info-value">{sale.buyerName || "-"}</span>
           </div>
         </div>
       </div>
 
       <div className="section">
-        <div className="section-title">Charges Breakdown</div>
+        <div className="section-title">शुल्क विवरण</div>
         <table className="charges-table">
           <thead>
             <tr>
-              <th>Description</th>
-              <th className="amount">Amount (Rs.)</th>
+              <th>विवरण</th>
+              <th className="amount">राशि (रु.)</th>
             </tr>
           </thead>
           <tbody>
             {hasSeparateCharges ? (
               <>
                 <tr>
-                  <td>Cold Storage Charges ({sale.coldCharge} Rs/bag × {sale.quantitySold} bags)</td>
+                  <td>शीत भण्डार शुल्क ({sale.coldCharge} रु./बोरी × {sale.quantitySold} बोरी)</td>
                   <td className="amount">{coldChargeAmount.toLocaleString()}</td>
                 </tr>
                 <tr>
-                  <td>Hammali ({sale.hammali} Rs/bag × {sale.quantitySold} bags)</td>
+                  <td>हम्माली ({sale.hammali} रु./बोरी × {sale.quantitySold} बोरी)</td>
                   <td className="amount">{hammaliAmount.toLocaleString()}</td>
                 </tr>
               </>
             ) : (
               <tr>
-                <td>Cold Storage Charges + Hammali ({sale.pricePerBag} Rs/bag × {sale.quantitySold} bags)</td>
+                <td>शीत भण्डार शुल्क + हम्माली ({sale.pricePerBag} रु./बोरी × {sale.quantitySold} बोरी)</td>
                 <td className="amount">{(sale.coldStorageCharge || 0).toLocaleString()}</td>
               </tr>
             )}
             <tr>
-              <td>Katta (Weighing Charges)</td>
+              <td>काटा (तौल शुल्क)</td>
               <td className="amount">{(sale.kataCharges || 0) > 0 ? (sale.kataCharges || 0).toLocaleString() : "-"}</td>
             </tr>
             <tr>
-              <td>Extra Hammali</td>
+              <td>अतिरिक्त हम्माली</td>
               <td className="amount">{(sale.extraHammali || 0) > 0 ? (sale.extraHammali || 0).toLocaleString() : "-"}</td>
             </tr>
             <tr>
-              <td>Grading Charges</td>
+              <td>ग्रेडिंग शुल्क</td>
               <td className="amount">{(sale.gradingCharges || 0) > 0 ? (sale.gradingCharges || 0).toLocaleString() : "-"}</td>
             </tr>
             <tr className="total-row">
-              <td><strong>Total Cold Storage Charges</strong></td>
-              <td className="amount"><strong>Rs. {totalCharges.toLocaleString()}</strong></td>
+              <td><strong>कुल शीत भण्डार शुल्क</strong></td>
+              <td className="amount"><strong>रु. {totalCharges.toLocaleString()}</strong></td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div className={`payment-status ${sale.paymentStatus}`}>
-        Payment Status: {sale.paymentStatus === "paid" ? "PAID" : sale.paymentStatus === "partial" ? `PARTIAL (Paid: Rs. ${(sale.paidAmount || 0).toLocaleString()})` : "DUE"}
+      <div className="payment-status">
+        भुगतान स्थिति: भुगतान हो गया
       </div>
 
       <div className="footer-note">
-        This bill is digitally generated and does not require any stamp.
+        यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
       </div>
     </div>
   );
@@ -286,106 +286,106 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const renderSalesBill = () => (
     <div ref={printRef}>
       <div className="bill-header">
-        <h1>{coldStorage?.name || "Cold Storage"}</h1>
-        <h2>Sales Bill</h2>
+        <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
+        <h2>विक्रय बिल</h2>
       </div>
 
       <div className="two-column">
         <div className="section">
-          <div className="section-title">Farmer Details</div>
+          <div className="section-title">किसान विवरण</div>
           <div className="info-row">
-            <span className="info-label">Name:</span>
+            <span className="info-label">नाम:</span>
             <span className="info-value">{sale.farmerName}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Contact:</span>
+            <span className="info-label">मोबाइल:</span>
             <span className="info-value">{sale.contactNumber}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Village:</span>
+            <span className="info-label">गाँव:</span>
             <span className="info-value">{sale.village}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">District:</span>
+            <span className="info-label">जिला:</span>
             <span className="info-value">{sale.district}, {sale.state}</span>
           </div>
         </div>
 
         <div className="section">
-          <div className="section-title">Sale Details</div>
+          <div className="section-title">विक्रय विवरण</div>
           <div className="info-row">
-            <span className="info-label">Sale Date:</span>
-            <span className="info-value">{format(new Date(sale.soldAt), "dd MMM yyyy")}</span>
+            <span className="info-label">विक्रय तिथि:</span>
+            <span className="info-value">{format(new Date(sale.soldAt), "dd/MM/yyyy")}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Lot # / Bags:</span>
-            <span className="info-value">{sale.lotNo} ({sale.originalLotSize} bags)</span>
+            <span className="info-label">लॉट नं. / बोरी:</span>
+            <span className="info-value">{sale.lotNo} ({sale.originalLotSize} बोरी)</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Qty Sold:</span>
-            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
+            <span className="info-label">बेची गई:</span>
+            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Buyer:</span>
+            <span className="info-label">खरीदार:</span>
             <span className="info-value">{sale.buyerName || "-"}</span>
           </div>
         </div>
       </div>
 
       <div className="section">
-        <div className="section-title">Income & Deductions</div>
+        <div className="section-title">आय एवं कटौती</div>
         <table className="charges-table">
           <tbody>
             <tr className="total-row income">
-              <td><strong>Total Income</strong> ({sale.netWeight || 0} kg × Rs. {sale.pricePerKg || 0}/kg)</td>
-              <td className="amount"><strong>Rs. {totalIncome.toLocaleString()}</strong></td>
+              <td><strong>कुल आय</strong> ({sale.netWeight || 0} कि.ग्रा. × रु. {sale.pricePerKg || 0}/कि.ग्रा.)</td>
+              <td className="amount"><strong>रु. {totalIncome.toLocaleString()}</strong></td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <div className="section">
-        <div className="section-title">Deductions</div>
+        <div className="section-title">कटौती</div>
         <table className="charges-table">
           <thead>
             <tr>
-              <th>Description</th>
-              <th className="amount">Amount (Rs.)</th>
+              <th>विवरण</th>
+              <th className="amount">राशि (रु.)</th>
             </tr>
           </thead>
           <tbody>
             {hasSeparateCharges ? (
               <>
                 <tr>
-                  <td>Cold Storage Charges ({sale.coldCharge} Rs/bag × {sale.quantitySold} bags)</td>
+                  <td>शीत भण्डार शुल्क ({sale.coldCharge} रु./बोरी × {sale.quantitySold} बोरी)</td>
                   <td className="amount">{coldChargeAmount.toLocaleString()}</td>
                 </tr>
                 <tr>
-                  <td>Hammali ({sale.hammali} Rs/bag × {sale.quantitySold} bags)</td>
+                  <td>हम्माली ({sale.hammali} रु./बोरी × {sale.quantitySold} बोरी)</td>
                   <td className="amount">{hammaliAmount.toLocaleString()}</td>
                 </tr>
               </>
             ) : (
               <tr>
-                <td>Cold Storage Charges + Hammali ({sale.pricePerBag} Rs/bag × {sale.quantitySold} bags)</td>
+                <td>शीत भण्डार शुल्क + हम्माली ({sale.pricePerBag} रु./बोरी × {sale.quantitySold} बोरी)</td>
                 <td className="amount">{(sale.coldStorageCharge || 0).toLocaleString()}</td>
               </tr>
             )}
             <tr>
-              <td>Katta (Weighing Charges)</td>
+              <td>काटा (तौल शुल्क)</td>
               <td className="amount">{(sale.kataCharges || 0) > 0 ? (sale.kataCharges || 0).toLocaleString() : "-"}</td>
             </tr>
             <tr>
-              <td>Extra Hammali</td>
+              <td>अतिरिक्त हम्माली</td>
               <td className="amount">{(sale.extraHammali || 0) > 0 ? (sale.extraHammali || 0).toLocaleString() : "-"}</td>
             </tr>
             <tr>
-              <td>Grading Charges</td>
+              <td>ग्रेडिंग शुल्क</td>
               <td className="amount">{(sale.gradingCharges || 0) > 0 ? (sale.gradingCharges || 0).toLocaleString() : "-"}</td>
             </tr>
             <tr className="total-row">
-              <td><strong>Total Cold Storage Charges</strong></td>
-              <td className="amount"><strong>Rs. {totalCharges.toLocaleString()}</strong></td>
+              <td><strong>कुल शीत भण्डार शुल्क</strong></td>
+              <td className="amount"><strong>रु. {totalCharges.toLocaleString()}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -395,22 +395,25 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         <table className="charges-table">
           <tbody>
             <tr className="total-row net-income">
-              <td><strong>Net Income (Total Income - Total Charges)</strong></td>
-              <td className="amount"><strong>Rs. {netIncome.toLocaleString()}</strong></td>
+              <td><strong>शुद्ध आय (कुल आय - कुल शुल्क)</strong></td>
+              <td className="amount"><strong>रु. {netIncome.toLocaleString()}</strong></td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <div className="footer-note">
-        This bill is digitally generated and does not require any stamp.
+        यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
       </div>
     </div>
   );
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
-      if (!isOpen) setBillType(null);
+      if (!isOpen) {
+        setBillType(null);
+        setShowPaymentWarning(false);
+      }
       onOpenChange(isOpen);
     }}>
       <DialogContent className="max-w-md">
@@ -421,7 +424,30 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </DialogTitle>
         </DialogHeader>
 
-        {!billType ? (
+        {showPaymentWarning ? (
+          <div className="space-y-4 py-4">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="rounded-full bg-amber-100 p-3">
+                <AlertTriangle className="h-8 w-8 text-amber-600" />
+              </div>
+              <h3 className="font-semibold text-lg">भुगतान बकाया है</h3>
+              <p className="text-sm text-muted-foreground">
+                बिल जनरेट करने के लिए पहले शीत भण्डार का बकाया भुगतान करना होगा।
+              </p>
+              <p className="text-sm font-medium text-amber-700">
+                बकाया राशि: रु. {(totalCharges - (sale.paidAmount || 0)).toLocaleString()}
+              </p>
+            </div>
+            <div className="flex justify-center">
+              <Button variant="outline" onClick={() => {
+                setShowPaymentWarning(false);
+                onOpenChange(false);
+              }} data-testid="button-close-warning">
+                बंद करें
+              </Button>
+            </div>
+          </div>
+        ) : !billType ? (
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground text-center">
               {t("selectBillType")}
@@ -430,7 +456,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               <Button
                 variant="outline"
                 className="h-auto py-4 flex flex-col items-center gap-2"
-                onClick={() => setBillType("deduction")}
+                onClick={() => handleBillTypeSelect("deduction")}
                 data-testid="button-deduction-bill"
               >
                 <Receipt className="h-6 w-6" />
@@ -440,7 +466,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               <Button
                 variant="outline"
                 className="h-auto py-4 flex flex-col items-center gap-2"
-                onClick={() => setBillType("sales")}
+                onClick={() => handleBillTypeSelect("sales")}
                 data-testid="button-sales-bill"
               >
                 <FileText className="h-6 w-6" />
