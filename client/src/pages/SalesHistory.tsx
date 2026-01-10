@@ -80,18 +80,14 @@ export default function SalesHistoryPage() {
   const hasActiveFilters = yearFilter || farmerFilter || mobileFilter || paymentFilter || buyerFilter;
 
   // Calculate summary totals from filtered data
+  // Use actual paidAmount and dueAmount fields to properly handle partial payments
   const summary = salesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
-      const totalCharge = (sale.coldStorageCharge || 0) + 
-        (sale.kataCharges || 0) + 
-        (sale.extraHammali || 0) + 
-        (sale.gradingCharges || 0);
-      if (sale.paymentStatus === "paid") {
-        acc.amountPaid += totalCharge;
-      } else {
-        acc.amountDue += totalCharge;
-      }
+      // Use the actual paidAmount and dueAmount fields from each sale record
+      // This correctly handles full payments, full due, and partial payments
+      acc.amountPaid += sale.paidAmount || 0;
+      acc.amountDue += sale.dueAmount || 0;
       return acc;
     },
     { totalBags: 0, amountPaid: 0, amountDue: 0 }

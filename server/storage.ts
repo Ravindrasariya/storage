@@ -693,18 +693,24 @@ export class DatabaseStorage implements IStorage {
     const hammaliRate = lot.bagType === "wafer" ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
     const coldChargeRate = rate - hammaliRate; // Cold storage charge is rate minus hammali
     const saleCharge = rate * lot.remainingSize;
+    
+    // Calculate total charge including all extra charges
+    const kata = kataCharges || 0;
+    const extraHammaliTotal = extraHammali || 0;
+    const grading = gradingCharges || 0;
+    const totalChargeWithExtras = saleCharge + kata + extraHammaliTotal + grading;
 
-    // Calculate paid/due amounts based on payment status (normalize to ensure sum equals total)
+    // Calculate paid/due amounts based on payment status (include all charges)
     let salePaidAmount = 0;
     let saleDueAmount = 0;
     if (paymentStatus === "paid") {
-      salePaidAmount = saleCharge;
+      salePaidAmount = totalChargeWithExtras;
     } else if (paymentStatus === "due") {
-      saleDueAmount = saleCharge;
+      saleDueAmount = totalChargeWithExtras;
     } else if (paymentStatus === "partial") {
       const rawPaid = Math.max(0, paidAmount || 0);
-      salePaidAmount = Math.min(rawPaid, saleCharge);
-      saleDueAmount = saleCharge - salePaidAmount;
+      salePaidAmount = Math.min(rawPaid, totalChargeWithExtras);
+      saleDueAmount = totalChargeWithExtras - salePaidAmount;
     }
 
     const bagsToRemove = lot.remainingSize;
