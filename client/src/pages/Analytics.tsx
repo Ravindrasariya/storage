@@ -219,9 +219,9 @@ export default function Analytics() {
                   <p className="text-xl font-bold text-green-600 dark:text-green-400" data-testid="text-merchant-paid">
                     Rs. {(selectedMerchantData?.totalChargePaid || 0).toLocaleString()}
                   </p>
-                  <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
-                    <span data-testid="text-merchant-cash">{t("cash")}: Rs. {(selectedMerchantData?.cashPaid || 0).toLocaleString()}</span>
-                    <span data-testid="text-merchant-account">{t("account")}: Rs. {(selectedMerchantData?.accountPaid || 0).toLocaleString()}</span>
+                  <div className="flex flex-wrap gap-3 mt-2 text-xs">
+                    <span className="text-emerald-600 dark:text-emerald-400" data-testid="text-merchant-cash">{t("cash")}: Rs. {(selectedMerchantData?.cashPaid || 0).toLocaleString()}</span>
+                    <span className="text-blue-600 dark:text-blue-400" data-testid="text-merchant-account">{t("account")}: Rs. {(selectedMerchantData?.accountPaid || 0).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
