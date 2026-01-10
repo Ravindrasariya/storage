@@ -306,24 +306,7 @@ export default function SalesHistoryPage() {
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
                       <TableCell className="text-right font-medium">
-                        <div>Rs. {((sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0)).toLocaleString()}</div>
-                        <div className="text-xs text-muted-foreground font-normal mt-0.5 space-y-0.5">
-                          {sale.coldCharge != null && sale.quantitySold && (
-                            <div>Rs.{(sale.coldCharge * sale.quantitySold).toLocaleString()} ({t("coldStorageCharge")})</div>
-                          )}
-                          {sale.hammali != null && sale.quantitySold && sale.hammali > 0 && (
-                            <div>+ Rs.{(sale.hammali * sale.quantitySold).toLocaleString()} ({t("hammali")})</div>
-                          )}
-                          {sale.kataCharges != null && sale.kataCharges > 0 && (
-                            <div>+ Rs.{sale.kataCharges.toLocaleString()} ({t("kataCharges")})</div>
-                          )}
-                          {sale.extraHammali != null && sale.extraHammali > 0 && (
-                            <div>+ Rs.{sale.extraHammali.toLocaleString()} ({t("extraHammaliPerBag")})</div>
-                          )}
-                          {sale.gradingCharges != null && sale.gradingCharges > 0 && (
-                            <div>+ Rs.{sale.gradingCharges.toLocaleString()} ({t("totalGradingCharges")})</div>
-                          )}
-                        </div>
+                        Rs. {((sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0)).toLocaleString()}
                       </TableCell>
                       <TableCell>{sale.buyerName || "-"}</TableCell>
                       <TableCell className="text-right">
