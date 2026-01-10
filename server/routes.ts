@@ -324,7 +324,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Lot not found" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -436,6 +436,7 @@ export async function registerRoutes(
         buyerName: buyerName || null,
         pricePerKg: pricePerKg || null,
         paymentStatus,
+        paymentMode: (paymentStatus === "paid" || paymentStatus === "partial") ? paymentMode : null,
         paidAmount: salePaidAmount,
         dueAmount: saleDueAmount,
         entryDate: lot.createdAt,
@@ -461,6 +462,7 @@ export async function registerRoutes(
   // Finalize Sale
   const finalizeSaleSchema = z.object({
     paymentStatus: z.enum(["due", "paid", "partial"]),
+    paymentMode: z.enum(["cash", "account"]).optional(),
     buyerName: z.string().optional(),
     pricePerKg: z.number().optional(),
     paidAmount: z.number().optional(),
@@ -483,7 +485,8 @@ export async function registerRoutes(
         validatedData.buyerName,
         validatedData.pricePerKg,
         validatedData.paidAmount,
-        validatedData.dueAmount
+        validatedData.dueAmount,
+        validatedData.paymentMode
       );
       if (!lot) {
         return res.status(404).json({ error: "Lot not found or already sold" });

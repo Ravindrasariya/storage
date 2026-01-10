@@ -47,10 +47,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [deliveryType, setDeliveryType] = useState<"gate" | "bilty">("gate");
   const [extraHammaliPerBag, setExtraHammaliPerBag] = useState<string>("");
   const [totalGradingCharges, setTotalGradingCharges] = useState<string>("");
+  const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position });
+    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -72,8 +73,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -99,6 +100,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setPartialQuantity(0);
     setPartialPrice(0);
     setPaymentStatus("paid");
+    setPaymentMode("cash");
     setBuyerName("");
     setPricePerKg("");
     setCustomPaidAmount("");
@@ -160,12 +162,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         dueAmount = totalCharge - paidAmount;
       }
       
+      // Only include paymentMode if payment status is paid or partial
+      const modeToSend = (paymentStatus === "paid" || paymentStatus === "partial") ? paymentMode : undefined;
+      
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
           lotId: selectedLot.id,
           quantity: partialQuantity,
           pricePerBag: selectedLot.rate,
           paymentStatus,
+          paymentMode: modeToSend,
           buyerName: buyerName || undefined,
           pricePerKg: parsedPricePerKg,
           paidAmount,
@@ -176,6 +182,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         finalizeSaleMutation.mutate({
           lotId: selectedLot.id,
           paymentStatus,
+          paymentMode: modeToSend,
           buyerName: buyerName || undefined,
           pricePerKg: parsedPricePerKg,
           paidAmount,
@@ -501,6 +508,30 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   </div>
                 </RadioGroup>
               </div>
+
+              {(paymentStatus === "paid" || paymentStatus === "partial") && (
+                <div className="space-y-2">
+                  <Label>{t("paymentMode")}</Label>
+                  <RadioGroup
+                    value={paymentMode}
+                    onValueChange={(value) => setPaymentMode(value as "cash" | "account")}
+                    className="flex flex-wrap gap-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="cash" id="cash-full" data-testid="radio-cash-full" />
+                      <Label htmlFor="cash-full" className="font-medium">
+                        {t("cash")}
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="account" id="account-full" data-testid="radio-account-full" />
+                      <Label htmlFor="account-full" className="font-medium">
+                        {t("account")}
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              )}
               
               {paymentStatus === "partial" && (
                 <div className="space-y-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
@@ -724,6 +755,30 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   </div>
                 </RadioGroup>
               </div>
+
+              {(paymentStatus === "paid" || paymentStatus === "partial") && (
+                <div className="space-y-2">
+                  <Label>{t("paymentMode")}</Label>
+                  <RadioGroup
+                    value={paymentMode}
+                    onValueChange={(value) => setPaymentMode(value as "cash" | "account")}
+                    className="flex flex-wrap gap-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="cash" id="cash-partial" data-testid="radio-cash-partial" />
+                      <Label htmlFor="cash-partial" className="font-medium">
+                        {t("cash")}
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="account" id="account-partial" data-testid="radio-account-partial" />
+                      <Label htmlFor="account-partial" className="font-medium">
+                        {t("account")}
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              )}
               
               {paymentStatus === "partial" && partialQuantity > 0 && (
                 <div className="space-y-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
