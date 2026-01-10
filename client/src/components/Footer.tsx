@@ -18,10 +18,10 @@ export function Footer() {
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
           <span data-testid="text-created-by">
-            {language === "hi" ? "" : "Created & Maintained by "}
+            {language === "hi" ? "" : "Powered by "}
             <span className="text-green-600 dark:text-green-400 font-medium">Krashu</span>
             <span className="text-orange-500 dark:text-orange-400 font-medium">Ved</span>
-            {language === "hi" ? " द्वारा निर्मित और अनुरक्षित" : ""}
+            {language === "hi" ? " द्वारा संचालित" : ""}
           </span>
           <span data-testid="text-rights">
             {language === "hi" ? "सर्वाधिकार सुरक्षित" : "All Rights Reserved"}
