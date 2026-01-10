@@ -25,6 +25,8 @@ const translations: Translations = {
   bags: { en: "bags", hi: "बैग" },
   chamberFillRates: { en: "Chamber Fill Rates", hi: "कक्ष भरण दर" },
   perBagRates: { en: "Per Bag Rates", hi: "प्रति बैग दरें" },
+  perBagRate: { en: "Per Bag Rate", hi: "प्रति बैग दर" },
+  bag: { en: "bag", hi: "बैग" },
   wafer: { en: "Wafer", hi: "वेफर" },
   seed: { en: "Seed", hi: "बीज" },
   distinctFarmers: { en: "Distinct Farmers", hi: "अलग किसान" },

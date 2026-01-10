@@ -142,7 +142,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     if (selectedLot) {
       const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
       const totalCharge = saleMode === "partial" 
-        ? calculateTotalCharge(selectedLot, partialQuantity, partialPrice) 
+        ? calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate) 
         : calculateTotalCharge(selectedLot);
       
       let paidAmount: number | undefined;
@@ -164,7 +164,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         partialSaleMutation.mutate({
           lotId: selectedLot.id,
           quantity: partialQuantity,
-          pricePerBag: partialPrice,
+          pricePerBag: selectedLot.rate,
           paymentStatus,
           buyerName: buyerName || undefined,
           pricePerKg: parsedPricePerKg,
@@ -565,15 +565,17 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>{t("pricePerBag")}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={partialPrice || ""}
-                  onChange={(e) => setPartialPrice(Number(e.target.value))}
-                  data-testid="input-partial-price"
-                />
+              <div className="p-4 rounded-lg bg-muted/50 border space-y-2">
+                <div className="text-sm font-medium">{t("perBagRate")}</div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">Rs. {selectedLot.coldCharge}</span>
+                  <span className="text-muted-foreground">({t("coldStorageCharge")})</span>
+                  <span>+</span>
+                  <span className="font-medium">Rs. {selectedLot.hammali}</span>
+                  <span className="text-muted-foreground">({t("hammali")})</span>
+                  <span>=</span>
+                  <span className="font-bold text-chart-2">Rs. {selectedLot.rate}/{t("bag")}</span>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -652,16 +654,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
               )}
 
-              {partialQuantity > 0 && partialPrice > 0 && (
+              {partialQuantity > 0 && (
                 <div className="p-4 rounded-lg bg-muted">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
                     <span className="text-2xl font-bold text-chart-2">
-                      Rs. {calculateTotalCharge(selectedLot, partialQuantity, partialPrice).toLocaleString()}
+                      Rs. {calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate).toLocaleString()}
                     </span>
                   </div>
                   <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                    <div>{partialQuantity} {t("bags")} x Rs.{partialPrice} = Rs. {(partialQuantity * partialPrice).toLocaleString()}</div>
+                    <div>{partialQuantity} {t("bags")} x Rs.{selectedLot.rate} = Rs. {(partialQuantity * selectedLot.rate).toLocaleString()}</div>
                     {(parseFloat(kataCharges) || 0) > 0 && (
                       <div>+ {t("kataCharges")}: Rs. {parseFloat(kataCharges).toLocaleString()}</div>
                     )}
@@ -703,17 +705,17 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </RadioGroup>
               </div>
               
-              {paymentStatus === "partial" && partialQuantity > 0 && partialPrice > 0 && (
+              {paymentStatus === "partial" && partialQuantity > 0 && (
                 <div className="space-y-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
                   <div className="text-sm text-muted-foreground">
-                    {t("total")} {t("storageCharge")}: <span className="font-bold text-foreground">Rs. {calculateTotalCharge(selectedLot, partialQuantity, partialPrice).toLocaleString()}</span>
+                    {t("total")} {t("storageCharge")}: <span className="font-bold text-foreground">Rs. {calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate).toLocaleString()}</span>
                   </div>
                   <div className="space-y-2">
                     <Label>{t("amountPaid") || "Amount Paid"}</Label>
                     <Input
                       type="number"
                       min={0}
-                      max={calculateTotalCharge(selectedLot, partialQuantity, partialPrice)}
+                      max={calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate)}
                       value={customPaidAmount}
                       onChange={(e) => setCustomPaidAmount(e.target.value)}
                       placeholder="0"
@@ -721,17 +723,17 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       data-testid="input-partial-custom-paid-amount"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Max: Rs. {calculateTotalCharge(selectedLot, partialQuantity, partialPrice).toLocaleString()}
+                      Max: Rs. {calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate).toLocaleString()}
                     </p>
                   </div>
                   <div className="p-3 rounded-lg bg-background text-sm space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-green-600 font-medium">{t("paid")}:</span>
-                      <span className="font-bold text-green-600">Rs. {Math.min(parseFloat(customPaidAmount) || 0, calculateTotalCharge(selectedLot, partialQuantity, partialPrice)).toLocaleString()}</span>
+                      <span className="font-bold text-green-600">Rs. {Math.min(parseFloat(customPaidAmount) || 0, calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate)).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-amber-600 font-medium">{t("due")}:</span>
-                      <span className="font-bold text-amber-600">Rs. {Math.max(0, calculateTotalCharge(selectedLot, partialQuantity, partialPrice) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
+                      <span className="font-bold text-amber-600">Rs. {Math.max(0, calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -751,7 +753,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               onClick={handleConfirmSale}
               disabled={
                 (saleMode === "full" && finalizeSaleMutation.isPending) ||
-                (saleMode === "partial" && (partialSaleMutation.isPending || partialQuantity <= 0 || partialQuantity > (selectedLot?.remainingSize || 0) || partialPrice <= 0))
+                (saleMode === "partial" && (partialSaleMutation.isPending || partialQuantity <= 0 || partialQuantity > (selectedLot?.remainingSize || 0)))
               }
               data-testid="button-confirm-sale"
             >
