@@ -152,6 +152,19 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 color: #666;
                 font-style: italic;
               }
+              .branding {
+                margin-top: 10px;
+                text-align: center;
+                font-size: 12px;
+              }
+              .krashu {
+                color: #16a34a;
+                font-weight: 600;
+              }
+              .ved {
+                color: #f97316;
+                font-weight: 600;
+              }
             </style>
           </head>
           <body>
@@ -280,6 +293,9 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       <div className="footer-note">
         यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
       </div>
+      <div className="branding">
+        <span className="krashu">Krashu</span><span className="ved">Ved</span> द्वारा निर्मित
+      </div>
     </div>
   );
 
@@ -404,6 +420,9 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
       <div className="footer-note">
         यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
+      </div>
+      <div className="branding">
+        <span className="krashu">Krashu</span><span className="ved">Ved</span> द्वारा निर्मित
       </div>
     </div>
   );
