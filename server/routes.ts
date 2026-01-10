@@ -183,6 +183,9 @@ export async function registerRoutes(
         lots = lots.filter((lot) => lot.saleStatus === "sold" && lot.paymentStatus === "due");
       }
       
+      // Sort by lot number in ascending order
+      lots = lots.sort((a, b) => parseInt(a.lotNo, 10) - parseInt(b.lotNo, 10));
+      
       res.json(lots);
     } catch (error) {
       res.status(500).json({ error: "Failed to search lots" });
