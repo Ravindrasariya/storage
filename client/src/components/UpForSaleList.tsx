@@ -266,23 +266,14 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   </span>
                 </div>
                 
-                <div className="text-sm space-y-1">
-                  <div>
-                    <span className="text-muted-foreground">{t("storageCharge")}: </span>
-                    <span className="font-medium text-chart-2">
-                      Rs. {calculateBaseCharge(lot).toLocaleString()}
-                    </span>
-                    <span className="text-muted-foreground text-xs ml-1">
-                      ({lot.remainingSize} x Rs.{lot.rate})
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    <span>{t("rateBreakdown")}: </span>
-                    <span className="text-foreground">Rs.{lot.coldCharge}</span>
-                    <span> ({t("coldStorageCharge")}) + </span>
-                    <span className="text-foreground">Rs.{lot.hammali}</span>
-                    <span> ({t("hammali")})</span>
-                  </div>
+                <div className="text-sm">
+                  <span className="text-muted-foreground">{t("storageCharge")}: </span>
+                  <span className="font-medium text-chart-2">
+                    Rs. {calculateBaseCharge(lot).toLocaleString()}
+                  </span>
+                  <span className="text-muted-foreground text-xs ml-1">
+                    ({lot.remainingSize} x Rs.{lot.rate})
+                  </span>
                 </div>
                 
                 <div className="flex gap-2 flex-wrap">
