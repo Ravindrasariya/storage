@@ -190,6 +190,16 @@ const translations: Translations = {
   addRow: { en: "Add Row", hi: "पंक्ति जोड़ें" },
   saveMaintenance: { en: "Save Maintenance", hi: "रखरखाव सहेजें" },
 
+  // Additional Charges
+  kataCharges: { en: "Kata (Weighing) Charges", hi: "काटा (तौल) शुल्क" },
+  deliveryType: { en: "Delivery Type", hi: "डिलीवरी प्रकार" },
+  biltyCut: { en: "Bilty Cut", hi: "बिल्टी कट" },
+  gateCut: { en: "Gate Cut", hi: "गेट कट" },
+  extraHammaliPerBag: { en: "Extra Hammali/bag", hi: "अतिरिक्त हमाली/बैग" },
+  totalGradingCharges: { en: "Total Grading Charges", hi: "कुल ग्रेडिंग शुल्क" },
+  rateBreakdown: { en: "Rate Breakdown", hi: "दर विवरण" },
+  perBag: { en: "/bag", hi: "/बैग" },
+
   // Reset Season
   resetForNextSeason: { en: "Reset for Next Season", hi: "अगले सीज़न के लिए रीसेट करें" },
   resetWarning: { en: "This option should only be selected when a new season is starting. All data on dashboard and search/edit page will be reset to zero.", hi: "यह विकल्प केवल तभी चुना जाना चाहिए जब नया सीज़न शुरू हो रहा हो। डैशबोर्ड और खोज/संपादन पृष्ठ पर सभी डेटा शून्य पर रीसेट हो जाएगा।" },
