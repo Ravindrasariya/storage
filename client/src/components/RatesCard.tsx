@@ -22,10 +22,14 @@ export function RatesCard({
   const { t } = useI18n();
 
   const formatRate = (coldCharge?: number, hammali?: number, total?: number) => {
-    if (coldCharge !== undefined && hammali !== undefined) {
+    if (coldCharge != null && hammali != null) {
       return `${coldCharge}/${hammali}`;
     }
     return total?.toString() || "0";
+  };
+  
+  const hasSplitRates = (coldCharge?: number, hammali?: number) => {
+    return coldCharge != null && hammali != null;
   };
 
   return (
@@ -40,7 +44,7 @@ export function RatesCard({
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">{t("wafer")}</p>
-          {waferColdCharge !== undefined && waferHammali !== undefined && (
+          {hasSplitRates(waferColdCharge, waferHammali) && (
             <p className="text-xs text-muted-foreground mt-1">
               ({t("total")}: {waferRate})
             </p>
@@ -54,7 +58,7 @@ export function RatesCard({
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">{t("seed")}</p>
-          {seedColdCharge !== undefined && seedHammali !== undefined && (
+          {hasSplitRates(seedColdCharge, seedHammali) && (
             <p className="text-xs text-muted-foreground mt-1">
               ({t("total")}: {seedRate})
             </p>
