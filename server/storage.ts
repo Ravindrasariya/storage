@@ -109,7 +109,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getChambers(coldStorageId: string): Promise<Chamber[]> {
-    return db.select().from(chambers).where(eq(chambers.coldStorageId, coldStorageId));
+    return db.select().from(chambers).where(eq(chambers.coldStorageId, coldStorageId)).orderBy(chambers.name);
   }
 
   async getChamber(id: string): Promise<Chamber | undefined> {
