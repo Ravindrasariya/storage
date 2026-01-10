@@ -572,5 +572,73 @@ export async function registerRoutes(
     }
   });
 
+  // Maintenance Records
+  const createMaintenanceSchema = z.object({
+    taskDescription: z.string(),
+    responsiblePerson: z.string(),
+    nextDueDate: z.string(),
+  });
+
+  const updateMaintenanceSchema = z.object({
+    taskDescription: z.string().optional(),
+    responsiblePerson: z.string().optional(),
+    nextDueDate: z.string().optional(),
+  });
+
+  app.get("/api/maintenance", async (req, res) => {
+    try {
+      const records = await storage.getMaintenanceRecords(DEFAULT_COLD_STORAGE_ID);
+      res.json(records);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch maintenance records" });
+    }
+  });
+
+  app.post("/api/maintenance", async (req, res) => {
+    try {
+      const validatedData = createMaintenanceSchema.parse(req.body);
+      const record = await storage.createMaintenanceRecord({
+        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        taskDescription: validatedData.taskDescription,
+        responsiblePerson: validatedData.responsiblePerson,
+        nextDueDate: validatedData.nextDueDate,
+      });
+      res.json(record);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid maintenance data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create maintenance record" });
+    }
+  });
+
+  app.patch("/api/maintenance/:id", async (req, res) => {
+    try {
+      const validatedData = updateMaintenanceSchema.parse(req.body);
+      const updated = await storage.updateMaintenanceRecord(req.params.id, validatedData);
+      if (!updated) {
+        return res.status(404).json({ error: "Maintenance record not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid maintenance data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update maintenance record" });
+    }
+  });
+
+  app.delete("/api/maintenance/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteMaintenanceRecord(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Maintenance record not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete maintenance record" });
+    }
+  });
+
   return httpServer;
 }

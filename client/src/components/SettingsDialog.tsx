@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -25,8 +25,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Save, Plus, Trash2, RefreshCcw, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
-import type { Chamber, ChamberFloor } from "@shared/schema";
+import { Settings, Save, Plus, Trash2, RefreshCcw, AlertTriangle, ChevronDown, ChevronUp, Wrench } from "lucide-react";
+import type { Chamber, ChamberFloor, MaintenanceRecord } from "@shared/schema";
 
 interface ColdStorageSettings {
   id: string;
@@ -60,9 +60,37 @@ export function SettingsDialog() {
     queryKey: ["/api/chamber-floors"],
   });
 
+  const { data: maintenanceRecords } = useQuery<MaintenanceRecord[]>({
+    queryKey: ["/api/maintenance"],
+  });
+
   const [settings, setSettings] = useState<ColdStorageSettings | null>(null);
   const [chamberEdits, setChamberEdits] = useState<Chamber[]>([]);
   const [floorEdits, setFloorEdits] = useState<ChamberFloorsData>({});
+
+  interface MaintenanceRow {
+    id?: string;
+    taskDescription: string;
+    responsiblePerson: string;
+    nextDueDate: string;
+    isNew?: boolean;
+  }
+  const [maintenanceRows, setMaintenanceRows] = useState<MaintenanceRow[]>([]);
+
+  useEffect(() => {
+    if (open && maintenanceRecords) {
+      if (maintenanceRecords.length > 0) {
+        setMaintenanceRows(maintenanceRecords.map(r => ({
+          id: r.id,
+          taskDescription: r.taskDescription,
+          responsiblePerson: r.responsiblePerson,
+          nextDueDate: r.nextDueDate,
+        })));
+      } else if (maintenanceRows.length === 0) {
+        setMaintenanceRows([{ taskDescription: "", responsiblePerson: "", nextDueDate: "", isNew: true }]);
+      }
+    }
+  }, [open, maintenanceRecords]);
 
   const toggleExpandChamber = (chamberId: string) => {
     setExpandedChambers(prev => {
@@ -82,6 +110,16 @@ export function SettingsDialog() {
       setSettings({ ...coldStorage });
       setChamberEdits(chambers ? [...chambers] : []);
       setFloorEdits(chamberFloors ? { ...chamberFloors } : {});
+      if (maintenanceRecords && maintenanceRecords.length > 0) {
+        setMaintenanceRows(maintenanceRecords.map(r => ({
+          id: r.id,
+          taskDescription: r.taskDescription,
+          responsiblePerson: r.responsiblePerson,
+          nextDueDate: r.nextDueDate,
+        })));
+      } else {
+        setMaintenanceRows([{ taskDescription: "", responsiblePerson: "", nextDueDate: "", isNew: true }]);
+      }
     }
   };
 
@@ -187,6 +225,33 @@ export function SettingsDialog() {
         description: t("resetCannotProceed"),
         variant: "destructive",
       });
+    },
+  });
+
+  const createMaintenanceMutation = useMutation({
+    mutationFn: async (data: { taskDescription: string; responsiblePerson: string; nextDueDate: string }) => {
+      return apiRequest("POST", "/api/maintenance", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance"] });
+    },
+  });
+
+  const updateMaintenanceMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; taskDescription: string; responsiblePerson: string; nextDueDate: string }) => {
+      return apiRequest("PATCH", `/api/maintenance/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance"] });
+    },
+  });
+
+  const deleteMaintenanceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/maintenance/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/maintenance"] });
     },
   });
 
@@ -360,6 +425,66 @@ export function SettingsDialog() {
         ),
       };
     });
+  };
+
+  const handleAddMaintenanceRow = () => {
+    setMaintenanceRows(prev => [...prev, { taskDescription: "", responsiblePerson: "", nextDueDate: "", isNew: true }]);
+  };
+
+  const handleDeleteMaintenanceRow = (index: number) => {
+    const row = maintenanceRows[index];
+    if (row.id) {
+      deleteMaintenanceMutation.mutate(row.id);
+    }
+    setMaintenanceRows(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateMaintenanceRow = (index: number, field: "taskDescription" | "responsiblePerson" | "nextDueDate", value: string) => {
+    setMaintenanceRows(prev => 
+      prev.map((row, i) => i === index ? { ...row, [field]: value } : row)
+    );
+  };
+
+  const handleSaveMaintenance = async () => {
+    try {
+      for (const row of maintenanceRows) {
+        if (row.isNew || !row.id) {
+          if (row.taskDescription || row.responsiblePerson || row.nextDueDate) {
+            await createMaintenanceMutation.mutateAsync({
+              taskDescription: row.taskDescription,
+              responsiblePerson: row.responsiblePerson,
+              nextDueDate: row.nextDueDate,
+            });
+          }
+        } else {
+          await updateMaintenanceMutation.mutateAsync({
+            id: row.id,
+            taskDescription: row.taskDescription,
+            responsiblePerson: row.responsiblePerson,
+            nextDueDate: row.nextDueDate,
+          });
+        }
+      }
+      const updatedRecords = await queryClient.fetchQuery<MaintenanceRecord[]>({
+        queryKey: ["/api/maintenance"],
+      });
+      setMaintenanceRows(updatedRecords?.map(r => ({
+        id: r.id,
+        taskDescription: r.taskDescription,
+        responsiblePerson: r.responsiblePerson,
+        nextDueDate: r.nextDueDate,
+      })) || [{ taskDescription: "", responsiblePerson: "", nextDueDate: "", isNew: true }]);
+      toast({
+        title: t("success"),
+        description: "Maintenance records saved successfully",
+      });
+    } catch (error) {
+      toast({
+        title: t("error"),
+        description: "Failed to save maintenance records",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -605,6 +730,80 @@ export function SettingsDialog() {
                   </div>
                 );
               })}
+            </div>
+          </Card>
+
+          <Card className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wrench className="h-5 w-5 text-chart-4" />
+                <h4 className="font-semibold">{t("maintenance") || "Maintenance"}</h4>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddMaintenanceRow}
+                data-testid="button-add-maintenance-row"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                {t("addRow") || "Add Row"}
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground px-2">
+                <span className="col-span-4">{t("taskDescription") || "Task Description"}</span>
+                <span className="col-span-3">{t("responsiblePerson") || "Responsible Person"}</span>
+                <span className="col-span-3">{t("nextDueDate") || "Next Due Date"}</span>
+                <span className="col-span-2"></span>
+              </div>
+              {maintenanceRows.map((row, index) => (
+                <div key={row.id || `new-${index}`} className="grid grid-cols-12 gap-2 items-center">
+                  <Input
+                    value={row.taskDescription}
+                    onChange={(e) => updateMaintenanceRow(index, "taskDescription", e.target.value)}
+                    className="col-span-4"
+                    placeholder={t("taskDescription") || "Task description"}
+                    data-testid={`input-maintenance-task-${index}`}
+                  />
+                  <Input
+                    value={row.responsiblePerson}
+                    onChange={(e) => updateMaintenanceRow(index, "responsiblePerson", e.target.value)}
+                    className="col-span-3"
+                    placeholder={t("responsiblePerson") || "Person name"}
+                    data-testid={`input-maintenance-person-${index}`}
+                  />
+                  <Input
+                    value={row.nextDueDate}
+                    onChange={(e) => updateMaintenanceRow(index, "nextDueDate", e.target.value)}
+                    className="col-span-3"
+                    placeholder="DD/MM/YYYY"
+                    data-testid={`input-maintenance-date-${index}`}
+                  />
+                  <div className="col-span-2 flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteMaintenanceRow(index)}
+                      disabled={deleteMaintenanceMutation.isPending}
+                      data-testid={`button-delete-maintenance-${index}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button
+                onClick={handleSaveMaintenance}
+                disabled={createMaintenanceMutation.isPending || updateMaintenanceMutation.isPending}
+                data-testid="button-save-maintenance"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {t("saveMaintenance") || "Save Maintenance"}
+              </Button>
             </div>
           </Card>
 

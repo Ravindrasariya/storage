@@ -8,6 +8,7 @@ import {
   lots,
   lotEditHistory,
   salesHistory,
+  maintenanceRecords,
   type ColdStorage,
   type InsertColdStorage,
   type Chamber,
@@ -20,6 +21,8 @@ import {
   type InsertLotEditHistory,
   type SalesHistory,
   type InsertSalesHistory,
+  type MaintenanceRecord,
+  type InsertMaintenanceRecord,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -69,6 +72,11 @@ export interface IStorage {
   }): Promise<SalesHistory[]>;
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
+  // Maintenance Records
+  getMaintenanceRecords(coldStorageId: string): Promise<MaintenanceRecord[]>;
+  createMaintenanceRecord(data: InsertMaintenanceRecord): Promise<MaintenanceRecord>;
+  updateMaintenanceRecord(id: string, updates: Partial<MaintenanceRecord>): Promise<MaintenanceRecord | undefined>;
+  deleteMaintenanceRecord(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -718,6 +726,35 @@ export class DatabaseStorage implements IStorage {
     results.forEach(r => yearSet.add(r.year));
     const uniqueYears = Array.from(yearSet).sort((a, b) => b - a);
     return uniqueYears;
+  }
+
+  async getMaintenanceRecords(coldStorageId: string): Promise<MaintenanceRecord[]> {
+    return db.select()
+      .from(maintenanceRecords)
+      .where(eq(maintenanceRecords.coldStorageId, coldStorageId))
+      .orderBy(maintenanceRecords.createdAt);
+  }
+
+  async createMaintenanceRecord(data: InsertMaintenanceRecord): Promise<MaintenanceRecord> {
+    const [record] = await db.insert(maintenanceRecords)
+      .values({ id: randomUUID(), ...data })
+      .returning();
+    return record;
+  }
+
+  async updateMaintenanceRecord(id: string, updates: Partial<MaintenanceRecord>): Promise<MaintenanceRecord | undefined> {
+    const [updated] = await db.update(maintenanceRecords)
+      .set(updates)
+      .where(eq(maintenanceRecords.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMaintenanceRecord(id: string): Promise<boolean> {
+    const result = await db.delete(maintenanceRecords)
+      .where(eq(maintenanceRecords.id, id))
+      .returning();
+    return result.length > 0;
   }
 }
 

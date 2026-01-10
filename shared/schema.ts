@@ -122,6 +122,16 @@ export const lotEditHistory = pgTable("lot_edit_history", {
   changedAt: timestamp("changed_at").notNull().defaultNow(),
 });
 
+// Maintenance records for cold storage
+export const maintenanceRecords = pgTable("maintenance_records", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  taskDescription: text("task_description").notNull(),
+  responsiblePerson: text("responsible_person").notNull(),
+  nextDueDate: text("next_due_date").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertChamberSchema = createInsertSchema(chambers).omit({ id: true });
@@ -129,6 +139,7 @@ export const insertChamberFloorSchema = createInsertSchema(chamberFloors).omit({
 export const insertLotSchema = createInsertSchema(lots).omit({ id: true, createdAt: true });
 export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omit({ id: true, changedAt: true });
 export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, soldAt: true });
+export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -143,6 +154,8 @@ export type LotEditHistory = typeof lotEditHistory.$inferSelect;
 export type InsertLotEditHistory = z.infer<typeof insertLotEditHistorySchema>;
 export type SalesHistory = typeof salesHistory.$inferSelect;
 export type InsertSalesHistory = z.infer<typeof insertSalesHistorySchema>;
+export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
+export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({

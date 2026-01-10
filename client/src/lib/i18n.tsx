@@ -165,6 +165,14 @@ const translations: Translations = {
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
   
+  // Maintenance
+  maintenance: { en: "Maintenance", hi: "रखरखाव" },
+  taskDescription: { en: "Task Description", hi: "कार्य विवरण" },
+  responsiblePerson: { en: "Responsible Person", hi: "जिम्मेदार व्यक्ति" },
+  nextDueDate: { en: "Next Due Date", hi: "अगली देय तिथि" },
+  addRow: { en: "Add Row", hi: "पंक्ति जोड़ें" },
+  saveMaintenance: { en: "Save Maintenance", hi: "रखरखाव सहेजें" },
+
   // Reset Season
   resetForNextSeason: { en: "Reset for Next Season", hi: "अगले सीज़न के लिए रीसेट करें" },
   resetWarning: { en: "This option should only be selected when a new season is starting. All data on dashboard and search/edit page will be reset to zero.", hi: "यह विकल्प केवल तभी चुना जाना चाहिए जब नया सीज़न शुरू हो रहा हो। डैशबोर्ड और खोज/संपादन पृष्ठ पर सभी डेटा शून्य पर रीसेट हो जाएगा।" },
