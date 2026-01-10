@@ -25,7 +25,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Save, Plus, Trash2, RefreshCcw, AlertTriangle } from "lucide-react";
+import { Settings, Save, Plus, Trash2, RefreshCcw, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import type { Chamber } from "@shared/schema";
 
 interface ColdStorageSettings {
@@ -36,10 +36,13 @@ interface ColdStorageSettings {
   seedRate: number;
 }
 
+type FloorCapacityData = Record<string, { floor: number; bags: number }[]>;
+
 export function SettingsDialog() {
   const { t } = useI18n();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [expandedChambers, setExpandedChambers] = useState<Set<string>>(new Set());
 
   const { data: coldStorage } = useQuery<ColdStorageSettings>({
     queryKey: ["/api/cold-storage"],
@@ -49,8 +52,24 @@ export function SettingsDialog() {
     queryKey: ["/api/chambers"],
   });
 
+  const { data: floorCapacity } = useQuery<FloorCapacityData>({
+    queryKey: ["/api/chambers/floor-capacity"],
+  });
+
   const [settings, setSettings] = useState<ColdStorageSettings | null>(null);
   const [chamberEdits, setChamberEdits] = useState<Chamber[]>([]);
+
+  const toggleExpandChamber = (chamberId: string) => {
+    setExpandedChambers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(chamberId)) {
+        newSet.delete(chamberId);
+      } else {
+        newSet.add(chamberId);
+      }
+      return newSet;
+    });
+  };
 
   const handleOpen = (isOpen: boolean) => {
     setOpen(isOpen);
@@ -76,6 +95,7 @@ export function SettingsDialog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
   });
@@ -86,6 +106,7 @@ export function SettingsDialog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
   });
@@ -96,6 +117,7 @@ export function SettingsDialog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
   });
@@ -107,6 +129,7 @@ export function SettingsDialog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
       toast({
@@ -295,6 +318,59 @@ export function SettingsDialog() {
                   data-testid="input-seed-rate"
                 />
               </div>
+            </div>
+          </Card>
+
+          <Card className="p-4 space-y-4">
+            <h4 className="font-semibold">{t("storageCapacity")}</h4>
+            <div className="space-y-3">
+              {chambers?.map((chamber) => {
+                const floors = floorCapacity?.[chamber.id] || [];
+                const hasFloors = floors.length > 0;
+                const isExpanded = expandedChambers.has(chamber.id);
+                const fillPercentage = chamber.capacity > 0 
+                  ? Math.round((chamber.currentFill / chamber.capacity) * 100) 
+                  : 0;
+
+                return (
+                  <div key={chamber.id} className="space-y-2">
+                    <div
+                      className={`flex justify-between items-center p-3 bg-muted/50 rounded-md ${hasFloors ? "cursor-pointer" : ""}`}
+                      onClick={() => hasFloors && toggleExpandChamber(chamber.id)}
+                      data-testid={`storage-capacity-chamber-${chamber.id}`}
+                    >
+                      <span className="font-medium flex items-center gap-2">
+                        {chamber.name}
+                        {hasFloors && (
+                          isExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          )
+                        )}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {chamber.currentFill.toLocaleString()} / {chamber.capacity.toLocaleString()} ({fillPercentage}%)
+                      </span>
+                    </div>
+                    
+                    {isExpanded && hasFloors && (
+                      <div className="ml-4 pl-4 border-l-2 border-muted space-y-2">
+                        {floors.map((floorData) => (
+                          <div key={floorData.floor} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded">
+                            <span className="text-muted-foreground">
+                              {t("floor")} {floorData.floor}
+                            </span>
+                            <span className="font-medium">
+                              {floorData.bags.toLocaleString()} {t("bags")}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </Card>
 

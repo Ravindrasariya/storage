@@ -33,6 +33,16 @@ export async function registerRoutes(
     }
   });
 
+  // Floor-wise capacity for chambers
+  app.get("/api/chambers/floor-capacity", async (req, res) => {
+    try {
+      const floorData = await storage.getFloorCapacityByChamber(DEFAULT_COLD_STORAGE_ID);
+      res.json(floorData);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch floor capacity" });
+    }
+  });
+
   // Lots
   app.get("/api/lots", async (req, res) => {
     try {

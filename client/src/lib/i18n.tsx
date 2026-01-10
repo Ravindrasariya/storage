@@ -19,6 +19,7 @@ const translations: Translations = {
   help: { en: "Help", hi: "मदद" },
   
   // Dashboard
+  storageCapacity: { en: "Storage Capacity", hi: "भंडारण क्षमता" },
   overallCapacity: { en: "Overall Capacity", hi: "कुल क्षमता" },
   capacityUsed: { en: "Capacity Used", hi: "प्रयुक्त क्षमता" },
   bags: { en: "bags", hi: "बैग" },

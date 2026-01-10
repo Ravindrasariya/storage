@@ -28,6 +28,7 @@ export interface IStorage {
   getDefaultColdStorage(): Promise<ColdStorage>;
   getChambers(coldStorageId: string): Promise<Chamber[]>;
   getChamber(id: string): Promise<Chamber | undefined>;
+  getFloorCapacityByChamber(coldStorageId: string): Promise<Record<string, { floor: number; bags: number }[]>>;
   updateChamberFill(id: string, fill: number): Promise<void>;
   createLot(lot: InsertLot): Promise<Lot>;
   getLot(id: string): Promise<Lot | undefined>;
@@ -104,6 +105,35 @@ export class DatabaseStorage implements IStorage {
   async getChamber(id: string): Promise<Chamber | undefined> {
     const [result] = await db.select().from(chambers).where(eq(chambers.id, id));
     return result;
+  }
+
+  async getFloorCapacityByChamber(coldStorageId: string): Promise<Record<string, { floor: number; bags: number }[]>> {
+    const allLots = await db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
+    const floorData: Record<string, { floor: number; bags: number }[]> = {};
+    
+    for (const lot of allLots) {
+      // Only include lots with remaining bags and valid floor numbers
+      if (lot.remainingSize <= 0) continue;
+      if (lot.floor === null || lot.floor === undefined) continue;
+      
+      if (!floorData[lot.chamberId]) {
+        floorData[lot.chamberId] = [];
+      }
+      
+      const existingFloor = floorData[lot.chamberId].find(f => f.floor === lot.floor);
+      if (existingFloor) {
+        existingFloor.bags += lot.remainingSize;
+      } else {
+        floorData[lot.chamberId].push({ floor: lot.floor, bags: lot.remainingSize });
+      }
+    }
+    
+    // Sort floors by floor number
+    for (const chamberId in floorData) {
+      floorData[chamberId].sort((a, b) => a.floor - b.floor);
+    }
+    
+    return floorData;
   }
 
   async updateChamberFill(id: string, fill: number): Promise<void> {
