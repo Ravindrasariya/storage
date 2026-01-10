@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -78,6 +78,16 @@ export default function SearchEdit() {
     acc[chamber.id] = chamber.name;
     return acc;
   }, {} as Record<string, string>) || {};
+
+  const summaryTotals = useMemo(() => {
+    if (searchResults.length === 0) return null;
+    return {
+      totalBags: searchResults.reduce((sum, lot) => sum + lot.size, 0),
+      remainingBags: searchResults.reduce((sum, lot) => sum + lot.remainingSize, 0),
+      chargesPaid: searchResults.reduce((sum, lot) => sum + (lot.totalPaidCharge || 0), 0),
+      chargesDue: searchResults.reduce((sum, lot) => sum + (lot.totalDueCharge || 0), 0),
+    };
+  }, [searchResults]);
 
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
@@ -338,6 +348,30 @@ export default function SearchEdit() {
                 onToggleSale={handleToggleSale}
               />
             ))}
+            
+            {summaryTotals && (
+              <Card className="p-4 bg-muted/50">
+                <h3 className="font-semibold mb-3">{t("searchSummary")}</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("totalBags")}</p>
+                    <p className="text-lg font-bold" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("totalRemainingBags")}</p>
+                    <p className="text-lg font-bold" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("totalChargesPaid")}</p>
+                    <p className="text-lg font-bold text-green-600" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("totalChargesDue")}</p>
+                    <p className="text-lg font-bold text-red-600" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString()}</p>
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
         )
       ) : null}

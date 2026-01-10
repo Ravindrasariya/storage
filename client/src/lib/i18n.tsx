@@ -30,6 +30,10 @@ const translations: Translations = {
   distinctFarmers: { en: "Distinct Farmers", hi: "अलग किसान" },
   totalLots: { en: "Total Lots", hi: "कुल लॉट" },
   totalBags: { en: "Total Bags", hi: "कुल बैग" },
+  totalRemainingBags: { en: "Remaining Bags", hi: "शेष बैग" },
+  totalChargesPaid: { en: "Charges Paid", hi: "भुगतान किया शुल्क" },
+  totalChargesDue: { en: "Charges Due", hi: "बकाया शुल्क" },
+  searchSummary: { en: "Search Summary", hi: "खोज सारांश" },
   addNewLot: { en: "Add New Lot", hi: "नया लॉट जोड़ें" },
   
   // Lot Entry Form
