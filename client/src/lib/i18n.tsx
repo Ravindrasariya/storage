@@ -162,6 +162,8 @@ const translations: Translations = {
   cash: { en: "Cash", hi: "नकद" },
   account: { en: "Account Transfer", hi: "खाता ट्रांसफर" },
   amountPaid: { en: "Amount Paid", hi: "भुगतान राशि" },
+  amountDue: { en: "Amount Due", hi: "बकाया राशि" },
+  totalBagsSold: { en: "Total Bags Sold", hi: "कुल बेचे गए बैग" },
   overallPayment: { en: "Overall Payment", hi: "कुल भुगतान" },
   totalPaid: { en: "Total Paid", hi: "कुल भुगतान" },
   totalDue: { en: "Total Due", hi: "कुल बाकी" },

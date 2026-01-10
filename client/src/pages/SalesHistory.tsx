@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { Search, X, CheckCircle, Filter } from "lucide-react";
+import { Search, X, CheckCircle, Filter, Package, IndianRupee, Clock } from "lucide-react";
 import type { SalesHistory } from "@shared/schema";
 
 export default function SalesHistoryPage() {
@@ -78,6 +78,21 @@ export default function SalesHistoryPage() {
   };
 
   const hasActiveFilters = yearFilter || farmerFilter || mobileFilter || paymentFilter || buyerFilter;
+
+  // Calculate summary totals from filtered data
+  const summary = salesHistory.reduce(
+    (acc, sale) => {
+      acc.totalBags += sale.quantitySold || 0;
+      const totalCharge = sale.coldStorageCharge || 0;
+      if (sale.paymentStatus === "paid") {
+        acc.amountPaid += totalCharge;
+      } else {
+        acc.amountDue += totalCharge;
+      }
+      return acc;
+    },
+    { totalBags: 0, amountPaid: 0, amountDue: 0 }
+  );
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -176,6 +191,57 @@ export default function SalesHistoryPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Summary Section */}
+      {!historyLoading && salesHistory.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card data-testid="card-summary-bags">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Package className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">{t("totalBagsSold")}</p>
+                  <p className="text-2xl font-bold" data-testid="text-total-bags">{summary.totalBags.toLocaleString()}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-summary-paid">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/10">
+                  <IndianRupee className="h-5 w-5 text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">{t("amountPaid")}</p>
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-amount-paid">
+                    Rs. {summary.amountPaid.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-summary-due">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/10">
+                  <Clock className="h-5 w-5 text-amber-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">{t("amountDue")}</p>
+                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-amount-due">
+                    Rs. {summary.amountDue.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-0">
