@@ -733,6 +733,20 @@ export function SettingsDialog() {
             </div>
           </Card>
 
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setOpen(false)} data-testid="button-cancel-settings">
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={updateSettingsMutation.isPending || updateChamberMutation.isPending}
+              data-testid="button-save-settings"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {t("save")}
+            </Button>
+          </div>
+
           <Card className="p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -849,20 +863,6 @@ export function SettingsDialog() {
               </AlertDialogContent>
             </AlertDialog>
           </Card>
-
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setOpen(false)} data-testid="button-cancel-settings">
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={updateSettingsMutation.isPending || updateChamberMutation.isPending}
-              data-testid="button-save-settings"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {t("save")}
-            </Button>
-          </div>
         </div>
       </DialogContent>
     </Dialog>
