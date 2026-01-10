@@ -49,6 +49,9 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
             <Badge variant="outline" className={getBagTypeColor(lot.bagType)}>
               {t(lot.bagType)}
             </Badge>
+            <Badge variant="outline" className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400 capitalize">
+              {lot.potatoSize}
+            </Badge>
             {lot.saleStatus === "sold" && (
               <Badge 
                 variant="outline" 
