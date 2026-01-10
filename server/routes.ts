@@ -343,9 +343,11 @@ export async function registerRoutes(
       const newRemainingSize = lot.remainingSize - quantitySold;
       const totalPrice = quantitySold * pricePerBag;
 
-      // Get cold storage to calculate storage charge
+      // Get cold storage to calculate storage charge and rate breakdown
       const coldStorage = await storage.getColdStorage(lot.coldStorageId);
       const rate = coldStorage ? (lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate) : 0;
+      const hammaliRate = coldStorage ? (lot.bagType === "wafer" ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
+      const coldChargeRate = rate - hammaliRate; // Cold storage charge is rate minus hammali
       const storageCharge = quantitySold * rate;
 
       const updateData: { 
@@ -379,6 +381,8 @@ export async function registerRoutes(
         newData: JSON.stringify({ remainingSize: newRemainingSize }),
         soldQuantity: quantitySold,
         pricePerBag,
+        coldCharge: coldChargeRate,
+        hammali: hammaliRate,
         pricePerKg: pricePerKg || null,
         buyerName: buyerName || null,
         totalPrice,
@@ -423,6 +427,8 @@ export async function registerRoutes(
         saleType: "partial",
         quantitySold,
         pricePerBag: rate,
+        coldCharge: coldChargeRate,
+        hammali: hammaliRate,
         coldStorageCharge: storageCharge,
         buyerName: buyerName || null,
         pricePerKg: pricePerKg || null,

@@ -91,7 +91,9 @@ export const salesHistory = pgTable("sales_history", {
   // Sale details
   saleType: text("sale_type").notNull(), // 'partial' or 'full'
   quantitySold: integer("quantity_sold").notNull(),
-  pricePerBag: real("price_per_bag").notNull(), // Cold storage charge per bag
+  pricePerBag: real("price_per_bag").notNull(), // Combined rate per bag (coldCharge + hammali)
+  coldCharge: real("cold_charge"), // Cold storage charge component per bag
+  hammali: real("hammali"), // Hammali charge component per bag
   coldStorageCharge: real("cold_storage_charge").notNull(), // Total charge for this sale
   buyerName: text("buyer_name"),
   pricePerKg: real("price_per_kg"), // Selling price per kg
@@ -114,7 +116,9 @@ export const lotEditHistory = pgTable("lot_edit_history", {
   previousData: text("previous_data").notNull(), // JSON string
   newData: text("new_data").notNull(), // JSON string
   soldQuantity: integer("sold_quantity"), // For partial sales
-  pricePerBag: real("price_per_bag"), // For partial sales
+  pricePerBag: real("price_per_bag"), // For partial sales (combined rate)
+  coldCharge: real("cold_charge"), // Cold storage charge component per bag
+  hammali: real("hammali"), // Hammali charge component per bag
   pricePerKg: real("price_per_kg"), // Selling price per kg (optional)
   buyerName: text("buyer_name"), // Buyer name (optional)
   totalPrice: real("total_price"), // For partial sales

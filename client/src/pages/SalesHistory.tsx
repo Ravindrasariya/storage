@@ -220,7 +220,12 @@ export default function SalesHistoryPage() {
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
                       <TableCell className="text-right font-medium">
-                        Rs. {sale.coldStorageCharge?.toLocaleString()}
+                        <div>Rs. {sale.coldStorageCharge?.toLocaleString()}</div>
+                        {sale.coldCharge != null && sale.hammali != null && (
+                          <div className="text-xs text-muted-foreground font-normal mt-0.5">
+                            Rs.{sale.coldCharge} ({t("coldStorageCharge")}) + Rs.{sale.hammali} ({t("hammali")})
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>{sale.buyerName || "-"}</TableCell>
                       <TableCell className="text-right">

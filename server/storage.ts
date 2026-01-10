@@ -596,6 +596,8 @@ export class DatabaseStorage implements IStorage {
     if (!coldStorage) return undefined;
 
     const rate = lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate;
+    const hammaliRate = lot.bagType === "wafer" ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
+    const coldChargeRate = rate - hammaliRate; // Cold storage charge is rate minus hammali
     const saleCharge = rate * lot.remainingSize;
 
     // Calculate paid/due amounts based on payment status (normalize to ensure sum equals total)
@@ -631,6 +633,8 @@ export class DatabaseStorage implements IStorage {
       newData: JSON.stringify({ remainingSize: 0, saleStatus: "sold" }),
       soldQuantity: bagsToRemove,
       pricePerBag: rate,
+      coldCharge: coldChargeRate,
+      hammali: hammaliRate,
       pricePerKg: pricePerKg || null,
       buyerName: buyerName || null,
       totalPrice: saleCharge,
@@ -664,6 +668,8 @@ export class DatabaseStorage implements IStorage {
       saleType: "full",
       quantitySold: bagsToRemove,
       pricePerBag: rate,
+      coldCharge: coldChargeRate,
+      hammali: hammaliRate,
       coldStorageCharge: saleCharge,
       buyerName: buyerName || null,
       pricePerKg: pricePerKg || null,
