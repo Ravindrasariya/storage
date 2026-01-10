@@ -569,7 +569,7 @@ export class DatabaseStorage implements IStorage {
     const rate = lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate;
     const saleCharge = rate * lot.remainingSize;
 
-    // Calculate paid/due amounts based on payment status
+    // Calculate paid/due amounts based on payment status (normalize to ensure sum equals total)
     let salePaidAmount = 0;
     let saleDueAmount = 0;
     if (paymentStatus === "paid") {
@@ -577,8 +577,9 @@ export class DatabaseStorage implements IStorage {
     } else if (paymentStatus === "due") {
       saleDueAmount = saleCharge;
     } else if (paymentStatus === "partial") {
-      salePaidAmount = paidAmount || 0;
-      saleDueAmount = dueAmount || (saleCharge - salePaidAmount);
+      const rawPaid = Math.max(0, paidAmount || 0);
+      salePaidAmount = Math.min(rawPaid, saleCharge);
+      saleDueAmount = saleCharge - salePaidAmount;
     }
 
     const bagsToRemove = lot.remainingSize;

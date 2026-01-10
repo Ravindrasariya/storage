@@ -267,8 +267,10 @@ export async function registerRoutes(
       } else if (paymentStatus === "due") {
         updateData.totalDueCharge = (lot.totalDueCharge || 0) + storageCharge;
       } else if (paymentStatus === "partial") {
-        const actualPaid = paidAmount || 0;
-        const actualDue = dueAmount || (storageCharge - actualPaid);
+        // Validate and normalize partial payment amounts
+        const rawPaid = Math.max(0, paidAmount || 0);
+        const actualPaid = Math.min(rawPaid, storageCharge); // Clamp to max charge
+        const actualDue = storageCharge - actualPaid; // Calculate due as remainder to ensure sum equals total
         updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + actualPaid;
         updateData.totalDueCharge = (lot.totalDueCharge || 0) + actualDue;
       }
@@ -292,7 +294,7 @@ export async function registerRoutes(
       // Get chamber for sales history
       const chamber = await storage.getChamber(lot.chamberId);
       
-      // Calculate paid/due amounts based on payment status
+      // Calculate paid/due amounts based on payment status (use same normalized values)
       let salePaidAmount = 0;
       let saleDueAmount = 0;
       if (paymentStatus === "paid") {
@@ -300,8 +302,9 @@ export async function registerRoutes(
       } else if (paymentStatus === "due") {
         saleDueAmount = storageCharge;
       } else if (paymentStatus === "partial") {
-        salePaidAmount = paidAmount || 0;
-        saleDueAmount = dueAmount || (storageCharge - salePaidAmount);
+        const rawPaid = Math.max(0, paidAmount || 0);
+        salePaidAmount = Math.min(rawPaid, storageCharge);
+        saleDueAmount = storageCharge - salePaidAmount;
       }
       
       // Create permanent sales history record
