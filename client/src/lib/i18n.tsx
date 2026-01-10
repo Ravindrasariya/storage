@@ -66,6 +66,10 @@ const translations: Translations = {
   poor: { en: "Poor", hi: "खराब" },
   medium: { en: "Medium", hi: "मध्यम" },
   good: { en: "Good", hi: "अच्छा" },
+  potatoSize: { en: "Potato Size", hi: "आलू का आकार" },
+  selectSize: { en: "Select size", hi: "आकार चुनें" },
+  large: { en: "Large", hi: "बड़ा" },
+  small: { en: "Small", hi: "छोटा" },
   
   // Search/Edit
   searchBy: { en: "Search By", hi: "द्वारा खोजें" },

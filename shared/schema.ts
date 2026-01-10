@@ -52,6 +52,7 @@ export const lots = pgTable("lots", {
   type: text("type").notNull(), // Jyoti, SC3, etc.
   bagType: text("bag_type").notNull(), // wafer or seed
   quality: text("quality").notNull(), // poor, medium, good
+  potatoSize: text("potato_size").notNull().default("large"), // large or small
   assayingType: text("assaying_type").notNull(), // Quality Check, Visual
   assayerImage: text("assayer_image"), // Only if Quality Check
   reducingSugar: real("reducing_sugar"), // Only if Quality Check
@@ -173,6 +174,7 @@ export const lotFormSchema = z.object({
   type: z.string().min(1, "Type is required"),
   bagType: z.enum(["wafer", "seed"]),
   quality: z.enum(["poor", "medium", "good"]),
+  potatoSize: z.enum(["large", "small"]),
   assayingType: z.enum(["Quality Check", "Visual"]),
   assayerImage: z.string().optional(),
   reducingSugar: z.number().optional(),

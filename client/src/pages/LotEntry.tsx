@@ -57,6 +57,7 @@ export default function LotEntry() {
       type: "",
       bagType: "wafer",
       quality: "medium",
+      potatoSize: "large",
       assayingType: "Visual",
       assayerImage: "",
       reducingSugar: undefined,
@@ -430,6 +431,27 @@ export default function LotEntry() {
                         <SelectItem value="poor">{t("poor")}</SelectItem>
                         <SelectItem value="medium">{t("medium")}</SelectItem>
                         <SelectItem value="good">{t("good")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="potatoSize"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("potatoSize")} *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-potato-size">
+                          <SelectValue placeholder={t("selectSize")} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="large">{t("large")}</SelectItem>
+                        <SelectItem value="small">{t("small")}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
