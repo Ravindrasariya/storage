@@ -89,6 +89,7 @@ const translations: Translations = {
   save: { en: "Save", hi: "सहेजें" },
   partialSale: { en: "Partial Sale", hi: "आंशिक बिक्री" },
   quantitySold: { en: "Quantity Sold", hi: "बेची गई मात्रा" },
+  originalBags: { en: "Original # Bags", hi: "मूल # बैग" },
   pricePerBag: { en: "Price per Bag", hi: "प्रति बैग मूल्य" },
   totalPrice: { en: "Total Price", hi: "कुल मूल्य" },
   remaining: { en: "Remaining", hi: "शेष" },

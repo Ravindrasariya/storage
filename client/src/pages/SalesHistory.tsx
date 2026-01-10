@@ -243,13 +243,11 @@ export default function SalesHistoryPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("entryDate")}</TableHead>
                     <TableHead>{t("saleDate")}</TableHead>
                     <TableHead>{t("farmerName")}</TableHead>
                     <TableHead>{t("contactNumber")}</TableHead>
                     <TableHead>{t("lotNo")}</TableHead>
-                    <TableHead>{t("chamber")}</TableHead>
-                    <TableHead>{t("potatoType")}</TableHead>
+                    <TableHead className="text-right">{t("originalBags")}</TableHead>
                     <TableHead>{t("bagType")}</TableHead>
                     <TableHead>{t("saleType")}</TableHead>
                     <TableHead className="text-right">{t("quantitySold")}</TableHead>
@@ -264,16 +262,12 @@ export default function SalesHistoryPage() {
                   {salesHistory.map((sale) => (
                     <TableRow key={sale.id} data-testid={`row-sale-${sale.id}`}>
                       <TableCell className="whitespace-nowrap">
-                        {sale.entryDate ? format(new Date(sale.entryDate), "dd MMM yyyy") : "-"}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
                         {format(new Date(sale.soldAt), "dd MMM yyyy")}
                       </TableCell>
                       <TableCell className="font-medium">{sale.farmerName}</TableCell>
                       <TableCell>{sale.contactNumber}</TableCell>
                       <TableCell>{sale.lotNo}</TableCell>
-                      <TableCell>{sale.chamberName}</TableCell>
-                      <TableCell>{sale.potatoType}</TableCell>
+                      <TableCell className="text-right">{sale.originalLotSize}</TableCell>
                       <TableCell>
                         <Badge variant="outline">
                           {t(sale.bagType)}
