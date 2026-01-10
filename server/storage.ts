@@ -8,6 +8,7 @@ import {
   lots,
   lotEditHistory,
   salesHistory,
+  saleEditHistory,
   maintenanceRecords,
   type ColdStorage,
   type InsertColdStorage,
@@ -21,6 +22,8 @@ import {
   type InsertLotEditHistory,
   type SalesHistory,
   type InsertSalesHistory,
+  type SaleEditHistory,
+  type InsertSaleEditHistory,
   type MaintenanceRecord,
   type InsertMaintenanceRecord,
   type DashboardStats,
@@ -83,6 +86,9 @@ export interface IStorage {
   createMaintenanceRecord(data: InsertMaintenanceRecord): Promise<MaintenanceRecord>;
   updateMaintenanceRecord(id: string, updates: Partial<MaintenanceRecord>): Promise<MaintenanceRecord | undefined>;
   deleteMaintenanceRecord(id: string): Promise<boolean>;
+  // Sale Edit History
+  getSaleEditHistory(saleId: string): Promise<SaleEditHistory[]>;
+  createSaleEditHistory(data: InsertSaleEditHistory): Promise<SaleEditHistory>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1027,6 +1033,20 @@ export class DatabaseStorage implements IStorage {
       .where(eq(maintenanceRecords.id, id))
       .returning();
     return result.length > 0;
+  }
+
+  async getSaleEditHistory(saleId: string): Promise<SaleEditHistory[]> {
+    return db.select()
+      .from(saleEditHistory)
+      .where(eq(saleEditHistory.saleId, saleId))
+      .orderBy(desc(saleEditHistory.changedAt));
+  }
+
+  async createSaleEditHistory(data: InsertSaleEditHistory): Promise<SaleEditHistory> {
+    const [record] = await db.insert(saleEditHistory)
+      .values({ id: randomUUID(), ...data })
+      .returning();
+    return record;
   }
 }
 

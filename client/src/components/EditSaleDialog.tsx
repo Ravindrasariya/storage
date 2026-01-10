@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Pencil, Save, X, RotateCcw } from "lucide-react";
-import type { SalesHistory } from "@shared/schema";
+import { Pencil, Save, X, RotateCcw, History } from "lucide-react";
+import { format } from "date-fns";
+import type { SalesHistory, SaleEditHistory } from "@shared/schema";
 
 interface EditSaleDialogProps {
   sale: SalesHistory | null;
@@ -34,6 +36,43 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const totalCharge = sale 
     ? (sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0)
     : 0;
+
+  const { data: editHistory = [] } = useQuery<SaleEditHistory[]>({
+    queryKey: ["/api/sales-history", sale?.id, "edit-history"],
+    queryFn: async () => {
+      if (!sale?.id) return [];
+      const response = await fetch(`/api/sales-history/${sale.id}/edit-history`);
+      return response.json();
+    },
+    enabled: !!sale?.id && open,
+  });
+
+  const getFieldLabel = (field: string): string => {
+    const labels: Record<string, string> = {
+      buyerName: t("buyerName"),
+      pricePerKg: t("pricePerKg"),
+      paymentStatus: t("paymentStatus"),
+      paidAmount: t("paidAmount"),
+      dueAmount: t("dueAmount"),
+      paymentMode: t("paymentMode"),
+      netWeight: t("netWeight"),
+    };
+    return labels[field] || field;
+  };
+
+  const formatValue = (field: string, value: string | null): string => {
+    if (value === null || value === "") return "-";
+    if (field === "paymentStatus") {
+      return value === "paid" ? t("paid") : value === "due" ? t("due") : t("partial");
+    }
+    if (field === "paymentMode") {
+      return value === "cash" ? t("cash") : t("account");
+    }
+    if (field === "paidAmount" || field === "dueAmount" || field === "pricePerKg" || field === "netWeight") {
+      return `₹${parseFloat(value).toLocaleString()}`;
+    }
+    return value;
+  };
 
   useEffect(() => {
     if (sale) {
@@ -62,6 +101,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     onSuccess: () => {
       toast({ title: t("success"), description: t("saleUpdated") });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "edit-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard-stats"] });
@@ -359,6 +399,38 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
             )}
           </div>
         </div>
+
+        {editHistory.length > 0 && (
+          <div className="space-y-2 border-t pt-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <History className="h-4 w-4" />
+              {t("editHistory")}
+            </div>
+            <ScrollArea className="h-[120px] border rounded-md p-2">
+              <div className="space-y-2">
+                {editHistory.map((entry) => (
+                  <div key={entry.id} className="text-xs border-b pb-2 last:border-b-0">
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="font-medium">{getFieldLabel(entry.fieldChanged)}</span>
+                      <span className="text-muted-foreground">
+                        {format(new Date(entry.changedAt), "dd/MM/yyyy HH:mm")}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-muted-foreground line-through">
+                        {formatValue(entry.fieldChanged, entry.oldValue)}
+                      </span>
+                      <span className="text-muted-foreground">→</span>
+                      <span className="text-green-600 dark:text-green-400">
+                        {formatValue(entry.fieldChanged, entry.newValue)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
           <div className="flex gap-2 flex-1">

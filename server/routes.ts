@@ -718,16 +718,50 @@ export async function registerRoutes(
   app.patch("/api/sales-history/:id", async (req, res) => {
     try {
       const validatedData = updateSalesHistorySchema.parse(req.body);
+      
+      // Get current sale data before update for logging
+      const currentSales = await storage.getSalesHistory(DEFAULT_COLD_STORAGE_ID, {});
+      const currentSale = currentSales.find(s => s.id === req.params.id);
+      
       const updated = await storage.updateSalesHistory(req.params.id, validatedData);
       if (!updated) {
         return res.status(404).json({ error: "Sale not found" });
       }
+      
+      // Log changes to edit history
+      if (currentSale) {
+        const fieldsToTrack = ['buyerName', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight'] as const;
+        for (const field of fieldsToTrack) {
+          if (validatedData[field] !== undefined) {
+            const oldValue = currentSale[field];
+            const newValue = validatedData[field];
+            if (String(oldValue ?? '') !== String(newValue ?? '')) {
+              await storage.createSaleEditHistory({
+                saleId: req.params.id,
+                fieldChanged: field,
+                oldValue: oldValue != null ? String(oldValue) : null,
+                newValue: newValue != null ? String(newValue) : null,
+              });
+            }
+          }
+        }
+      }
+      
       res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid update data", details: error.errors });
       }
       res.status(500).json({ error: "Failed to update sale" });
+    }
+  });
+
+  app.get("/api/sales-history/:id/edit-history", async (req, res) => {
+    try {
+      const history = await storage.getSaleEditHistory(req.params.id);
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch edit history" });
     }
   });
 

@@ -132,6 +132,16 @@ export const lotEditHistory = pgTable("lot_edit_history", {
   changedAt: timestamp("changed_at").notNull().defaultNow(),
 });
 
+// Sale Edit History - tracks changes to sales after initial entry
+export const saleEditHistory = pgTable("sale_edit_history", {
+  id: varchar("id").primaryKey(),
+  saleId: varchar("sale_id").notNull(),
+  fieldChanged: text("field_changed").notNull(), // e.g., 'buyerName', 'paymentStatus', 'netWeight'
+  oldValue: text("old_value"), // Previous value (as string)
+  newValue: text("new_value"), // New value (as string)
+  changedAt: timestamp("changed_at").notNull().defaultNow(),
+});
+
 // Maintenance records for cold storage
 export const maintenanceRecords = pgTable("maintenance_records", {
   id: varchar("id").primaryKey(),
@@ -149,6 +159,7 @@ export const insertChamberFloorSchema = createInsertSchema(chamberFloors).omit({
 export const insertLotSchema = createInsertSchema(lots).omit({ id: true, createdAt: true });
 export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omit({ id: true, changedAt: true });
 export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, soldAt: true });
+export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).omit({ id: true, changedAt: true });
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
 
 // Types
@@ -164,6 +175,8 @@ export type LotEditHistory = typeof lotEditHistory.$inferSelect;
 export type InsertLotEditHistory = z.infer<typeof insertLotEditHistorySchema>;
 export type SalesHistory = typeof salesHistory.$inferSelect;
 export type InsertSalesHistory = z.infer<typeof insertSalesHistorySchema>;
+export type SaleEditHistory = typeof saleEditHistory.$inferSelect;
+export type InsertSaleEditHistory = z.infer<typeof insertSaleEditHistorySchema>;
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;
 
