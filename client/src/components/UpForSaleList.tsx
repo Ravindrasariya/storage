@@ -547,6 +547,24 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
               </div>
 
+              <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
+                <div className="text-sm font-medium">{t("rateBreakdown")} ({t("perBag")})</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{t("coldStorageCharge")}:</span>
+                    <span className="font-medium">Rs. {selectedLot.coldCharge}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{t("hammali")}:</span>
+                    <span className="font-medium">Rs. {selectedLot.hammali}</span>
+                  </div>
+                </div>
+                <div className="border-t pt-2 flex justify-between text-sm">
+                  <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
+                  <span className="font-bold">Rs. {selectedLot.rate}/{t("bag")}</span>
+                </div>
+              </div>
+
               <div className="p-4 rounded-lg bg-muted text-sm">
                 <span className="text-muted-foreground">{t("remaining")}: </span>
                 <span className="font-bold">{selectedLot.remainingSize} {t("bags")}</span>
@@ -563,19 +581,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   placeholder={`Max: ${selectedLot.remainingSize}`}
                   data-testid="input-partial-quantity"
                 />
-              </div>
-
-              <div className="p-4 rounded-lg bg-muted/50 border space-y-2">
-                <div className="text-sm font-medium">{t("perBagRate")}</div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium">Rs. {selectedLot.coldCharge}</span>
-                  <span className="text-muted-foreground">({t("coldStorageCharge")})</span>
-                  <span>+</span>
-                  <span className="font-medium">Rs. {selectedLot.hammali}</span>
-                  <span className="text-muted-foreground">({t("hammali")})</span>
-                  <span>=</span>
-                  <span className="font-bold text-chart-2">Rs. {selectedLot.rate}/{t("bag")}</span>
-                </div>
               </div>
 
               <div className="space-y-2">
