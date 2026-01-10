@@ -51,50 +51,50 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               * { box-sizing: border-box; }
               body {
                 font-family: Arial, sans-serif;
-                font-size: 11px;
-                line-height: 1.3;
+                font-size: 14px;
+                line-height: 1.4;
                 margin: 0;
-                padding: 8mm;
+                padding: 10mm;
               }
               .bill-header {
                 text-align: center;
                 border-bottom: 2px solid #333;
-                padding-bottom: 6px;
-                margin-bottom: 10px;
+                padding-bottom: 8px;
+                margin-bottom: 12px;
               }
               .bill-header h1 {
-                margin: 0 0 3px 0;
-                font-size: 16px;
+                margin: 0 0 4px 0;
+                font-size: 22px;
                 font-weight: bold;
               }
               .bill-header h2 {
                 margin: 0;
-                font-size: 12px;
+                font-size: 16px;
                 color: #666;
               }
               .two-column {
                 display: flex;
-                gap: 20px;
-                margin-bottom: 10px;
+                gap: 24px;
+                margin-bottom: 12px;
               }
               .two-column > div {
                 flex: 1;
               }
               .section {
-                margin-bottom: 10px;
+                margin-bottom: 12px;
               }
               .section-title {
                 font-weight: bold;
-                font-size: 11px;
+                font-size: 14px;
                 border-bottom: 1px solid #ccc;
-                padding-bottom: 2px;
-                margin-bottom: 4px;
+                padding-bottom: 3px;
+                margin-bottom: 6px;
               }
               .info-row {
                 display: flex;
                 justify-content: space-between;
-                padding: 2px 0;
-                font-size: 10px;
+                padding: 3px 0;
+                font-size: 13px;
               }
               .info-label {
                 font-weight: 500;
@@ -106,12 +106,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               .charges-table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-top: 6px;
-                font-size: 10px;
+                margin-top: 8px;
+                font-size: 13px;
               }
               .charges-table th, .charges-table td {
                 border: 1px solid #ccc;
-                padding: 4px 6px;
+                padding: 6px 8px;
                 text-align: left;
               }
               .charges-table th {
@@ -131,24 +131,24 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               }
               .total-row.net-income {
                 background: #d4f4d4;
-                font-size: 12px;
+                font-size: 15px;
               }
               .payment-status {
-                margin-top: 10px;
-                padding: 6px;
+                margin-top: 14px;
+                padding: 10px;
                 background: #d4edda;
                 color: #155724;
                 border-radius: 4px;
                 text-align: center;
                 font-weight: bold;
-                font-size: 11px;
+                font-size: 14px;
               }
               .footer-note {
-                margin-top: 12px;
-                padding-top: 6px;
+                margin-top: 16px;
+                padding-top: 8px;
                 border-top: 1px dashed #ccc;
                 text-align: center;
-                font-size: 9px;
+                font-size: 11px;
                 color: #666;
                 font-style: italic;
               }
