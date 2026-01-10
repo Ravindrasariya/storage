@@ -353,29 +353,37 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
               
               {paymentStatus === "partial" && (
-                <div className="space-y-2">
-                  <Label>{t("amountPaid") || "Amount Paid"}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={calculateCharge(selectedLot)}
-                    value={customPaidAmount}
-                    onChange={(e) => setCustomPaidAmount(e.target.value)}
-                    placeholder={`Max: Rs. ${calculateCharge(selectedLot).toLocaleString()}`}
-                    data-testid="input-custom-paid-amount"
-                  />
-                  {customPaidAmount && (
-                    <div className="p-3 rounded-lg bg-muted text-sm space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-green-600">{t("paid")}:</span>
-                        <span className="font-medium">Rs. {Math.min(parseFloat(customPaidAmount) || 0, calculateCharge(selectedLot)).toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-amber-600">{t("due")}:</span>
-                        <span className="font-medium">Rs. {Math.max(0, calculateCharge(selectedLot) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
-                      </div>
+                <div className="space-y-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
+                  <div className="text-sm text-muted-foreground">
+                    {t("total")} {t("storageCharge")}: <span className="font-bold text-foreground">Rs. {calculateCharge(selectedLot).toLocaleString()}</span>
+                    <span className="text-xs ml-2">({selectedLot.remainingSize} × Rs.{selectedLot.rate})</span>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("amountPaid") || "Amount Paid"}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={calculateCharge(selectedLot)}
+                      value={customPaidAmount}
+                      onChange={(e) => setCustomPaidAmount(e.target.value)}
+                      placeholder="0"
+                      className="text-lg font-medium"
+                      data-testid="input-custom-paid-amount"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Max: Rs. {calculateCharge(selectedLot).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-background text-sm space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-green-600 font-medium">{t("paid")}:</span>
+                      <span className="font-bold text-green-600">Rs. {Math.min(parseFloat(customPaidAmount) || 0, calculateCharge(selectedLot)).toLocaleString()}</span>
                     </div>
-                  )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-amber-600 font-medium">{t("due")}:</span>
+                      <span className="font-bold text-amber-600">Rs. {Math.max(0, calculateCharge(selectedLot) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -476,29 +484,37 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
               
               {paymentStatus === "partial" && partialQuantity > 0 && partialPrice > 0 && (
-                <div className="space-y-2">
-                  <Label>{t("amountPaid") || "Amount Paid"}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={partialQuantity * partialPrice}
-                    value={customPaidAmount}
-                    onChange={(e) => setCustomPaidAmount(e.target.value)}
-                    placeholder={`Max: Rs. ${(partialQuantity * partialPrice).toLocaleString()}`}
-                    data-testid="input-partial-custom-paid-amount"
-                  />
-                  {customPaidAmount && (
-                    <div className="p-3 rounded-lg bg-muted text-sm space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-green-600">{t("paid")}:</span>
-                        <span className="font-medium">Rs. {Math.min(parseFloat(customPaidAmount) || 0, partialQuantity * partialPrice).toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-amber-600">{t("due")}:</span>
-                        <span className="font-medium">Rs. {Math.max(0, (partialQuantity * partialPrice) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
-                      </div>
+                <div className="space-y-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
+                  <div className="text-sm text-muted-foreground">
+                    {t("total")} {t("storageCharge")}: <span className="font-bold text-foreground">Rs. {(partialQuantity * partialPrice).toLocaleString()}</span>
+                    <span className="text-xs ml-2">({partialQuantity} × Rs.{partialPrice})</span>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("amountPaid") || "Amount Paid"}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={partialQuantity * partialPrice}
+                      value={customPaidAmount}
+                      onChange={(e) => setCustomPaidAmount(e.target.value)}
+                      placeholder="0"
+                      className="text-lg font-medium"
+                      data-testid="input-partial-custom-paid-amount"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Max: Rs. {(partialQuantity * partialPrice).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-background text-sm space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-green-600 font-medium">{t("paid")}:</span>
+                      <span className="font-bold text-green-600">Rs. {Math.min(parseFloat(customPaidAmount) || 0, partialQuantity * partialPrice).toLocaleString()}</span>
                     </div>
-                  )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-amber-600 font-medium">{t("due")}:</span>
+                      <span className="font-bold text-amber-600">Rs. {Math.max(0, (partialQuantity * partialPrice) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
