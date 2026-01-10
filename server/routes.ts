@@ -201,6 +201,16 @@ export async function registerRoutes(
     }
   });
 
+  // Schema for allowed editable fields only (location & quality)
+  const lotEditSchema = z.object({
+    chamberId: z.string().optional(),
+    floor: z.number().int().positive().optional(),
+    position: z.string().optional(),
+    quality: z.enum(["poor", "medium", "good"]).optional(),
+    // Allow upForSale for toggle functionality
+    upForSale: z.number().int().min(0).max(1).optional(),
+  });
+
   app.patch("/api/lots/:id", async (req, res) => {
     try {
       const lot = await storage.getLot(req.params.id);
@@ -208,27 +218,104 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Lot not found" });
       }
 
+      // Validate only allowed fields
+      const validated = lotEditSchema.parse(req.body);
+      
+      // Only create edit history if location/quality fields are being changed (not just upForSale toggle)
+      const isLocationOrQualityEdit = validated.chamberId !== undefined || 
+                                       validated.floor !== undefined || 
+                                       validated.position !== undefined || 
+                                       validated.quality !== undefined;
+
       const previousData = {
-        farmerName: lot.farmerName,
-        village: lot.village,
-        tehsil: lot.tehsil,
-        district: lot.district,
-        contactNumber: lot.contactNumber,
-        remarks: lot.remarks,
+        chamberId: lot.chamberId,
+        floor: lot.floor,
+        position: lot.position,
+        quality: lot.quality,
       };
 
-      const updatedLot = await storage.updateLot(req.params.id, req.body);
+      const updatedLot = await storage.updateLot(req.params.id, validated);
 
+      if (isLocationOrQualityEdit) {
+        await storage.createEditHistory({
+          lotId: lot.id,
+          changeType: "edit",
+          previousData: JSON.stringify(previousData),
+          newData: JSON.stringify(validated),
+        });
+      }
+
+      res.json(updatedLot);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update lot" });
+    }
+  });
+
+  // Reverse the latest edit
+  app.post("/api/lots/:id/reverse-edit", async (req, res) => {
+    try {
+      const lot = await storage.getLot(req.params.id);
+      if (!lot) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+
+      const { historyId } = req.body;
+      if (!historyId) {
+        return res.status(400).json({ error: "Missing historyId" });
+      }
+
+      // Get the edit history for this lot (sorted by date, newest first)
+      const history = await storage.getLotHistory(lot.id);
+      if (history.length === 0) {
+        return res.status(400).json({ error: "No edit history found" });
+      }
+
+      // Find all edit entries (not sales)
+      const editEntries = history.filter(h => h.changeType === "edit");
+      if (editEntries.length === 0) {
+        return res.status(400).json({ error: "No edit history found" });
+      }
+
+      // The latest edit is the first one in the sorted list
+      const latestEdit = editEntries[0];
+      
+      // Verify the historyId matches the latest edit entry
+      if (latestEdit.id !== historyId) {
+        return res.status(400).json({ error: "Can only reverse the latest edit" });
+      }
+
+      // Parse previous data and restore it
+      const previousData = JSON.parse(latestEdit.previousData);
+      
+      // Only restore location/quality fields
+      const restoreData: Record<string, any> = {};
+      if (previousData.chamberId !== undefined) restoreData.chamberId = previousData.chamberId;
+      if (previousData.floor !== undefined) restoreData.floor = previousData.floor;
+      if (previousData.position !== undefined) restoreData.position = previousData.position;
+      if (previousData.quality !== undefined) restoreData.quality = previousData.quality;
+
+      // Update the lot with previous values
+      const updatedLot = await storage.updateLot(lot.id, restoreData);
+
+      // Create a reversal history entry
       await storage.createEditHistory({
         lotId: lot.id,
         changeType: "edit",
-        previousData: JSON.stringify(previousData),
-        newData: JSON.stringify(req.body),
+        previousData: JSON.stringify({
+          chamberId: lot.chamberId,
+          floor: lot.floor,
+          position: lot.position,
+          quality: lot.quality,
+        }),
+        newData: JSON.stringify(restoreData),
       });
 
       res.json(updatedLot);
     } catch (error) {
-      res.status(500).json({ error: "Failed to update lot" });
+      res.status(500).json({ error: "Failed to reverse edit" });
     }
   });
 

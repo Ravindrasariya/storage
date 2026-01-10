@@ -1,14 +1,17 @@
 import { useI18n } from "@/lib/i18n";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import { Undo2 } from "lucide-react";
 import type { LotEditHistory } from "@shared/schema";
 
 interface EditHistoryAccordionProps {
   history: LotEditHistory[];
+  onReverse?: () => void;
 }
 
-export function EditHistoryAccordion({ history }: EditHistoryAccordionProps) {
+export function EditHistoryAccordion({ history, onReverse }: EditHistoryAccordionProps) {
   const { t } = useI18n();
 
   if (history.length === 0) {
@@ -24,7 +27,7 @@ export function EditHistoryAccordion({ history }: EditHistoryAccordionProps) {
       {history.map((entry, index) => (
         <AccordionItem key={entry.id} value={entry.id}>
           <AccordionTrigger className="text-sm">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-1">
               <Badge
                 variant={entry.changeType === "partial_sale" || entry.changeType === "final_sale" ? "default" : "secondary"}
               >
@@ -37,6 +40,21 @@ export function EditHistoryAccordion({ history }: EditHistoryAccordionProps) {
                 <span className="font-medium">
                   -{entry.soldQuantity} {t("bags")}
                 </span>
+              )}
+              {index === 0 && entry.changeType === "edit" && onReverse && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto mr-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReverse();
+                  }}
+                  data-testid="button-reverse-edit"
+                >
+                  <Undo2 className="h-3 w-3 mr-1" />
+                  {t("reverse")}
+                </Button>
               )}
             </div>
           </AccordionTrigger>

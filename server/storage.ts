@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, like, ilike } from "drizzle-orm";
+import { eq, and, like, ilike, desc } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -287,7 +287,7 @@ export class DatabaseStorage implements IStorage {
   async getLotHistory(lotId: string): Promise<LotEditHistory[]> {
     return db.select().from(lotEditHistory)
       .where(eq(lotEditHistory.lotId, lotId))
-      .orderBy(lotEditHistory.changedAt);
+      .orderBy(desc(lotEditHistory.changedAt));
   }
 
   async getDashboardStats(coldStorageId: string): Promise<DashboardStats> {

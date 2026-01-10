@@ -88,6 +88,12 @@ const translations: Translations = {
   remaining: { en: "Remaining", hi: "शेष" },
   originalSize: { en: "Original Size", hi: "मूल आकार" },
   editHistory: { en: "Edit History", hi: "संपादन इतिहास" },
+  editableFields: { en: "Editable Fields (Location & Quality)", hi: "संपादन योग्य फ़ील्ड (स्थान और गुणवत्ता)" },
+  reverse: { en: "Reverse", hi: "वापस करें" },
+  editReversed: { en: "Edit reversed successfully", hi: "संपादन सफलतापूर्वक वापस किया गया" },
+  coldStorageCharges: { en: "Cold Storage Charges", hi: "कोल्ड स्टोरेज शुल्क" },
+  selectChamber: { en: "Select Chamber", hi: "कक्ष चुनें" },
+  selectQuality: { en: "Select Quality", hi: "गुणवत्ता चुनें" },
   noResults: { en: "No results found", hi: "कोई परिणाम नहीं मिला" },
   
   // Analytics

@@ -51,14 +51,12 @@ export default function SearchEdit() {
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
   const [editHistory, setEditHistory] = useState<LotEditHistory[]>([]);
 
-  const [editForm, setEditForm] = useState({
-    farmerName: "",
-    village: "",
-    tehsil: "",
-    district: "",
-    contactNumber: "",
-    remarks: "",
-  });
+  const [editForm, setEditForm] = useState<{
+    chamberId: string;
+    floor: number;
+    position: string;
+    quality: string;
+  } | null>(null);
 
   const { data: chambers } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
@@ -126,12 +124,10 @@ export default function SearchEdit() {
   const handleEditClick = async (lot: Lot) => {
     setSelectedLot(lot);
     setEditForm({
-      farmerName: lot.farmerName,
-      village: lot.village,
-      tehsil: lot.tehsil,
-      district: lot.district,
-      contactNumber: lot.contactNumber,
-      remarks: lot.remarks || "",
+      chamberId: lot.chamberId,
+      floor: lot.floor,
+      position: lot.position || "",
+      quality: lot.quality,
     });
 
     try {
@@ -181,7 +177,7 @@ export default function SearchEdit() {
   };
 
   const handleEditSubmit = () => {
-    if (!selectedLot) return;
+    if (!selectedLot || !editForm) return;
     updateLotMutation.mutate({
       id: selectedLot.id,
       updates: editForm,
@@ -355,116 +351,184 @@ export default function SearchEdit() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
-            <div className="space-y-2">
-              <Label>{t("farmerName")}</Label>
-              <Input
-                value={editForm.farmerName}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, farmerName: e.target.value })
-                }
-                data-testid="input-edit-farmer-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("contactNumber")}</Label>
-              <Input
-                value={editForm.contactNumber}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, contactNumber: e.target.value })
-                }
-                data-testid="input-edit-contact"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("village")}</Label>
-              <Input
-                value={editForm.village}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, village: e.target.value })
-                }
-                data-testid="input-edit-village"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("tehsil")}</Label>
-              <Input
-                value={editForm.tehsil}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, tehsil: e.target.value })
-                }
-                data-testid="input-edit-tehsil"
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>{t("district")}</Label>
-              <Input
-                value={editForm.district}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, district: e.target.value })
-                }
-                data-testid="input-edit-district"
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>{t("remarks")}</Label>
-              <Input
-                value={editForm.remarks}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, remarks: e.target.value })
-                }
-                data-testid="input-edit-remarks"
-              />
+          {/* Read-only Farmer Details */}
+          <div className="space-y-4">
+            <h4 className="font-semibold text-sm text-muted-foreground">{t("farmerDetails")}</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
+              <div>
+                <p className="text-xs text-muted-foreground">{t("farmerName")}</p>
+                <p className="font-medium text-sm">{selectedLot?.farmerName}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("contactNumber")}</p>
+                <p className="font-medium text-sm">{selectedLot?.contactNumber}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("village")}</p>
+                <p className="font-medium text-sm">{selectedLot?.village}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("tehsil")}</p>
+                <p className="font-medium text-sm">{selectedLot?.tehsil}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("district")}</p>
+                <p className="font-medium text-sm">{selectedLot?.district}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("state")}</p>
+                <p className="font-medium text-sm">{selectedLot?.state}</p>
+              </div>
             </div>
           </div>
 
+          {/* Read-only Lot Information */}
+          <div className="space-y-4 border-t pt-4">
+            <h4 className="font-semibold text-sm text-muted-foreground">{t("lotInformation")}</h4>
+            <div className="grid grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
+              <div>
+                <p className="text-xs text-muted-foreground">{t("lotNo")}</p>
+                <p className="font-medium text-sm">{selectedLot?.lotNo}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("originalSize")}</p>
+                <p className="font-medium text-sm">{selectedLot?.size} {t("bags")}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("remainingBags")}</p>
+                <p className="font-medium text-sm">{selectedLot?.remainingSize} {t("bags")}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Read-only Cold Storage Charges */}
           {selectedLot && ((selectedLot.totalDueCharge || 0) > 0 || (selectedLot.totalPaidCharge || 0) > 0) && (
             <div className="border-t pt-4 space-y-3">
-              {(selectedLot.totalDueCharge || 0) > 0 && (
-                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{t("coldChargesDue")}</p>
-                      <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                        Rs. {(selectedLot.totalDueCharge || 0).toLocaleString()}
-                      </p>
-                    </div>
-                    <Button
-                      variant="default"
-                      onClick={() => {
-                        updateLotMutation.mutate({
-                          id: selectedLot.id,
-                          updates: { 
-                            totalPaidCharge: (selectedLot.totalPaidCharge || 0) + (selectedLot.totalDueCharge || 0),
-                            totalDueCharge: 0,
-                          },
-                          silent: false,
-                        });
-                      }}
-                      disabled={updateLotMutation.isPending}
-                      data-testid="button-mark-as-paid"
-                    >
-                      {t("markAsPaid")}
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {(selectedLot.totalPaidCharge || 0) > 0 && (
-                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{t("coldChargesPaid")}</p>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              <h4 className="font-semibold text-sm text-muted-foreground">{t("coldStorageCharges")}</h4>
+              <div className="grid grid-cols-2 gap-3">
+                {(selectedLot.totalPaidCharge || 0) > 0 && (
+                  <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                    <p className="text-xs text-muted-foreground">{t("coldChargesPaid")}</p>
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">
                       Rs. {(selectedLot.totalPaidCharge || 0).toLocaleString()}
                     </p>
                   </div>
+                )}
+                {(selectedLot.totalDueCharge || 0) > 0 && (
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                    <p className="text-xs text-muted-foreground">{t("coldChargesDue")}</p>
+                    <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                      Rs. {(selectedLot.totalDueCharge || 0).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Editable Location & Quality */}
+          {editForm && (
+            <div className="border-t pt-4 space-y-4">
+              <h4 className="font-semibold text-sm">{t("editableFields")}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>{t("chamber")}</Label>
+                  <Select
+                    value={editForm.chamberId}
+                    onValueChange={(value) => setEditForm({ ...editForm, chamberId: value })}
+                  >
+                    <SelectTrigger data-testid="select-edit-chamber">
+                      <SelectValue placeholder={t("selectChamber")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {chambers?.map((chamber) => (
+                        <SelectItem key={chamber.id} value={chamber.id}>
+                          {chamber.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
+                <div className="space-y-2">
+                  <Label>{t("floor")}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editForm.floor}
+                    onChange={(e) => setEditForm({ ...editForm, floor: parseInt(e.target.value) || 0 })}
+                    data-testid="input-edit-floor"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("position")}</Label>
+                  <Input
+                    value={editForm.position}
+                    onChange={(e) => setEditForm({ ...editForm, position: e.target.value })}
+                    data-testid="input-edit-position"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("quality")}</Label>
+                  <Select
+                    value={editForm.quality}
+                    onValueChange={(value) => setEditForm({ ...editForm, quality: value })}
+                  >
+                    <SelectTrigger data-testid="select-edit-quality">
+                      <SelectValue placeholder={t("selectQuality")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="poor">{t("poor")}</SelectItem>
+                      <SelectItem value="medium">{t("medium")}</SelectItem>
+                      <SelectItem value="good">{t("good")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           )}
 
           <div className="border-t pt-4">
             <h3 className="font-semibold mb-3">{t("editHistory")}</h3>
-            <EditHistoryAccordion history={editHistory} />
+            <EditHistoryAccordion 
+              history={editHistory} 
+              onReverse={editHistory.length > 0 && editHistory[0].changeType === "edit" ? async () => {
+                const latestEdit = editHistory[0];
+                try {
+                  await apiRequest("POST", `/api/lots/${selectedLot?.id}/reverse-edit`, { historyId: latestEdit.id });
+                  toast({
+                    title: t("success"),
+                    description: t("editReversed"),
+                  });
+                  // Refresh the lot and history
+                  if (selectedLot) {
+                    const lotResponse = await fetch(`/api/lots/${selectedLot.id}`);
+                    if (lotResponse.ok) {
+                      const updatedLot = await lotResponse.json();
+                      setSelectedLot(updatedLot);
+                      setEditForm({
+                        chamberId: updatedLot.chamberId,
+                        floor: updatedLot.floor,
+                        position: updatedLot.position || "",
+                        quality: updatedLot.quality,
+                      });
+                    }
+                    const historyResponse = await fetch(`/api/lots/${selectedLot.id}/history`);
+                    if (historyResponse.ok) {
+                      setEditHistory(await historyResponse.json());
+                    }
+                  }
+                  queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+                  queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+                  handleSearch();
+                } catch (error: any) {
+                  toast({
+                    title: t("error"),
+                    description: error.message || "Failed to reverse edit",
+                    variant: "destructive",
+                  });
+                }
+              } : undefined}
+            />
           </div>
 
           <DialogFooter>
@@ -473,7 +537,7 @@ export default function SearchEdit() {
             </Button>
             <Button
               onClick={handleEditSubmit}
-              disabled={updateLotMutation.isPending}
+              disabled={updateLotMutation.isPending || !editForm}
               data-testid="button-save-edit"
             >
               {updateLotMutation.isPending ? t("loading") : t("save")}
