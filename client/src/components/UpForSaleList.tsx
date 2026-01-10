@@ -242,7 +242,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         {lot.farmerName}
                       </span>
                       <Badge variant="outline" className="text-xs">
-                        {t("lot")} {lot.lotNo}
+                        {t("lot")} {lot.lotNo} ({lot.originalSize} {t("bags")})
                       </Badge>
                       <Badge variant="secondary" className="text-xs">
                         {lot.bagType} | {lot.type}
@@ -276,11 +276,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     <div className="font-medium">{lot.position || "-"}</div>
                   </div>
                   <div>
-                    <span className="text-muted-foreground text-xs">{t("bags")}</span>
-                    <div className="font-medium">
-                      <span className="text-chart-1">{lot.remainingSize}</span>
-                      <span className="text-muted-foreground">/{lot.originalSize}</span>
-                    </div>
+                    <span className="text-muted-foreground text-xs">{t("remaining")}</span>
+                    <div className="font-medium text-chart-1">{lot.remainingSize} {t("bags")}</div>
                   </div>
                 </div>
                 
