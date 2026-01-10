@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, like, ilike, desc } from "drizzle-orm";
+import { eq, and, like, ilike, desc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -77,6 +77,7 @@ export interface IStorage {
   }): Promise<SalesHistory[]>;
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
+  reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string }>;
   // Maintenance Records
   getMaintenanceRecords(coldStorageId: string): Promise<MaintenanceRecord[]>;
   createMaintenanceRecord(data: InsertMaintenanceRecord): Promise<MaintenanceRecord>;
@@ -917,6 +918,86 @@ export class DatabaseStorage implements IStorage {
     results.forEach(r => yearSet.add(r.year));
     const uniqueYears = Array.from(yearSet).sort((a, b) => b - a);
     return uniqueYears;
+  }
+
+  async reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string }> {
+    const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
+    if (!sale) {
+      return { success: false, message: "Sale not found", errorType: "not_found" };
+    }
+
+    const lot = await this.getLot(sale.lotId);
+    if (!lot) {
+      return { success: false, message: "Associated lot not found", errorType: "not_found" };
+    }
+
+    const quantityToRestore = sale.quantitySold;
+    const paidToReverse = sale.paidAmount || 0;
+    const dueToReverse = sale.dueAmount || 0;
+
+    const newRemainingSize = lot.remainingSize + quantityToRestore;
+    const wasFullSale = sale.saleType === "full";
+
+    const otherSales = await db.select().from(salesHistory)
+      .where(and(eq(salesHistory.lotId, sale.lotId), sql`${salesHistory.id} != ${saleId}`));
+    
+    let newSaleStatus: "stored" | "partial" | "sold" = "stored";
+    if (otherSales.length > 0) {
+      newSaleStatus = "partial";
+    } else {
+      newSaleStatus = "stored";
+    }
+
+    const newTotalPaid = Math.max(0, (lot.totalPaidCharge || 0) - paidToReverse);
+    const newTotalDue = Math.max(0, (lot.totalDueCharge || 0) - dueToReverse);
+
+    let newPaymentStatus: string | null = null;
+    if (newSaleStatus === "partial") {
+      if (newTotalDue > 0 && newTotalPaid > 0) {
+        newPaymentStatus = "partial";
+      } else if (newTotalDue > 0) {
+        newPaymentStatus = "due";
+      } else if (newTotalPaid > 0) {
+        newPaymentStatus = "paid";
+      }
+    }
+
+    const [updatedLot] = await db.update(lots).set({
+      remainingSize: newRemainingSize,
+      saleStatus: newSaleStatus,
+      upForSale: 0,
+      soldAt: newSaleStatus === "stored" ? null : lot.soldAt,
+      totalPaidCharge: newTotalPaid,
+      totalDueCharge: newTotalDue,
+      paymentStatus: newPaymentStatus,
+    }).where(eq(lots.id, sale.lotId)).returning();
+
+    if (lot.chamberId) {
+      const chamber = await this.getChamber(lot.chamberId);
+      if (chamber) {
+        const newFill = Math.min(chamber.capacity, chamber.currentFill + quantityToRestore);
+        await this.updateChamberFill(lot.chamberId, newFill);
+      }
+    }
+
+    await db.delete(salesHistory).where(eq(salesHistory.id, saleId));
+
+    await this.createEditHistory({
+      lotId: lot.id,
+      changeType: "sale_reversed",
+      previousData: JSON.stringify({ 
+        saleStatus: lot.saleStatus, 
+        remainingSize: lot.remainingSize,
+        saleId: saleId 
+      }),
+      newData: JSON.stringify({ 
+        saleStatus: newSaleStatus, 
+        remainingSize: newRemainingSize,
+        reversedQuantity: quantityToRestore 
+      }),
+    });
+
+    return { success: true, lot: updatedLot };
   }
 
   async getMaintenanceRecords(coldStorageId: string): Promise<MaintenanceRecord[]> {

@@ -731,6 +731,19 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/sales-history/:id/reverse", async (req, res) => {
+    try {
+      const result = await storage.reverseSale(req.params.id);
+      if (!result.success) {
+        const statusCode = result.errorType === "not_found" ? 404 : 400;
+        return res.status(statusCode).json({ error: result.message });
+      }
+      res.json({ success: true, lot: result.lot });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reverse sale" });
+    }
+  });
+
   // Maintenance Records
   const createMaintenanceSchema = z.object({
     taskDescription: z.string(),

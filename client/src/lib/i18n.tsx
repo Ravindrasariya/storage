@@ -248,6 +248,13 @@ const translations: Translations = {
   failedToUpdateSale: { en: "Failed to update sale", hi: "बिक्री अपडेट करने में विफल" },
   noChanges: { en: "No changes to save", hi: "सहेजने के लिए कोई परिवर्तन नहीं" },
   saving: { en: "Saving...", hi: "सहेज रहा है..." },
+  reverseSale: { en: "Reverse Sale", hi: "बिक्री वापस करें" },
+  reverseSaleConfirmTitle: { en: "Reverse this Sale?", hi: "क्या आप इस बिक्री को वापस करना चाहते हैं?" },
+  reverseSaleConfirmMessage: { en: "Are you sure you want to remove this sale history and move the lot back to unsold inventory? This action cannot be undone.", hi: "क्या आप वाकई इस बिक्री इतिहास को हटाना और लॉट को वापस बिना बिके इन्वेंट्री में ले जाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।" },
+  yesReverse: { en: "Yes, Reverse Sale", hi: "हाँ, बिक्री वापस करें" },
+  reversing: { en: "Reversing...", hi: "वापस कर रहा है..." },
+  saleReversed: { en: "Sale reversed successfully. Lot moved back to inventory.", hi: "बिक्री सफलतापूर्वक वापस कर दी गई। लॉट वापस इन्वेंट्री में चला गया।" },
+  failedToReverseSale: { en: "Failed to reverse sale", hi: "बिक्री वापस करने में विफल" },
 };
 
 interface I18nContextType {

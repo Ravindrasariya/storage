@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Pencil, Save, X } from "lucide-react";
+import { Pencil, Save, X, RotateCcw } from "lucide-react";
 import type { SalesHistory } from "@shared/schema";
 
 interface EditSaleDialogProps {
@@ -28,6 +29,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [newPaymentStatus, setNewPaymentStatus] = useState<"paid" | "due" | "partial">("paid");
   const [customAmount, setCustomAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
+  const [showReverseConfirm, setShowReverseConfirm] = useState(false);
 
   const totalCharge = sale 
     ? (sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0)
@@ -67,6 +69,31 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
     onError: () => {
       toast({ title: t("error"), description: t("failedToUpdateSale"), variant: "destructive" });
+    },
+  });
+
+  const reverseMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/reverse`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("saleReversed") });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots/search"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/up-for-sale"] });
+      setShowReverseConfirm(false);
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("failedToReverseSale"), variant: "destructive" });
+      setShowReverseConfirm(false);
     },
   });
 
@@ -333,17 +360,49 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
           </div>
         </div>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-edit">
-            <X className="h-4 w-4 mr-2" />
-            {t("cancel")}
-          </Button>
-          <Button onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save-edit">
-            <Save className="h-4 w-4 mr-2" />
-            {updateMutation.isPending ? t("saving") : t("save")}
+        <DialogFooter className="flex flex-col sm:flex-row gap-2">
+          <div className="flex gap-2 flex-1">
+            <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-edit">
+              <X className="h-4 w-4 mr-2" />
+              {t("cancel")}
+            </Button>
+            <Button onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save-edit">
+              <Save className="h-4 w-4 mr-2" />
+              {updateMutation.isPending ? t("saving") : t("save")}
+            </Button>
+          </div>
+          <Button 
+            variant="destructive" 
+            onClick={() => setShowReverseConfirm(true)}
+            data-testid="button-reverse-sale"
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            {t("reverseSale")}
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <AlertDialog open={showReverseConfirm} onOpenChange={setShowReverseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("reverseSaleConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("reverseSaleConfirmMessage")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-reverse">{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => reverseMutation.mutate()}
+              disabled={reverseMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-reverse"
+            >
+              {reverseMutation.isPending ? t("reversing") : t("yesReverse")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
