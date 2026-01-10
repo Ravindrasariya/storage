@@ -115,28 +115,18 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
               <span className="text-muted-foreground">{t("remaining")}: </span>
               <span className="font-bold text-chart-1">{lot.remainingSize} {t("bags")}</span>
             </div>
-            {lot.saleStatus === "sold" && lot.saleCharge && (
-              <div>
-                <span className="text-muted-foreground">{t("storageCharge")}: </span>
-                <span className="font-bold text-chart-2">Rs. {lot.saleCharge.toLocaleString()}</span>
-              </div>
-            )}
-            {lot.saleStatus !== "sold" && (lot.totalDueCharge || 0) > 0 && (
-              <div>
-                <span className="text-muted-foreground">{t("coldChargesDue")}: </span>
-                <span className="font-bold text-amber-600 dark:text-amber-400">
-                  Rs. {(lot.totalDueCharge || 0).toLocaleString()}
-                </span>
-              </div>
-            )}
-            {lot.saleStatus !== "sold" && (lot.totalPaidCharge || 0) > 0 && (
-              <div>
-                <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
-                <span className="font-bold text-green-600 dark:text-green-400">
-                  Rs. {(lot.totalPaidCharge || 0).toLocaleString()}
-                </span>
-              </div>
-            )}
+            <div>
+              <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
+              <span className="font-bold text-green-600 dark:text-green-400">
+                Rs. {(lot.totalPaidCharge || 0).toLocaleString()}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">{t("coldChargesDue")}: </span>
+              <span className="font-bold text-amber-600 dark:text-amber-400">
+                Rs. {(lot.totalDueCharge || 0).toLocaleString()}
+              </span>
+            </div>
           </div>
 
           {lot.remarks && (
