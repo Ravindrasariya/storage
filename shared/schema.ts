@@ -284,5 +284,7 @@ export interface MerchantStats {
     totalValue: number; // Based on selling price (pricePerKg * quantity or estimate)
     totalChargePaid: number;
     totalChargeDue: number;
+    cashPaid: number;
+    accountPaid: number;
   }[];
 }

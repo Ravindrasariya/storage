@@ -585,6 +585,8 @@ export class DatabaseStorage implements IStorage {
       totalValue: number;
       totalChargePaid: number;
       totalChargeDue: number;
+      cashPaid: number;
+      accountPaid: number;
     }>();
     
     for (const sale of allSales) {
@@ -595,6 +597,8 @@ export class DatabaseStorage implements IStorage {
         totalValue: 0,
         totalChargePaid: 0,
         totalChargeDue: 0,
+        cashPaid: 0,
+        accountPaid: 0,
       };
       
       // Bags sold in this sale (using correct field name from schema)
@@ -611,6 +615,15 @@ export class DatabaseStorage implements IStorage {
       // These are all captured in paidAmount and dueAmount fields from the sale
       existing.totalChargePaid += sale.paidAmount || 0;
       existing.totalChargeDue += sale.dueAmount || 0;
+      
+      // Track payment by mode (cash vs account)
+      const paidAmt = sale.paidAmount || 0;
+      if (sale.paymentMode === "cash") {
+        existing.cashPaid += paidAmt;
+      } else if (sale.paymentMode === "account") {
+        existing.accountPaid += paidAmt;
+      }
+      // If paymentMode is null (legacy records), we don't split it
       
       merchantMap.set(buyerName, existing);
     }

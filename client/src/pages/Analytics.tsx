@@ -64,7 +64,9 @@ export default function Analytics() {
         totalValue: acc.totalValue + m.totalValue,
         totalChargePaid: acc.totalChargePaid + m.totalChargePaid,
         totalChargeDue: acc.totalChargeDue + m.totalChargeDue,
-      }), { buyerName: "All Buyers", bagsPurchased: 0, totalValue: 0, totalChargePaid: 0, totalChargeDue: 0 })
+        cashPaid: acc.cashPaid + m.cashPaid,
+        accountPaid: acc.accountPaid + m.accountPaid,
+      }), { buyerName: "All Buyers", bagsPurchased: 0, totalValue: 0, totalChargePaid: 0, totalChargeDue: 0, cashPaid: 0, accountPaid: 0 })
     : merchantStats?.merchantData?.find(m => m.buyerName === selectedBuyer);
 
   if (isLoading) {
@@ -217,6 +219,10 @@ export default function Analytics() {
                   <p className="text-xl font-bold text-green-600 dark:text-green-400" data-testid="text-merchant-paid">
                     Rs. {(selectedMerchantData?.totalChargePaid || 0).toLocaleString()}
                   </p>
+                  <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
+                    <span data-testid="text-merchant-cash">{t("cash")}: Rs. {(selectedMerchantData?.cashPaid || 0).toLocaleString()}</span>
+                    <span data-testid="text-merchant-account">{t("account")}: Rs. {(selectedMerchantData?.accountPaid || 0).toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
             </Card>
