@@ -28,16 +28,17 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const [selectedLot, setSelectedLot] = useState<SaleLotInfo | null>(null);
-  const [paymentStatus, setPaymentStatus] = useState<"paid" | "due">("paid");
+  const [paymentStatus, setPaymentStatus] = useState<"paid" | "due" | "partial">("paid");
   const [saleMode, setSaleMode] = useState<"full" | "partial">("full");
   const [partialQuantity, setPartialQuantity] = useState<number>(0);
   const [partialPrice, setPartialPrice] = useState<number>(0);
   const [buyerName, setBuyerName] = useState<string>("");
   const [pricePerKg, setPricePerKg] = useState<string>("");
+  const [customPaidAmount, setCustomPaidAmount] = useState<string>("");
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, buyerName, pricePerKg }: { lotId: string; paymentStatus: "paid" | "due"; buyerName?: string; pricePerKg?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, buyerName, pricePerKg });
+    mutationFn: async ({ lotId, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -59,8 +60,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, buyerName, pricePerKg }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due"; buyerName?: string; pricePerKg?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, buyerName, pricePerKg });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -88,6 +89,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setPaymentStatus("paid");
     setBuyerName("");
     setPricePerKg("");
+    setCustomPaidAmount("");
   };
 
   const removeFromSaleMutation = useMutation({
@@ -114,6 +116,25 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const handleConfirmSale = () => {
     if (selectedLot) {
       const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
+      const totalCharge = saleMode === "partial" 
+        ? partialQuantity * partialPrice 
+        : calculateCharge(selectedLot);
+      
+      let paidAmount: number | undefined;
+      let dueAmount: number | undefined;
+      
+      if (paymentStatus === "paid") {
+        paidAmount = totalCharge;
+        dueAmount = 0;
+      } else if (paymentStatus === "due") {
+        paidAmount = 0;
+        dueAmount = totalCharge;
+      } else if (paymentStatus === "partial") {
+        const customPaid = parseFloat(customPaidAmount) || 0;
+        paidAmount = Math.min(customPaid, totalCharge);
+        dueAmount = totalCharge - paidAmount;
+      }
+      
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
           lotId: selectedLot.id,
@@ -122,6 +143,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           paymentStatus,
           buyerName: buyerName || undefined,
           pricePerKg: parsedPricePerKg,
+          paidAmount,
+          dueAmount,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -129,6 +152,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           paymentStatus,
           buyerName: buyerName || undefined,
           pricePerKg: parsedPricePerKg,
+          paidAmount,
+          dueAmount,
         });
       }
     }
@@ -303,8 +328,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <Label>{t("paymentStatus")}</Label>
                 <RadioGroup
                   value={paymentStatus}
-                  onValueChange={(value) => setPaymentStatus(value as "paid" | "due")}
-                  className="flex gap-4"
+                  onValueChange={(value) => setPaymentStatus(value as "paid" | "due" | "partial")}
+                  className="flex flex-wrap gap-4"
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="paid" id="paid" data-testid="radio-paid" />
@@ -318,8 +343,41 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       {t("due")}
                     </Label>
                   </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="partial" id="partial" data-testid="radio-partial-payment" />
+                    <Label htmlFor="partial" className="text-blue-600 font-medium">
+                      {t("partialPayment") || "Partial Payment"}
+                    </Label>
+                  </div>
                 </RadioGroup>
               </div>
+              
+              {paymentStatus === "partial" && (
+                <div className="space-y-2">
+                  <Label>{t("amountPaid") || "Amount Paid"}</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={calculateCharge(selectedLot)}
+                    value={customPaidAmount}
+                    onChange={(e) => setCustomPaidAmount(e.target.value)}
+                    placeholder={`Max: Rs. ${calculateCharge(selectedLot).toLocaleString()}`}
+                    data-testid="input-custom-paid-amount"
+                  />
+                  {customPaidAmount && (
+                    <div className="p-3 rounded-lg bg-muted text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-green-600">{t("paid")}:</span>
+                        <span className="font-medium">Rs. {Math.min(parseFloat(customPaidAmount) || 0, calculateCharge(selectedLot)).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-amber-600">{t("due")}:</span>
+                        <span className="font-medium">Rs. {Math.max(0, calculateCharge(selectedLot) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -393,8 +451,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <Label>{t("paymentStatus")}</Label>
                 <RadioGroup
                   value={paymentStatus}
-                  onValueChange={(value) => setPaymentStatus(value as "paid" | "due")}
-                  className="flex gap-4"
+                  onValueChange={(value) => setPaymentStatus(value as "paid" | "due" | "partial")}
+                  className="flex flex-wrap gap-4"
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="paid" id="partial-paid" data-testid="radio-partial-paid" />
@@ -408,8 +466,41 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       {t("due")}
                     </Label>
                   </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="partial" id="partial-partial" data-testid="radio-partial-partial-payment" />
+                    <Label htmlFor="partial-partial" className="text-blue-600 font-medium">
+                      {t("partialPayment") || "Partial Payment"}
+                    </Label>
+                  </div>
                 </RadioGroup>
               </div>
+              
+              {paymentStatus === "partial" && partialQuantity > 0 && partialPrice > 0 && (
+                <div className="space-y-2">
+                  <Label>{t("amountPaid") || "Amount Paid"}</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={partialQuantity * partialPrice}
+                    value={customPaidAmount}
+                    onChange={(e) => setCustomPaidAmount(e.target.value)}
+                    placeholder={`Max: Rs. ${(partialQuantity * partialPrice).toLocaleString()}`}
+                    data-testid="input-partial-custom-paid-amount"
+                  />
+                  {customPaidAmount && (
+                    <div className="p-3 rounded-lg bg-muted text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-green-600">{t("paid")}:</span>
+                        <span className="font-medium">Rs. {Math.min(parseFloat(customPaidAmount) || 0, partialQuantity * partialPrice).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-amber-600">{t("due")}:</span>
+                        <span className="font-medium">Rs. {Math.max(0, (partialQuantity * partialPrice) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

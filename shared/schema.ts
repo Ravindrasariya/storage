@@ -95,7 +95,9 @@ export const salesHistory = pgTable("sales_history", {
   buyerName: text("buyer_name"),
   pricePerKg: real("price_per_kg"), // Selling price per kg
   // Payment tracking
-  paymentStatus: text("payment_status").notNull(), // 'paid' or 'due'
+  paymentStatus: text("payment_status").notNull(), // 'paid', 'due', or 'partial'
+  paidAmount: real("paid_amount").default(0), // Amount paid for this sale
+  dueAmount: real("due_amount").default(0), // Amount due for this sale
   paidAt: timestamp("paid_at"), // When marked as paid
   // Timestamps
   entryDate: timestamp("entry_date"), // When lot was originally entered in cold storage (nullable for existing records)

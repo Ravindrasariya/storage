@@ -231,7 +231,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Lot not found" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, buyerName, pricePerKg } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -266,6 +266,11 @@ export async function registerRoutes(
         updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + storageCharge;
       } else if (paymentStatus === "due") {
         updateData.totalDueCharge = (lot.totalDueCharge || 0) + storageCharge;
+      } else if (paymentStatus === "partial") {
+        const actualPaid = paidAmount || 0;
+        const actualDue = dueAmount || (storageCharge - actualPaid);
+        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + actualPaid;
+        updateData.totalDueCharge = (lot.totalDueCharge || 0) + actualDue;
       }
       
       await storage.updateLot(req.params.id, updateData);
@@ -286,6 +291,18 @@ export async function registerRoutes(
 
       // Get chamber for sales history
       const chamber = await storage.getChamber(lot.chamberId);
+      
+      // Calculate paid/due amounts based on payment status
+      let salePaidAmount = 0;
+      let saleDueAmount = 0;
+      if (paymentStatus === "paid") {
+        salePaidAmount = storageCharge;
+      } else if (paymentStatus === "due") {
+        saleDueAmount = storageCharge;
+      } else if (paymentStatus === "partial") {
+        salePaidAmount = paidAmount || 0;
+        saleDueAmount = dueAmount || (storageCharge - salePaidAmount);
+      }
       
       // Create permanent sales history record
       await storage.createSalesHistory({
@@ -312,6 +329,8 @@ export async function registerRoutes(
         buyerName: buyerName || null,
         pricePerKg: pricePerKg || null,
         paymentStatus,
+        paidAmount: salePaidAmount,
+        dueAmount: saleDueAmount,
         entryDate: lot.createdAt,
         saleYear: new Date().getFullYear(),
       });
@@ -334,9 +353,11 @@ export async function registerRoutes(
 
   // Finalize Sale
   const finalizeSaleSchema = z.object({
-    paymentStatus: z.enum(["due", "paid"]),
+    paymentStatus: z.enum(["due", "paid", "partial"]),
     buyerName: z.string().optional(),
     pricePerKg: z.number().optional(),
+    paidAmount: z.number().optional(),
+    dueAmount: z.number().optional(),
   });
 
   app.post("/api/lots/:id/finalize-sale", async (req, res) => {
@@ -347,7 +368,9 @@ export async function registerRoutes(
         req.params.id, 
         validatedData.paymentStatus,
         validatedData.buyerName,
-        validatedData.pricePerKg
+        validatedData.pricePerKg,
+        validatedData.paidAmount,
+        validatedData.dueAmount
       );
       if (!lot) {
         return res.status(404).json({ error: "Lot not found or already sold" });

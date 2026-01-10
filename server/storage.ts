@@ -54,7 +54,7 @@ export interface IStorage {
   getAnalyticsYears(coldStorageId: string): Promise<number[]>;
   checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }>;
   resetSeason(coldStorageId: string): Promise<void>;
-  finalizeSale(lotId: string, paymentStatus: "due" | "paid", buyerName?: string, pricePerKg?: number): Promise<Lot | undefined>;
+  finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number): Promise<Lot | undefined>;
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
   updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined>;
@@ -559,7 +559,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(chambers.coldStorageId, coldStorageId));
   }
 
-  async finalizeSale(lotId: string, paymentStatus: "due" | "paid", buyerName?: string, pricePerKg?: number): Promise<Lot | undefined> {
+  async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number): Promise<Lot | undefined> {
     const lot = await this.getLot(lotId);
     if (!lot || lot.saleStatus === "sold") return undefined;
 
@@ -569,6 +569,18 @@ export class DatabaseStorage implements IStorage {
     const rate = lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate;
     const saleCharge = rate * lot.remainingSize;
 
+    // Calculate paid/due amounts based on payment status
+    let salePaidAmount = 0;
+    let saleDueAmount = 0;
+    if (paymentStatus === "paid") {
+      salePaidAmount = saleCharge;
+    } else if (paymentStatus === "due") {
+      saleDueAmount = saleCharge;
+    } else if (paymentStatus === "partial") {
+      salePaidAmount = paidAmount || 0;
+      saleDueAmount = dueAmount || (saleCharge - salePaidAmount);
+    }
+
     const bagsToRemove = lot.remainingSize;
     const [updatedLot] = await db.update(lots).set({
       saleStatus: "sold",
@@ -577,6 +589,8 @@ export class DatabaseStorage implements IStorage {
       soldAt: new Date(),
       upForSale: 0,
       remainingSize: 0,
+      totalPaidCharge: (lot.totalPaidCharge || 0) + salePaidAmount,
+      totalDueCharge: (lot.totalDueCharge || 0) + saleDueAmount,
     }).where(eq(lots.id, lotId)).returning();
 
     // Create edit history for the final sale
@@ -624,6 +638,8 @@ export class DatabaseStorage implements IStorage {
       buyerName: buyerName || null,
       pricePerKg: pricePerKg || null,
       paymentStatus,
+      paidAmount: salePaidAmount,
+      dueAmount: saleDueAmount,
       entryDate: lot.createdAt,
       saleYear: new Date().getFullYear(),
     });
