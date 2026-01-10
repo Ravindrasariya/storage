@@ -323,6 +323,8 @@ export class DatabaseStorage implements IStorage {
         contactNumber: lot.contactNumber,
         village: lot.village,
         chamberName: chamberMap.get(lot.chamberId) || "Unknown",
+        floor: lot.floor,
+        position: lot.position,
         remainingSize: lot.remainingSize,
         bagType: lot.bagType,
         type: lot.type,

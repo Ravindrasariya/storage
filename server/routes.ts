@@ -231,7 +231,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Lot not found" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -239,6 +239,11 @@ export async function registerRoutes(
 
       if (quantitySold > lot.remainingSize) {
         return res.status(400).json({ error: "Quantity exceeds remaining size" });
+      }
+
+      // Update position if provided
+      if (position) {
+        await storage.updateLot(req.params.id, { position });
       }
 
       const previousData = {
@@ -361,11 +366,17 @@ export async function registerRoutes(
     pricePerKg: z.number().optional(),
     paidAmount: z.number().optional(),
     dueAmount: z.number().optional(),
+    position: z.string().optional(),
   });
 
   app.post("/api/lots/:id/finalize-sale", async (req, res) => {
     try {
       const validatedData = finalizeSaleSchema.parse(req.body);
+      
+      // Update position if provided
+      if (validatedData.position) {
+        await storage.updateLot(req.params.id, { position: validatedData.position });
+      }
       
       const lot = await storage.finalizeSale(
         req.params.id, 

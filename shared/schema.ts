@@ -177,6 +177,8 @@ export interface SaleLotInfo {
   contactNumber: string;
   village: string;
   chamberName: string;
+  floor: number;
+  position: string;
   remainingSize: number;
   bagType: string;
   type: string;

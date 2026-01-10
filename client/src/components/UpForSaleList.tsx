@@ -35,10 +35,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [buyerName, setBuyerName] = useState<string>("");
   const [pricePerKg, setPricePerKg] = useState<string>("");
   const [customPaidAmount, setCustomPaidAmount] = useState<string>("");
+  const [editPosition, setEditPosition] = useState<string>("");
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount });
+    mutationFn: async ({ lotId, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -60,8 +61,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, buyerName, pricePerKg, paidAmount, dueAmount, position });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -90,6 +91,15 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setBuyerName("");
     setPricePerKg("");
     setCustomPaidAmount("");
+    setEditPosition("");
+  };
+
+  const openSaleDialog = (lot: SaleLotInfo, mode: "full" | "partial") => {
+    setSelectedLot(lot);
+    setSaleMode(mode);
+    setPartialQuantity(0);
+    setPartialPrice(lot.rate);
+    setEditPosition(lot.position);
   };
 
   const removeFromSaleMutation = useMutation({
@@ -145,6 +155,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           pricePerKg: parsedPricePerKg,
           paidAmount,
           dueAmount,
+          position: editPosition || undefined,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -154,16 +165,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           pricePerKg: parsedPricePerKg,
           paidAmount,
           dueAmount,
+          position: editPosition || undefined,
         });
       }
     }
-  };
-
-  const openSaleDialog = (lot: SaleLotInfo, mode: "full" | "partial") => {
-    setSelectedLot(lot);
-    setSaleMode(mode);
-    setPartialQuantity(0);
-    setPartialPrice(lot.rate);
   };
 
   const calculateCharge = (lot: SaleLotInfo) => {
@@ -288,6 +293,27 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           
           {selectedLot && saleMode === "full" && (
             <div className="space-y-4 py-4">
+              <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/50 border">
+                <div>
+                  <Label className="text-xs text-muted-foreground">{t("chamber")}</Label>
+                  <div className="font-medium">{selectedLot.chamberName}</div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">{t("floor")}</Label>
+                  <div className="font-medium">{selectedLot.floor}</div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">{t("position")}</Label>
+                  <Input
+                    type="text"
+                    value={editPosition}
+                    onChange={(e) => setEditPosition(e.target.value)}
+                    className="h-8 mt-0.5"
+                    data-testid="input-edit-position"
+                  />
+                </div>
+              </div>
+
               <div className="p-4 rounded-lg bg-muted">
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">{t("storageCharge")}:</span>
@@ -391,6 +417,27 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
           {selectedLot && saleMode === "partial" && (
             <div className="space-y-4 py-4">
+              <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/50 border">
+                <div>
+                  <Label className="text-xs text-muted-foreground">{t("chamber")}</Label>
+                  <div className="font-medium">{selectedLot.chamberName}</div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">{t("floor")}</Label>
+                  <div className="font-medium">{selectedLot.floor}</div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">{t("position")}</Label>
+                  <Input
+                    type="text"
+                    value={editPosition}
+                    onChange={(e) => setEditPosition(e.target.value)}
+                    className="h-8 mt-0.5"
+                    data-testid="input-partial-edit-position"
+                  />
+                </div>
+              </div>
+
               <div className="p-4 rounded-lg bg-muted text-sm">
                 <span className="text-muted-foreground">{t("remaining")}: </span>
                 <span className="font-bold">{selectedLot.remainingSize} {t("bags")}</span>
