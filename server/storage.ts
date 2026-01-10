@@ -516,22 +516,18 @@ export class DatabaseStorage implements IStorage {
     const lotPaymentMap = new Map<string, { paidAmount: number; dueAmount: number }>();
     
     for (const sale of allSales) {
-      const charge = sale.coldStorageCharge || 0;
+      // Use actual paidAmount and dueAmount fields from each sale record
+      // This correctly handles full payments, full due, and partial payments
+      const salePaid = sale.paidAmount || 0;
+      const saleDue = sale.dueAmount || 0;
       
-      // Sum up amounts for totals
-      if (sale.paymentStatus === "paid") {
-        totalPaid += charge;
-      } else if (sale.paymentStatus === "due") {
-        totalDue += charge;
-      }
+      totalPaid += salePaid;
+      totalDue += saleDue;
       
       // Track payment status by lot for counting unique lots
       const existing = lotPaymentMap.get(sale.lotId) || { paidAmount: 0, dueAmount: 0 };
-      if (sale.paymentStatus === "paid") {
-        existing.paidAmount += charge;
-      } else {
-        existing.dueAmount += charge;
-      }
+      existing.paidAmount += salePaid;
+      existing.dueAmount += saleDue;
       lotPaymentMap.set(sale.lotId, existing);
     }
     
