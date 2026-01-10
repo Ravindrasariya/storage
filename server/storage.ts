@@ -73,6 +73,7 @@ export interface IStorage {
     farmerName?: string;
     contactNumber?: string;
     paymentStatus?: "paid" | "due";
+    buyerName?: string;
   }): Promise<SalesHistory[]>;
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
@@ -792,6 +793,7 @@ export class DatabaseStorage implements IStorage {
     farmerName?: string;
     contactNumber?: string;
     paymentStatus?: "paid" | "due";
+    buyerName?: string;
   }): Promise<SalesHistory[]> {
     let conditions = [eq(salesHistory.coldStorageId, coldStorageId)];
     
@@ -806,6 +808,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.paymentStatus) {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
+    }
+    if (filters?.buyerName) {
+      conditions.push(ilike(salesHistory.buyerName, `%${filters.buyerName}%`));
     }
 
     return db.select()

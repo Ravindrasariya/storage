@@ -182,6 +182,7 @@ const translations: Translations = {
   filterByYear: { en: "Filter by Year", hi: "वर्ष के अनुसार फ़िल्टर करें" },
   filterByFarmer: { en: "Filter by Farmer", hi: "किसान के अनुसार फ़िल्टर करें" },
   filterByMobile: { en: "Filter by Mobile", hi: "मोबाइल के अनुसार फ़िल्टर करें" },
+  filterByBuyer: { en: "Filter by Buyer", hi: "खरीदार के अनुसार फ़िल्टर करें" },
   filterByPayment: { en: "Filter by Payment", hi: "भुगतान के अनुसार फ़िल्टर करें" },
   noSalesHistory: { en: "No sales history found", hi: "कोई बिक्री इतिहास नहीं मिला" },
   potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },

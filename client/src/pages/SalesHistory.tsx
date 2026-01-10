@@ -22,6 +22,7 @@ export default function SalesHistoryPage() {
   const [farmerFilter, setFarmerFilter] = useState("");
   const [mobileFilter, setMobileFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("");
+  const [buyerFilter, setBuyerFilter] = useState("");
 
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/sales-history/years"],
@@ -33,11 +34,12 @@ export default function SalesHistoryPage() {
     if (farmerFilter) params.append("farmerName", farmerFilter);
     if (mobileFilter) params.append("contactNumber", mobileFilter);
     if (paymentFilter) params.append("paymentStatus", paymentFilter);
+    if (buyerFilter) params.append("buyerName", buyerFilter);
     return params.toString();
   };
 
   const { data: salesHistory = [], isLoading: historyLoading, refetch } = useQuery<SalesHistory[]>({
-    queryKey: ["/api/sales-history", yearFilter, farmerFilter, mobileFilter, paymentFilter],
+    queryKey: ["/api/sales-history", yearFilter, farmerFilter, mobileFilter, paymentFilter, buyerFilter],
     queryFn: async () => {
       const queryString = buildQueryString();
       const response = await fetch(`/api/sales-history${queryString ? `?${queryString}` : ""}`);
@@ -72,9 +74,10 @@ export default function SalesHistoryPage() {
     setFarmerFilter("");
     setMobileFilter("");
     setPaymentFilter("");
+    setBuyerFilter("");
   };
 
-  const hasActiveFilters = yearFilter || farmerFilter || mobileFilter || paymentFilter;
+  const hasActiveFilters = yearFilter || farmerFilter || mobileFilter || paymentFilter || buyerFilter;
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -90,7 +93,7 @@ export default function SalesHistoryPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">{t("filterByYear")}</label>
               <Select value={yearFilter} onValueChange={setYearFilter}>
@@ -130,6 +133,20 @@ export default function SalesHistoryPage() {
                   placeholder={t("contactNumber")}
                   className="pl-10"
                   data-testid="input-mobile-filter"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-muted-foreground">{t("filterByBuyer")}</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={buyerFilter}
+                  onChange={(e) => setBuyerFilter(e.target.value)}
+                  placeholder={t("buyerName")}
+                  className="pl-10"
+                  data-testid="input-buyer-filter"
                 />
               </div>
             </div>

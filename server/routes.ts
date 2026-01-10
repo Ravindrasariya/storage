@@ -629,13 +629,14 @@ export async function registerRoutes(
   // Sales History
   app.get("/api/sales-history", async (req, res) => {
     try {
-      const { year, farmerName, contactNumber, paymentStatus } = req.query;
+      const { year, farmerName, contactNumber, paymentStatus, buyerName } = req.query;
       
       const filters: {
         year?: number;
         farmerName?: string;
         contactNumber?: string;
         paymentStatus?: "paid" | "due";
+        buyerName?: string;
       } = {};
       
       if (year) filters.year = parseInt(year as string);
@@ -644,6 +645,7 @@ export async function registerRoutes(
       if (paymentStatus === "paid" || paymentStatus === "due") {
         filters.paymentStatus = paymentStatus;
       }
+      if (buyerName) filters.buyerName = buyerName as string;
       
       const salesHistory = await storage.getSalesHistory(DEFAULT_COLD_STORAGE_ID, filters);
       res.json(salesHistory);
