@@ -203,6 +203,7 @@ export interface SaleLotInfo {
   bagType: string;
   type: string;
   quality: string;
+  potatoSize: string;
   rate: number;
   coldCharge: number; // Cold storage charge per bag
   hammali: number; // Hammali charge per bag

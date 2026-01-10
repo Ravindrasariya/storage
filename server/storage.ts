@@ -354,6 +354,7 @@ export class DatabaseStorage implements IStorage {
           bagType: lot.bagType,
           type: lot.type,
           quality: lot.quality,
+          potatoSize: lot.potatoSize,
           rate: isWafer ? (coldStorage?.waferRate || 0) : (coldStorage?.seedRate || 0),
           coldCharge,
           hammali,
