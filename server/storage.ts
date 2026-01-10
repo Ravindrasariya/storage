@@ -356,7 +356,8 @@ export class DatabaseStorage implements IStorage {
           coldCharge,
           hammali,
         };
-      });
+      })
+      .sort((a, b) => Number(a.lotNo) - Number(b.lotNo));
 
     return {
       totalCapacity: coldStorage?.totalCapacity || 0,
