@@ -230,6 +230,24 @@ const translations: Translations = {
   proceedWithReset: { en: "Proceed with Reset", hi: "रीसेट के साथ आगे बढ़ें" },
   remainingBags: { en: "Remaining Bags", hi: "बाकी बैग" },
   remainingLots: { en: "Remaining Lots", hi: "बाकी लॉट" },
+
+  // Edit Sale Dialog
+  editSale: { en: "Edit Sale", hi: "बिक्री संपादित करें" },
+  saleDetails: { en: "Sale Details", hi: "बिक्री विवरण" },
+  enterBuyerName: { en: "Enter buyer name", hi: "खरीदार का नाम दर्ज करें" },
+  sellingPrice: { en: "Selling Price", hi: "बिक्री मूल्य" },
+  currentStatus: { en: "Current Status", hi: "वर्तमान स्थिति" },
+  keepAsPaid: { en: "Keep as Paid", hi: "भुगतान के रूप में रखें" },
+  keepAsDue: { en: "Keep as Due", hi: "बकाया के रूप में रखें" },
+  keepAsPartial: { en: "Keep as Partial", hi: "आंशिक के रूप में रखें" },
+  markAsPartial: { en: "Mark as Partial Payment", hi: "आंशिक भुगतान के रूप में चिह्नित करें" },
+  paidAmount: { en: "Paid Amount", hi: "भुगतान राशि" },
+  maxAmount: { en: "Max Amount", hi: "अधिकतम राशि" },
+  partial: { en: "Partial", hi: "आंशिक" },
+  saleUpdated: { en: "Sale updated successfully", hi: "बिक्री सफलतापूर्वक अपडेट की गई" },
+  failedToUpdateSale: { en: "Failed to update sale", hi: "बिक्री अपडेट करने में विफल" },
+  noChanges: { en: "No changes to save", hi: "सहेजने के लिए कोई परिवर्तन नहीं" },
+  saving: { en: "Saving...", hi: "सहेज रहा है..." },
 };
 
 interface I18nContextType {

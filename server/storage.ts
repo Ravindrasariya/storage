@@ -851,6 +851,59 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateSalesHistory(saleId: string, updates: {
+    buyerName?: string;
+    pricePerKg?: number;
+    paymentStatus?: "paid" | "due" | "partial";
+    paidAmount?: number;
+    dueAmount?: number;
+    paymentMode?: "cash" | "account";
+  }): Promise<SalesHistory | undefined> {
+    const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
+    if (!sale) return undefined;
+
+    const updateData: Record<string, unknown> = {};
+    
+    if (updates.buyerName !== undefined) {
+      updateData.buyerName = updates.buyerName || null;
+    }
+    if (updates.pricePerKg !== undefined) {
+      updateData.pricePerKg = updates.pricePerKg || null;
+    }
+    if (updates.paymentStatus !== undefined) {
+      updateData.paymentStatus = updates.paymentStatus;
+      if (updates.paymentStatus === "paid") {
+        updateData.paidAt = new Date();
+        // Keep or set payment mode for paid status
+        if (updates.paymentMode) {
+          updateData.paymentMode = updates.paymentMode;
+        }
+      } else if (updates.paymentStatus === "due") {
+        // Clear paidAt and paymentMode when marking as due
+        updateData.paidAt = null;
+        updateData.paymentMode = null;
+      } else if (updates.paymentStatus === "partial") {
+        // Set paidAt for partial payments and keep payment mode
+        updateData.paidAt = new Date();
+        if (updates.paymentMode) {
+          updateData.paymentMode = updates.paymentMode;
+        }
+      }
+    }
+    if (updates.paidAmount !== undefined) {
+      updateData.paidAmount = updates.paidAmount;
+    }
+    if (updates.dueAmount !== undefined) {
+      updateData.dueAmount = updates.dueAmount;
+    }
+
+    const [updated] = await db.update(salesHistory)
+      .set(updateData)
+      .where(eq(salesHistory.id, saleId))
+      .returning();
+    return updated;
+  }
+
   async getSalesYears(coldStorageId: string): Promise<number[]> {
     const results = await db.select({ year: salesHistory.saleYear })
       .from(salesHistory)

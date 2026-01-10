@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,21 +8,21 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { Search, X, CheckCircle, Filter, Package, IndianRupee, Clock } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock } from "lucide-react";
+import { EditSaleDialog } from "@/components/EditSaleDialog";
 import type { SalesHistory } from "@shared/schema";
 
 export default function SalesHistoryPage() {
   const { t } = useI18n();
-  const { toast } = useToast();
   
   const [yearFilter, setYearFilter] = useState<string>("");
   const [farmerFilter, setFarmerFilter] = useState("");
   const [mobileFilter, setMobileFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("");
   const [buyerFilter, setBuyerFilter] = useState("");
+  const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/sales-history/years"],
@@ -38,7 +38,7 @@ export default function SalesHistoryPage() {
     return params.toString();
   };
 
-  const { data: salesHistory = [], isLoading: historyLoading, refetch } = useQuery<SalesHistory[]>({
+  const { data: salesHistory = [], isLoading: historyLoading } = useQuery<SalesHistory[]>({
     queryKey: ["/api/sales-history", yearFilter, farmerFilter, mobileFilter, paymentFilter, buyerFilter],
     queryFn: async () => {
       const queryString = buildQueryString();
@@ -48,26 +48,10 @@ export default function SalesHistoryPage() {
     },
   });
 
-  const togglePaymentMutation = useMutation({
-    mutationFn: async ({ saleId, newStatus }: { saleId: string; newStatus: "paid" | "due" }) => {
-      const endpoint = newStatus === "paid" ? "mark-paid" : "mark-due";
-      const response = await fetch(`/api/sales-history/${saleId}/${endpoint}`, { method: "PATCH" });
-      if (!response.ok) throw new Error("Failed to update payment status");
-      return response.json();
-    },
-    onSuccess: (_, variables) => {
-      toast({ 
-        title: t("success"), 
-        description: variables.newStatus === "paid" ? t("markAsPaid") : t("markedAsDue") 
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
-      // Also invalidate analytics so payment stats update immediately
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
-    },
-    onError: () => {
-      toast({ title: t("error"), description: "Failed to update payment status", variant: "destructive" });
-    },
-  });
+  const handleEditSale = (sale: SalesHistory) => {
+    setEditingSale(sale);
+    setEditDialogOpen(true);
+  };
 
   const clearFilters = () => {
     setYearFilter("");
@@ -310,11 +294,16 @@ export default function SalesHistoryPage() {
                       </TableCell>
                       <TableCell>
                         <Badge 
-                          variant={sale.paymentStatus === "paid" ? "default" : "destructive"}
+                          variant={sale.paymentStatus === "paid" ? "default" : sale.paymentStatus === "partial" ? "secondary" : "destructive"}
                           className={sale.paymentStatus === "paid" ? "bg-green-600" : ""}
                         >
                           {t(sale.paymentStatus)}
                         </Badge>
+                        {sale.paymentStatus === "partial" && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {t("paid")}: Rs. {(sale.paidAmount || 0).toLocaleString()}
+                          </div>
+                        )}
                         {sale.paidAt && (
                           <div className="text-xs text-muted-foreground mt-1">
                             {t("paidOn")}: {format(new Date(sale.paidAt), "dd/MM/yy")}
@@ -322,29 +311,15 @@ export default function SalesHistoryPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {sale.paymentStatus === "due" ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => togglePaymentMutation.mutate({ saleId: sale.id, newStatus: "paid" })}
-                            disabled={togglePaymentMutation.isPending}
-                            data-testid={`button-mark-paid-${sale.id}`}
-                          >
-                            <CheckCircle className="h-4 w-4 mr-1" />
-                            {t("markAsPaid")}
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => togglePaymentMutation.mutate({ saleId: sale.id, newStatus: "due" })}
-                            disabled={togglePaymentMutation.isPending}
-                            data-testid={`button-mark-due-${sale.id}`}
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            {t("markAsDue")}
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditSale(sale)}
+                          data-testid={`button-edit-sale-${sale.id}`}
+                        >
+                          <Pencil className="h-4 w-4 mr-1" />
+                          {t("edit")}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -364,12 +339,21 @@ export default function SalesHistoryPage() {
             <span className="text-green-600">
               {t("paid")}: {salesHistory.filter(s => s.paymentStatus === "paid").length}
             </span>
+            <span className="text-blue-600">
+              {t("partial")}: {salesHistory.filter(s => s.paymentStatus === "partial").length}
+            </span>
             <span className="text-amber-600">
               {t("due")}: {salesHistory.filter(s => s.paymentStatus === "due").length}
             </span>
           </div>
         </div>
       )}
+
+      <EditSaleDialog 
+        sale={editingSale}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+      />
     </div>
   );
 }

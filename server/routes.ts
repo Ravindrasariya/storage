@@ -705,6 +705,31 @@ export async function registerRoutes(
     }
   });
 
+  const updateSalesHistorySchema = z.object({
+    buyerName: z.string().optional(),
+    pricePerKg: z.number().optional(),
+    paymentStatus: z.enum(["paid", "due", "partial"]).optional(),
+    paidAmount: z.number().optional(),
+    dueAmount: z.number().optional(),
+    paymentMode: z.enum(["cash", "account"]).optional(),
+  });
+
+  app.patch("/api/sales-history/:id", async (req, res) => {
+    try {
+      const validatedData = updateSalesHistorySchema.parse(req.body);
+      const updated = await storage.updateSalesHistory(req.params.id, validatedData);
+      if (!updated) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid update data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update sale" });
+    }
+  });
+
   // Maintenance Records
   const createMaintenanceSchema = z.object({
     taskDescription: z.string(),
