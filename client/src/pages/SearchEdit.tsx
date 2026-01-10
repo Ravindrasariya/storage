@@ -487,6 +487,19 @@ export default function SearchEdit() {
             </div>
           )}
 
+          <div className="flex justify-end gap-2 border-t pt-4">
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={handleEditSubmit}
+              disabled={updateLotMutation.isPending || !editForm}
+              data-testid="button-save-edit"
+            >
+              {updateLotMutation.isPending ? t("loading") : t("save")}
+            </Button>
+          </div>
+
           <div className="border-t pt-4">
             <h3 className="font-semibold mb-3">{t("editHistory")}</h3>
             <EditHistoryAccordion 
@@ -530,19 +543,6 @@ export default function SearchEdit() {
               } : undefined}
             />
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={handleEditSubmit}
-              disabled={updateLotMutation.isPending || !editForm}
-              data-testid="button-save-edit"
-            >
-              {updateLotMutation.isPending ? t("loading") : t("save")}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
