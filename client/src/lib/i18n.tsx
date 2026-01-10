@@ -203,6 +203,16 @@ const translations: Translations = {
   rateBreakdown: { en: "Rate Breakdown", hi: "दर विवरण" },
   perBag: { en: "/bag", hi: "/बैग" },
 
+  // Merchant Analysis
+  merchantAnalysis: { en: "Merchant Analysis", hi: "व्यापारी विश्लेषण" },
+  selectBuyer: { en: "Select Buyer", hi: "खरीदार चुनें" },
+  allBuyers: { en: "All Buyers", hi: "सभी खरीदार" },
+  bagsPurchased: { en: "Bags Purchased", hi: "खरीदे गए बैग" },
+  totalValueINR: { en: "Total Value (INR)", hi: "कुल मूल्य (INR)" },
+  totalChargesPaidMerchant: { en: "Total Charges Paid", hi: "कुल शुल्क भुगतान" },
+  totalChargesDueMerchant: { en: "Total Charges Due", hi: "कुल शुल्क बाकी" },
+  noMerchantData: { en: "No buyer data available for selected year", hi: "चयनित वर्ष के लिए कोई खरीदार डेटा उपलब्ध नहीं" },
+  
   // Reset Season
   resetForNextSeason: { en: "Reset for Next Season", hi: "अगले सीज़न के लिए रीसेट करें" },
   resetWarning: { en: "This option should only be selected when a new season is starting. All data on dashboard and search/edit page will be reset to zero.", hi: "यह विकल्प केवल तभी चुना जाना चाहिए जब नया सीज़न शुरू हो रहा हो। डैशबोर्ड और खोज/संपादन पृष्ठ पर सभी डेटा शून्य पर रीसेट हो जाएगा।" },

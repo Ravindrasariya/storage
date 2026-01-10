@@ -521,6 +521,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/analytics/merchants", async (req, res) => {
+    try {
+      const { year } = req.query;
+      const yearNum = year ? parseInt(year as string) : undefined;
+      const stats = await storage.getMerchantStats(DEFAULT_COLD_STORAGE_ID, yearNum);
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch merchant stats" });
+    }
+  });
+
   app.get("/api/analytics/years", async (req, res) => {
     try {
       const years = await storage.getAnalyticsYears(DEFAULT_COLD_STORAGE_ID);

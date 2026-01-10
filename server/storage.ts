@@ -26,6 +26,7 @@ import {
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
+  type MerchantStats,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -56,6 +57,7 @@ export interface IStorage {
   getDashboardStats(coldStorageId: string): Promise<DashboardStats>;
   getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats>;
   getPaymentStats(coldStorageId: string, year?: number): Promise<PaymentStats>;
+  getMerchantStats(coldStorageId: string, year?: number): Promise<MerchantStats>;
   getAnalyticsYears(coldStorageId: string): Promise<number[]>;
   checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }>;
   resetSeason(coldStorageId: string): Promise<void>;
@@ -571,6 +573,60 @@ export class DatabaseStorage implements IStorage {
       totalDue,
       paidCount,
       dueCount,
+    };
+  }
+
+  async getMerchantStats(coldStorageId: string, year?: number): Promise<MerchantStats> {
+    const allSales = await this.getSalesHistory(coldStorageId, year ? { year } : undefined);
+    
+    // Group sales by buyer name
+    const merchantMap = new Map<string, {
+      bagsPurchased: number;
+      totalValue: number;
+      totalChargePaid: number;
+      totalChargeDue: number;
+    }>();
+    
+    for (const sale of allSales) {
+      const buyerName = sale.buyerName?.trim() || "Unknown";
+      
+      const existing = merchantMap.get(buyerName) || {
+        bagsPurchased: 0,
+        totalValue: 0,
+        totalChargePaid: 0,
+        totalChargeDue: 0,
+      };
+      
+      // Bags sold in this sale (using correct field name from schema)
+      existing.bagsPurchased += sale.quantitySold || 0;
+      
+      // Total value based on selling price (pricePerKg * quantitySold * approx weight per bag)
+      // Estimate ~50kg per bag average for potato bags
+      if (sale.pricePerKg && sale.quantitySold) {
+        existing.totalValue += sale.pricePerKg * sale.quantitySold * 50;
+      }
+      // Note: If no pricePerKg provided, we don't add to value as we can't estimate it
+      
+      // Total charges = cold storage rent + hammali + kata + extra hammali + grading
+      // These are all captured in paidAmount and dueAmount fields from the sale
+      existing.totalChargePaid += sale.paidAmount || 0;
+      existing.totalChargeDue += sale.dueAmount || 0;
+      
+      merchantMap.set(buyerName, existing);
+    }
+    
+    // Extract unique buyer names
+    const buyers = Array.from(merchantMap.keys()).sort();
+    
+    // Build merchant data array
+    const merchantData = buyers.map(buyerName => ({
+      buyerName,
+      ...merchantMap.get(buyerName)!,
+    }));
+    
+    return {
+      buyers,
+      merchantData,
     };
   }
 

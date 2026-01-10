@@ -273,3 +273,15 @@ export interface PaymentStats {
   paidCount: number;
   dueCount: number;
 }
+
+// Merchant stats for analytics
+export interface MerchantStats {
+  buyers: string[];
+  merchantData: {
+    buyerName: string;
+    bagsPurchased: number;
+    totalValue: number; // Based on selling price (pricePerKg * quantity or estimate)
+    totalChargePaid: number;
+    totalChargeDue: number;
+  }[];
+}

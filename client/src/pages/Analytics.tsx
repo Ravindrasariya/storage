@@ -8,13 +8,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QualityChart } from "@/components/QualityChart";
 import { QualitySummaryCards } from "@/components/QualitySummaryCards";
-import { ArrowLeft, BarChart3, Clock, IndianRupee, Calendar } from "lucide-react";
-import type { QualityStats, PaymentStats } from "@shared/schema";
+import { ArrowLeft, BarChart3, Clock, IndianRupee, Calendar, Users, Package, Wallet } from "lucide-react";
+import type { QualityStats, PaymentStats, MerchantStats } from "@shared/schema";
 
 export default function Analytics() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
+  const [selectedBuyer, setSelectedBuyer] = useState<string>("all");
 
   const { data: years = [] } = useQuery<number[]>({
     queryKey: ["/api/analytics/years"],
@@ -43,6 +44,28 @@ export default function Analytics() {
       return response.json();
     },
   });
+
+  const { data: merchantStats } = useQuery<MerchantStats>({
+    queryKey: ["/api/analytics/merchants", selectedYear],
+    queryFn: async () => {
+      const url = selectedYear && selectedYear !== "all" 
+        ? `/api/analytics/merchants?year=${selectedYear}` 
+        : "/api/analytics/merchants";
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch merchant stats");
+      return response.json();
+    },
+  });
+
+  const selectedMerchantData = selectedBuyer === "all"
+    ? merchantStats?.merchantData?.reduce((acc, m) => ({
+        buyerName: "All Buyers",
+        bagsPurchased: acc.bagsPurchased + m.bagsPurchased,
+        totalValue: acc.totalValue + m.totalValue,
+        totalChargePaid: acc.totalChargePaid + m.totalChargePaid,
+        totalChargeDue: acc.totalChargeDue + m.totalChargeDue,
+      }), { buyerName: "All Buyers", bagsPurchased: 0, totalValue: 0, totalChargePaid: 0, totalChargeDue: 0 })
+    : merchantStats?.merchantData?.find(m => m.buyerName === selectedBuyer);
 
   if (isLoading) {
     return (
@@ -133,6 +156,91 @@ export default function Analytics() {
           </div>
         </Card>
       </div>
+
+      {/* Merchant Analysis Section */}
+      <Card className="p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <h3 className="text-lg font-semibold">{t("merchantAnalysis")}</h3>
+          </div>
+          <Select value={selectedBuyer} onValueChange={setSelectedBuyer}>
+            <SelectTrigger className="w-48" data-testid="select-buyer">
+              <SelectValue placeholder={t("selectBuyer")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("allBuyers")}</SelectItem>
+              {merchantStats?.buyers?.map((buyer) => (
+                <SelectItem key={buyer} value={buyer}>{buyer}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {merchantStats?.merchantData && merchantStats.merchantData.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="p-4 bg-muted/30">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
+                  <Package className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-muted-foreground">{t("bagsPurchased")}</p>
+                  <p className="text-xl font-bold text-purple-600 dark:text-purple-400" data-testid="text-bags-purchased">
+                    {(selectedMerchantData?.bagsPurchased || 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-muted/30">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/50">
+                  <IndianRupee className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-muted-foreground">{t("totalValueINR")}</p>
+                  <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400" data-testid="text-total-value">
+                    Rs. {(selectedMerchantData?.totalValue || 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-muted/30">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
+                  <Wallet className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-muted-foreground">{t("totalChargesPaidMerchant")}</p>
+                  <p className="text-xl font-bold text-green-600 dark:text-green-400" data-testid="text-merchant-paid">
+                    Rs. {(selectedMerchantData?.totalChargePaid || 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-muted/30">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/50">
+                  <Clock className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-muted-foreground">{t("totalChargesDueMerchant")}</p>
+                  <p className="text-xl font-bold text-red-600 dark:text-red-400" data-testid="text-merchant-due">
+                    Rs. {(selectedMerchantData?.totalChargeDue || 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-muted-foreground">
+            {t("noMerchantData")}
+          </div>
+        )}
+      </Card>
 
       <QualitySummaryCards
         poor={stats?.totalPoorRemaining || 0}
