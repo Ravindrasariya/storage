@@ -712,6 +712,7 @@ export async function registerRoutes(
     paidAmount: z.number().optional(),
     dueAmount: z.number().optional(),
     paymentMode: z.enum(["cash", "account"]).optional(),
+    netWeight: z.number().nullable().optional(),
   });
 
   app.patch("/api/sales-history/:id", async (req, res) => {

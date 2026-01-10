@@ -858,6 +858,7 @@ export class DatabaseStorage implements IStorage {
     paidAmount?: number;
     dueAmount?: number;
     paymentMode?: "cash" | "account";
+    netWeight?: number | null;
   }): Promise<SalesHistory | undefined> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) return undefined;
@@ -895,6 +896,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.dueAmount !== undefined) {
       updateData.dueAmount = updates.dueAmount;
+    }
+    if (updates.netWeight !== undefined) {
+      updateData.netWeight = updates.netWeight;
     }
 
     const [updated] = await db.update(salesHistory)

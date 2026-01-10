@@ -24,6 +24,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   
   const [buyerName, setBuyerName] = useState("");
   const [pricePerKg, setPricePerKg] = useState("");
+  const [netWeight, setNetWeight] = useState("");
   const [newPaymentStatus, setNewPaymentStatus] = useState<"paid" | "due" | "partial">("paid");
   const [customAmount, setCustomAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
@@ -36,6 +37,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     if (sale) {
       setBuyerName(sale.buyerName || "");
       setPricePerKg(sale.pricePerKg ? sale.pricePerKg.toString() : "");
+      setNetWeight(sale.netWeight ? sale.netWeight.toString() : "");
       setNewPaymentStatus(sale.paymentStatus as "paid" | "due" | "partial");
       setCustomAmount(sale.paidAmount?.toString() || "0");
       setPaymentMode(sale.paymentMode as "cash" | "account" || "cash");
@@ -46,6 +48,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     mutationFn: async (data: {
       buyerName?: string;
       pricePerKg?: number;
+      netWeight?: number | null;
       paymentStatus?: "paid" | "due" | "partial";
       paidAmount?: number;
       dueAmount?: number;
@@ -79,6 +82,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     const newPriceKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
     if (newPriceKg !== sale.pricePerKg) {
       updates.pricePerKg = newPriceKg || 0;
+    }
+
+    const newNetWeight = netWeight ? parseFloat(netWeight) : null;
+    if (newNetWeight !== (sale.netWeight || null)) {
+      updates.netWeight = newNetWeight;
     }
 
     if (newPaymentStatus !== sale.paymentStatus) {
@@ -192,6 +200,18 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 onChange={(e) => setPricePerKg(e.target.value)}
                 placeholder="0"
                 data-testid="input-edit-price-per-kg"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="netWeight">{t("netWeight")} (kg)</Label>
+              <Input
+                id="netWeight"
+                type="number"
+                value={netWeight}
+                onChange={(e) => setNetWeight(e.target.value)}
+                placeholder={t("optional")}
+                data-testid="input-edit-net-weight"
               />
             </div>
           </div>
