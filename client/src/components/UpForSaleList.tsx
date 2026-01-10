@@ -242,13 +242,12 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         {lot.farmerName}
                       </span>
                       <Badge variant="outline" className="text-xs">
-                        {lot.lotNo}
+                        {t("lot")} {lot.lotNo}
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        {lot.bagType} | {lot.type}
                       </Badge>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-chart-1 font-bold shrink-0">
-                    <Package className="h-4 w-4" />
-                    <span data-testid={`sale-size-${lot.id}`}>{lot.remainingSize}</span>
                   </div>
                 </div>
                 
@@ -261,9 +260,28 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     <MapPin className="h-3 w-3 shrink-0" />
                     {lot.village}
                   </span>
-                  <span className="text-xs">
-                    {lot.chamberName} | {lot.bagType} | {lot.type}
-                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm p-2 rounded bg-muted/50">
+                  <div>
+                    <span className="text-muted-foreground text-xs">{t("chamber")}</span>
+                    <div className="font-medium">{lot.chamberName}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">{t("floor")}</span>
+                    <div className="font-medium">{lot.floor}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">{t("position")}</span>
+                    <div className="font-medium">{lot.position || "-"}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">{t("bags")}</span>
+                    <div className="font-medium">
+                      <span className="text-chart-1">{lot.remainingSize}</span>
+                      <span className="text-muted-foreground">/{lot.originalSize}</span>
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="text-sm">

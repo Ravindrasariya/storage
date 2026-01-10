@@ -349,6 +349,7 @@ export class DatabaseStorage implements IStorage {
           chamberName: chamberMap.get(lot.chamberId) || "Unknown",
           floor: lot.floor,
           position: lot.position,
+          originalSize: lot.size,
           remainingSize: lot.remainingSize,
           bagType: lot.bagType,
           type: lot.type,

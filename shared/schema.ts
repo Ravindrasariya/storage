@@ -198,6 +198,7 @@ export interface SaleLotInfo {
   chamberName: string;
   floor: number;
   position: string;
+  originalSize: number; // Original bag count
   remainingSize: number;
   bagType: string;
   type: string;
