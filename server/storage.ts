@@ -682,7 +682,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(chambers.coldStorageId, coldStorageId));
   }
 
-  async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number): Promise<Lot | undefined> {
+  async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number): Promise<Lot | undefined> {
     const lot = await this.getLot(lotId);
     if (!lot || lot.saleStatus === "sold") return undefined;
 
@@ -768,6 +768,7 @@ export class DatabaseStorage implements IStorage {
       kataCharges: kataCharges || 0,
       extraHammali: extraHammali || 0,
       gradingCharges: gradingCharges || 0,
+      netWeight: netWeight || null,
       buyerName: buyerName || null,
       pricePerKg: pricePerKg || null,
       paymentStatus,

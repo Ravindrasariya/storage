@@ -48,10 +48,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [extraHammaliPerBag, setExtraHammaliPerBag] = useState<string>("");
   const [totalGradingCharges, setTotalGradingCharges] = useState<string>("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
+  const [netWeight, setNetWeight] = useState<string>("");
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges });
+    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -73,8 +74,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -109,6 +110,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setDeliveryType("gate");
     setExtraHammaliPerBag("");
     setTotalGradingCharges("");
+    setNetWeight("");
   };
 
   const openSaleDialog = (lot: SaleLotInfo, mode: "full" | "partial") => {
@@ -171,6 +173,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       // Only include paymentMode if payment status is paid or partial
       const modeToSend = (paymentStatus === "paid" || paymentStatus === "partial") ? paymentMode : undefined;
       
+      const parsedNetWeight = netWeight ? parseFloat(netWeight) : undefined;
+      
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
           lotId: selectedLot.id,
@@ -186,6 +190,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           kataCharges: kata > 0 ? kata : undefined,
           extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
           gradingCharges: grading > 0 ? grading : undefined,
+          netWeight: parsedNetWeight,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -200,6 +205,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           kataCharges: kata > 0 ? kata : undefined,
           extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
           gradingCharges: grading > 0 ? grading : undefined,
+          netWeight: parsedNetWeight,
         });
       }
     }
@@ -494,6 +500,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
+                <Label>{t("netWeight")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={netWeight}
+                  onChange={(e) => setNetWeight(e.target.value)}
+                  placeholder={t("netWeightKg")}
+                  data-testid="input-net-weight"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label>{t("paymentStatus")}</Label>
                 <RadioGroup
                   value={paymentStatus}
@@ -662,6 +681,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   onChange={(e) => setPricePerKg(e.target.value)}
                   placeholder={t("pricePerKg")}
                   data-testid="input-partial-price-per-kg"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t("netWeight")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={netWeight}
+                  onChange={(e) => setNetWeight(e.target.value)}
+                  placeholder={t("netWeightKg")}
+                  data-testid="input-partial-net-weight"
                 />
               </div>
 

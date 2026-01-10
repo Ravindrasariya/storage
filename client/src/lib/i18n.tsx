@@ -172,6 +172,8 @@ const translations: Translations = {
   available: { en: "Available", hi: "उपलब्ध" },
   buyerName: { en: "Buyer Name", hi: "खरीदार का नाम" },
   pricePerKg: { en: "Price/kg (Selling Price)", hi: "मूल्य/किग्रा (बिक्री मूल्य)" },
+  netWeight: { en: "Net Weight", hi: "शुद्ध वजन" },
+  netWeightKg: { en: "Net weight in kg", hi: "किग्रा में शुद्ध वजन" },
   optional: { en: "Optional", hi: "वैकल्पिक" },
   
   // Sales History

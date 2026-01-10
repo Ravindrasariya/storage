@@ -324,7 +324,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Lot not found" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -436,6 +436,7 @@ export async function registerRoutes(
         kataCharges: kataCharges || 0,
         extraHammali: extraHammali || 0,
         gradingCharges: gradingCharges || 0,
+        netWeight: netWeight || null,
         buyerName: buyerName || null,
         pricePerKg: pricePerKg || null,
         paymentStatus,
@@ -474,6 +475,7 @@ export async function registerRoutes(
     kataCharges: z.number().optional(),
     extraHammali: z.number().optional(),
     gradingCharges: z.number().optional(),
+    netWeight: z.number().optional(),
   });
 
   app.post("/api/lots/:id/finalize-sale", async (req, res) => {
@@ -495,7 +497,8 @@ export async function registerRoutes(
         validatedData.paymentMode,
         validatedData.kataCharges,
         validatedData.extraHammali,
-        validatedData.gradingCharges
+        validatedData.gradingCharges,
+        validatedData.netWeight
       );
       if (!lot) {
         return res.status(404).json({ error: "Lot not found or already sold" });

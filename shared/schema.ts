@@ -98,6 +98,7 @@ export const salesHistory = pgTable("sales_history", {
   kataCharges: real("kata_charges").default(0), // Kata (weighing) charges
   extraHammali: real("extra_hammali").default(0), // Extra hammali per bag * quantity (for bilty)
   gradingCharges: real("grading_charges").default(0), // Grading charges (for bilty)
+  netWeight: real("net_weight"), // Optional net weight of the lot in kg
   buyerName: text("buyer_name"),
   pricePerKg: real("price_per_kg"), // Selling price per kg
   // Payment tracking
