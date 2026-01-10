@@ -278,7 +278,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       </Card>
 
       <Dialog open={!!selectedLot} onOpenChange={(open) => !open && resetDialog()}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{saleMode === "partial" ? t("partialSale") : t("confirmSale")}</DialogTitle>
             <DialogDescription>
