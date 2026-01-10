@@ -50,8 +50,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position });
+    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -73,8 +73,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -143,9 +143,15 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const handleConfirmSale = () => {
     if (selectedLot) {
       const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
+      const qty = saleMode === "partial" ? partialQuantity : selectedLot.remainingSize;
       const totalCharge = saleMode === "partial" 
         ? calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate) 
         : calculateTotalCharge(selectedLot);
+      
+      // Calculate extra charges
+      const kata = parseFloat(kataCharges) || 0;
+      const extraHammaliTotal = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * qty : 0;
+      const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
       
       let paidAmount: number | undefined;
       let dueAmount: number | undefined;
@@ -177,6 +183,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           paidAmount,
           dueAmount,
           position: editPosition || undefined,
+          kataCharges: kata > 0 ? kata : undefined,
+          extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
+          gradingCharges: grading > 0 ? grading : undefined,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -188,6 +197,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           paidAmount,
           dueAmount,
           position: editPosition || undefined,
+          kataCharges: kata > 0 ? kata : undefined,
+          extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
+          gradingCharges: grading > 0 ? grading : undefined,
         });
       }
     }

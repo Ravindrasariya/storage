@@ -83,7 +83,10 @@ export default function SalesHistoryPage() {
   const summary = salesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
-      const totalCharge = sale.coldStorageCharge || 0;
+      const totalCharge = (sale.coldStorageCharge || 0) + 
+        (sale.kataCharges || 0) + 
+        (sale.extraHammali || 0) + 
+        (sale.gradingCharges || 0);
       if (sale.paymentStatus === "paid") {
         acc.amountPaid += totalCharge;
       } else {
@@ -270,7 +273,7 @@ export default function SalesHistoryPage() {
                     <TableHead>{t("bagType")}</TableHead>
                     <TableHead>{t("saleType")}</TableHead>
                     <TableHead className="text-right">{t("quantitySold")}</TableHead>
-                    <TableHead className="text-right">{t("coldStorageCharge")}</TableHead>
+                    <TableHead className="text-right">{t("totalColdStorageCharges")}</TableHead>
                     <TableHead>{t("buyerName")}</TableHead>
                     <TableHead className="text-right">{t("pricePerKg")}</TableHead>
                     <TableHead>{t("paymentStatus")}</TableHead>
@@ -303,12 +306,24 @@ export default function SalesHistoryPage() {
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
                       <TableCell className="text-right font-medium">
-                        <div>Rs. {sale.coldStorageCharge?.toLocaleString()}</div>
-                        {sale.coldCharge != null && sale.hammali != null && (
-                          <div className="text-xs text-muted-foreground font-normal mt-0.5">
-                            Rs.{sale.coldCharge} ({t("coldStorageCharge")}) + Rs.{sale.hammali} ({t("hammali")})
-                          </div>
-                        )}
+                        <div>Rs. {((sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0)).toLocaleString()}</div>
+                        <div className="text-xs text-muted-foreground font-normal mt-0.5 space-y-0.5">
+                          {sale.coldCharge != null && sale.quantitySold && (
+                            <div>Rs.{(sale.coldCharge * sale.quantitySold).toLocaleString()} ({t("coldStorageCharge")})</div>
+                          )}
+                          {sale.hammali != null && sale.quantitySold && sale.hammali > 0 && (
+                            <div>+ Rs.{(sale.hammali * sale.quantitySold).toLocaleString()} ({t("hammali")})</div>
+                          )}
+                          {sale.kataCharges != null && sale.kataCharges > 0 && (
+                            <div>+ Rs.{sale.kataCharges.toLocaleString()} ({t("kataCharges")})</div>
+                          )}
+                          {sale.extraHammali != null && sale.extraHammali > 0 && (
+                            <div>+ Rs.{sale.extraHammali.toLocaleString()} ({t("extraHammaliPerBag")})</div>
+                          )}
+                          {sale.gradingCharges != null && sale.gradingCharges > 0 && (
+                            <div>+ Rs.{sale.gradingCharges.toLocaleString()} ({t("totalGradingCharges")})</div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>{sale.buyerName || "-"}</TableCell>
                       <TableCell className="text-right">

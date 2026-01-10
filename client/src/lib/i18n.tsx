@@ -140,6 +140,7 @@ const translations: Translations = {
   rate: { en: "Rate", hi: "दर" },
   chambers: { en: "Chambers", hi: "कक्ष" },
   coldStorageCharge: { en: "Cold Storage Charge", hi: "कोल्ड स्टोरेज शुल्क" },
+  totalColdStorageCharges: { en: "Total Cold Storage Charges", hi: "कुल कोल्ड स्टोरेज शुल्क" },
   hammali: { en: "Hammali", hi: "हमाली" },
   total: { en: "Total", hi: "कुल" },
   
