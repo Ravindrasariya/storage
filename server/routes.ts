@@ -297,21 +297,16 @@ export async function registerRoutes(
       if (previousData.position !== undefined) restoreData.position = previousData.position;
       if (previousData.quality !== undefined) restoreData.quality = previousData.quality;
 
+      // Check if there's anything to restore
+      if (Object.keys(restoreData).length === 0) {
+        return res.status(400).json({ error: "This edit cannot be reversed (no location/quality changes)" });
+      }
+
       // Update the lot with previous values
       const updatedLot = await storage.updateLot(lot.id, restoreData);
 
-      // Create a reversal history entry
-      await storage.createEditHistory({
-        lotId: lot.id,
-        changeType: "edit",
-        previousData: JSON.stringify({
-          chamberId: lot.chamberId,
-          floor: lot.floor,
-          position: lot.position,
-          quality: lot.quality,
-        }),
-        newData: JSON.stringify(restoreData),
-      });
+      // Delete the history entry after successful reversal
+      await storage.deleteEditHistory(latestEdit.id);
 
       res.json(updatedLot);
     } catch (error) {

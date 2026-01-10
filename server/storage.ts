@@ -52,6 +52,7 @@ export interface IStorage {
   getAllLots(coldStorageId: string): Promise<Lot[]>;
   createEditHistory(history: InsertLotEditHistory): Promise<LotEditHistory>;
   getLotHistory(lotId: string): Promise<LotEditHistory[]>;
+  deleteEditHistory(historyId: string): Promise<void>;
   getDashboardStats(coldStorageId: string): Promise<DashboardStats>;
   getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats>;
   getPaymentStats(coldStorageId: string, year?: number): Promise<PaymentStats>;
@@ -288,6 +289,10 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(lotEditHistory)
       .where(eq(lotEditHistory.lotId, lotId))
       .orderBy(desc(lotEditHistory.changedAt));
+  }
+
+  async deleteEditHistory(historyId: string): Promise<void> {
+    await db.delete(lotEditHistory).where(eq(lotEditHistory.id, historyId));
   }
 
   async getDashboardStats(coldStorageId: string): Promise<DashboardStats> {
