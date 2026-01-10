@@ -28,7 +28,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowLeft, Upload, User, Package, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck } from "lucide-react";
 import type { Chamber } from "@shared/schema";
 
 const farmerSchema = z.object({
@@ -360,7 +360,10 @@ export default function LotEntry() {
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-sm font-medium text-muted-foreground">{t("lotInformation")}</h3>
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-chart-2" />
+                  <h3 className="font-semibold">{t("lotInformation")}</h3>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">{t("lotNo")} *</label>
@@ -412,7 +415,10 @@ export default function LotEntry() {
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-sm font-medium text-muted-foreground">{t("storageLocation")}</h3>
+                <div className="flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-chart-3" />
+                  <h3 className="font-semibold">{t("storageLocation")}</h3>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="text-sm font-medium">{t("chamber")} *</label>
@@ -453,7 +459,10 @@ export default function LotEntry() {
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-sm font-medium text-muted-foreground">{t("qualityAssessment")}</h3>
+                <div className="flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4 text-chart-4" />
+                  <h3 className="font-semibold">{t("qualityAssessment")}</h3>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">{t("quality")} *</label>
