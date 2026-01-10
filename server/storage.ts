@@ -336,20 +336,27 @@ export class DatabaseStorage implements IStorage {
     const chamberMap = new Map(allChambers.map(c => [c.id, c.name]));
     const saleLots = allLots
       .filter((lot) => lot.upForSale === 1 && lot.remainingSize > 0 && lot.saleStatus !== "sold")
-      .map((lot) => ({
-        id: lot.id,
-        lotNo: lot.lotNo,
-        farmerName: lot.farmerName,
-        contactNumber: lot.contactNumber,
-        village: lot.village,
-        chamberName: chamberMap.get(lot.chamberId) || "Unknown",
-        floor: lot.floor,
-        position: lot.position,
-        remainingSize: lot.remainingSize,
-        bagType: lot.bagType,
-        type: lot.type,
-        rate: lot.bagType === "wafer" ? (coldStorage?.waferRate || 0) : (coldStorage?.seedRate || 0),
-      }));
+      .map((lot) => {
+        const isWafer = lot.bagType === "wafer";
+        const coldCharge = isWafer ? (coldStorage?.waferColdCharge || coldStorage?.waferRate || 0) : (coldStorage?.seedColdCharge || coldStorage?.seedRate || 0);
+        const hammali = isWafer ? (coldStorage?.waferHammali || 0) : (coldStorage?.seedHammali || 0);
+        return {
+          id: lot.id,
+          lotNo: lot.lotNo,
+          farmerName: lot.farmerName,
+          contactNumber: lot.contactNumber,
+          village: lot.village,
+          chamberName: chamberMap.get(lot.chamberId) || "Unknown",
+          floor: lot.floor,
+          position: lot.position,
+          remainingSize: lot.remainingSize,
+          bagType: lot.bagType,
+          type: lot.type,
+          rate: isWafer ? (coldStorage?.waferRate || 0) : (coldStorage?.seedRate || 0),
+          coldCharge,
+          hammali,
+        };
+      });
 
     return {
       totalCapacity: coldStorage?.totalCapacity || 0,
