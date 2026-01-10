@@ -34,47 +34,56 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             <title>${billType === "deduction" ? "Cold Storage Deduction Bill" : "Sales Bill"}</title>
             <style>
               @page {
-                size: A5;
+                size: A4;
                 margin: 10mm;
               }
+              * { box-sizing: border-box; }
               body {
                 font-family: Arial, sans-serif;
-                font-size: 12px;
-                line-height: 1.4;
+                font-size: 11px;
+                line-height: 1.3;
                 margin: 0;
-                padding: 10mm;
-                max-width: 148mm;
+                padding: 8mm;
               }
               .bill-header {
                 text-align: center;
                 border-bottom: 2px solid #333;
-                padding-bottom: 10px;
-                margin-bottom: 15px;
+                padding-bottom: 6px;
+                margin-bottom: 10px;
               }
               .bill-header h1 {
-                margin: 0 0 5px 0;
-                font-size: 18px;
+                margin: 0 0 3px 0;
+                font-size: 16px;
                 font-weight: bold;
               }
               .bill-header h2 {
                 margin: 0;
-                font-size: 14px;
+                font-size: 12px;
                 color: #666;
               }
+              .two-column {
+                display: flex;
+                gap: 20px;
+                margin-bottom: 10px;
+              }
+              .two-column > div {
+                flex: 1;
+              }
               .section {
-                margin-bottom: 15px;
+                margin-bottom: 10px;
               }
               .section-title {
                 font-weight: bold;
-                font-size: 13px;
+                font-size: 11px;
                 border-bottom: 1px solid #ccc;
-                padding-bottom: 3px;
-                margin-bottom: 8px;
+                padding-bottom: 2px;
+                margin-bottom: 4px;
               }
               .info-row {
                 display: flex;
                 justify-content: space-between;
-                padding: 3px 0;
+                padding: 2px 0;
+                font-size: 10px;
               }
               .info-label {
                 font-weight: 500;
@@ -86,11 +95,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               .charges-table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-top: 10px;
+                margin-top: 6px;
+                font-size: 10px;
               }
               .charges-table th, .charges-table td {
                 border: 1px solid #ccc;
-                padding: 6px 8px;
+                padding: 4px 6px;
                 text-align: left;
               }
               .charges-table th {
@@ -99,6 +109,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               }
               .charges-table .amount {
                 text-align: right;
+                white-space: nowrap;
               }
               .total-row {
                 font-weight: bold;
@@ -109,15 +120,16 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               }
               .total-row.net-income {
                 background: #d4f4d4;
-                font-size: 14px;
+                font-size: 12px;
               }
               .payment-status {
-                margin-top: 15px;
-                padding: 10px;
+                margin-top: 10px;
+                padding: 6px;
                 background: #f0f0f0;
                 border-radius: 4px;
                 text-align: center;
                 font-weight: bold;
+                font-size: 11px;
               }
               .payment-status.paid {
                 background: #d4edda;
@@ -132,11 +144,11 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 color: #856404;
               }
               .footer-note {
-                margin-top: 20px;
-                padding-top: 10px;
+                margin-top: 12px;
+                padding-top: 6px;
                 border-top: 1px dashed #ccc;
                 text-align: center;
-                font-size: 10px;
+                font-size: 9px;
                 color: #666;
                 font-style: italic;
               }
@@ -172,51 +184,45 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         <h2>Cold Storage Deduction Bill</h2>
       </div>
 
-      <div className="section">
-        <div className="section-title">Farmer Details</div>
-        <div className="info-row">
-          <span className="info-label">Name:</span>
-          <span className="info-value">{sale.farmerName}</span>
+      <div className="two-column">
+        <div className="section">
+          <div className="section-title">Farmer Details</div>
+          <div className="info-row">
+            <span className="info-label">Name:</span>
+            <span className="info-value">{sale.farmerName}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Contact:</span>
+            <span className="info-value">{sale.contactNumber}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Village:</span>
+            <span className="info-value">{sale.village}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">District:</span>
+            <span className="info-value">{sale.district}, {sale.state}</span>
+          </div>
         </div>
-        <div className="info-row">
-          <span className="info-label">Contact:</span>
-          <span className="info-value">{sale.contactNumber}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Village:</span>
-          <span className="info-value">{sale.village}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">District:</span>
-          <span className="info-value">{sale.district}, {sale.state}</span>
-        </div>
-      </div>
 
-      <div className="section">
-        <div className="section-title">Sale Details</div>
-        <div className="info-row">
-          <span className="info-label">Sale Date:</span>
-          <span className="info-value">{format(new Date(sale.soldAt), "dd MMM yyyy")}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Lot #:</span>
-          <span className="info-value">{sale.lotNo}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Original # Bags:</span>
-          <span className="info-value">{sale.originalLotSize}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Quantity Sold:</span>
-          <span className="info-value">{sale.quantitySold} bags</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Bag Type:</span>
-          <span className="info-value">{sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Buyer Name:</span>
-          <span className="info-value">{sale.buyerName || "-"}</span>
+        <div className="section">
+          <div className="section-title">Sale Details</div>
+          <div className="info-row">
+            <span className="info-label">Sale Date:</span>
+            <span className="info-value">{format(new Date(sale.soldAt), "dd MMM yyyy")}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Lot # / Bags:</span>
+            <span className="info-value">{sale.lotNo} ({sale.originalLotSize} bags)</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Qty Sold:</span>
+            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Buyer:</span>
+            <span className="info-value">{sale.buyerName || "-"}</span>
+          </div>
         </div>
       </div>
 
@@ -284,66 +290,54 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         <h2>Sales Bill</h2>
       </div>
 
-      <div className="section">
-        <div className="section-title">Farmer Details</div>
-        <div className="info-row">
-          <span className="info-label">Name:</span>
-          <span className="info-value">{sale.farmerName}</span>
+      <div className="two-column">
+        <div className="section">
+          <div className="section-title">Farmer Details</div>
+          <div className="info-row">
+            <span className="info-label">Name:</span>
+            <span className="info-value">{sale.farmerName}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Contact:</span>
+            <span className="info-value">{sale.contactNumber}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Village:</span>
+            <span className="info-value">{sale.village}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">District:</span>
+            <span className="info-value">{sale.district}, {sale.state}</span>
+          </div>
         </div>
-        <div className="info-row">
-          <span className="info-label">Contact:</span>
-          <span className="info-value">{sale.contactNumber}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Village:</span>
-          <span className="info-value">{sale.village}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">District:</span>
-          <span className="info-value">{sale.district}, {sale.state}</span>
+
+        <div className="section">
+          <div className="section-title">Sale Details</div>
+          <div className="info-row">
+            <span className="info-label">Sale Date:</span>
+            <span className="info-value">{format(new Date(sale.soldAt), "dd MMM yyyy")}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Lot # / Bags:</span>
+            <span className="info-value">{sale.lotNo} ({sale.originalLotSize} bags)</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Qty Sold:</span>
+            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Buyer:</span>
+            <span className="info-value">{sale.buyerName || "-"}</span>
+          </div>
         </div>
       </div>
 
       <div className="section">
-        <div className="section-title">Sale Details</div>
-        <div className="info-row">
-          <span className="info-label">Sale Date:</span>
-          <span className="info-value">{format(new Date(sale.soldAt), "dd MMM yyyy")}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Lot #:</span>
-          <span className="info-value">{sale.lotNo}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Original # Bags:</span>
-          <span className="info-value">{sale.originalLotSize}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Quantity Sold:</span>
-          <span className="info-value">{sale.quantitySold} bags</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Bag Type:</span>
-          <span className="info-value">{sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Buyer Name:</span>
-          <span className="info-value">{sale.buyerName || "-"}</span>
-        </div>
-      </div>
-
-      <div className="section">
-        <div className="section-title">Income Calculation</div>
+        <div className="section-title">Income & Deductions</div>
         <table className="charges-table">
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th className="amount">Amount (Rs.)</th>
-            </tr>
-          </thead>
           <tbody>
             <tr className="total-row income">
-              <td><strong>Total Income</strong> (Net Weight: {sale.netWeight || 0} kg × Rs. {sale.pricePerKg || 0}/kg)</td>
+              <td><strong>Total Income</strong> ({sale.netWeight || 0} kg × Rs. {sale.pricePerKg || 0}/kg)</td>
               <td className="amount"><strong>Rs. {totalIncome.toLocaleString()}</strong></td>
             </tr>
           </tbody>
