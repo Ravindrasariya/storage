@@ -21,6 +21,14 @@ export const chambers = pgTable("chambers", {
   currentFill: integer("current_fill").notNull().default(0),
 });
 
+// Floor capacities per chamber
+export const chamberFloors = pgTable("chamber_floors", {
+  id: varchar("id").primaryKey(),
+  chamberId: varchar("chamber_id").notNull(),
+  floorNumber: integer("floor_number").notNull(),
+  capacity: integer("capacity").notNull(), // Max bags for this floor
+});
+
 // Lot entries
 export const lots = pgTable("lots", {
   id: varchar("id").primaryKey(),
@@ -111,6 +119,7 @@ export const lotEditHistory = pgTable("lot_edit_history", {
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertChamberSchema = createInsertSchema(chambers).omit({ id: true });
+export const insertChamberFloorSchema = createInsertSchema(chamberFloors).omit({ id: true });
 export const insertLotSchema = createInsertSchema(lots).omit({ id: true, createdAt: true });
 export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omit({ id: true, changedAt: true });
 export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, soldAt: true });
@@ -120,6 +129,8 @@ export type ColdStorage = typeof coldStorages.$inferSelect;
 export type InsertColdStorage = z.infer<typeof insertColdStorageSchema>;
 export type Chamber = typeof chambers.$inferSelect;
 export type InsertChamber = z.infer<typeof insertChamberSchema>;
+export type ChamberFloor = typeof chamberFloors.$inferSelect;
+export type InsertChamberFloor = z.infer<typeof insertChamberFloorSchema>;
 export type Lot = typeof lots.$inferSelect;
 export type InsertLot = z.infer<typeof insertLotSchema>;
 export type LotEditHistory = typeof lotEditHistory.$inferSelect;

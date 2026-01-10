@@ -114,6 +114,9 @@ const translations: Translations = {
   freeCapacity: { en: "Free", hi: "खाली" },
   settings: { en: "Settings", hi: "सेटिंग्स" },
   addChamber: { en: "Add Chamber", hi: "कक्ष जोड़ें" },
+  addFloor: { en: "Add Floor", hi: "मंजिल जोड़ें" },
+  noFloorsConfigured: { en: "No floors configured. Click 'Add Floor' to set floor capacities.", hi: "कोई मंजिल कॉन्फ़िगर नहीं। मंजिल क्षमता सेट करने के लिए 'मंजिल जोड़ें' पर क्लिक करें।" },
+  capacity: { en: "Capacity", hi: "क्षमता" },
   rate: { en: "Rate", hi: "दर" },
   chambers: { en: "Chambers", hi: "कक्ष" },
   

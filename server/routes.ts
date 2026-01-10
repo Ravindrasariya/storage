@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { lotFormSchema } from "@shared/schema";
+import { lotFormSchema, insertChamberFloorSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(
@@ -33,13 +33,75 @@ export async function registerRoutes(
     }
   });
 
-  // Floor-wise capacity for chambers
+  // Floor-wise capacity for chambers (current fill by floor from lots data)
   app.get("/api/chambers/floor-capacity", async (req, res) => {
     try {
       const floorData = await storage.getFloorCapacityByChamber(DEFAULT_COLD_STORAGE_ID);
       res.json(floorData);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch floor capacity" });
+    }
+  });
+
+  // Chamber floors (configured capacity per floor)
+  app.get("/api/chamber-floors", async (req, res) => {
+    try {
+      const floors = await storage.getAllChamberFloors(DEFAULT_COLD_STORAGE_ID);
+      res.json(floors);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch chamber floors" });
+    }
+  });
+
+  app.get("/api/chambers/:chamberId/floors", async (req, res) => {
+    try {
+      const floors = await storage.getChamberFloors(req.params.chamberId);
+      res.json(floors);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch chamber floors" });
+    }
+  });
+
+  app.post("/api/chamber-floors", async (req, res) => {
+    try {
+      const validated = insertChamberFloorSchema.parse(req.body);
+      const floor = await storage.createChamberFloor(validated);
+      res.status(201).json(floor);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create chamber floor" });
+    }
+  });
+
+  const updateFloorSchema = z.object({
+    floorNumber: z.number().int().positive().optional(),
+    capacity: z.number().int().positive().optional(),
+  });
+
+  app.patch("/api/chamber-floors/:id", async (req, res) => {
+    try {
+      const validated = updateFloorSchema.parse(req.body);
+      const floor = await storage.updateChamberFloor(req.params.id, validated);
+      if (!floor) {
+        return res.status(404).json({ error: "Chamber floor not found" });
+      }
+      res.json(floor);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update chamber floor" });
+    }
+  });
+
+  app.delete("/api/chamber-floors/:id", async (req, res) => {
+    try {
+      await storage.deleteChamberFloor(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete chamber floor" });
     }
   });
 

@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Save, Plus, Trash2, RefreshCcw, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
-import type { Chamber } from "@shared/schema";
+import type { Chamber, ChamberFloor } from "@shared/schema";
 
 interface ColdStorageSettings {
   id: string;
@@ -36,7 +36,7 @@ interface ColdStorageSettings {
   seedRate: number;
 }
 
-type FloorCapacityData = Record<string, { floor: number; bags: number }[]>;
+type ChamberFloorsData = Record<string, ChamberFloor[]>;
 
 export function SettingsDialog() {
   const { t } = useI18n();
@@ -52,12 +52,13 @@ export function SettingsDialog() {
     queryKey: ["/api/chambers"],
   });
 
-  const { data: floorCapacity } = useQuery<FloorCapacityData>({
-    queryKey: ["/api/chambers/floor-capacity"],
+  const { data: chamberFloors } = useQuery<ChamberFloorsData>({
+    queryKey: ["/api/chamber-floors"],
   });
 
   const [settings, setSettings] = useState<ColdStorageSettings | null>(null);
   const [chamberEdits, setChamberEdits] = useState<Chamber[]>([]);
+  const [floorEdits, setFloorEdits] = useState<ChamberFloorsData>({});
 
   const toggleExpandChamber = (chamberId: string) => {
     setExpandedChambers(prev => {
@@ -76,6 +77,7 @@ export function SettingsDialog() {
     if (isOpen && coldStorage) {
       setSettings({ ...coldStorage });
       setChamberEdits(chambers ? [...chambers] : []);
+      setFloorEdits(chamberFloors ? { ...chamberFloors } : {});
     }
   };
 
@@ -95,6 +97,7 @@ export function SettingsDialog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
@@ -106,6 +109,7 @@ export function SettingsDialog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
@@ -117,6 +121,40 @@ export function SettingsDialog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    },
+  });
+
+  const addFloorMutation = useMutation({
+    mutationFn: async (data: { chamberId: string; floorNumber: number; capacity: number }) => {
+      return apiRequest("POST", "/api/chamber-floors", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    },
+  });
+
+  const updateFloorMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; floorNumber: number; capacity: number }) => {
+      return apiRequest("PATCH", `/api/chamber-floors/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    },
+  });
+
+  const deleteFloorMutation = useMutation({
+    mutationFn: async (floorId: string) => {
+      return apiRequest("DELETE", `/api/chamber-floors/${floorId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
@@ -129,6 +167,7 @@ export function SettingsDialog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
@@ -246,6 +285,75 @@ export function SettingsDialog() {
     );
   };
 
+  const handleAddFloor = async (chamberId: string) => {
+    const existingFloors = chamberFloors?.[chamberId] || [];
+    const nextFloorNumber = existingFloors.length > 0 
+      ? Math.max(...existingFloors.map(f => f.floorNumber)) + 1 
+      : 1;
+    
+    try {
+      await addFloorMutation.mutateAsync({
+        chamberId,
+        floorNumber: nextFloorNumber,
+        capacity: 1000,
+      });
+      const newFloors = await queryClient.fetchQuery<ChamberFloorsData>({
+        queryKey: ["/api/chamber-floors"],
+      });
+      setFloorEdits(newFloors || {});
+    } catch (error) {
+      toast({
+        title: t("error"),
+        description: "Failed to add floor",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteFloor = async (floorId: string, chamberId: string) => {
+    try {
+      await deleteFloorMutation.mutateAsync(floorId);
+      setFloorEdits((prev) => ({
+        ...prev,
+        [chamberId]: prev[chamberId]?.filter((f) => f.id !== floorId) || [],
+      }));
+    } catch (error) {
+      toast({
+        title: t("error"),
+        description: "Failed to delete floor",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUpdateFloor = async (floor: ChamberFloor) => {
+    try {
+      await updateFloorMutation.mutateAsync({
+        id: floor.id,
+        floorNumber: floor.floorNumber,
+        capacity: floor.capacity,
+      });
+    } catch (error) {
+      toast({
+        title: t("error"),
+        description: "Failed to update floor",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const updateFloorEdit = (chamberId: string, floorId: string, field: "floorNumber" | "capacity", value: number) => {
+    setFloorEdits((prev) => {
+      const existingFloors = prev[chamberId] || chamberFloors?.[chamberId] || [];
+      return {
+        ...prev,
+        [chamberId]: existingFloors.map((f) =>
+          f.id === floorId ? { ...f, [field]: value } : f
+        ),
+      };
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger asChild>
@@ -322,59 +430,6 @@ export function SettingsDialog() {
           </Card>
 
           <Card className="p-4 space-y-4">
-            <h4 className="font-semibold">{t("storageCapacity")}</h4>
-            <div className="space-y-3">
-              {chambers?.map((chamber) => {
-                const floors = floorCapacity?.[chamber.id] || [];
-                const hasFloors = floors.length > 0;
-                const isExpanded = expandedChambers.has(chamber.id);
-                const fillPercentage = chamber.capacity > 0 
-                  ? Math.round((chamber.currentFill / chamber.capacity) * 100) 
-                  : 0;
-
-                return (
-                  <div key={chamber.id} className="space-y-2">
-                    <div
-                      className={`flex justify-between items-center p-3 bg-muted/50 rounded-md ${hasFloors ? "cursor-pointer" : ""}`}
-                      onClick={() => hasFloors && toggleExpandChamber(chamber.id)}
-                      data-testid={`storage-capacity-chamber-${chamber.id}`}
-                    >
-                      <span className="font-medium flex items-center gap-2">
-                        {chamber.name}
-                        {hasFloors && (
-                          isExpanded ? (
-                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          )
-                        )}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {chamber.currentFill.toLocaleString()} / {chamber.capacity.toLocaleString()} ({fillPercentage}%)
-                      </span>
-                    </div>
-                    
-                    {isExpanded && hasFloors && (
-                      <div className="ml-4 pl-4 border-l-2 border-muted space-y-2">
-                        {floors.map((floorData) => (
-                          <div key={floorData.floor} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded">
-                            <span className="text-muted-foreground">
-                              {t("floor")} {floorData.floor}
-                            </span>
-                            <span className="font-medium">
-                              {floorData.bags.toLocaleString()} {t("bags")}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-
-          <Card className="p-4 space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-semibold">{t("chambers")}</h4>
               <Button
@@ -390,39 +445,116 @@ export function SettingsDialog() {
             </div>
 
             <div className="space-y-3">
-              {chamberEdits.map((chamber, index) => (
-                <div
-                  key={chamber.id}
-                  className="flex items-center gap-3 p-3 bg-muted/50 rounded-md"
-                >
-                  <span className="text-sm font-medium w-8">{index + 1}.</span>
-                  <Input
-                    value={chamber.name}
-                    onChange={(e) => updateChamber(chamber.id, "name", e.target.value)}
-                    className="flex-1"
-                    placeholder="Chamber name"
-                    data-testid={`input-chamber-name-${chamber.id}`}
-                  />
-                  <Input
-                    type="number"
-                    value={chamber.capacity}
-                    onChange={(e) => updateChamber(chamber.id, "capacity", e.target.value)}
-                    className="w-32"
-                    placeholder="Capacity"
-                    data-testid={`input-chamber-capacity-${chamber.id}`}
-                  />
-                  <span className="text-sm text-muted-foreground">{t("bags")}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteChamber(chamber.id)}
-                    disabled={deleteChamberMutation.isPending}
-                    data-testid={`button-delete-chamber-${chamber.id}`}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
+              {chamberEdits.map((chamber, index) => {
+                const isExpanded = expandedChambers.has(chamber.id);
+                const floors = floorEdits[chamber.id] || chamberFloors?.[chamber.id] || [];
+                const floorTotal = floors.reduce((sum, f) => sum + f.capacity, 0);
+
+                return (
+                  <div key={chamber.id} className="space-y-2">
+                    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-md">
+                      <span className="text-sm font-medium w-8">{index + 1}.</span>
+                      <Input
+                        value={chamber.name}
+                        onChange={(e) => updateChamber(chamber.id, "name", e.target.value)}
+                        className="flex-1"
+                        placeholder="Chamber name"
+                        data-testid={`input-chamber-name-${chamber.id}`}
+                      />
+                      <Input
+                        type="number"
+                        value={chamber.capacity}
+                        onChange={(e) => updateChamber(chamber.id, "capacity", e.target.value)}
+                        className="w-32"
+                        placeholder="Capacity"
+                        data-testid={`input-chamber-capacity-${chamber.id}`}
+                      />
+                      <span className="text-sm text-muted-foreground">{t("bags")}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => toggleExpandChamber(chamber.id)}
+                        data-testid={`button-expand-chamber-${chamber.id}`}
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteChamber(chamber.id)}
+                        disabled={deleteChamberMutation.isPending}
+                        data-testid={`button-delete-chamber-${chamber.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="ml-8 pl-4 border-l-2 border-muted space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">
+                            {t("floor")} {t("capacity")}: {floorTotal.toLocaleString()} / {chamber.capacity.toLocaleString()} {t("bags")}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAddFloor(chamber.id)}
+                            disabled={addFloorMutation.isPending}
+                            data-testid={`button-add-floor-${chamber.id}`}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            {t("addFloor")}
+                          </Button>
+                        </div>
+                        
+                        {floors.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-2">{t("noFloorsConfigured")}</p>
+                        ) : (
+                          floors.map((floor) => {
+                            const editedFloor = floorEdits[chamber.id]?.find(f => f.id === floor.id) || floor;
+                            return (
+                              <div key={floor.id} className="flex items-center gap-2 p-2 bg-muted/30 rounded">
+                                <span className="text-sm w-16">{t("floor")}</span>
+                                <Input
+                                  type="number"
+                                  value={editedFloor.floorNumber}
+                                  onChange={(e) => updateFloorEdit(chamber.id, floor.id, "floorNumber", Number(e.target.value))}
+                                  onBlur={() => handleUpdateFloor(editedFloor)}
+                                  className="w-20"
+                                  data-testid={`input-floor-number-${floor.id}`}
+                                />
+                                <span className="text-sm">{t("capacity")}:</span>
+                                <Input
+                                  type="number"
+                                  value={editedFloor.capacity}
+                                  onChange={(e) => updateFloorEdit(chamber.id, floor.id, "capacity", Number(e.target.value))}
+                                  onBlur={() => handleUpdateFloor(editedFloor)}
+                                  className="w-24"
+                                  data-testid={`input-floor-capacity-${floor.id}`}
+                                />
+                                <span className="text-sm text-muted-foreground">{t("bags")}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteFloor(floor.id, chamber.id)}
+                                  disabled={deleteFloorMutation.isPending}
+                                  data-testid={`button-delete-floor-${floor.id}`}
+                                >
+                                  <Trash2 className="h-3 w-3 text-destructive" />
+                                </Button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </Card>
 

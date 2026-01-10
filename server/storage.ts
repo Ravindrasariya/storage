@@ -4,6 +4,7 @@ import { db } from "./db";
 import {
   coldStorages,
   chambers,
+  chamberFloors,
   lots,
   lotEditHistory,
   salesHistory,
@@ -11,6 +12,8 @@ import {
   type InsertColdStorage,
   type Chamber,
   type InsertChamber,
+  type ChamberFloor,
+  type InsertChamberFloor,
   type Lot,
   type InsertLot,
   type LotEditHistory,
@@ -29,6 +32,13 @@ export interface IStorage {
   getChambers(coldStorageId: string): Promise<Chamber[]>;
   getChamber(id: string): Promise<Chamber | undefined>;
   getFloorCapacityByChamber(coldStorageId: string): Promise<Record<string, { floor: number; bags: number }[]>>;
+  // Chamber floors
+  getChamberFloors(chamberId: string): Promise<ChamberFloor[]>;
+  getAllChamberFloors(coldStorageId: string): Promise<Record<string, ChamberFloor[]>>;
+  createChamberFloor(data: InsertChamberFloor): Promise<ChamberFloor>;
+  updateChamberFloor(id: string, updates: Partial<ChamberFloor>): Promise<ChamberFloor | undefined>;
+  deleteChamberFloor(id: string): Promise<boolean>;
+  deleteFloorsByChamber(chamberId: string): Promise<void>;
   updateChamberFill(id: string, fill: number): Promise<void>;
   createLot(lot: InsertLot): Promise<Lot>;
   getLot(id: string): Promise<Lot | undefined>;
@@ -134,6 +144,42 @@ export class DatabaseStorage implements IStorage {
     }
     
     return floorData;
+  }
+
+  async getChamberFloors(chamberId: string): Promise<ChamberFloor[]> {
+    return db.select().from(chamberFloors).where(eq(chamberFloors.chamberId, chamberId));
+  }
+
+  async getAllChamberFloors(coldStorageId: string): Promise<Record<string, ChamberFloor[]>> {
+    const allChambers = await db.select().from(chambers).where(eq(chambers.coldStorageId, coldStorageId));
+    const result: Record<string, ChamberFloor[]> = {};
+    
+    for (const chamber of allChambers) {
+      const floors = await db.select().from(chamberFloors).where(eq(chamberFloors.chamberId, chamber.id));
+      result[chamber.id] = floors.sort((a, b) => a.floorNumber - b.floorNumber);
+    }
+    
+    return result;
+  }
+
+  async createChamberFloor(data: InsertChamberFloor): Promise<ChamberFloor> {
+    const id = randomUUID();
+    const [result] = await db.insert(chamberFloors).values({ id, ...data }).returning();
+    return result;
+  }
+
+  async updateChamberFloor(id: string, updates: Partial<ChamberFloor>): Promise<ChamberFloor | undefined> {
+    const [result] = await db.update(chamberFloors).set(updates).where(eq(chamberFloors.id, id)).returning();
+    return result;
+  }
+
+  async deleteChamberFloor(id: string): Promise<boolean> {
+    const result = await db.delete(chamberFloors).where(eq(chamberFloors.id, id));
+    return true;
+  }
+
+  async deleteFloorsByChamber(chamberId: string): Promise<void> {
+    await db.delete(chamberFloors).where(eq(chamberFloors.chamberId, chamberId));
   }
 
   async updateChamberFill(id: string, fill: number): Promise<void> {
