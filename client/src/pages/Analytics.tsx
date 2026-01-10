@@ -135,17 +135,20 @@ export default function Analytics() {
       </div>
 
       <QualitySummaryCards
-        poor={stats?.totalPoor || 0}
-        medium={stats?.totalMedium || 0}
-        good={stats?.totalGood || 0}
+        poor={stats?.totalPoorRemaining || 0}
+        medium={stats?.totalMediumRemaining || 0}
+        good={stats?.totalGoodRemaining || 0}
       />
 
-      <QualityChart data={stats?.chamberQuality || []} />
+      <QualityChart data={stats?.chamberQualityRemaining || []} />
 
       <Card className="p-4 sm:p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="h-5 w-5 text-chart-4" />
-          <h3 className="text-lg font-semibold">{t("qualityDistribution")}</h3>
+        <div className="flex flex-col gap-1 mb-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-chart-4" />
+            <h3 className="text-lg font-semibold">{t("qualityDistribution")}</h3>
+          </div>
+          <p className="text-sm text-muted-foreground ml-7">{t("initialDistribution")}</p>
         </div>
 
         {stats?.chamberQuality && stats.chamberQuality.length > 0 ? (

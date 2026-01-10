@@ -432,12 +432,20 @@ export class DatabaseStorage implements IStorage {
       });
     }
     
-    // Build chamber quality map combining both sources
-    const chamberMap = new Map<string, { chamberId: string; chamberName: string; poor: number; medium: number; good: number }>();
+    // Build chamber quality maps - one for remaining, one for original
+    const chamberMapRemaining = new Map<string, { chamberId: string; chamberName: string; poor: number; medium: number; good: number }>();
+    const chamberMapOriginal = new Map<string, { chamberId: string; chamberName: string; poor: number; medium: number; good: number }>();
     
     // Initialize with current chambers
     allChambers.forEach(chamber => {
-      chamberMap.set(chamber.id, {
+      chamberMapRemaining.set(chamber.id, {
+        chamberId: chamber.id,
+        chamberName: chamber.name,
+        poor: 0,
+        medium: 0,
+        good: 0,
+      });
+      chamberMapOriginal.set(chamber.id, {
         chamberId: chamber.id,
         chamberName: chamber.name,
         poor: 0,
@@ -446,50 +454,62 @@ export class DatabaseStorage implements IStorage {
       });
     });
     
-    // Add unsold lot quantities (remainingSize) from lots table
+    // Add remaining bags from lots table (for remaining view)
+    // Add original size from lots table (for original distribution)
     for (const lot of allLots) {
-      const existing = chamberMap.get(lot.chamberId);
-      if (existing) {
-        if (lot.quality === "poor") existing.poor += lot.remainingSize;
-        else if (lot.quality === "medium") existing.medium += lot.remainingSize;
-        else if (lot.quality === "good") existing.good += lot.remainingSize;
+      const existingRemaining = chamberMapRemaining.get(lot.chamberId);
+      const existingOriginal = chamberMapOriginal.get(lot.chamberId);
+      if (existingRemaining) {
+        if (lot.quality === "poor") existingRemaining.poor += lot.remainingSize;
+        else if (lot.quality === "medium") existingRemaining.medium += lot.remainingSize;
+        else if (lot.quality === "good") existingRemaining.good += lot.remainingSize;
+      }
+      if (existingOriginal) {
+        if (lot.quality === "poor") existingOriginal.poor += lot.size;
+        else if (lot.quality === "medium") existingOriginal.medium += lot.size;
+        else if (lot.quality === "good") existingOriginal.good += lot.size;
       }
     }
     
-    // Add sold quantities from salesHistory table
+    // Add sold quantities from salesHistory to original distribution only
     for (const sale of allSales) {
       // Try to find chamber by name if ID doesn't exist
-      let existing = Array.from(chamberMap.values()).find(c => c.chamberName === sale.chamberName);
-      if (!existing) {
+      let existingOriginal = Array.from(chamberMapOriginal.values()).find(c => c.chamberName === sale.chamberName);
+      if (!existingOriginal) {
         // Create entry for historical chamber
         const historyKey = `history-${sale.chamberName}`;
-        existing = {
+        existingOriginal = {
           chamberId: historyKey,
           chamberName: sale.chamberName,
           poor: 0,
           medium: 0,
           good: 0,
         };
-        chamberMap.set(historyKey, existing);
+        chamberMapOriginal.set(historyKey, existingOriginal);
       }
-      if (sale.quality === "poor") existing.poor += sale.quantitySold;
-      else if (sale.quality === "medium") existing.medium += sale.quantitySold;
-      else if (sale.quality === "good") existing.good += sale.quantitySold;
+      if (sale.quality === "poor") existingOriginal.poor += sale.quantitySold;
+      else if (sale.quality === "medium") existingOriginal.medium += sale.quantitySold;
+      else if (sale.quality === "good") existingOriginal.good += sale.quantitySold;
     }
     
-    const chamberQuality = Array.from(chamberMap.values()).filter(c => c.poor > 0 || c.medium > 0 || c.good > 0);
+    const chamberQualityRemaining = Array.from(chamberMapRemaining.values()).filter(c => c.poor > 0 || c.medium > 0 || c.good > 0);
+    const chamberQuality = Array.from(chamberMapOriginal.values()).filter(c => c.poor > 0 || c.medium > 0 || c.good > 0);
     
-    // Calculate totals from both sources
-    let totalPoor = 0, totalMedium = 0, totalGood = 0;
-    
-    // Add from unsold lots
+    // Calculate totals - remaining
+    let totalPoorRemaining = 0, totalMediumRemaining = 0, totalGoodRemaining = 0;
     for (const lot of allLots) {
-      if (lot.quality === "poor") totalPoor += lot.remainingSize;
-      else if (lot.quality === "medium") totalMedium += lot.remainingSize;
-      else if (lot.quality === "good") totalGood += lot.remainingSize;
+      if (lot.quality === "poor") totalPoorRemaining += lot.remainingSize;
+      else if (lot.quality === "medium") totalMediumRemaining += lot.remainingSize;
+      else if (lot.quality === "good") totalGoodRemaining += lot.remainingSize;
     }
     
-    // Add from sold history
+    // Calculate totals - original (from lots + sales history)
+    let totalPoor = 0, totalMedium = 0, totalGood = 0;
+    for (const lot of allLots) {
+      if (lot.quality === "poor") totalPoor += lot.size;
+      else if (lot.quality === "medium") totalMedium += lot.size;
+      else if (lot.quality === "good") totalGood += lot.size;
+    }
     for (const sale of allSales) {
       if (sale.quality === "poor") totalPoor += sale.quantitySold;
       else if (sale.quality === "medium") totalMedium += sale.quantitySold;
@@ -497,7 +517,11 @@ export class DatabaseStorage implements IStorage {
     }
 
     return {
+      chamberQualityRemaining,
       chamberQuality,
+      totalPoorRemaining,
+      totalMediumRemaining,
+      totalGoodRemaining,
       totalPoor,
       totalMedium,
       totalGood,

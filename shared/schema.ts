@@ -240,6 +240,15 @@ export interface DashboardStats {
 
 // Quality stats type
 export interface QualityStats {
+  // Remaining bags quality per chamber (for cards and bar graph)
+  chamberQualityRemaining: {
+    chamberId: string;
+    chamberName: string;
+    poor: number;
+    medium: number;
+    good: number;
+  }[];
+  // Original/initial distribution per chamber (for table)
   chamberQuality: {
     chamberId: string;
     chamberName: string;
@@ -247,6 +256,11 @@ export interface QualityStats {
     medium: number;
     good: number;
   }[];
+  // Remaining totals (for summary cards)
+  totalPoorRemaining: number;
+  totalMediumRemaining: number;
+  totalGoodRemaining: number;
+  // Original totals (for table footer)
   totalPoor: number;
   totalMedium: number;
   totalGood: number;

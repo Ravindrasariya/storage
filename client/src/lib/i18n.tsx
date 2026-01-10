@@ -106,6 +106,7 @@ const translations: Translations = {
   chamberQualityAnalysis: { en: "Chamber Quality Analysis", hi: "कक्ष गुणवत्ता विश्लेषण" },
   qualityDistribution: { en: "Quality Distribution", hi: "गुणवत्ता वितरण" },
   bagsByQuality: { en: "Bags by Quality", hi: "गुणवत्ता के अनुसार बैग" },
+  initialDistribution: { en: "Initial distribution when storage was filled", hi: "भंडार भरने के समय प्रारंभिक वितरण" },
   
   // Footer
   createdBy: { en: "Created & Maintained by KrashuVed", hi: "KrashuVed द्वारा निर्मित और अनुरक्षित" },
