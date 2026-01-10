@@ -139,7 +139,7 @@ export async function registerRoutes(
     try {
       const { type, query, lotNo, size, quality, paymentDue } = req.query;
       
-      const validTypes = ["phone", "lotNoSize", "filter"];
+      const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
       if (!validTypes.includes(type as string)) {
         return res.status(400).json({ error: "Invalid search type" });
       }
@@ -152,6 +152,14 @@ export async function registerRoutes(
         lots = await storage.searchLotsByLotNoAndSize(
           lotNo as string || "",
           size as string || "",
+          DEFAULT_COLD_STORAGE_ID
+        );
+      } else if (type === "farmerName") {
+        if (!query) {
+          return res.status(400).json({ error: "Missing query parameter" });
+        }
+        lots = await storage.searchLotsByFarmerName(
+          query as string,
           DEFAULT_COLD_STORAGE_ID
         );
       } else {

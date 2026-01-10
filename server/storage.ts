@@ -48,6 +48,7 @@ export interface IStorage {
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
   searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]>;
   searchLotsByLotNoAndSize(lotNo: string, size: string, coldStorageId: string): Promise<Lot[]>;
+  searchLotsByFarmerName(query: string, coldStorageId: string): Promise<Lot[]>;
   getAllLots(coldStorageId: string): Promise<Lot[]>;
   createEditHistory(history: InsertLotEditHistory): Promise<LotEditHistory>;
   getLotHistory(lotId: string): Promise<LotEditHistory[]>;
@@ -255,6 +256,12 @@ export class DatabaseStorage implements IStorage {
       const matchesSize = !size || isNaN(sizeNum) || lot.size === sizeNum;
       return matchesLotNo && matchesSize;
     });
+  }
+
+  async searchLotsByFarmerName(query: string, coldStorageId: string): Promise<Lot[]> {
+    const allLots = await db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
+    const lowerQuery = query.toLowerCase();
+    return allLots.filter((lot) => lot.farmerName.toLowerCase().includes(lowerQuery));
   }
 
   async getAllLots(coldStorageId: string): Promise<Lot[]> {

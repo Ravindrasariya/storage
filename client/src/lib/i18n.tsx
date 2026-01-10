@@ -35,6 +35,7 @@ const translations: Translations = {
   // Lot Entry Form
   farmerDetails: { en: "Farmer Details", hi: "किसान विवरण" },
   farmerName: { en: "Farmer Name", hi: "किसान का नाम" },
+  enterFarmerName: { en: "Enter farmer name...", hi: "किसान का नाम दर्ज करें..." },
   village: { en: "Village", hi: "गाँव" },
   tehsil: { en: "Tehsil", hi: "तहसील" },
   district: { en: "District", hi: "जिला" },

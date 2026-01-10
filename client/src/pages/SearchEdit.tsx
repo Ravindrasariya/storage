@@ -27,7 +27,7 @@ import { LotCard } from "@/components/LotCard";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory } from "@shared/schema";
 
@@ -36,7 +36,8 @@ export default function SearchEdit() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "filter">("phone");
+  const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "filter" | "farmerName">("phone");
+  const [farmerNameQuery, setFarmerNameQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [lotNoQuery, setLotNoQuery] = useState("");
   const [sizeQuery, setSizeQuery] = useState("");
@@ -84,6 +85,7 @@ export default function SearchEdit() {
     if (searchType === "phone" && !searchQuery.trim()) return;
     if (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) return;
     if (searchType === "filter" && qualityFilter === "all" && !paymentDueFilter) return;
+    if (searchType === "farmerName" && !farmerNameQuery.trim()) return;
     
     setIsSearching(true);
     setHasSearched(true);
@@ -94,6 +96,8 @@ export default function SearchEdit() {
         url = `/api/lots/search?type=filter`;
       } else if (searchType === "lotNoSize") {
         url = `/api/lots/search?type=lotNoSize&lotNo=${encodeURIComponent(lotNoQuery)}&size=${encodeURIComponent(sizeQuery)}`;
+      } else if (searchType === "farmerName") {
+        url = `/api/lots/search?type=farmerName&query=${encodeURIComponent(farmerNameQuery)}`;
       } else {
         url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}`;
       }
@@ -205,10 +209,14 @@ export default function SearchEdit() {
 
       <Card className="p-4 sm:p-6">
         <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)}>
-          <TabsList className="grid w-full grid-cols-3 mb-4">
+          <TabsList className="grid w-full grid-cols-4 mb-4">
             <TabsTrigger value="phone" className="gap-2" data-testid="tab-search-phone">
               <Phone className="h-4 w-4" />
               <span className="hidden sm:inline">{t("phoneNumber")}</span>
+            </TabsTrigger>
+            <TabsTrigger value="farmerName" className="gap-2" data-testid="tab-search-farmer">
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("farmerName")}</span>
             </TabsTrigger>
             <TabsTrigger value="lotNoSize" className="gap-2" data-testid="tab-search-lot">
               <Package className="h-4 w-4" />
@@ -231,6 +239,21 @@ export default function SearchEdit() {
                 data-testid="input-search-phone"
               />
               <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
+                <Search className="h-4 w-4 mr-2" />
+                {t("search")}
+              </Button>
+            </div>
+          ) : searchType === "farmerName" ? (
+            <div className="flex gap-2">
+              <Input
+                placeholder={t("enterFarmerName") || "Enter farmer name..."}
+                value={farmerNameQuery}
+                onChange={(e) => setFarmerNameQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="flex-1"
+                data-testid="input-search-farmer"
+              />
+              <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search-farmer">
                 <Search className="h-4 w-4 mr-2" />
                 {t("search")}
               </Button>
