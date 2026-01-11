@@ -164,7 +164,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   return (
     <>
       <Dialog open={open && !showPrintReceipt} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <LogOut className="h-5 w-5" />
@@ -172,155 +172,126 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm bg-muted/50 p-3 rounded-md">
-              <div>
-                <span className="text-muted-foreground">{t("saleDate")}:</span>
-                <div className="font-medium">{formatDate(sale.soldAt)}</div>
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs bg-muted/50 p-2 rounded-md">
+              <div className="truncate">
+                <span className="text-muted-foreground">Lot:</span> <span className="font-medium">{sale.lotNo}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">{t("lotNo")}:</span>
-                <div className="font-medium">{sale.lotNo}</div>
+              <div className="truncate">
+                <span className="text-muted-foreground">Bags:</span> <span className="font-medium">{sale.quantitySold}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">{t("quantitySold")}:</span>
-                <div className="font-medium">{sale.quantitySold} {t("bags")}</div>
+              <div className="truncate">
+                <span className="text-muted-foreground">Type:</span> <span className="font-medium">{sale.bagType === "wafer" ? "W" : "S"}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">{t("bagType")}:</span>
-                <div className="font-medium">{sale.bagType === "wafer" ? t("wafer") : t("seed")}</div>
+              <div className="truncate">
+                <span className="text-muted-foreground">Ch:</span> <span className="font-medium">{sale.chamberName}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">{t("potatoType")}:</span>
-                <div className="font-medium">{sale.potatoType}</div>
+              <div className="truncate">
+                <span className="text-muted-foreground">Fl:</span> <span className="font-medium">{sale.floor}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">{t("chamber")}:</span>
-                <div className="font-medium">{sale.chamberName}</div>
+              <div className="truncate">
+                <span className="text-muted-foreground">Pos:</span> <span className="font-medium">{sale.position}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">{t("floor")}:</span>
-                <div className="font-medium">{sale.floor}</div>
-              </div>
-              <div>
-                <span className="text-muted-foreground">{t("position")}:</span>
-                <div className="font-medium">{sale.position}</div>
-              </div>
-              <div className="col-span-2">
-                <span className="text-muted-foreground">{t("buyerName")}:</span>
-                <div className="font-medium">{sale.buyerName || "-"}</div>
+              <div className="col-span-3 truncate">
+                <span className="text-muted-foreground">Buyer:</span> <span className="font-medium">{sale.buyerName || "-"}</span>
               </div>
             </div>
 
-            <Separator />
-
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span>{t("totalExited")}:</span>
-                <span className="font-medium">{totalExited} {t("bags")}</span>
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex gap-4">
+                <span><span className="text-muted-foreground">Exited:</span> <strong>{totalExited}</strong></span>
+                <span><span className="text-muted-foreground">Remaining:</span> <strong className="text-primary">{remainingToExit}</strong></span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span>{t("remainingToExit")}:</span>
-                <span className="font-medium text-primary">{remainingToExit} {t("bags")}</span>
-              </div>
-
-              {remainingToExit > 0 && (
-                <div className="space-y-2">
-                  <Label htmlFor="bagsToExit">{t("bagsToExit")} *</Label>
-                  <Input
-                    id="bagsToExit"
-                    type="number"
-                    value={bagsToExit}
-                    onChange={(e) => setBagsToExit(e.target.value)}
-                    min={1}
-                    max={remainingToExit}
-                    data-testid="input-bags-to-exit"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t("maxBagsToExit")}: {remainingToExit}
-                  </p>
-                </div>
-              )}
             </div>
+
+            {remainingToExit > 0 && (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="bagsToExit" className="whitespace-nowrap text-sm">{t("bagsToExit")}:</Label>
+                <Input
+                  id="bagsToExit"
+                  type="number"
+                  value={bagsToExit}
+                  onChange={(e) => setBagsToExit(e.target.value)}
+                  min={1}
+                  max={remainingToExit}
+                  className="w-24"
+                  data-testid="input-bags-to-exit"
+                />
+                <span className="text-xs text-muted-foreground">(max {remainingToExit})</span>
+              </div>
+            )}
 
             {exits.length > 0 && (
-              <>
-                <Separator />
-                <div>
-                  <h4 className="font-medium mb-2">{t("exitHistory")}</h4>
-                  <ScrollArea className="h-32">
-                    <div className="space-y-2">
-                      {exits.map((exit) => (
-                        <div
-                          key={exit.id}
-                          className="flex items-center justify-between text-sm bg-muted/30 p-2 rounded"
-                        >
-                          <div>
-                            <span className="font-medium">{exit.bagsExited} {t("bags")}</span>
-                            <span className="text-muted-foreground ml-2">
-                              {formatDate(exit.exitDate)}
-                            </span>
-                          </div>
-                          {exit.isReversed === 1 && (
-                            <Badge variant="outline" className="text-destructive">
-                              {t("reversed")}
-                            </Badge>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
-              </>
+              <div>
+                <h4 className="text-xs font-medium mb-1 text-muted-foreground">{t("exitHistory")}</h4>
+                <ScrollArea className="h-20">
+                  <div className="space-y-1">
+                    {exits.map((exit) => (
+                      <div
+                        key={exit.id}
+                        className="flex items-center justify-between text-xs bg-muted/30 px-2 py-1 rounded"
+                      >
+                        <span>
+                          <strong>{exit.bagsExited}</strong> bags - {format(new Date(exit.exitDate), "dd/MM HH:mm")}
+                        </span>
+                        {exit.isReversed === 1 && (
+                          <Badge variant="outline" className="text-destructive text-[10px] px-1 py-0">
+                            Rev
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
             )}
           </div>
 
-          <DialogFooter className="flex-col sm:flex-row gap-2">
+          <DialogFooter className="flex flex-wrap gap-2 justify-end">
             {exits.some(e => e.isReversed === 0) && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => reverseExitMutation.mutate()}
                 disabled={reverseExitMutation.isPending}
-                className="w-full sm:w-auto"
                 data-testid="button-reverse-exit"
               >
-                <RotateCcw className="h-4 w-4 mr-1" />
-                {t("reverseExit")}
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Reverse
               </Button>
             )}
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-                className="flex-1 sm:flex-initial"
-                data-testid="button-cancel-exit"
-              >
-                {t("cancel")}
-              </Button>
-              {remainingToExit > 0 && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={handleSave}
-                    disabled={createExitMutation.isPending}
-                    className="flex-1 sm:flex-initial"
-                    data-testid="button-save-exit"
-                  >
-                    <Save className="h-4 w-4 mr-1" />
-                    {t("save")}
-                  </Button>
-                  <Button
-                    onClick={handleSaveAndPrint}
-                    disabled={createExitMutation.isPending}
-                    className="flex-1 sm:flex-initial"
-                    data-testid="button-save-print-exit"
-                  >
-                    <Printer className="h-4 w-4 mr-1" />
-                    {t("saveAndPrint")}
-                  </Button>
-                </>
-              )}
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              data-testid="button-cancel-exit"
+            >
+              <X className="h-3 w-3 mr-1" />
+              Close
+            </Button>
+            {remainingToExit > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={createExitMutation.isPending}
+                  data-testid="button-save-exit"
+                >
+                  <Save className="h-3 w-3 mr-1" />
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveAndPrint}
+                  disabled={createExitMutation.isPending}
+                  data-testid="button-save-print-exit"
+                >
+                  <Printer className="h-3 w-3 mr-1" />
+                  Print
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
