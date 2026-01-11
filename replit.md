@@ -39,10 +39,19 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Schema
 Core entities:
-- **coldStorages**: Configuration for each cold storage facility
+- **coldStorages**: Configuration for each cold storage facility (includes bill number counters for exit, cold storage deduction, and sales bills)
 - **chambers**: Storage chambers within a facility with capacity tracking
 - **lots**: Farmer lot entries with location, quality, and bag information
 - **lotEditHistory**: Audit trail for lot modifications and partial sales
+- **salesHistory**: Complete sales records with unique bill numbers (coldStorageBillNumber, salesBillNumber)
+- **exitEntries**: Exit/Nikasi entries with unique bill numbers
+- **cashFlow**: Cash management with FIFO-based payment allocation
+
+### Bill Number System
+- Three independent bill number sequences: Exit, Cold Storage Deduction, Sales
+- Bill numbers assigned atomically on first print using UPDATE RETURNING pattern
+- Numbers persist across reprints (stored in salesHistory/exitEntries)
+- All counters reset to 1 during season reset
 
 ### Build and Deployment
 - Development: Vite dev server with HMR, Express API on same port
