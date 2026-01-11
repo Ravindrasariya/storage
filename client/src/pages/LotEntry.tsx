@@ -99,7 +99,9 @@ export default function LotEntry() {
   const [lots, setLots] = useState<LotData[]>([{ ...defaultLotData }]);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
   const [showReceipt, setShowReceipt] = useState(false);
-  const [savedData, setSavedData] = useState<{ farmer: FarmerData; lots: LotData[]; entryDate: Date } | null>(null);
+  const [savedData, setSavedData] = useState<{ farmer: FarmerData; lots: LotData[]; entryDate: Date; lotIds: string[] } | null>(null);
+  const [billNumbers, setBillNumbers] = useState<Record<string, number>>({});
+  const [billNumbersLoading, setBillNumbersLoading] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
@@ -208,8 +210,12 @@ export default function LotEntry() {
     if (!validateLots()) return;
 
     try {
+      const createdLotIds: string[] = [];
       for (const lot of lots) {
-        await createLotMutation.mutateAsync({ ...farmerData, ...lot });
+        const response = await createLotMutation.mutateAsync({ ...farmerData, ...lot });
+        if (response && typeof response === 'object' && 'id' in response) {
+          createdLotIds.push((response as { id: string }).id);
+        }
       }
       toast({
         title: t("success"),
@@ -217,7 +223,7 @@ export default function LotEntry() {
       });
       
       if (shouldPrint) {
-        setSavedData({ farmer: farmerData, lots: [...lots], entryDate: new Date() });
+        setSavedData({ farmer: farmerData, lots: [...lots], entryDate: new Date(), lotIds: createdLotIds });
         setShowReceipt(true);
         setShouldPrint(false);
       } else {
@@ -233,10 +239,72 @@ export default function LotEntry() {
     form.handleSubmit(onSubmit)();
   };
 
-  const handlePrint = () => {
-    if (!printRef.current) return;
+  const handlePrint = async () => {
+    if (!printRef.current || !savedData) return;
     
-    const printContent = printRef.current.innerHTML;
+    // Validate we have lot IDs
+    if (savedData.lotIds.length === 0) {
+      toast({
+        title: t("error"),
+        description: "No lot IDs available for bill number assignment",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Assign bill numbers on first print if not already assigned
+    let billNumbersToUse = billNumbers;
+    if (Object.keys(billNumbers).length === 0) {
+      setBillNumbersLoading(true);
+      const newBillNumbers: Record<string, number> = {};
+      let hasError = false;
+      
+      for (const lotId of savedData.lotIds) {
+        try {
+          const billResponse = await apiRequest("POST", `/api/lots/${lotId}/assign-bill-number`, {});
+          if (billResponse && typeof billResponse === 'object' && 'billNumber' in billResponse) {
+            newBillNumbers[lotId] = (billResponse as { billNumber: number }).billNumber;
+          } else {
+            hasError = true;
+          }
+        } catch (e) {
+          console.error("Failed to assign bill number for lot", lotId, e);
+          hasError = true;
+        }
+      }
+      
+      setBillNumbersLoading(false);
+      
+      if (hasError || Object.keys(newBillNumbers).length !== savedData.lotIds.length) {
+        toast({
+          title: t("error"),
+          description: "Failed to assign bill numbers. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setBillNumbers(newBillNumbers);
+      billNumbersToUse = newBillNumbers;
+    }
+    
+    // Use billNumbersToUse directly to avoid async state issues
+    doPrint(billNumbersToUse);
+  };
+
+  const doPrint = (currentBillNumbers: Record<string, number>) => {
+    if (!printRef.current || !savedData) return;
+    
+    // Generate bill numbers string directly from passed data
+    const billNumbersStr = savedData.lotIds.map((id) => currentBillNumbers[id] || "-").join(", ");
+    
+    // Get the print content but replace the placeholder with actual bill numbers
+    let printContent = printRef.current.innerHTML;
+    // Replace the placeholder message with actual bill numbers
+    printContent = printContent.replace(
+      /\(Bill number will be assigned on print\)/g,
+      `बिल नंबर / Bill No: <strong>${billNumbersStr}</strong>`
+    );
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
@@ -793,6 +861,19 @@ export default function LotEntry() {
                 <div className="receipt-header">
                   <h1>{coldStorage?.name || "Cold Storage"}</h1>
                   <h2>{t("lotEntryReceipt") || "Lot Entry Receipt"}</h2>
+                  {savedData.lotIds.length > 0 && (
+                    <div style={{ marginTop: "8px", fontSize: "14px" }}>
+                      {billNumbersLoading ? "Loading..." : Object.keys(billNumbers).length > 0 ? (
+                        <>बिल नंबर / Bill No: <strong>
+                          {savedData.lotIds.map((id) => billNumbers[id] || "-").join(", ")}
+                        </strong></>
+                      ) : (
+                        <span style={{ color: "#666", fontStyle: "italic" }}>
+                          (Bill number will be assigned on print)
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="section">
@@ -876,9 +957,9 @@ export default function LotEntry() {
                 <Button variant="outline" onClick={() => { setShowReceipt(false); navigate("/"); }}>
                   {t("close")}
                 </Button>
-                <Button onClick={handlePrint}>
+                <Button onClick={handlePrint} disabled={billNumbersLoading}>
                   <Printer className="h-4 w-4 mr-2" />
-                  {t("print")}
+                  {billNumbersLoading ? "Loading..." : t("print")}
                 </Button>
               </div>
             </>
