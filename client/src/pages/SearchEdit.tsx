@@ -32,20 +32,38 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 
+// Helper to get saved search state from sessionStorage
+const getSavedSearchState = () => {
+  try {
+    const saved = sessionStorage.getItem("searchEditState");
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    // Ignore parse errors
+  }
+  return null;
+};
+
 export default function SearchEdit() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "filter" | "farmerName">("phone");
-  const [farmerNameQuery, setFarmerNameQuery] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [lotNoQuery, setLotNoQuery] = useState("");
-  const [sizeQuery, setSizeQuery] = useState("");
-  const [qualityFilter, setQualityFilter] = useState<string>("all");
-  const [paymentDueFilter, setPaymentDueFilter] = useState(false);
-  const [searchResults, setSearchResults] = useState<Lot[]>([]);
-  const [hasSearched, setHasSearched] = useState(false);
+  // Load initial state from sessionStorage if available
+  const savedState = getSavedSearchState();
+
+  const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "filter" | "farmerName">(
+    savedState?.searchType || "phone"
+  );
+  const [farmerNameQuery, setFarmerNameQuery] = useState(savedState?.farmerNameQuery || "");
+  const [searchQuery, setSearchQuery] = useState(savedState?.searchQuery || "");
+  const [lotNoQuery, setLotNoQuery] = useState(savedState?.lotNoQuery || "");
+  const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
+  const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
+  const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
+  const [searchResults, setSearchResults] = useState<Lot[]>(savedState?.searchResults || []);
+  const [hasSearched, setHasSearched] = useState(savedState?.hasSearched || false);
   const [isSearching, setIsSearching] = useState(false);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -96,7 +114,23 @@ export default function SearchEdit() {
   }, [selectedLot, allSalesHistory]);
 
   const isInitialMount = useRef(true);
+
+  // Save search state to sessionStorage whenever it changes (but not search results - we re-fetch those)
+  useEffect(() => {
+    const stateToSave = {
+      searchType,
+      farmerNameQuery,
+      searchQuery,
+      lotNoQuery,
+      sizeQuery,
+      qualityFilter,
+      paymentDueFilter,
+      hasSearched,
+    };
+    sessionStorage.setItem("searchEditState", JSON.stringify(stateToSave));
+  }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, hasSearched]);
   
+  // Re-run search when filters change (but not on initial mount)
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
@@ -106,6 +140,16 @@ export default function SearchEdit() {
       handleSearch();
     }
   }, [qualityFilter, paymentDueFilter]);
+
+  // Re-run search on initial mount if we have saved search state
+  const hasRestoredSearch = useRef(false);
+  useEffect(() => {
+    if (!hasRestoredSearch.current && savedState?.hasSearched) {
+      hasRestoredSearch.current = true;
+      // Small delay to ensure handleSearch is available
+      setTimeout(() => handleSearch(), 0);
+    }
+  }, []);
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
     acc[chamber.id] = chamber.name;
