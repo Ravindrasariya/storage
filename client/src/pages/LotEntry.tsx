@@ -524,13 +524,22 @@ export default function LotEntry() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t("district")} *</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        placeholder="Enter district"
-                        data-testid="input-district"
-                      />
-                    </FormControl>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-district">
+                          <SelectValue placeholder="Select district" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Ujjain">Ujjain</SelectItem>
+                        <SelectItem value="Agar Malwa">Agar Malwa</SelectItem>
+                        <SelectItem value="Dewas">Dewas</SelectItem>
+                        <SelectItem value="Indore">Indore</SelectItem>
+                        <SelectItem value="Shajapur">Shajapur</SelectItem>
+                        <SelectItem value="Rajgarh">Rajgarh</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
