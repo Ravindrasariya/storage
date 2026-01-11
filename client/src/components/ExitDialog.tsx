@@ -208,6 +208,9 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                         className="flex items-center justify-between text-xs bg-muted/30 px-2 py-1 rounded"
                       >
                         <span>
+                          <Badge variant="secondary" className="text-[10px] px-1 py-0 mr-1">
+                            #{exit.billNumber || "-"}
+                          </Badge>
                           <strong>{exit.bagsExited}</strong> bags - {format(new Date(exit.exitDate), "dd/MM HH:mm")}
                         </span>
                         {exit.isReversed === 1 && (
@@ -258,6 +261,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             <div className="header">
               <h1>{coldStorage?.name || "Cold Storage"}</h1>
               <h2>निकासी रसीद / Exit Receipt</h2>
+              <h3 style={{ marginTop: "10px", fontSize: "14px" }}>बिल नंबर / Bill No: <strong>{lastExit?.billNumber || "-"}</strong></h3>
             </div>
 
             <div className="details">

@@ -160,7 +160,7 @@ export const exitHistory = pgTable("exit_history", {
   lotId: varchar("lot_id").notNull(),
   coldStorageId: varchar("cold_storage_id").notNull(),
   bagsExited: integer("bags_exited").notNull(),
-  billNumber: integer("bill_number").notNull(), // Unique bill number for this exit, auto-incremented
+  billNumber: integer("bill_number").notNull().default(0), // Unique bill number for this exit, auto-incremented
   exitDate: timestamp("exit_date").notNull().defaultNow(),
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),
