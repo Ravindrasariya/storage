@@ -1119,18 +1119,19 @@ export class DatabaseStorage implements IStorage {
 
   // Exit History methods
   async createExit(data: InsertExitHistory): Promise<ExitHistory> {
-    // Get the next bill number from cold storage and increment it atomically
-    const coldStorage = await this.getColdStorage(data.coldStorageId);
-    if (!coldStorage) {
+    // Atomically increment and get the bill number using UPDATE RETURNING
+    // This ensures no two exits can get the same bill number
+    const [updatedStorage] = await db.update(coldStorages)
+      .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 0) + 1` })
+      .where(eq(coldStorages.id, data.coldStorageId))
+      .returning({ billNumber: coldStorages.nextExitBillNumber });
+    
+    if (!updatedStorage) {
       throw new Error("Cold storage not found");
     }
     
-    const billNumber = coldStorage.nextExitBillNumber || 1;
-    
-    // Increment the next bill number in cold storage
-    await db.update(coldStorages)
-      .set({ nextExitBillNumber: billNumber + 1 })
-      .where(eq(coldStorages.id, data.coldStorageId));
+    // The returned billNumber is the NEW value after increment, so use it directly
+    const billNumber = updatedStorage.billNumber;
     
     // Create the exit record with the bill number
     const [record] = await db.insert(exitHistory)
