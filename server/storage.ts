@@ -10,6 +10,7 @@ import {
   salesHistory,
   saleEditHistory,
   maintenanceRecords,
+  exitHistory,
   type ColdStorage,
   type InsertColdStorage,
   type Chamber,
@@ -26,6 +27,8 @@ import {
   type InsertSaleEditHistory,
   type MaintenanceRecord,
   type InsertMaintenanceRecord,
+  type ExitHistory,
+  type InsertExitHistory,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -89,6 +92,11 @@ export interface IStorage {
   // Sale Edit History
   getSaleEditHistory(saleId: string): Promise<SaleEditHistory[]>;
   createSaleEditHistory(data: InsertSaleEditHistory): Promise<SaleEditHistory>;
+  // Exit History
+  createExit(data: InsertExitHistory): Promise<ExitHistory>;
+  getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
+  getTotalExitedBags(salesHistoryId: string): Promise<number>;
+  reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1073,6 +1081,58 @@ export class DatabaseStorage implements IStorage {
       .values({ id: randomUUID(), ...data })
       .returning();
     return record;
+  }
+
+  // Exit History methods
+  async createExit(data: InsertExitHistory): Promise<ExitHistory> {
+    const [record] = await db.insert(exitHistory)
+      .values({ id: randomUUID(), ...data })
+      .returning();
+    return record;
+  }
+
+  async getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]> {
+    return db.select()
+      .from(exitHistory)
+      .where(eq(exitHistory.salesHistoryId, salesHistoryId))
+      .orderBy(desc(exitHistory.exitDate));
+  }
+
+  async getTotalExitedBags(salesHistoryId: string): Promise<number> {
+    const exits = await db.select()
+      .from(exitHistory)
+      .where(and(
+        eq(exitHistory.salesHistoryId, salesHistoryId),
+        eq(exitHistory.isReversed, 0)
+      ));
+    return exits.reduce((sum, exit) => sum + exit.bagsExited, 0);
+  }
+
+  async reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }> {
+    // Get the latest non-reversed exit
+    const exits = await db.select()
+      .from(exitHistory)
+      .where(and(
+        eq(exitHistory.salesHistoryId, salesHistoryId),
+        eq(exitHistory.isReversed, 0)
+      ))
+      .orderBy(desc(exitHistory.exitDate));
+
+    if (exits.length === 0) {
+      return { success: false, message: "No exits to reverse" };
+    }
+
+    const latestExit = exits[0];
+
+    // Mark the exit as reversed
+    await db.update(exitHistory)
+      .set({ 
+        isReversed: 1, 
+        reversedAt: new Date() 
+      })
+      .where(eq(exitHistory.id, latestExit.id));
+
+    return { success: true };
   }
 }
 
