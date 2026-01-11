@@ -213,8 +213,12 @@ export default function LotEntry() {
       const createdLotIds: string[] = [];
       for (const lot of lots) {
         const response = await createLotMutation.mutateAsync({ ...farmerData, ...lot });
-        if (response && typeof response === 'object' && 'id' in response) {
-          createdLotIds.push((response as { id: string }).id);
+        // apiRequest returns a Response object, need to parse JSON
+        if (response && response.ok) {
+          const lotData = await response.json();
+          if (lotData && lotData.id) {
+            createdLotIds.push(lotData.id);
+          }
         }
       }
       toast({
