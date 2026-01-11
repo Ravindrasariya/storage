@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2 } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X } from "lucide-react";
 import { format } from "date-fns";
 import type { CashReceipt, Expense } from "@shared/schema";
 
@@ -41,6 +41,10 @@ export default function CashManagement() {
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseDate, setExpenseDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [expenseRemarks, setExpenseRemarks] = useState("");
+
+  const [filterBuyer, setFilterBuyer] = useState<string>("");
+  const [filterCategory, setFilterCategory] = useState<string>("");
+  const [filterMonth, setFilterMonth] = useState<string>("");
 
   const { data: buyersWithDues = [], isLoading: loadingBuyers } = useQuery<BuyerWithDue[]>({
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
@@ -153,6 +157,32 @@ export default function CashManagement() {
 
   const isLoading = loadingReceipts || loadingExpenses;
 
+  const uniqueBuyers = useMemo(() => {
+    const buyers = new Set(receipts.map(r => r.buyerName));
+    return Array.from(buyers).sort();
+  }, [receipts]);
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    receipts.forEach(r => {
+      const date = new Date(r.receivedAt);
+      months.add(format(date, "yyyy-MM"));
+    });
+    expensesList.forEach(e => {
+      const date = new Date(e.paidAt);
+      months.add(format(date, "yyyy-MM"));
+    });
+    return Array.from(months).sort().reverse();
+  }, [receipts, expensesList]);
+
+  const hasActiveFilters = filterBuyer || filterCategory || filterMonth;
+
+  const clearFilters = () => {
+    setFilterBuyer("");
+    setFilterCategory("");
+    setFilterMonth("");
+  };
+
   const summary = useMemo(() => {
     const totalCashReceived = receipts
       .filter(r => r.receiptType === "cash")
@@ -179,6 +209,47 @@ export default function CashManagement() {
       totalAccountExpenses,
     };
   }, [receipts, expensesList]);
+
+  const filteredSummary = useMemo(() => {
+    let filteredReceipts = receipts;
+    let filteredExpenses = expensesList;
+
+    if (filterBuyer) {
+      filteredReceipts = filteredReceipts.filter(r => r.buyerName === filterBuyer);
+    }
+
+    if (filterCategory) {
+      filteredExpenses = filteredExpenses.filter(e => e.expenseType === filterCategory);
+    }
+
+    if (filterMonth) {
+      filteredReceipts = filteredReceipts.filter(r => {
+        const date = new Date(r.receivedAt);
+        return format(date, "yyyy-MM") === filterMonth;
+      });
+      filteredExpenses = filteredExpenses.filter(e => {
+        const date = new Date(e.paidAt);
+        return format(date, "yyyy-MM") === filterMonth;
+      });
+    }
+
+    const buyerCashReceived = filteredReceipts
+      .filter(r => r.receiptType === "cash")
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    
+    const buyerAccountReceived = filteredReceipts
+      .filter(r => r.receiptType === "account")
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+    const categoryExpenses = filteredExpenses
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    return {
+      buyerCashReceived,
+      buyerAccountReceived,
+      categoryExpenses,
+    };
+  }, [receipts, expensesList, filterBuyer, filterCategory, filterMonth]);
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -240,6 +311,104 @@ export default function CashManagement() {
       <p className="text-xs text-muted-foreground mb-4 text-right">
         {t("asOf")}: {format(new Date(), "dd/MM/yyyy")}
       </p>
+
+      <Card className="mb-6">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            {t("filters")}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="ml-auto h-7 text-xs"
+                data-testid="button-clear-filters"
+              >
+                <X className="h-3 w-3 mr-1" />
+                {t("clearFilters")}
+              </Button>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs">{t("filterByBuyer")}</Label>
+              <Select value={filterBuyer || "all"} onValueChange={(v) => setFilterBuyer(v === "all" ? "" : v)}>
+                <SelectTrigger data-testid="select-filter-buyer">
+                  <SelectValue placeholder={t("allBuyers")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allBuyers")}</SelectItem>
+                  {uniqueBuyers.map((buyer) => (
+                    <SelectItem key={buyer} value={buyer}>{buyer}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{t("filterByCategory")}</Label>
+              <Select value={filterCategory || "all"} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
+                <SelectTrigger data-testid="select-filter-category">
+                  <SelectValue placeholder={t("allCategories")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allCategories")}</SelectItem>
+                  <SelectItem value="salary">{t("salary")}</SelectItem>
+                  <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                  <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
+                  <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{t("filterByMonth")}</Label>
+              <Select value={filterMonth || "all"} onValueChange={(v) => setFilterMonth(v === "all" ? "" : v)}>
+                <SelectTrigger data-testid="select-filter-month">
+                  <SelectValue placeholder={t("allMonths")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allMonths")}</SelectItem>
+                  {availableMonths.map((month) => (
+                    <SelectItem key={month} value={month}>
+                      {format(new Date(month + "-01"), "MMMM yyyy")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {hasActiveFilters && (
+            <div className="mt-4 p-3 bg-muted rounded-lg">
+              <p className="text-sm font-medium mb-2">{t("filteredResults")}:</p>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {filterBuyer && (
+                  <>
+                    <div>
+                      <span className="text-muted-foreground">{t("cash")}:</span>
+                      <span className="ml-1 font-semibold text-green-600">₹{filteredSummary.buyerCashReceived.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">{t("account")}:</span>
+                      <span className="ml-1 font-semibold text-green-600">₹{filteredSummary.buyerAccountReceived.toLocaleString()}</span>
+                    </div>
+                  </>
+                )}
+                {(filterCategory || filterMonth) && (
+                  <div>
+                    <span className="text-muted-foreground">{t("expense")}:</span>
+                    <span className="ml-1 font-semibold text-red-600">₹{filteredSummary.categoryExpenses.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>

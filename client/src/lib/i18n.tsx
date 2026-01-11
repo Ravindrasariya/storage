@@ -308,10 +308,6 @@ const translations: Translations = {
   // Expense section
   expense: { en: "Expense", hi: "व्यय" },
   expenseType: { en: "Expense Type", hi: "व्यय प्रकार" },
-  salary: { en: "Salary", hi: "वेतन" },
-  gradingCharges: { en: "Grading Charges", hi: "ग्रेडिंग शुल्क" },
-  generalExpenses: { en: "General Expenses", hi: "सामान्य खर्च" },
-  paidOn: { en: "Paid On", hi: "भुगतान तिथि" },
   recordExpense: { en: "Record Expense", hi: "व्यय दर्ज करें" },
   expenseRecorded: { en: "Expense recorded successfully", hi: "व्यय सफलतापूर्वक दर्ज किया गया" },
   cashFlowHistory: { en: "Cash Flow History", hi: "नकद प्रवाह इतिहास" },
@@ -327,6 +323,15 @@ const translations: Translations = {
   totalExpenseFromAccount: { en: "Expense from Account", hi: "खाते से व्यय" },
   asOf: { en: "As of", hi: "तारीख" },
   cashExpenses: { en: "Cash Expenses", hi: "नकद खर्च" },
+  
+  // Filters (extended)
+  filterByCategory: { en: "Filter by Category", hi: "श्रेणी द्वारा फ़िल्टर" },
+  filterByMonth: { en: "Filter by Month", hi: "महीने द्वारा फ़िल्टर" },
+  allCategories: { en: "All Categories", hi: "सभी श्रेणियाँ" },
+  allMonths: { en: "All Months", hi: "सभी महीने" },
+  filteredResults: { en: "Filtered Results", hi: "फ़िल्टर किए गए परिणाम" },
+  byBuyer: { en: "By Buyer", hi: "खरीदार द्वारा" },
+  byCategory: { en: "By Category", hi: "श्रेणी द्वारा" },
 };
 
 interface I18nContextType {
