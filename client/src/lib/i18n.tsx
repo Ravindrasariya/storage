@@ -155,6 +155,9 @@ const translations: Translations = {
   coldStorageCharge: { en: "Cold Storage Charge", hi: "कोल्ड स्टोरेज शुल्क" },
   totalColdStorageCharges: { en: "Total Cold Storage Charges", hi: "कुल कोल्ड स्टोरेज शुल्क" },
   hammali: { en: "Hammali", hi: "हमाली" },
+  salary: { en: "Salary", hi: "वेतन" },
+  gradingCharges: { en: "Grading Charge", hi: "ग्रेडिंग शुल्क" },
+  generalExpenses: { en: "General Expense", hi: "सामान्य खर्च" },
   total: { en: "Total", hi: "कुल" },
   
   // Up for Sale
