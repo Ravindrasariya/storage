@@ -701,6 +701,14 @@ export class DatabaseStorage implements IStorage {
     // Delete all lots for the cold storage
     await db.delete(lots).where(eq(lots.coldStorageId, coldStorageId));
     
+    // Get all chambers for this cold storage to delete their floors
+    const allChambers = await this.getChambers(coldStorageId);
+    
+    // Delete all floor configurations for each chamber
+    for (const chamber of allChambers) {
+      await db.delete(chamberFloors).where(eq(chamberFloors.chamberId, chamber.id));
+    }
+    
     // Reset all chamber fills to zero
     await db.update(chambers)
       .set({ currentFill: 0 })
