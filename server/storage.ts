@@ -750,6 +750,11 @@ export class DatabaseStorage implements IStorage {
     await db.update(chambers)
       .set({ currentFill: 0 })
       .where(eq(chambers.coldStorageId, coldStorageId));
+    
+    // Reset the exit bill number counter to 1
+    await db.update(coldStorages)
+      .set({ nextExitBillNumber: 1 })
+      .where(eq(coldStorages.id, coldStorageId));
   }
 
   async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number): Promise<Lot | undefined> {
@@ -1114,8 +1119,22 @@ export class DatabaseStorage implements IStorage {
 
   // Exit History methods
   async createExit(data: InsertExitHistory): Promise<ExitHistory> {
+    // Get the next bill number from cold storage and increment it atomically
+    const coldStorage = await this.getColdStorage(data.coldStorageId);
+    if (!coldStorage) {
+      throw new Error("Cold storage not found");
+    }
+    
+    const billNumber = coldStorage.nextExitBillNumber || 1;
+    
+    // Increment the next bill number in cold storage
+    await db.update(coldStorages)
+      .set({ nextExitBillNumber: billNumber + 1 })
+      .where(eq(coldStorages.id, data.coldStorageId));
+    
+    // Create the exit record with the bill number
     const [record] = await db.insert(exitHistory)
-      .values({ id: randomUUID(), ...data })
+      .values({ id: randomUUID(), billNumber, ...data })
       .returning();
     return record;
   }
