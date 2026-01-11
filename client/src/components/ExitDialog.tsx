@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { LogOut, RotateCcw, Printer, Save, X } from "lucide-react";
+import { LogOut, Printer, Save } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, ExitHistory, ColdStorage } from "@shared/schema";
 
@@ -68,30 +68,6 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       toast({ title: t("error"), description: error.message || t("failedToCreateExit"), variant: "destructive" });
     },
   });
-
-  const reverseExitMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/exits/reverse-latest`);
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({ title: t("success"), description: t("exitReversed") });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "exits"] });
-      refetchExits();
-    },
-    onError: () => {
-      toast({ title: t("error"), description: t("failedToReverseExit"), variant: "destructive" });
-    },
-  });
-
-  const handleSave = () => {
-    const bags = parseInt(bagsToExit);
-    if (isNaN(bags) || bags <= 0 || bags > remainingToExit) {
-      toast({ title: t("error"), description: `Max bags: ${remainingToExit}`, variant: "destructive" });
-      return;
-    }
-    createExitMutation.mutate(bags);
-  };
 
   const handleSaveAndPrint = () => {
     const bags = parseInt(bagsToExit);
@@ -247,68 +223,26 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             )}
           </div>
 
-          <DialogFooter className="flex flex-wrap gap-2 justify-end">
-            {exits.some(e => e.isReversed === 0) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => reverseExitMutation.mutate()}
-                disabled={reverseExitMutation.isPending}
-                data-testid="button-reverse-exit"
-              >
-                <RotateCcw className="h-3 w-3 mr-1" />
-                Reverse
-              </Button>
-            )}
+          <DialogFooter className="flex gap-2 justify-end">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
               data-testid="button-cancel-exit"
             >
-              <X className="h-3 w-3 mr-1" />
               Close
             </Button>
-            {exits.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const latestActiveExit = exits.find(e => e.isReversed === 0);
-                  if (latestActiveExit) {
-                    setLastExit(latestActiveExit);
-                    setShowPrintReceipt(true);
-                  }
-                }}
-                data-testid="button-print-only"
-              >
-                <Printer className="h-3 w-3 mr-1" />
-                Print
-              </Button>
-            )}
             {remainingToExit > 0 && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={createExitMutation.isPending}
-                  data-testid="button-save-exit"
-                >
-                  <Save className="h-3 w-3 mr-1" />
-                  Save
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSaveAndPrint}
-                  disabled={createExitMutation.isPending}
-                  data-testid="button-save-print-exit"
-                >
-                  <Save className="h-3 w-3" />
-                  <Printer className="h-3 w-3 mr-1" />
-                  Save & Print
-                </Button>
-              </>
+              <Button
+                size="sm"
+                onClick={handleSaveAndPrint}
+                disabled={createExitMutation.isPending}
+                data-testid="button-save-print-exit"
+              >
+                <Save className="h-3 w-3" />
+                <Printer className="h-3 w-3 mr-1" />
+                Save & Print
+              </Button>
             )}
           </DialogFooter>
         </DialogContent>
