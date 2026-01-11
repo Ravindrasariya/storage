@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { ShoppingCart, Phone, MapPin, Package, Check, Minus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -35,7 +34,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const [selectedLot, setSelectedLot] = useState<SaleLotInfo | null>(null);
-  const [paymentStatus, setPaymentStatus] = useState<"paid" | "due" | "partial">("paid");
+  const [paymentStatus, setPaymentStatus] = useState<"paid" | "due" | "partial">("due");
   const [saleMode, setSaleMode] = useState<"full" | "partial">("full");
   const [partialQuantity, setPartialQuantity] = useState<number>(0);
   const [partialPrice, setPartialPrice] = useState<number>(0);
@@ -100,7 +99,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setSaleMode("full");
     setPartialQuantity(0);
     setPartialPrice(0);
-    setPaymentStatus("paid");
+    setPaymentStatus("due");
     setPaymentMode("cash");
     setBuyerName("");
     setPricePerKg("");
@@ -512,92 +511,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>{t("paymentStatus")}</Label>
-                <RadioGroup
-                  value={paymentStatus}
-                  onValueChange={(value) => setPaymentStatus(value as "paid" | "due" | "partial")}
-                  className="flex flex-wrap gap-4"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="paid" id="paid" data-testid="radio-paid" />
-                    <Label htmlFor="paid" className="text-green-600 font-medium">
-                      {t("paid")}
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="due" id="due" data-testid="radio-due" />
-                    <Label htmlFor="due" className="text-amber-600 font-medium">
-                      {t("due")}
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="partial" id="partial" data-testid="radio-partial-payment" />
-                    <Label htmlFor="partial" className="text-blue-600 font-medium">
-                      {t("partialPayment") || "Partial Payment"}
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
-              {(paymentStatus === "paid" || paymentStatus === "partial") && (
-                <div className="space-y-2">
-                  <Label>{t("paymentMode")}</Label>
-                  <RadioGroup
-                    value={paymentMode}
-                    onValueChange={(value) => setPaymentMode(value as "cash" | "account")}
-                    className="flex flex-wrap gap-4"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="cash" id="cash-full" data-testid="radio-cash-full" />
-                      <Label htmlFor="cash-full" className="font-medium">
-                        {t("cash")}
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="account" id="account-full" data-testid="radio-account-full" />
-                      <Label htmlFor="account-full" className="font-medium">
-                        {t("account")}
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-              )}
-              
-              {paymentStatus === "partial" && (
-                <div className="space-y-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
-                  <div className="text-sm text-muted-foreground">
-                    {t("total")} {t("storageCharge")}: <span className="font-bold text-foreground">Rs. {calculateCharge(selectedLot).toLocaleString()}</span>
-                    <span className="text-xs ml-2">({selectedLot.remainingSize} × Rs.{selectedLot.rate})</span>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("amountPaid") || "Amount Paid"}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={calculateCharge(selectedLot)}
-                      value={customPaidAmount}
-                      onChange={(e) => setCustomPaidAmount(e.target.value)}
-                      placeholder="0"
-                      className="text-lg font-medium"
-                      data-testid="input-custom-paid-amount"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Max: Rs. {calculateCharge(selectedLot).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-background text-sm space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-green-600 font-medium">{t("paid")}:</span>
-                      <span className="font-bold text-green-600">Rs. {Math.min(parseFloat(customPaidAmount) || 0, calculateCharge(selectedLot)).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-amber-600 font-medium">{t("due")}:</span>
-                      <span className="font-bold text-amber-600">Rs. {Math.max(0, calculateCharge(selectedLot) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -772,91 +685,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label>{t("paymentStatus")}</Label>
-                <RadioGroup
-                  value={paymentStatus}
-                  onValueChange={(value) => setPaymentStatus(value as "paid" | "due" | "partial")}
-                  className="flex flex-wrap gap-4"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="paid" id="partial-paid" data-testid="radio-partial-paid" />
-                    <Label htmlFor="partial-paid" className="text-green-600 font-medium">
-                      {t("paid")}
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="due" id="partial-due" data-testid="radio-partial-due" />
-                    <Label htmlFor="partial-due" className="text-amber-600 font-medium">
-                      {t("due")}
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="partial" id="partial-partial" data-testid="radio-partial-partial-payment" />
-                    <Label htmlFor="partial-partial" className="text-blue-600 font-medium">
-                      {t("partialPayment") || "Partial Payment"}
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
-              {(paymentStatus === "paid" || paymentStatus === "partial") && (
-                <div className="space-y-2">
-                  <Label>{t("paymentMode")}</Label>
-                  <RadioGroup
-                    value={paymentMode}
-                    onValueChange={(value) => setPaymentMode(value as "cash" | "account")}
-                    className="flex flex-wrap gap-4"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="cash" id="cash-partial" data-testid="radio-cash-partial" />
-                      <Label htmlFor="cash-partial" className="font-medium">
-                        {t("cash")}
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="account" id="account-partial" data-testid="radio-account-partial" />
-                      <Label htmlFor="account-partial" className="font-medium">
-                        {t("account")}
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-              )}
-              
-              {paymentStatus === "partial" && partialQuantity > 0 && (
-                <div className="space-y-3 p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
-                  <div className="text-sm text-muted-foreground">
-                    {t("total")} {t("storageCharge")}: <span className="font-bold text-foreground">Rs. {calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate).toLocaleString()}</span>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("amountPaid") || "Amount Paid"}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate)}
-                      value={customPaidAmount}
-                      onChange={(e) => setCustomPaidAmount(e.target.value)}
-                      placeholder="0"
-                      className="text-lg font-medium"
-                      data-testid="input-partial-custom-paid-amount"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Max: Rs. {calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-background text-sm space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-green-600 font-medium">{t("paid")}:</span>
-                      <span className="font-bold text-green-600">Rs. {Math.min(parseFloat(customPaidAmount) || 0, calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate)).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-amber-600 font-medium">{t("due")}:</span>
-                      <span className="font-bold text-amber-600">Rs. {Math.max(0, calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate) - (parseFloat(customPaidAmount) || 0)).toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
