@@ -541,13 +541,18 @@ export default function LotEntry() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t("state")} *</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        placeholder="Enter state"
-                        data-testid="input-state"
-                      />
-                    </FormControl>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-state">
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Madhya Pradesh">Madhya Pradesh</SelectItem>
+                        <SelectItem value="Gujarat">Gujarat</SelectItem>
+                        <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
