@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -286,117 +285,48 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
           <div className="space-y-4">
             <h4 className="font-medium">{t("paymentStatus")}</h4>
             
-            <div className="p-3 bg-muted/30 rounded-lg">
-              <p className="text-sm text-muted-foreground mb-2">
-                {t("currentStatus")}: 
+            <div className="p-3 bg-muted/30 rounded-lg space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{t("status")}:</span>
                 <Badge 
                   variant={currentStatus === "paid" ? "default" : currentStatus === "partial" ? "secondary" : "destructive"}
-                  className={`ml-2 ${currentStatus === "paid" ? "bg-green-600" : ""}`}
+                  className={currentStatus === "paid" ? "bg-green-600" : ""}
                 >
-                  {t(currentStatus)}
+                  {currentStatus === "paid" ? t("paid") : currentStatus === "due" ? t("due") : t("partialPaid")}
                 </Badge>
-                {currentStatus === "partial" && (
-                  <span className="ml-2 text-xs">
-                    ({t("paid")}: Rs. {(sale.paidAmount || 0).toLocaleString()}, {t("due")}: Rs. {(sale.dueAmount || 0).toLocaleString()})
-                  </span>
-                )}
+              </div>
+              {currentStatus === "partial" && (
+                <div className="text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-green-600">{t("paid")}:</span>
+                    <span className="font-medium">Rs. {(sale.paidAmount || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-600">{t("remaining")}:</span>
+                    <span className="font-medium">Rs. {(sale.dueAmount || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+              {currentStatus === "due" && (
+                <div className="text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-amber-600">{t("totalDue")}:</span>
+                    <span className="font-medium">Rs. {totalCharge.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+              {currentStatus === "paid" && (
+                <div className="text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-green-600">{t("totalPaid")}:</span>
+                    <span className="font-medium">Rs. {totalCharge.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                {t("usePaymentManager")}
               </p>
             </div>
-
-            <RadioGroup 
-              value={newPaymentStatus} 
-              onValueChange={(v) => setNewPaymentStatus(v as "paid" | "due" | "partial")}
-              className="space-y-2"
-            >
-              {currentStatus === "paid" && (
-                <>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="paid" id="status-paid" data-testid="radio-status-paid" />
-                    <Label htmlFor="status-paid">{t("keepAsPaid")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="due" id="status-due" data-testid="radio-status-due" />
-                    <Label htmlFor="status-due">{t("markAsDue")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="partial" id="status-partial" data-testid="radio-status-partial" />
-                    <Label htmlFor="status-partial">{t("markAsPartial")}</Label>
-                  </div>
-                </>
-              )}
-
-              {currentStatus === "due" && (
-                <>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="due" id="status-due" data-testid="radio-status-due" />
-                    <Label htmlFor="status-due">{t("keepAsDue")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="paid" id="status-paid" data-testid="radio-status-paid" />
-                    <Label htmlFor="status-paid">{t("markAsPaid")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="partial" id="status-partial" data-testid="radio-status-partial" />
-                    <Label htmlFor="status-partial">{t("markAsPartial")}</Label>
-                  </div>
-                </>
-              )}
-
-              {currentStatus === "partial" && (
-                <>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="partial" id="status-partial" data-testid="radio-status-partial" />
-                    <Label htmlFor="status-partial">{t("keepAsPartial")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="paid" id="status-paid" data-testid="radio-status-paid" />
-                    <Label htmlFor="status-paid">{t("markAsPaid")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="due" id="status-due" data-testid="radio-status-due" />
-                    <Label htmlFor="status-due">{t("markAsDue")}</Label>
-                  </div>
-                </>
-              )}
-            </RadioGroup>
-
-            {newPaymentStatus === "partial" && (
-              <div className="space-y-2 pl-6">
-                <Label htmlFor="customAmount">{t("paidAmount")}</Label>
-                <Input
-                  id="customAmount"
-                  type="number"
-                  value={customAmount}
-                  onChange={(e) => setCustomAmount(e.target.value)}
-                  placeholder="0"
-                  max={totalCharge}
-                  data-testid="input-partial-amount"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("maxAmount")}: Rs. {totalCharge.toLocaleString()}
-                </p>
-              </div>
-            )}
-
-            {(newPaymentStatus === "paid" || newPaymentStatus === "partial") && (
-              <div className="space-y-2">
-                <Label>{t("paymentMode")}</Label>
-                <RadioGroup 
-                  value={paymentMode} 
-                  onValueChange={(v) => setPaymentMode(v as "cash" | "account")}
-                  className="flex gap-4"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="cash" id="mode-cash" data-testid="radio-mode-cash" />
-                    <Label htmlFor="mode-cash">{t("cash")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="account" id="mode-account" data-testid="radio-mode-account" />
-                    <Label htmlFor="mode-account">{t("account")}</Label>
-                  </div>
-                </RadioGroup>
-              </div>
-            )}
           </div>
         </div>
 

@@ -335,6 +335,9 @@ const translations: Translations = {
   filteredResults: { en: "Filtered Results", hi: "फ़िल्टर किए गए परिणाम" },
   byBuyer: { en: "By Buyer", hi: "खरीदार द्वारा" },
   byCategory: { en: "By Category", hi: "श्रेणी द्वारा" },
+  partialPaid: { en: "Partial Paid", hi: "आंशिक भुगतान" },
+  usePaymentManager: { en: "Use Cash Management to update payments", hi: "भुगतान अपडेट करने के लिए कैश मैनेजमेंट का उपयोग करें" },
+  status: { en: "Status", hi: "स्थिति" },
 };
 
 interface I18nContextType {
