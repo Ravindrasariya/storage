@@ -14,6 +14,7 @@ export const coldStorages = pgTable("cold_storages", {
   seedColdCharge: real("seed_cold_charge"), // Cold storage charge for seed
   seedHammali: real("seed_hammali"), // Hammali charge for seed
   linkedPhones: text("linked_phones").array().notNull(), // Mobile numbers with access
+  nextExitBillNumber: integer("next_exit_bill_number").notNull().default(1), // Auto-increment counter for exit bills
 });
 
 // Chambers in cold storage
@@ -159,6 +160,7 @@ export const exitHistory = pgTable("exit_history", {
   lotId: varchar("lot_id").notNull(),
   coldStorageId: varchar("cold_storage_id").notNull(),
   bagsExited: integer("bags_exited").notNull(),
+  billNumber: integer("bill_number").notNull(), // Unique bill number for this exit, auto-incremented
   exitDate: timestamp("exit_date").notNull().defaultNow(),
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),
@@ -204,7 +206,7 @@ export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omi
 export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, soldAt: true });
 export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).omit({ id: true, changedAt: true });
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
-export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
+export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, billNumber: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, createdAt: true, appliedAmount: true, unappliedAmount: true, isReversed: true, reversedAt: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true });
 
