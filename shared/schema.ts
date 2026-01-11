@@ -152,6 +152,19 @@ export const maintenanceRecords = pgTable("maintenance_records", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Exit history - tracks when sold bags are physically removed from cold storage
+export const exitHistory = pgTable("exit_history", {
+  id: varchar("id").primaryKey(),
+  salesHistoryId: varchar("sales_history_id").notNull(),
+  lotId: varchar("lot_id").notNull(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  bagsExited: integer("bags_exited").notNull(),
+  exitDate: timestamp("exit_date").notNull().defaultNow(),
+  isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
+  reversedAt: timestamp("reversed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertChamberSchema = createInsertSchema(chambers).omit({ id: true });
@@ -161,6 +174,7 @@ export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omi
 export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, soldAt: true });
 export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).omit({ id: true, changedAt: true });
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
+export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -179,6 +193,8 @@ export type SaleEditHistory = typeof saleEditHistory.$inferSelect;
 export type InsertSaleEditHistory = z.infer<typeof insertSaleEditHistorySchema>;
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;
+export type ExitHistory = typeof exitHistory.$inferSelect;
+export type InsertExitHistory = z.infer<typeof insertExitHistorySchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({
