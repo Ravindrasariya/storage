@@ -12,6 +12,7 @@ import {
   maintenanceRecords,
   exitHistory,
   cashReceipts,
+  expenses,
   type ColdStorage,
   type InsertColdStorage,
   type Chamber,
@@ -32,6 +33,8 @@ import {
   type InsertExitHistory,
   type CashReceipt,
   type InsertCashReceipt,
+  type Expense,
+  type InsertExpense,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -104,6 +107,9 @@ export interface IStorage {
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
   getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
   createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
+  // Expenses
+  getExpenses(coldStorageId: string): Promise<Expense[]>;
+  createExpense(data: InsertExpense): Promise<Expense>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1246,6 +1252,22 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return { receipt, salesUpdated };
+  }
+
+  async getExpenses(coldStorageId: string): Promise<Expense[]> {
+    return db.select().from(expenses)
+      .where(eq(expenses.coldStorageId, coldStorageId))
+      .orderBy(desc(expenses.paidAt));
+  }
+
+  async createExpense(data: InsertExpense): Promise<Expense> {
+    const [expense] = await db.insert(expenses)
+      .values({
+        id: randomUUID(),
+        ...data,
+      })
+      .returning();
+    return expense;
   }
 }
 
