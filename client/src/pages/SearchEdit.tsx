@@ -29,7 +29,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ArrowLeft, Search, Phone, Package, Filter, User } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Lot, Chamber, LotEditHistory } from "@shared/schema";
+import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
+import { calculateTotalColdCharges } from "@shared/schema";
 
 export default function SearchEdit() {
   const { t } = useI18n();
@@ -62,6 +63,36 @@ export default function SearchEdit() {
     queryKey: ["/api/chambers"],
   });
 
+  // Fetch all sales to calculate charges from sales history (same as Analytics)
+  const { data: allSalesHistory } = useQuery<SalesHistory[]>({
+    queryKey: ["/api/sales-history"],
+  });
+
+  // Calculate charges for selected lot from sales history (same calculation as Analytics)
+  const selectedLotCharges = useMemo(() => {
+    if (!selectedLot || !allSalesHistory) return { totalPaid: 0, totalDue: 0 };
+    
+    const lotSales = allSalesHistory.filter(s => s.lotId === selectedLot.id);
+    
+    let totalPaid = 0;
+    let totalDue = 0;
+    
+    for (const sale of lotSales) {
+      const totalCharges = calculateTotalColdCharges(sale);
+      
+      if (sale.paymentStatus === "paid") {
+        totalPaid += totalCharges;
+      } else if (sale.paymentStatus === "due") {
+        totalDue += totalCharges;
+      } else if (sale.paymentStatus === "partial") {
+        totalPaid += sale.paidAmount || 0;
+        totalDue += sale.dueAmount || 0;
+      }
+    }
+    
+    return { totalPaid, totalDue };
+  }, [selectedLot, allSalesHistory]);
+
   const isInitialMount = useRef(true);
   
   useEffect(() => {
@@ -79,15 +110,40 @@ export default function SearchEdit() {
     return acc;
   }, {} as Record<string, string>) || {};
 
+  // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
     if (searchResults.length === 0) return null;
+    
+    const lotIds = new Set(searchResults.map(lot => lot.id));
+    
+    let chargesPaid = 0;
+    let chargesDue = 0;
+    
+    // Calculate from sales history if available
+    if (allSalesHistory) {
+      for (const sale of allSalesHistory) {
+        if (!lotIds.has(sale.lotId)) continue;
+        
+        const totalCharges = calculateTotalColdCharges(sale);
+        
+        if (sale.paymentStatus === "paid") {
+          chargesPaid += totalCharges;
+        } else if (sale.paymentStatus === "due") {
+          chargesDue += totalCharges;
+        } else if (sale.paymentStatus === "partial") {
+          chargesPaid += sale.paidAmount || 0;
+          chargesDue += sale.dueAmount || 0;
+        }
+      }
+    }
+    
     return {
       totalBags: searchResults.reduce((sum, lot) => sum + lot.size, 0),
       remainingBags: searchResults.reduce((sum, lot) => sum + lot.remainingSize, 0),
-      chargesPaid: searchResults.reduce((sum, lot) => sum + (lot.totalPaidCharge || 0), 0),
-      chargesDue: searchResults.reduce((sum, lot) => sum + (lot.totalDueCharge || 0), 0),
+      chargesPaid,
+      chargesDue,
     };
-  }, [searchResults]);
+  }, [searchResults, allSalesHistory]);
 
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
@@ -435,30 +491,30 @@ export default function SearchEdit() {
             </div>
           </div>
 
-          {/* Read-only Cold Storage Charges */}
-          {selectedLot && ((selectedLot.totalDueCharge || 0) > 0 || (selectedLot.totalPaidCharge || 0) > 0) && (
+          {/* Read-only Cold Storage Charges - calculated from sales history */}
+          {selectedLot && (selectedLotCharges.totalDue > 0 || selectedLotCharges.totalPaid > 0) && (
             <div className="border-t pt-4 space-y-3">
               <h4 className="font-semibold text-sm text-muted-foreground">{t("totalColdStorageCharges")}</h4>
               <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 mb-3">
                 <p className="text-xs text-muted-foreground">{t("total")}</p>
                 <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                  Rs. {((selectedLot.totalPaidCharge || 0) + (selectedLot.totalDueCharge || 0)).toLocaleString()}
+                  Rs. {(selectedLotCharges.totalPaid + selectedLotCharges.totalDue).toLocaleString()}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {(selectedLot.totalPaidCharge || 0) > 0 && (
+                {selectedLotCharges.totalPaid > 0 && (
                   <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                     <p className="text-xs text-muted-foreground">{t("coldChargesPaid")}</p>
                     <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                      Rs. {(selectedLot.totalPaidCharge || 0).toLocaleString()}
+                      Rs. {selectedLotCharges.totalPaid.toLocaleString()}
                     </p>
                   </div>
                 )}
-                {(selectedLot.totalDueCharge || 0) > 0 && (
+                {selectedLotCharges.totalDue > 0 && (
                   <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                     <p className="text-xs text-muted-foreground">{t("coldChargesDue")}</p>
                     <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                      Rs. {(selectedLot.totalDueCharge || 0).toLocaleString()}
+                      Rs. {selectedLotCharges.totalDue.toLocaleString()}
                     </p>
                   </div>
                 )}
