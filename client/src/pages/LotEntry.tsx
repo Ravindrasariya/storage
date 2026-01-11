@@ -126,7 +126,8 @@ export default function LotEntry() {
 
   const createLotMutation = useMutation({
     mutationFn: async (data: FarmerData & LotData) => {
-      return apiRequest("POST", "/api/lots", data);
+      const response = await apiRequest("POST", "/api/lots", data);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
@@ -212,13 +213,10 @@ export default function LotEntry() {
     try {
       const createdLotIds: string[] = [];
       for (const lot of lots) {
-        const response = await createLotMutation.mutateAsync({ ...farmerData, ...lot });
-        // apiRequest returns a Response object, need to parse JSON
-        if (response && response.ok) {
-          const lotData = await response.json();
-          if (lotData && lotData.id) {
-            createdLotIds.push(lotData.id);
-          }
+        const lotData = await createLotMutation.mutateAsync({ ...farmerData, ...lot });
+        // mutationFn now returns parsed JSON directly
+        if (lotData && lotData.id) {
+          createdLotIds.push(lotData.id);
         }
       }
       toast({
