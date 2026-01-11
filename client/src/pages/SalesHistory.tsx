@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut } from "lucide-react";
 import { EditSaleDialog } from "@/components/EditSaleDialog";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
+import { ExitDialog } from "@/components/ExitDialog";
 import type { SalesHistory } from "@shared/schema";
 
 export default function SalesHistoryPage() {
@@ -26,6 +27,8 @@ export default function SalesHistoryPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [printingSale, setPrintingSale] = useState<SalesHistory | null>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [exitingSale, setExitingSale] = useState<SalesHistory | null>(null);
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
 
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/sales-history/years"],
@@ -59,6 +62,11 @@ export default function SalesHistoryPage() {
   const handlePrintSale = (sale: SalesHistory) => {
     setPrintingSale(sale);
     setPrintDialogOpen(true);
+  };
+
+  const handleExitSale = (sale: SalesHistory) => {
+    setExitingSale(sale);
+    setExitDialogOpen(true);
   };
 
   const clearFilters = () => {
@@ -326,6 +334,15 @@ export default function SalesHistoryPage() {
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => handleExitSale(sale)}
+                            data-testid={`button-exit-sale-${sale.id}`}
+                          >
+                            <LogOut className="h-4 w-4 mr-1" />
+                            {t("exit")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => handlePrintSale(sale)}
                             data-testid={`button-print-sale-${sale.id}`}
                           >
@@ -375,6 +392,12 @@ export default function SalesHistoryPage() {
           onOpenChange={setPrintDialogOpen}
         />
       )}
+
+      <ExitDialog 
+        sale={exitingSale}
+        open={exitDialogOpen}
+        onOpenChange={setExitDialogOpen}
+      />
     </div>
   );
 }
