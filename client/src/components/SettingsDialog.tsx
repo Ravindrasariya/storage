@@ -627,45 +627,49 @@ export function SettingsDialog() {
 
                 return (
                   <div key={chamber.id} className="space-y-2">
-                    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-md">
-                      <span className="text-sm font-medium w-8">{index + 1}.</span>
-                      <Input
-                        value={chamber.name}
-                        onChange={(e) => updateChamber(chamber.id, "name", e.target.value)}
-                        className="flex-1"
-                        placeholder="Chamber name"
-                        data-testid={`input-chamber-name-${chamber.id}`}
-                      />
-                      <Input
-                        type="number"
-                        value={chamber.capacity}
-                        onChange={(e) => updateChamber(chamber.id, "capacity", e.target.value)}
-                        className="w-32"
-                        placeholder="Capacity"
-                        data-testid={`input-chamber-capacity-${chamber.id}`}
-                      />
-                      <span className="text-sm text-muted-foreground">{t("bags")}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => toggleExpandChamber(chamber.id)}
-                        data-testid={`button-expand-chamber-${chamber.id}`}
-                      >
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteChamber(chamber.id)}
-                        disabled={deleteChamberMutation.isPending}
-                        data-testid={`button-delete-chamber-${chamber.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 bg-muted/50 rounded-md">
+                      <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1">
+                        <span className="text-sm font-medium w-6 shrink-0">{index + 1}.</span>
+                        <Input
+                          value={chamber.name}
+                          onChange={(e) => updateChamber(chamber.id, "name", e.target.value)}
+                          className="flex-1 min-w-0"
+                          placeholder="Chamber name"
+                          data-testid={`input-chamber-name-${chamber.id}`}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pl-8 sm:pl-0">
+                        <Input
+                          type="number"
+                          value={chamber.capacity}
+                          onChange={(e) => updateChamber(chamber.id, "capacity", e.target.value)}
+                          className="w-24 sm:w-28"
+                          placeholder="Capacity"
+                          data-testid={`input-chamber-capacity-${chamber.id}`}
+                        />
+                        <span className="text-sm text-muted-foreground shrink-0">{t("bags")}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleExpandChamber(chamber.id)}
+                          data-testid={`button-expand-chamber-${chamber.id}`}
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteChamber(chamber.id)}
+                          disabled={deleteChamberMutation.isPending}
+                          data-testid={`button-delete-chamber-${chamber.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
 
                     {isExpanded && (
@@ -733,14 +737,15 @@ export function SettingsDialog() {
             </div>
           </Card>
 
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setOpen(false)} data-testid="button-cancel-settings">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3">
+            <Button variant="outline" onClick={() => setOpen(false)} data-testid="button-cancel-settings" className="w-full sm:w-auto">
               {t("cancel")}
             </Button>
             <Button
               onClick={handleSave}
               disabled={updateSettingsMutation.isPending || updateChamberMutation.isPending}
               data-testid="button-save-settings"
+              className="w-full sm:w-auto"
             >
               <Save className="h-4 w-4 mr-2" />
               {t("save")}
@@ -765,36 +770,36 @@ export function SettingsDialog() {
             </div>
 
             <div className="space-y-3">
-              <div className="grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground px-2">
+              <div className="hidden sm:grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground px-2">
                 <span className="col-span-4">{t("taskDescription") || "Task Description"}</span>
                 <span className="col-span-3">{t("responsiblePerson") || "Responsible Person"}</span>
                 <span className="col-span-3">{t("nextDueDate") || "Next Due Date"}</span>
                 <span className="col-span-2"></span>
               </div>
               {maintenanceRows.map((row, index) => (
-                <div key={row.id || `new-${index}`} className="grid grid-cols-12 gap-2 items-center">
+                <div key={row.id || `new-${index}`} className="flex flex-col sm:grid sm:grid-cols-12 gap-2 p-2 sm:p-0 bg-muted/30 sm:bg-transparent rounded-md sm:rounded-none">
                   <Input
                     value={row.taskDescription}
                     onChange={(e) => updateMaintenanceRow(index, "taskDescription", e.target.value)}
-                    className="col-span-4"
+                    className="w-full sm:col-span-4"
                     placeholder={t("taskDescription") || "Task description"}
                     data-testid={`input-maintenance-task-${index}`}
                   />
                   <Input
                     value={row.responsiblePerson}
                     onChange={(e) => updateMaintenanceRow(index, "responsiblePerson", e.target.value)}
-                    className="col-span-3"
+                    className="w-full sm:col-span-3"
                     placeholder={t("responsiblePerson") || "Person name"}
                     data-testid={`input-maintenance-person-${index}`}
                   />
-                  <Input
-                    value={row.nextDueDate}
-                    onChange={(e) => updateMaintenanceRow(index, "nextDueDate", e.target.value)}
-                    className="col-span-3"
-                    placeholder="DD/MM/YYYY"
-                    data-testid={`input-maintenance-date-${index}`}
-                  />
-                  <div className="col-span-2 flex justify-end">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={row.nextDueDate}
+                      onChange={(e) => updateMaintenanceRow(index, "nextDueDate", e.target.value)}
+                      className="flex-1 sm:col-span-3"
+                      placeholder="DD/MM/YYYY"
+                      data-testid={`input-maintenance-date-${index}`}
+                    />
                     <Button
                       variant="ghost"
                       size="icon"
