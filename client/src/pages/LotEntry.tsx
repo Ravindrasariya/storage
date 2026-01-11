@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -9,6 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -28,8 +34,18 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck } from "lucide-react";
+import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck, Printer } from "lucide-react";
+import { format } from "date-fns";
 import type { Chamber } from "@shared/schema";
+
+interface ColdStorageSettings {
+  id: string;
+  name: string;
+  waferColdCharge: number;
+  waferHammali: number;
+  seedColdCharge: number;
+  seedHammali: number;
+}
 
 const farmerSchema = z.object({
   farmerName: z.string().min(1, "Farmer name is required"),
@@ -82,9 +98,16 @@ export default function LotEntry() {
   const { toast } = useToast();
   const [lots, setLots] = useState<LotData[]>([{ ...defaultLotData }]);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [savedData, setSavedData] = useState<{ farmer: FarmerData; lots: LotData[]; entryDate: Date } | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
+  });
+
+  const { data: coldStorage } = useQuery<ColdStorageSettings>({
+    queryKey: ["/api/cold-storage"],
   });
 
   const form = useForm<FarmerData>({
@@ -179,6 +202,8 @@ export default function LotEntry() {
     return true;
   };
 
+  const [shouldPrint, setShouldPrint] = useState(false);
+
   const onSubmit = async (farmerData: FarmerData) => {
     if (!validateLots()) return;
 
@@ -190,9 +215,134 @@ export default function LotEntry() {
         title: t("success"),
         description: `${lots.length} lot(s) created successfully`,
       });
-      navigate("/");
+      
+      if (shouldPrint) {
+        setSavedData({ farmer: farmerData, lots: [...lots], entryDate: new Date() });
+        setShowReceipt(true);
+        setShouldPrint(false);
+      } else {
+        navigate("/");
+      }
     } catch (error) {
+      setShouldPrint(false);
     }
+  };
+
+  const handleSaveAndPrint = () => {
+    setShouldPrint(true);
+    form.handleSubmit(onSubmit)();
+  };
+
+  const handlePrint = () => {
+    if (!printRef.current) return;
+    
+    const printContent = printRef.current.innerHTML;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Lot Entry Receipt</title>
+        <style>
+          @page { size: A4; margin: 15mm; }
+          body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            font-size: 12px; 
+            line-height: 1.4;
+            color: #333;
+            margin: 0;
+            padding: 0;
+          }
+          .receipt-header {
+            text-align: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .receipt-header h1 {
+            font-size: 20px;
+            margin: 0 0 5px 0;
+          }
+          .receipt-header h2 {
+            font-size: 16px;
+            margin: 0;
+            color: #555;
+          }
+          .section {
+            margin-bottom: 15px;
+          }
+          .section-title {
+            font-size: 13px;
+            font-weight: bold;
+            background: #f0f0f0;
+            padding: 5px 8px;
+            margin-bottom: 8px;
+            border-left: 3px solid #333;
+          }
+          .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px 15px;
+          }
+          .info-row {
+            display: flex;
+            gap: 5px;
+          }
+          .info-label {
+            font-weight: 600;
+            min-width: 80px;
+          }
+          .lots-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+          }
+          .lots-table th, .lots-table td {
+            border: 1px solid #ccc;
+            padding: 6px 8px;
+            text-align: left;
+          }
+          .lots-table th {
+            background: #f5f5f5;
+            font-weight: 600;
+          }
+          .entry-date {
+            text-align: right;
+            font-size: 11px;
+            color: #666;
+            margin-top: 15px;
+          }
+          .footer-note {
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #ccc;
+          }
+        </style>
+      </head>
+      <body>
+        ${printContent}
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  const getChamberName = (chamberId: string) => {
+    return chambers?.find(c => c.id === chamberId)?.name || chamberId;
+  };
+
+  const getRate = (bagType: "wafer" | "seed") => {
+    if (!coldStorage) return 0;
+    if (bagType === "wafer") {
+      return (coldStorage.waferColdCharge || 0) + (coldStorage.waferHammali || 0);
+    }
+    return (coldStorage.seedColdCharge || 0) + (coldStorage.seedHammali || 0);
   };
 
   if (chambersLoading) {
@@ -591,7 +741,7 @@ export default function LotEntry() {
             {t("addMoreLot") || "Add More Lot"}
           </Button>
 
-          <div className="flex flex-col-reverse sm:flex-row justify-end gap-4 pt-4">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4">
             <Button
               type="button"
               variant="outline"
@@ -605,11 +755,133 @@ export default function LotEntry() {
               disabled={createLotMutation.isPending}
               data-testid="button-submit"
             >
-              {createLotMutation.isPending ? t("loading") : t("submit")}
+              {createLotMutation.isPending && !shouldPrint ? t("loading") : t("submit")}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveAndPrint}
+              disabled={createLotMutation.isPending}
+              data-testid="button-save-print"
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              {createLotMutation.isPending && shouldPrint ? t("loading") : (t("saveAndPrint") || "Save & Print")}
             </Button>
           </div>
         </form>
       </Form>
+
+      <Dialog open={showReceipt} onOpenChange={(open) => {
+        if (!open) {
+          setShowReceipt(false);
+          navigate("/");
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="h-5 w-5" />
+              {t("lotEntryReceipt") || "Lot Entry Receipt"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {savedData && (
+            <>
+              <div ref={printRef}>
+                <div className="receipt-header">
+                  <h1>{coldStorage?.name || "Cold Storage"}</h1>
+                  <h2>{t("lotEntryReceipt") || "Lot Entry Receipt"}</h2>
+                </div>
+
+                <div className="section">
+                  <div className="section-title">{t("farmerDetails")}</div>
+                  <div className="info-grid">
+                    <div className="info-row">
+                      <span className="info-label">{t("farmerName")}:</span>
+                      <span>{savedData.farmer.farmerName}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">{t("contactNumber")}:</span>
+                      <span>{savedData.farmer.contactNumber}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">{t("village")}:</span>
+                      <span>{savedData.farmer.village}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">{t("tehsil")}:</span>
+                      <span>{savedData.farmer.tehsil}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">{t("district")}:</span>
+                      <span>{savedData.farmer.district}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">{t("state")}:</span>
+                      <span>{savedData.farmer.state}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="section">
+                  <div className="section-title">{t("lotDetails") || "Lot Details"}</div>
+                  <table className="lots-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>{t("lotNo")}</th>
+                        <th>{t("type")}</th>
+                        <th>{t("bags")}</th>
+                        <th>{t("bagType")}</th>
+                        <th>{t("chamber")}</th>
+                        <th>{t("floor")}</th>
+                        <th>{t("position")}</th>
+                        <th>{t("quality")}</th>
+                        <th>{t("potatoSize")}</th>
+                        <th>{t("rate")} (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {savedData.lots.map((lot, index) => (
+                        <tr key={index}>
+                          <td>{index + 1}</td>
+                          <td>{lot.lotNo}</td>
+                          <td>{lot.type}</td>
+                          <td>{lot.size}</td>
+                          <td>{lot.bagType === "wafer" ? t("wafer") : t("seed")}</td>
+                          <td>{getChamberName(lot.chamberId)}</td>
+                          <td>{lot.floor}</td>
+                          <td>{lot.position}</td>
+                          <td>{lot.quality === "good" ? t("good") : lot.quality === "medium" ? t("medium") : t("poor")}</td>
+                          <td>{lot.potatoSize === "large" ? t("large") : t("small")}</td>
+                          <td>{getRate(lot.bagType)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="entry-date">
+                  {t("entryDate") || "Entry Date"}: {format(savedData.entryDate, "dd/MM/yyyy HH:mm")}
+                </div>
+
+                <div className="footer-note">
+                  {t("receiptFooterNote") || "This is a computer generated receipt."}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button variant="outline" onClick={() => { setShowReceipt(false); navigate("/"); }}>
+                  {t("close")}
+                </Button>
+                <Button onClick={handlePrint}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  {t("print")}
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
