@@ -205,9 +205,7 @@ export default function LotEntry() {
     return true;
   };
 
-  const [shouldPrint, setShouldPrint] = useState(false);
-
-  const onSubmit = async (farmerData: FarmerData) => {
+  const onSubmit = async (farmerData: FarmerData, printAfterSave: boolean = false) => {
     if (!validateLots()) return;
 
     try {
@@ -224,21 +222,19 @@ export default function LotEntry() {
         description: `${lots.length} lot(s) created successfully`,
       });
       
-      if (shouldPrint) {
+      if (printAfterSave) {
         setSavedData({ farmer: farmerData, lots: [...lots], entryDate: new Date(), lotIds: createdLotIds });
         setShowReceipt(true);
-        setShouldPrint(false);
       } else {
         navigate("/");
       }
     } catch (error) {
-      setShouldPrint(false);
+      // Error handled by mutation onError
     }
   };
 
   const handleSaveAndPrint = () => {
-    setShouldPrint(true);
-    form.handleSubmit(onSubmit)();
+    form.handleSubmit((data) => onSubmit(data, true))();
   };
 
   const handlePrint = async () => {
@@ -263,9 +259,10 @@ export default function LotEntry() {
       
       for (const lotId of savedData.lotIds) {
         try {
-          const billResponse = await apiRequest("POST", `/api/lots/${lotId}/assign-bill-number`, {});
-          if (billResponse && typeof billResponse === 'object' && 'billNumber' in billResponse) {
-            newBillNumbers[lotId] = (billResponse as { billNumber: number }).billNumber;
+          const response = await apiRequest("POST", `/api/lots/${lotId}/assign-bill-number`, {});
+          const billData = await response.json();
+          if (billData && billData.billNumber) {
+            newBillNumbers[lotId] = billData.billNumber;
           } else {
             hasError = true;
           }
@@ -444,7 +441,7 @@ export default function LotEntry() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit((data) => onSubmit(data, false))} className="space-y-6">
           <Card className="p-4 sm:p-6">
             <div className="flex items-center gap-2 mb-4">
               <User className="h-5 w-5 text-chart-1" />
@@ -828,7 +825,7 @@ export default function LotEntry() {
               disabled={createLotMutation.isPending}
               data-testid="button-submit"
             >
-              {createLotMutation.isPending && !shouldPrint ? t("loading") : t("save")}
+              {createLotMutation.isPending ? t("loading") : t("save")}
             </Button>
             <Button
               type="button"
@@ -837,7 +834,7 @@ export default function LotEntry() {
               data-testid="button-save-print"
             >
               <Printer className="h-4 w-4 mr-2" />
-              {createLotMutation.isPending && shouldPrint ? t("loading") : (t("saveAndPrint") || "Save & Print")}
+              {createLotMutation.isPending ? t("loading") : (t("saveAndPrint") || "Save & Print")}
             </Button>
           </div>
         </form>
