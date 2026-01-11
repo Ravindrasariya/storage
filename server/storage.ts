@@ -896,7 +896,7 @@ export class DatabaseStorage implements IStorage {
     return db.select()
       .from(salesHistory)
       .where(and(...conditions))
-      .orderBy(salesHistory.soldAt);
+      .orderBy(desc(salesHistory.soldAt));
   }
 
   async markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined> {
