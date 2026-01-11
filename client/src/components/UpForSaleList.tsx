@@ -157,6 +157,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         return;
       }
       
+      // Validate quantity for partial sales
+      if (saleMode === "partial" && (!partialQuantity || partialQuantity <= 0)) {
+        toast({
+          title: t("error"),
+          description: "Quantity must be greater than zero / मात्रा शून्य से अधिक होनी चाहिए",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
       const qty = saleMode === "partial" ? partialQuantity : selectedLot.remainingSize;
       const totalCharge = saleMode === "partial" 
@@ -575,10 +585,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>{t("quantity")}</Label>
+                <Label>{t("quantity")} <span className="text-destructive">*</span></Label>
                 <Input
                   type="number"
-                  min={0}
+                  min={1}
                   max={selectedLot.remainingSize}
                   value={partialQuantity || ""}
                   onChange={(e) => setPartialQuantity(Number(e.target.value))}
