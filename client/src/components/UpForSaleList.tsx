@@ -57,6 +57,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/years"] });
       toast({
         title: t("success"),
         description: "Lot marked as sold successfully",
@@ -79,6 +81,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/years"] });
       toast({
         title: t("success"),
         description: "Partial sale recorded successfully",
