@@ -589,10 +589,15 @@ export class DatabaseStorage implements IStorage {
     const lotPaymentMap = new Map<string, { paidAmount: number; dueAmount: number }>();
     
     for (const sale of allSales) {
-      // Use actual paidAmount and dueAmount fields from each sale record
-      // This correctly handles full payments, full due, and partial payments
+      // Calculate total charges including all surcharges
+      const totalCharges = (sale.coldStorageCharge || 0) + 
+                          (sale.kataCharges || 0) + 
+                          (sale.extraHammali || 0) + 
+                          (sale.gradingCharges || 0);
+      
+      // Use paidAmount from sale, calculate due as remainder to ensure consistency
       const salePaid = sale.paidAmount || 0;
-      const saleDue = sale.dueAmount || 0;
+      const saleDue = Math.max(0, totalCharges - salePaid);
       
       totalPaid += salePaid;
       totalDue += saleDue;
@@ -664,9 +669,15 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Total charges = cold storage rent + hammali + kata + extra hammali + grading
-      // These are all captured in paidAmount and dueAmount fields from the sale
-      existing.totalChargePaid += sale.paidAmount || 0;
-      existing.totalChargeDue += sale.dueAmount || 0;
+      const totalCharges = (sale.coldStorageCharge || 0) + 
+                          (sale.kataCharges || 0) + 
+                          (sale.extraHammali || 0) + 
+                          (sale.gradingCharges || 0);
+      
+      // Use paidAmount from sale, calculate due as remainder to ensure consistency
+      const salePaid = sale.paidAmount || 0;
+      existing.totalChargePaid += salePaid;
+      existing.totalChargeDue += Math.max(0, totalCharges - salePaid);
       
       // Track payment by mode (cash vs account)
       const paidAmt = sale.paidAmount || 0;
