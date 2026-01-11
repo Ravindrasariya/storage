@@ -542,10 +542,12 @@ export default function LotEntry() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Jyoti">Jyoti</SelectItem>
-                        <SelectItem value="SC3">SC3</SelectItem>
                         <SelectItem value="Pukhraj">Pukhraj</SelectItem>
-                        <SelectItem value="Chipsona">Chipsona</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
+                        <SelectItem value="LR">LR</SelectItem>
+                        <SelectItem value="Torus">Torus</SelectItem>
+                        <SelectItem value="CS1">CS1</SelectItem>
+                        <SelectItem value="CS3">CS3</SelectItem>
+                        <SelectItem value="Others">Others</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
