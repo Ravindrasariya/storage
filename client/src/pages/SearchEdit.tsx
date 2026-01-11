@@ -85,8 +85,10 @@ export default function SearchEdit() {
       } else if (sale.paymentStatus === "due") {
         totalDue += totalCharges;
       } else if (sale.paymentStatus === "partial") {
-        totalPaid += sale.paidAmount || 0;
-        totalDue += sale.dueAmount || 0;
+        // Use paidAmount from sale, calculate due as remainder to ensure consistency
+        const paidAmount = sale.paidAmount || 0;
+        totalPaid += paidAmount;
+        totalDue += Math.max(0, totalCharges - paidAmount);
       }
     }
     
@@ -131,8 +133,10 @@ export default function SearchEdit() {
         } else if (sale.paymentStatus === "due") {
           chargesDue += totalCharges;
         } else if (sale.paymentStatus === "partial") {
-          chargesPaid += sale.paidAmount || 0;
-          chargesDue += sale.dueAmount || 0;
+          // Use paidAmount from sale, calculate due as remainder to ensure consistency
+          const paidAmount = sale.paidAmount || 0;
+          chargesPaid += paidAmount;
+          chargesDue += Math.max(0, totalCharges - paidAmount);
         }
       }
     }
@@ -408,8 +412,10 @@ export default function SearchEdit() {
                   } else if (sale.paymentStatus === "due") {
                     lotDueCharge += totalCharges;
                   } else if (sale.paymentStatus === "partial") {
-                    lotPaidCharge += sale.paidAmount || 0;
-                    lotDueCharge += sale.dueAmount || 0;
+                    // Use paidAmount from sale, calculate due as remainder to ensure consistency
+                    const paidAmount = sale.paidAmount || 0;
+                    lotPaidCharge += paidAmount;
+                    lotDueCharge += Math.max(0, totalCharges - paidAmount);
                   }
                 }
               }
