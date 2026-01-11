@@ -12,7 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import type { CashReceipt, Expense } from "@shared/schema";
 
@@ -101,6 +102,42 @@ export default function CashManagement() {
     },
   });
 
+  const reverseReceiptMutation = useMutation({
+    mutationFn: async (receiptId: string) => {
+      const response = await apiRequest("POST", `/api/cash-receipts/${receiptId}/reverse`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: t("entryReversed"),
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
+    },
+  });
+
+  const reverseExpenseMutation = useMutation({
+    mutationFn: async (expenseId: string) => {
+      const response = await apiRequest("POST", `/api/expenses/${expenseId}/reverse`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: t("entryReversed"),
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
+    },
+  });
+
   const handleInwardSubmit = () => {
     if (!buyerName || !inwardAmount || parseFloat(inwardAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
@@ -184,19 +221,22 @@ export default function CashManagement() {
   };
 
   const summary = useMemo(() => {
-    const totalCashReceived = receipts
+    const activeReceipts = receipts.filter(r => r.isReversed !== 1);
+    const activeExpenses = expensesList.filter(e => e.isReversed !== 1);
+
+    const totalCashReceived = activeReceipts
       .filter(r => r.receiptType === "cash")
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     
-    const totalAccountReceived = receipts
+    const totalAccountReceived = activeReceipts
       .filter(r => r.receiptType === "account")
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     
-    const totalCashExpenses = expensesList
+    const totalCashExpenses = activeExpenses
       .filter(e => e.paymentMode === "cash")
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     
-    const totalAccountExpenses = expensesList
+    const totalAccountExpenses = activeExpenses
       .filter(e => e.paymentMode === "account")
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     
@@ -211,8 +251,8 @@ export default function CashManagement() {
   }, [receipts, expensesList]);
 
   const filteredSummary = useMemo(() => {
-    let filteredReceipts = receipts;
-    let filteredExpenses = expensesList;
+    let filteredReceipts = receipts.filter(r => r.isReversed !== 1);
+    let filteredExpenses = expensesList.filter(e => e.isReversed !== 1);
 
     if (filterBuyer) {
       filteredReceipts = filteredReceipts.filter(r => r.buyerName === filterBuyer);
@@ -622,64 +662,114 @@ export default function CashManagement() {
             ) : (
               <ScrollArea className="h-[450px]">
                 <div className="space-y-3">
-                  {allTransactions.map((transaction, index) => (
-                    <div
-                      key={`${transaction.type}-${transaction.data.id}`}
-                      className={`p-3 rounded-lg space-y-2 ${
-                        transaction.type === "inflow" 
-                          ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900" 
-                          : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"
-                      }`}
-                      data-testid={`transaction-${transaction.type}-${index}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium flex items-center gap-2">
-                          {transaction.type === "inflow" ? (
-                            <>
-                              <ArrowDownLeft className="h-4 w-4 text-green-600" />
-                              {(transaction.data as CashReceipt).buyerName}
-                            </>
-                          ) : (
-                            <>
-                              <ArrowUpRight className="h-4 w-4 text-red-600" />
-                              {getExpenseTypeLabel((transaction.data as Expense).expenseType)}
-                            </>
+                  {allTransactions.map((transaction, index) => {
+                    const isReversed = transaction.data.isReversed === 1;
+                    return (
+                      <div
+                        key={`${transaction.type}-${transaction.data.id}`}
+                        className={`p-3 rounded-lg space-y-2 ${
+                          isReversed
+                            ? "bg-gray-100 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 opacity-60"
+                            : transaction.type === "inflow" 
+                              ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900" 
+                              : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"
+                        }`}
+                        data-testid={`transaction-${transaction.type}-${index}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`font-medium flex items-center gap-2 ${isReversed ? "line-through" : ""}`}>
+                            {transaction.type === "inflow" ? (
+                              <>
+                                <ArrowDownLeft className={`h-4 w-4 ${isReversed ? "text-gray-400" : "text-green-600"}`} />
+                                {(transaction.data as CashReceipt).buyerName}
+                              </>
+                            ) : (
+                              <>
+                                <ArrowUpRight className={`h-4 w-4 ${isReversed ? "text-gray-400" : "text-red-600"}`} />
+                                {getExpenseTypeLabel((transaction.data as Expense).expenseType)}
+                              </>
+                            )}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {isReversed ? (
+                              <Badge variant="secondary">{t("reversed")}</Badge>
+                            ) : (
+                              <>
+                                <Badge variant={transaction.type === "inflow" ? "default" : "destructive"}>
+                                  {transaction.type === "inflow" ? t("inflow") : t("outflow")}
+                                </Badge>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7"
+                                      data-testid={`button-reverse-${transaction.type}-${index}`}
+                                    >
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>{t("confirmReverse")}</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        {t("reverseWarning")}
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => {
+                                          if (transaction.type === "inflow") {
+                                            reverseReceiptMutation.mutate(transaction.data.id);
+                                          } else {
+                                            reverseExpenseMutation.mutate(transaction.data.id);
+                                          }
+                                        }}
+                                        data-testid={`button-confirm-reverse-${index}`}
+                                      >
+                                        {t("reverse")}
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {format(transaction.date, "dd/MM/yyyy")}
+                          </span>
+                          <span className={`font-semibold ${
+                            isReversed 
+                              ? "text-gray-400" 
+                              : transaction.type === "inflow" ? "text-green-600" : "text-red-600"
+                          }`}>
+                            {transaction.type === "inflow" ? "+" : "-"}₹{transaction.data.amount.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex gap-2 text-xs">
+                          <Badge variant="outline" className="text-xs">
+                            {transaction.type === "inflow" 
+                              ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
+                              : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
+                            }
+                          </Badge>
+                          {transaction.type === "outflow" && (transaction.data as Expense).remarks && (
+                            <span className="text-muted-foreground truncate">
+                              {(transaction.data as Expense).remarks}
+                            </span>
                           )}
-                        </span>
-                        <Badge variant={transaction.type === "inflow" ? "default" : "destructive"}>
-                          {transaction.type === "inflow" ? t("inflow") : t("outflow")}
-                        </Badge>
+                          {transaction.type === "inflow" && !isReversed && (
+                            <span className="text-green-600">
+                              {t("appliedAmount")}: ₹{((transaction.data as CashReceipt).appliedAmount || 0).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {format(transaction.date, "dd/MM/yyyy")}
-                        </span>
-                        <span className={`font-semibold ${
-                          transaction.type === "inflow" ? "text-green-600" : "text-red-600"
-                        }`}>
-                          {transaction.type === "inflow" ? "+" : "-"}₹{transaction.data.amount.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="flex gap-2 text-xs">
-                        <Badge variant="outline" className="text-xs">
-                          {transaction.type === "inflow" 
-                            ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
-                            : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
-                          }
-                        </Badge>
-                        {transaction.type === "outflow" && (transaction.data as Expense).remarks && (
-                          <span className="text-muted-foreground truncate">
-                            {(transaction.data as Expense).remarks}
-                          </span>
-                        )}
-                        {transaction.type === "inflow" && (
-                          <span className="text-green-600">
-                            {t("appliedAmount")}: ₹{((transaction.data as CashReceipt).appliedAmount || 0).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </ScrollArea>
             )}

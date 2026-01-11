@@ -176,6 +176,8 @@ export const cashReceipts = pgTable("cash_receipts", {
   appliedAmount: real("applied_amount").notNull().default(0), // Amount applied to sales
   unappliedAmount: real("unapplied_amount").notNull().default(0), // Remaining amount not yet applied
   notes: text("notes"),
+  isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
+  reversedAt: timestamp("reversed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -188,6 +190,8 @@ export const expenses = pgTable("expenses", {
   amount: real("amount").notNull(),
   paidAt: timestamp("paid_at").notNull(),
   remarks: text("remarks"),
+  isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
+  reversedAt: timestamp("reversed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -201,8 +205,8 @@ export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ 
 export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).omit({ id: true, changedAt: true });
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
 export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
-export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, createdAt: true, appliedAmount: true, unappliedAmount: true });
-export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
+export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, createdAt: true, appliedAmount: true, unappliedAmount: true, isReversed: true, reversedAt: true });
+export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;

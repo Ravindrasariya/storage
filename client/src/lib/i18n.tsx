@@ -338,6 +338,10 @@ const translations: Translations = {
   partialPaid: { en: "Partial Paid", hi: "आंशिक भुगतान" },
   usePaymentManager: { en: "Use Cash Management to update payments", hi: "भुगतान अपडेट करने के लिए कैश मैनेजमेंट का उपयोग करें" },
   status: { en: "Status", hi: "स्थिति" },
+  confirmReverse: { en: "Confirm Reversal", hi: "उलटने की पुष्टि करें" },
+  reverseWarning: { en: "This will undo this transaction and all associated payment changes. This action cannot be undone.", hi: "यह इस लेनदेन और सभी संबंधित भुगतान परिवर्तनों को पूर्ववत कर देगा। यह क्रिया पूर्ववत नहीं की जा सकती।" },
+  entryReversed: { en: "Entry reversed successfully", hi: "प्रविष्टि सफलतापूर्वक उलट दी गई" },
+  reversalFailed: { en: "Failed to reverse entry", hi: "प्रविष्टि उलटने में विफल" },
 };
 
 interface I18nContextType {

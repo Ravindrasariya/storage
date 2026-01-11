@@ -110,6 +110,9 @@ export interface IStorage {
   // Expenses
   getExpenses(coldStorageId: string): Promise<Expense[]>;
   createExpense(data: InsertExpense): Promise<Expense>;
+  // Reversal
+  reverseCashReceipt(receiptId: string): Promise<{ success: boolean; message?: string }>;
+  reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1268,6 +1271,147 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return expense;
+  }
+
+  async reverseCashReceipt(receiptId: string): Promise<{ success: boolean; message?: string }> {
+    // Get the receipt to reverse
+    const [receipt] = await db.select()
+      .from(cashReceipts)
+      .where(eq(cashReceipts.id, receiptId));
+
+    if (!receipt) {
+      return { success: false, message: "Receipt not found" };
+    }
+
+    if (receipt.isReversed === 1) {
+      return { success: false, message: "Receipt is already reversed" };
+    }
+
+    // Mark the receipt as reversed
+    await db.update(cashReceipts)
+      .set({
+        isReversed: 1,
+        reversedAt: new Date(),
+      })
+      .where(eq(cashReceipts.id, receiptId));
+
+    // Reset all sales for this buyer to baseline (due status)
+    await db.update(salesHistory)
+      .set({
+        paymentStatus: "due",
+        paidAmount: 0,
+        dueAmount: sql`${salesHistory.coldStorageCharge}`,
+        paymentMode: null,
+        paidAt: null,
+      })
+      .where(and(
+        eq(salesHistory.coldStorageId, receipt.coldStorageId),
+        eq(salesHistory.buyerName, receipt.buyerName),
+        sql`${salesHistory.paymentStatus} IN ('paid', 'partial')`
+      ));
+
+    // Replay all non-reversed receipts for this buyer in order (FIFO)
+    const activeReceipts = await db.select()
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, receipt.coldStorageId),
+        eq(cashReceipts.buyerName, receipt.buyerName),
+        eq(cashReceipts.isReversed, 0)
+      ))
+      .orderBy(cashReceipts.receivedAt);
+
+    // For each active receipt, replay the FIFO allocation
+    for (const activeReceipt of activeReceipts) {
+      // Get all sales for this buyer ordered by sale date (FIFO)
+      const sales = await db.select()
+        .from(salesHistory)
+        .where(and(
+          eq(salesHistory.coldStorageId, activeReceipt.coldStorageId),
+          eq(salesHistory.buyerName, activeReceipt.buyerName),
+          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+        ))
+        .orderBy(salesHistory.soldAt);
+
+      let remainingAmount = activeReceipt.amount;
+      let appliedAmount = 0;
+      const paymentMode = activeReceipt.receiptType as "cash" | "account";
+
+      // Apply payment to each sale in FIFO order
+      for (const sale of sales) {
+        if (remainingAmount <= 0) break;
+
+        const saleDueAmount = sale.dueAmount || (sale.coldStorageCharge - (sale.paidAmount || 0));
+        
+        if (saleDueAmount <= 0) continue;
+
+        if (remainingAmount >= saleDueAmount) {
+          // Can fully pay this sale
+          await db.update(salesHistory)
+            .set({
+              paymentStatus: "paid",
+              paidAmount: sale.coldStorageCharge,
+              dueAmount: 0,
+              paymentMode: paymentMode,
+              paidAt: activeReceipt.receivedAt,
+            })
+            .where(eq(salesHistory.id, sale.id));
+          
+          remainingAmount -= saleDueAmount;
+          appliedAmount += saleDueAmount;
+        } else {
+          // Can only partially pay this sale
+          const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
+          const newDueAmount = sale.coldStorageCharge - newPaidAmount;
+          
+          await db.update(salesHistory)
+            .set({
+              paymentStatus: "partial",
+              paidAmount: newPaidAmount,
+              dueAmount: newDueAmount,
+              paymentMode: paymentMode,
+            })
+            .where(eq(salesHistory.id, sale.id));
+          
+          appliedAmount += remainingAmount;
+          remainingAmount = 0;
+        }
+      }
+
+      // Update the receipt's applied/unapplied amounts
+      await db.update(cashReceipts)
+        .set({
+          appliedAmount: appliedAmount,
+          unappliedAmount: remainingAmount,
+        })
+        .where(eq(cashReceipts.id, activeReceipt.id));
+    }
+
+    return { success: true, message: "Receipt reversed and payments recalculated" };
+  }
+
+  async reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }> {
+    // Get the expense to reverse
+    const [expense] = await db.select()
+      .from(expenses)
+      .where(eq(expenses.id, expenseId));
+
+    if (!expense) {
+      return { success: false, message: "Expense not found" };
+    }
+
+    if (expense.isReversed === 1) {
+      return { success: false, message: "Expense is already reversed" };
+    }
+
+    // Mark the expense as reversed
+    await db.update(expenses)
+      .set({
+        isReversed: 1,
+        reversedAt: new Date(),
+      })
+      .where(eq(expenses.id, expenseId));
+
+    return { success: true, message: "Expense reversed" };
   }
 }
 

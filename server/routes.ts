@@ -995,5 +995,33 @@ export async function registerRoutes(
     }
   });
 
+  // Reverse cash receipt
+  app.post("/api/cash-receipts/:id/reverse", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await storage.reverseCashReceipt(id);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reverse cash receipt" });
+    }
+  });
+
+  // Reverse expense
+  app.post("/api/expenses/:id/reverse", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await storage.reverseExpense(id);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reverse expense" });
+    }
+  });
+
   return httpServer;
 }
