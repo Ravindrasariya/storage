@@ -760,6 +760,7 @@ export class DatabaseStorage implements IStorage {
         nextExitBillNumber: 1,
         nextColdStorageBillNumber: 1,
         nextSalesBillNumber: 1,
+        nextEntryBillNumber: 1,
       })
       .where(eq(coldStorages.id, coldStorageId));
   }

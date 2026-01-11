@@ -860,6 +860,16 @@ export async function registerRoutes(
     }
   });
 
+  // Lot bill number assignment
+  app.post("/api/lots/:id/assign-bill-number", async (req, res) => {
+    try {
+      const billNumber = await storage.assignLotBillNumber(req.params.id);
+      res.json({ billNumber });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to assign lot bill number" });
+    }
+  });
+
   // Maintenance Records
   const createMaintenanceSchema = z.object({
     taskDescription: z.string(),
