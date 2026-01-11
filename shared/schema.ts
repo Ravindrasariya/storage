@@ -17,6 +17,7 @@ export const coldStorages = pgTable("cold_storages", {
   nextExitBillNumber: integer("next_exit_bill_number").notNull().default(1), // Auto-increment counter for exit bills
   nextColdStorageBillNumber: integer("next_cold_storage_bill_number").notNull().default(1), // Counter for cold storage deduction bills
   nextSalesBillNumber: integer("next_sales_bill_number").notNull().default(1), // Counter for sales bills
+  nextEntryBillNumber: integer("next_entry_bill_number").notNull().default(1), // Counter for lot entry receipts
 });
 
 // Chambers in cold storage
@@ -69,6 +70,7 @@ export const lots = pgTable("lots", {
   totalDueCharge: real("total_due_charge").default(0), // Accumulated due charges from partial sales
   soldAt: timestamp("sold_at"), // When the lot was sold
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  entryBillNumber: integer("entry_bill_number"), // Bill number for lot entry receipt (assigned on first print)
 });
 
 // Sales History - permanent record of all sales
