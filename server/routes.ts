@@ -910,5 +910,52 @@ export async function registerRoutes(
     }
   });
 
+  // Cash Receipts (Cash Management)
+  app.get("/api/cash-receipts/buyers-with-dues", async (req, res) => {
+    try {
+      const buyers = await storage.getBuyersWithDues(DEFAULT_COLD_STORAGE_ID);
+      res.json(buyers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch buyers with dues" });
+    }
+  });
+
+  app.get("/api/cash-receipts", async (req, res) => {
+    try {
+      const receipts = await storage.getCashReceipts(DEFAULT_COLD_STORAGE_ID);
+      res.json(receipts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch cash receipts" });
+    }
+  });
+
+  const createCashReceiptSchema = z.object({
+    buyerName: z.string().min(1),
+    receiptType: z.enum(["cash", "account"]),
+    amount: z.number().positive(),
+    receivedAt: z.string().transform((val) => new Date(val)),
+    notes: z.string().optional(),
+  });
+
+  app.post("/api/cash-receipts", async (req, res) => {
+    try {
+      const validatedData = createCashReceiptSchema.parse(req.body);
+      const result = await storage.createCashReceiptWithFIFO({
+        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        buyerName: validatedData.buyerName,
+        receiptType: validatedData.receiptType,
+        amount: validatedData.amount,
+        receivedAt: validatedData.receivedAt,
+        notes: validatedData.notes || null,
+      });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid cash receipt data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create cash receipt" });
+    }
+  });
+
   return httpServer;
 }
