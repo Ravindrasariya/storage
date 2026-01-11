@@ -319,6 +319,14 @@ const translations: Translations = {
   inflow: { en: "Inflow", hi: "आवक" },
   outflow: { en: "Outflow", hi: "जावक" },
   selectExpenseType: { en: "Select expense type", hi: "व्यय प्रकार चुनें" },
+  
+  // Cash Summary
+  totalCashReceived: { en: "Total Cash Received", hi: "कुल नकद प्राप्त" },
+  totalCashInHand: { en: "Cash in Hand", hi: "हाथ में नकद" },
+  totalAccountReceived: { en: "Total Account Received", hi: "कुल खाते में प्राप्त" },
+  totalExpenseFromAccount: { en: "Expense from Account", hi: "खाते से व्यय" },
+  asOf: { en: "As of", hi: "तारीख" },
+  cashExpenses: { en: "Cash Expenses", hi: "नकद खर्च" },
 };
 
 interface I18nContextType {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2 } from "lucide-react";
 import { format } from "date-fns";
 import type { CashReceipt, Expense } from "@shared/schema";
 
@@ -153,12 +153,93 @@ export default function CashManagement() {
 
   const isLoading = loadingReceipts || loadingExpenses;
 
+  const summary = useMemo(() => {
+    const totalCashReceived = receipts
+      .filter(r => r.receiptType === "cash")
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    
+    const totalAccountReceived = receipts
+      .filter(r => r.receiptType === "account")
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    
+    const totalCashExpenses = expensesList
+      .filter(e => e.paymentMode === "cash")
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    
+    const totalAccountExpenses = expensesList
+      .filter(e => e.paymentMode === "account")
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    
+    const cashInHand = totalCashReceived - totalCashExpenses;
+
+    return {
+      totalCashReceived,
+      totalAccountReceived,
+      cashInHand,
+      totalAccountExpenses,
+    };
+  }, [receipts, expensesList]);
+
   return (
     <div className="container mx-auto p-4 max-w-4xl">
       <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
         <Banknote className="h-6 w-6" />
         {t("cashManagement")}
       </h1>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <Card data-testid="stat-total-cash-received">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+              <Banknote className="h-4 w-4" />
+              {t("totalCashReceived")}
+            </div>
+            <div className="text-xl font-bold text-green-600">
+              {isLoading ? "..." : `₹${summary.totalCashReceived.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-cash-in-hand">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+              <Wallet className="h-4 w-4" />
+              {t("totalCashInHand")}
+            </div>
+            <div className={`text-xl font-bold ${summary.cashInHand >= 0 ? "text-blue-600" : "text-red-600"}`}>
+              {isLoading ? "..." : `₹${summary.cashInHand.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-total-account-received">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+              <Building2 className="h-4 w-4" />
+              {t("totalAccountReceived")}
+            </div>
+            <div className="text-xl font-bold text-green-600">
+              {isLoading ? "..." : `₹${summary.totalAccountReceived.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-expense-from-account">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+              <CreditCard className="h-4 w-4" />
+              {t("totalExpenseFromAccount")}
+            </div>
+            <div className="text-xl font-bold text-red-600">
+              {isLoading ? "..." : `₹${summary.totalAccountExpenses.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <p className="text-xs text-muted-foreground mb-4 text-right">
+        {t("asOf")}: {format(new Date(), "dd/MM/yyyy")}
+      </p>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
