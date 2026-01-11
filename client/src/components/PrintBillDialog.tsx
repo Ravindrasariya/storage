@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import { Printer, FileText, Receipt } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface PrintBillDialogProps {
   sale: SalesHistory;
@@ -17,15 +18,49 @@ interface PrintBillDialogProps {
 export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogProps) {
   const { t } = useI18n();
   const [billType, setBillType] = useState<"deduction" | "sales" | null>(null);
+  const [billNumber, setBillNumber] = useState<number | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
   });
 
-  const handleBillTypeSelect = (type: "deduction" | "sales") => {
+  // Mutation to assign bill number
+  const assignBillNumberMutation = useMutation({
+    mutationFn: async (type: "coldStorage" | "sales") => {
+      const response = await apiRequest("POST", `/api/sales-history/${sale.id}/assign-bill-number`, { billType: type });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setBillNumber(data.billNumber);
+      // Invalidate sales history to update the cached bill numbers
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+    },
+  });
+
+  const handleBillTypeSelect = async (type: "deduction" | "sales") => {
     setBillType(type);
+    // Check if bill number already exists in sale data
+    const existingBillNumber = type === "deduction" 
+      ? sale.coldStorageBillNumber 
+      : sale.salesBillNumber;
+    
+    if (existingBillNumber) {
+      setBillNumber(existingBillNumber);
+    } else {
+      // Assign a new bill number
+      const apiType = type === "deduction" ? "coldStorage" : "sales";
+      assignBillNumberMutation.mutate(apiType);
+    }
   };
+
+  // Reset state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setBillType(null);
+      setBillNumber(null);
+    }
+  }, [open]);
 
   const handlePrint = () => {
     if (printRef.current) {
@@ -189,6 +224,9 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       <div className="bill-header">
         <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
         <h2>शीत भण्डार कटौती बिल</h2>
+        <div style={{ marginTop: "8px", fontSize: "14px" }}>
+          बिल नंबर / Bill No: <strong>{billNumber || "-"}</strong>
+        </div>
       </div>
 
       <div className="two-column">
@@ -299,6 +337,9 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       <div className="bill-header">
         <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
         <h2>विक्रय बिल</h2>
+        <div style={{ marginTop: "8px", fontSize: "14px" }}>
+          बिल नंबर / Bill No: <strong>{billNumber || "-"}</strong>
+        </div>
       </div>
 
       <div className="two-column">
@@ -468,12 +509,16 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               {billType === "deduction" ? renderDeductionBill() : renderSalesBill()}
             </div>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setBillType(null)} data-testid="button-back">
+              <Button variant="outline" onClick={() => { setBillType(null); setBillNumber(null); }} data-testid="button-back">
                 {t("back")}
               </Button>
-              <Button onClick={handlePrint} data-testid="button-print">
+              <Button 
+                onClick={handlePrint} 
+                disabled={assignBillNumberMutation.isPending || !billNumber}
+                data-testid="button-print"
+              >
                 <Printer className="h-4 w-4 mr-2" />
-                {t("print")}
+                {assignBillNumberMutation.isPending ? "Loading..." : t("print")}
               </Button>
             </div>
           </div>

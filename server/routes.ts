@@ -842,6 +842,24 @@ export async function registerRoutes(
     }
   });
 
+  // Bill number assignment
+  const assignBillNumberSchema = z.object({
+    billType: z.enum(["coldStorage", "sales"]),
+  });
+
+  app.post("/api/sales-history/:id/assign-bill-number", async (req, res) => {
+    try {
+      const { billType } = assignBillNumberSchema.parse(req.body);
+      const billNumber = await storage.assignBillNumber(req.params.id, billType);
+      res.json({ billNumber });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid bill type", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to assign bill number" });
+    }
+  });
+
   // Maintenance Records
   const createMaintenanceSchema = z.object({
     taskDescription: z.string(),
