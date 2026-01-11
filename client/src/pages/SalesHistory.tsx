@@ -14,6 +14,7 @@ import { EditSaleDialog } from "@/components/EditSaleDialog";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { ExitDialog } from "@/components/ExitDialog";
 import type { SalesHistory } from "@shared/schema";
+import { calculateTotalColdCharges } from "@shared/schema";
 
 export default function SalesHistoryPage() {
   const { t } = useI18n();
@@ -296,7 +297,7 @@ export default function SalesHistoryPage() {
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
                       <TableCell className="text-right font-medium">
-                        Rs. {((sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0)).toLocaleString()}
+                        Rs. {calculateTotalColdCharges(sale).toLocaleString()}
                       </TableCell>
                       <TableCell>{sale.buyerName || "-"}</TableCell>
                       <TableCell className="text-right">
