@@ -269,6 +269,23 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
               <X className="h-3 w-3 mr-1" />
               Close
             </Button>
+            {exits.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const latestActiveExit = exits.find(e => e.isReversed === 0);
+                  if (latestActiveExit) {
+                    setLastExit(latestActiveExit);
+                    setShowPrintReceipt(true);
+                  }
+                }}
+                data-testid="button-print-only"
+              >
+                <Printer className="h-3 w-3 mr-1" />
+                Print
+              </Button>
+            )}
             {remainingToExit > 0 && (
               <>
                 <Button
@@ -287,8 +304,9 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                   disabled={createExitMutation.isPending}
                   data-testid="button-save-print-exit"
                 >
+                  <Save className="h-3 w-3" />
                   <Printer className="h-3 w-3 mr-1" />
-                  Print
+                  Save & Print
                 </Button>
               </>
             )}
