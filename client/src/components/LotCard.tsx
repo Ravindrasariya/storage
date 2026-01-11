@@ -13,9 +13,15 @@ interface LotCardProps {
   onEdit: (lot: Lot) => void;
   onPartialSale?: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
+  // Optional calculated charges from sales history (for consistency with Analytics)
+  calculatedPaidCharge?: number;
+  calculatedDueCharge?: number;
 }
 
-export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale }: LotCardProps) {
+export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, calculatedPaidCharge, calculatedDueCharge }: LotCardProps) {
+  // Use calculated values if provided, otherwise fall back to stored lot values
+  const paidCharge = calculatedPaidCharge ?? lot.totalPaidCharge ?? 0;
+  const dueCharge = calculatedDueCharge ?? lot.totalDueCharge ?? 0;
   const { t } = useI18n();
 
   const getQualityColor = (quality: string) => {
@@ -62,16 +68,16 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
                 {t("sold")}
               </Badge>
             )}
-            {(lot.paymentStatus || (lot.totalDueCharge && lot.totalDueCharge > 0)) && (
+            {(lot.paymentStatus || dueCharge > 0 || paidCharge > 0) && (
               <Badge 
                 variant="outline" 
-                className={(lot.paymentStatus === "paid" && (!lot.totalDueCharge || lot.totalDueCharge === 0))
+                className={(lot.paymentStatus === "paid" && dueCharge === 0)
                   ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400"
                   : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400"
                 }
                 data-testid={`badge-payment-${lot.id}`}
               >
-                {(lot.paymentStatus === "paid" && (!lot.totalDueCharge || lot.totalDueCharge === 0)) ? (
+                {(lot.paymentStatus === "paid" && dueCharge === 0) ? (
                   <><CheckCircle className="h-3 w-3 mr-1" />{t("paid")}</>
                 ) : (
                   <><Clock className="h-3 w-3 mr-1" />{t("due")}</>
@@ -121,13 +127,13 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale 
             <div>
               <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
               <span className="font-bold text-green-600 dark:text-green-400">
-                Rs. {(lot.totalPaidCharge || 0).toLocaleString()}
+                Rs. {paidCharge.toLocaleString()}
               </span>
             </div>
             <div>
               <span className="text-muted-foreground">{t("coldChargesDue")}: </span>
               <span className="font-bold text-amber-600 dark:text-amber-400">
-                Rs. {(lot.totalDueCharge || 0).toLocaleString()}
+                Rs. {dueCharge.toLocaleString()}
               </span>
             </div>
           </div>

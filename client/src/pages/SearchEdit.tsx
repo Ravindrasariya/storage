@@ -395,15 +395,36 @@ export default function SearchEdit() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {searchResults.map((lot) => (
-              <LotCard
-                key={lot.id}
-                lot={lot}
-                chamberName={chamberMap[lot.chamberId] || "Unknown"}
-                onEdit={handleEditClick}
-                onToggleSale={handleToggleSale}
-              />
-            ))}
+            {searchResults.map((lot) => {
+              // Calculate charges from sales history for this lot
+              let lotPaidCharge = 0;
+              let lotDueCharge = 0;
+              if (allSalesHistory) {
+                const lotSales = allSalesHistory.filter(s => s.lotId === lot.id);
+                for (const sale of lotSales) {
+                  const totalCharges = calculateTotalColdCharges(sale);
+                  if (sale.paymentStatus === "paid") {
+                    lotPaidCharge += totalCharges;
+                  } else if (sale.paymentStatus === "due") {
+                    lotDueCharge += totalCharges;
+                  } else if (sale.paymentStatus === "partial") {
+                    lotPaidCharge += sale.paidAmount || 0;
+                    lotDueCharge += sale.dueAmount || 0;
+                  }
+                }
+              }
+              return (
+                <LotCard
+                  key={lot.id}
+                  lot={lot}
+                  chamberName={chamberMap[lot.chamberId] || "Unknown"}
+                  onEdit={handleEditClick}
+                  onToggleSale={handleToggleSale}
+                  calculatedPaidCharge={lotPaidCharge}
+                  calculatedDueCharge={lotDueCharge}
+                />
+              );
+            })}
             
             {summaryTotals && (
               <Card className="p-4 bg-muted/50">
