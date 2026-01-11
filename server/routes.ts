@@ -352,6 +352,12 @@ export async function registerRoutes(
       const hammaliRate = coldStorage ? (lot.bagType === "wafer" ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
       const coldChargeRate = rate - hammaliRate; // Cold storage charge is rate minus hammali
       const storageCharge = quantitySold * rate;
+      
+      // Calculate total charge including all extra charges for lot tracking
+      const kata = kataCharges || 0;
+      const extraHammaliTotal = extraHammali || 0;
+      const grading = gradingCharges || 0;
+      const totalChargeForLot = storageCharge + kata + extraHammaliTotal + grading;
 
       const updateData: { 
         remainingSize: number; 
@@ -361,16 +367,16 @@ export async function registerRoutes(
         remainingSize: newRemainingSize,
       };
       
-      // Track paid and due charges separately
+      // Track paid and due charges separately (include all surcharges)
       if (paymentStatus === "paid") {
-        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + storageCharge;
+        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + totalChargeForLot;
       } else if (paymentStatus === "due") {
-        updateData.totalDueCharge = (lot.totalDueCharge || 0) + storageCharge;
+        updateData.totalDueCharge = (lot.totalDueCharge || 0) + totalChargeForLot;
       } else if (paymentStatus === "partial") {
         // Validate and normalize partial payment amounts
         const rawPaid = Math.max(0, paidAmount || 0);
-        const actualPaid = Math.min(rawPaid, storageCharge); // Clamp to max charge
-        const actualDue = storageCharge - actualPaid; // Calculate due as remainder to ensure sum equals total
+        const actualPaid = Math.min(rawPaid, totalChargeForLot); // Clamp to max charge (including surcharges)
+        const actualDue = totalChargeForLot - actualPaid; // Calculate due as remainder to ensure sum equals total
         updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + actualPaid;
         updateData.totalDueCharge = (lot.totalDueCharge || 0) + actualDue;
       }
@@ -396,23 +402,17 @@ export async function registerRoutes(
       // Get chamber for sales history
       const chamber = await storage.getChamber(lot.chamberId);
       
-      // Calculate total charge including all extra charges
-      const kata = kataCharges || 0;
-      const extraHammaliTotal = extraHammali || 0;
-      const grading = gradingCharges || 0;
-      const totalChargeWithExtras = storageCharge + kata + extraHammaliTotal + grading;
-      
-      // Calculate paid/due amounts based on payment status (include all charges)
+      // Calculate paid/due amounts based on payment status (use totalChargeForLot which includes all charges)
       let salePaidAmount = 0;
       let saleDueAmount = 0;
       if (paymentStatus === "paid") {
-        salePaidAmount = totalChargeWithExtras;
+        salePaidAmount = totalChargeForLot;
       } else if (paymentStatus === "due") {
-        saleDueAmount = totalChargeWithExtras;
+        saleDueAmount = totalChargeForLot;
       } else if (paymentStatus === "partial") {
-        const rawPaid = Math.max(0, paidAmount || 0);
-        salePaidAmount = Math.min(rawPaid, totalChargeWithExtras);
-        saleDueAmount = totalChargeWithExtras - salePaidAmount;
+        const rawPaidForSale = Math.max(0, paidAmount || 0);
+        salePaidAmount = Math.min(rawPaidForSale, totalChargeForLot);
+        saleDueAmount = totalChargeForLot - salePaidAmount;
       }
       
       // Create permanent sales history record
@@ -1020,6 +1020,16 @@ export async function registerRoutes(
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to reverse expense" });
+    }
+  });
+
+  // Recalculate all sales records to fix paidAmount/dueAmount
+  app.post("/api/admin/recalculate-sales-charges", async (req, res) => {
+    try {
+      const result = await storage.recalculateSalesCharges(DEFAULT_COLD_STORAGE_ID);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to recalculate sales charges" });
     }
   });
 

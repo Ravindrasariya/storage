@@ -113,6 +113,8 @@ export interface IStorage {
   // Reversal
   reverseCashReceipt(receiptId: string): Promise<{ success: boolean; message?: string }>;
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
+  // Admin
+  recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1412,6 +1414,99 @@ export class DatabaseStorage implements IStorage {
       .where(eq(expenses.id, expenseId));
 
     return { success: true, message: "Expense reversed" };
+  }
+
+  async recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }> {
+    // Get all sales for the cold storage
+    const allSales = await this.getSalesHistory(coldStorageId);
+    
+    let updated = 0;
+    
+    for (const sale of allSales) {
+      // Calculate total charges (coldStorageCharge + surcharges)
+      const totalCharges = (sale.coldStorageCharge || 0) + 
+                          (sale.kataCharges || 0) + 
+                          (sale.extraHammali || 0) + 
+                          (sale.gradingCharges || 0);
+      
+      // Calculate what the paid/due amounts should be based on payment status
+      let newPaidAmount = 0;
+      let newDueAmount = 0;
+      
+      if (sale.paymentStatus === "paid") {
+        newPaidAmount = totalCharges;
+        newDueAmount = 0;
+      } else if (sale.paymentStatus === "due") {
+        newPaidAmount = 0;
+        newDueAmount = totalCharges;
+      } else if (sale.paymentStatus === "partial") {
+        // Keep the existing paid amount ratio but recalculate based on total charges
+        const existingPaid = sale.paidAmount || 0;
+        const existingTotal = existingPaid + (sale.dueAmount || 0);
+        
+        if (existingTotal > 0) {
+          // Preserve the paid ratio
+          newPaidAmount = Math.min(existingPaid, totalCharges);
+          newDueAmount = totalCharges - newPaidAmount;
+        } else {
+          // Default to all due
+          newDueAmount = totalCharges;
+        }
+      }
+      
+      // Only update if values are different
+      const currentTotal = (sale.paidAmount || 0) + (sale.dueAmount || 0);
+      if (Math.abs(currentTotal - totalCharges) > 0.01) {
+        await db.update(salesHistory)
+          .set({
+            paidAmount: newPaidAmount,
+            dueAmount: newDueAmount,
+          })
+          .where(eq(salesHistory.id, sale.id));
+        updated++;
+      }
+    }
+    
+    // Also update lot totals
+    const allLots = await this.getAllLots(coldStorageId);
+    for (const lot of allLots) {
+      // Get all sales for this lot
+      const lotSales = allSales.filter(s => s.lotId === lot.id);
+      
+      let totalPaidCharge = 0;
+      let totalDueCharge = 0;
+      
+      for (const sale of lotSales) {
+        const charges = (sale.coldStorageCharge || 0) + 
+                       (sale.kataCharges || 0) + 
+                       (sale.extraHammali || 0) + 
+                       (sale.gradingCharges || 0);
+        
+        if (sale.paymentStatus === "paid") {
+          totalPaidCharge += charges;
+        } else if (sale.paymentStatus === "due") {
+          totalDueCharge += charges;
+        } else if (sale.paymentStatus === "partial") {
+          totalPaidCharge += sale.paidAmount || 0;
+          totalDueCharge += (sale.dueAmount || 0);
+        }
+      }
+      
+      // Update lot if needed
+      if (lot.totalPaidCharge !== totalPaidCharge || lot.totalDueCharge !== totalDueCharge) {
+        await db.update(lots)
+          .set({
+            totalPaidCharge,
+            totalDueCharge,
+          })
+          .where(eq(lots.id, lot.id));
+      }
+    }
+    
+    return { 
+      updated, 
+      message: `Recalculated ${updated} sales records and updated lot totals` 
+    };
   }
 }
 
