@@ -438,7 +438,13 @@ export default function SearchEdit() {
           {/* Read-only Cold Storage Charges */}
           {selectedLot && ((selectedLot.totalDueCharge || 0) > 0 || (selectedLot.totalPaidCharge || 0) > 0) && (
             <div className="border-t pt-4 space-y-3">
-              <h4 className="font-semibold text-sm text-muted-foreground">{t("coldStorageCharges")}</h4>
+              <h4 className="font-semibold text-sm text-muted-foreground">{t("totalColdStorageCharges")}</h4>
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 mb-3">
+                <p className="text-xs text-muted-foreground">{t("total")}</p>
+                <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                  Rs. {((selectedLot.totalPaidCharge || 0) + (selectedLot.totalDueCharge || 0)).toLocaleString()}
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {(selectedLot.totalPaidCharge || 0) > 0 && (
                   <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">

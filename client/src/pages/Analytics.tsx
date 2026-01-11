@@ -123,7 +123,41 @@ export default function Analytics() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+              <IndianRupee className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-muted-foreground">{t("totalColdStorageCharges")}</p>
+              <p className="text-2xl font-bold" data-testid="text-total-charges">
+                Rs. {((paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {(paymentStats?.paidCount || 0) + (paymentStats?.dueCount || 0)} {t("soldLots")}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
+              <Wallet className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-muted-foreground">{t("totalPaid")}</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
+                Rs. {(paymentStats?.totalPaid || 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {paymentStats?.paidCount || 0} {t("lots")}
+              </p>
+            </div>
+          </div>
+        </Card>
+        
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50">
@@ -135,24 +169,7 @@ export default function Analytics() {
                 Rs. {(paymentStats?.totalDue || 0).toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
-                {paymentStats?.dueCount || 0} lots
-              </p>
-            </div>
-          </div>
-        </Card>
-        
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-              <IndianRupee className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">{t("overallPayment")}</p>
-              <p className="text-2xl font-bold" data-testid="text-overall-payment">
-                Rs. {((paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)).toLocaleString()}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {(paymentStats?.paidCount || 0) + (paymentStats?.dueCount || 0)} total sold lots
+                {paymentStats?.dueCount || 0} {t("lots")}
               </p>
             </div>
           </div>

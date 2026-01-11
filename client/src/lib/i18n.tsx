@@ -184,6 +184,8 @@ const translations: Translations = {
   overallPayment: { en: "Overall Payment", hi: "कुल भुगतान" },
   totalPaid: { en: "Total Paid", hi: "कुल भुगतान" },
   totalDue: { en: "Total Due", hi: "कुल बाकी" },
+  soldLots: { en: "sold lots", hi: "बेचे गए लॉट" },
+  lots: { en: "lots", hi: "लॉट" },
   paymentSummary: { en: "Payment Summary", hi: "भुगतान सारांश" },
   available: { en: "Available", hi: "उपलब्ध" },
   buyerName: { en: "Buyer Name", hi: "खरीदार का नाम" },
