@@ -287,6 +287,23 @@ const translations: Translations = {
   failedToCreateExit: { en: "Failed to record exit", hi: "निकासी दर्ज करने में विफल" },
   coldStorageManagerSignature: { en: "Cold Storage Manager Signature", hi: "शीत भंडार प्रबंधक हस्ताक्षर" },
   reversed: { en: "Reversed", hi: "वापस" },
+
+  // Cash Management
+  cashManagement: { en: "Cash Management", hi: "नकद प्रबंधन" },
+  inwardCash: { en: "Inward Cash", hi: "आने वाला नकद" },
+  receiptType: { en: "Receipt Type", hi: "रसीद प्रकार" },
+  cashReceived: { en: "Cash Received", hi: "नकद प्राप्त" },
+  accountReceived: { en: "Account Received", hi: "खाते में प्राप्त" },
+  amount: { en: "Amount", hi: "राशि" },
+  receivedOn: { en: "Received On", hi: "प्राप्ति तिथि" },
+  recordPayment: { en: "Record Payment", hi: "भुगतान दर्ज करें" },
+  recentReceipts: { en: "Recent Receipts", hi: "हाल की रसीदें" },
+  noReceipts: { en: "No receipts recorded yet", hi: "अभी तक कोई रसीद दर्ज नहीं" },
+  noBuyersWithDues: { en: "No buyers with pending dues", hi: "कोई बकाया वाले खरीदार नहीं" },
+  paymentRecorded: { en: "Payment recorded successfully", hi: "भुगतान सफलतापूर्वक दर्ज किया गया" },
+  salesAdjusted: { en: "sales adjusted", hi: "बिक्री समायोजित" },
+  appliedAmount: { en: "Applied", hi: "लागू" },
+  unappliedAmount: { en: "Unapplied", hi: "अलागू" },
 };
 
 interface I18nContextType {
