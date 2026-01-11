@@ -4,7 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { Printer, FileText, Receipt, AlertTriangle } from "lucide-react";
+import { Printer, FileText, Receipt } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
 
 interface PrintBillDialogProps {
@@ -16,21 +16,14 @@ interface PrintBillDialogProps {
 export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogProps) {
   const { t } = useI18n();
   const [billType, setBillType] = useState<"deduction" | "sales" | null>(null);
-  const [showPaymentWarning, setShowPaymentWarning] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
   });
 
-  const isPaid = sale.paymentStatus === "paid";
-
   const handleBillTypeSelect = (type: "deduction" | "sales") => {
-    if (!isPaid) {
-      setShowPaymentWarning(true);
-    } else {
-      setBillType(type);
-    }
+    setBillType(type);
   };
 
   const handlePrint = () => {
@@ -425,7 +418,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     <Dialog open={open} onOpenChange={(isOpen) => {
       if (!isOpen) {
         setBillType(null);
-        setShowPaymentWarning(false);
       }
       onOpenChange(isOpen);
     }}>
@@ -437,30 +429,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </DialogTitle>
         </DialogHeader>
 
-        {showPaymentWarning ? (
-          <div className="space-y-4 py-4">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <div className="rounded-full bg-amber-100 p-3">
-                <AlertTriangle className="h-8 w-8 text-amber-600" />
-              </div>
-              <h3 className="font-semibold text-lg">भुगतान बकाया है</h3>
-              <p className="text-sm text-muted-foreground">
-                बिल जनरेट करने के लिए पहले शीत भण्डार का बकाया भुगतान करना होगा।
-              </p>
-              <p className="text-sm font-medium text-amber-700">
-                बकाया राशि: रु. {(totalCharges - (sale.paidAmount || 0)).toLocaleString()}
-              </p>
-            </div>
-            <div className="flex justify-center">
-              <Button variant="outline" onClick={() => {
-                setShowPaymentWarning(false);
-                onOpenChange(false);
-              }} data-testid="button-close-warning">
-                बंद करें
-              </Button>
-            </div>
-          </div>
-        ) : !billType ? (
+        {!billType ? (
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground text-center">
               {t("selectBillType")}
