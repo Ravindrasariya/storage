@@ -547,6 +547,7 @@ export default function LotEntry() {
                         <SelectItem value="Torus">Torus</SelectItem>
                         <SelectItem value="CS1">CS1</SelectItem>
                         <SelectItem value="CS3">CS3</SelectItem>
+                        <SelectItem value="Ration">Ration</SelectItem>
                         <SelectItem value="Others">Others</SelectItem>
                       </SelectContent>
                     </Select>
