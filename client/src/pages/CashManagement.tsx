@@ -5,28 +5,42 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { format } from "date-fns";
-import type { CashReceipt } from "@shared/schema";
+import type { CashReceipt, Expense } from "@shared/schema";
 
 interface BuyerWithDue {
   buyerName: string;
   totalDue: number;
 }
 
+type TransactionItem = 
+  | { type: "inflow"; data: CashReceipt; date: Date }
+  | { type: "outflow"; data: Expense; date: Date };
+
 export default function CashManagement() {
   const { t } = useI18n();
   const { toast } = useToast();
   
+  const [activeTab, setActiveTab] = useState<"inward" | "expense">("inward");
+  
   const [buyerName, setBuyerName] = useState("");
   const [receiptType, setReceiptType] = useState<"cash" | "account">("cash");
-  const [amount, setAmount] = useState("");
+  const [inwardAmount, setInwardAmount] = useState("");
   const [receivedDate, setReceivedDate] = useState(format(new Date(), "yyyy-MM-dd"));
+
+  const [expenseType, setExpenseType] = useState<string>("");
+  const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account">("cash");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseDate, setExpenseDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [expenseRemarks, setExpenseRemarks] = useState("");
 
   const { data: buyersWithDues = [], isLoading: loadingBuyers } = useQuery<BuyerWithDue[]>({
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
@@ -34,6 +48,10 @@ export default function CashManagement() {
 
   const { data: receipts = [], isLoading: loadingReceipts } = useQuery<CashReceipt[]>({
     queryKey: ["/api/cash-receipts"],
+  });
+
+  const { data: expensesList = [], isLoading: loadingExpenses } = useQuery<Expense[]>({
+    queryKey: ["/api/expenses"],
   });
 
   const createReceiptMutation = useMutation({
@@ -47,7 +65,7 @@ export default function CashManagement() {
         description: `${t("paymentRecorded")} - ${result.salesUpdated} ${t("salesAdjusted")}`,
       });
       setBuyerName("");
-      setAmount("");
+      setInwardAmount("");
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
@@ -58,8 +76,29 @@ export default function CashManagement() {
     },
   });
 
-  const handleSubmit = () => {
-    if (!buyerName || !amount || parseFloat(amount) <= 0) {
+  const createExpenseMutation = useMutation({
+    mutationFn: async (data: { expenseType: string; paymentMode: string; amount: number; paidAt: string; remarks?: string }) => {
+      const response = await apiRequest("POST", "/api/expenses", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: t("expenseRecorded"),
+      });
+      setExpenseType("");
+      setExpenseAmount("");
+      setExpenseDate(format(new Date(), "yyyy-MM-dd"));
+      setExpenseRemarks("");
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: "Failed to record expense", variant: "destructive" });
+    },
+  });
+
+  const handleInwardSubmit = () => {
+    if (!buyerName || !inwardAmount || parseFloat(inwardAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
@@ -67,12 +106,52 @@ export default function CashManagement() {
     createReceiptMutation.mutate({
       buyerName,
       receiptType,
-      amount: parseFloat(amount),
+      amount: parseFloat(inwardAmount),
       receivedAt: new Date(receivedDate).toISOString(),
     });
   };
 
+  const handleExpenseSubmit = () => {
+    if (!expenseType || !expenseAmount || parseFloat(expenseAmount) <= 0) {
+      toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+
+    createExpenseMutation.mutate({
+      expenseType,
+      paymentMode: expensePaymentMode,
+      amount: parseFloat(expenseAmount),
+      paidAt: new Date(expenseDate).toISOString(),
+      remarks: expenseRemarks || undefined,
+    });
+  };
+
   const selectedBuyerDue = buyersWithDues.find(b => b.buyerName === buyerName)?.totalDue || 0;
+
+  const getExpenseTypeLabel = (type: string) => {
+    switch (type) {
+      case "salary": return t("salary");
+      case "hammali": return t("hammali");
+      case "grading_charges": return t("gradingCharges");
+      case "general_expenses": return t("generalExpenses");
+      default: return type;
+    }
+  };
+
+  const allTransactions: TransactionItem[] = [
+    ...receipts.map(r => ({ 
+      type: "inflow" as const, 
+      data: r, 
+      date: new Date(r.receivedAt) 
+    })),
+    ...expensesList.map(e => ({ 
+      type: "outflow" as const, 
+      data: e, 
+      date: new Date(e.paidAt) 
+    })),
+  ].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  const isLoading = loadingReceipts || loadingExpenses;
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -83,139 +162,269 @@ export default function CashManagement() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">{t("inwardCash")}</CardTitle>
+          <CardHeader className="pb-3">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "inward" | "expense")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="inward" data-testid="tab-inward">
+                  <ArrowDownLeft className="h-4 w-4 mr-1" />
+                  {t("inwardCash")}
+                </TabsTrigger>
+                <TabsTrigger value="expense" data-testid="tab-expense">
+                  <ArrowUpRight className="h-4 w-4 mr-1" />
+                  {t("expense")}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>{t("receiptType")} *</Label>
-              <Select value={receiptType} onValueChange={(v) => setReceiptType(v as "cash" | "account")}>
-                <SelectTrigger data-testid="select-receipt-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">
-                    <span className="flex items-center gap-2">
-                      <Banknote className="h-4 w-4" />
-                      {t("cashReceived")}
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="account">
-                    <span className="flex items-center gap-2">
-                      <CreditCard className="h-4 w-4" />
-                      {t("accountReceived")}
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("buyerName")} *</Label>
-              {loadingBuyers ? (
-                <div className="text-sm text-muted-foreground">{t("loading")}</div>
-              ) : buyersWithDues.length === 0 ? (
-                <div className="text-sm text-muted-foreground">{t("noBuyersWithDues")}</div>
-              ) : (
-                <Select value={buyerName} onValueChange={setBuyerName}>
-                  <SelectTrigger data-testid="select-buyer">
-                    <SelectValue placeholder={t("selectBuyer")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {buyersWithDues.map((buyer) => (
-                      <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
-                        <span className="flex items-center justify-between gap-4 w-full">
-                          <span>{buyer.buyerName}</span>
-                          <Badge variant="outline" className="text-xs">
-                            ₹{buyer.totalDue.toLocaleString()}
-                          </Badge>
+            {activeTab === "inward" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>{t("receiptType")} *</Label>
+                  <Select value={receiptType} onValueChange={(v) => setReceiptType(v as "cash" | "account")}>
+                    <SelectTrigger data-testid="select-receipt-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">
+                        <span className="flex items-center gap-2">
+                          <Banknote className="h-4 w-4" />
+                          {t("cashReceived")}
                         </span>
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {buyerName && selectedBuyerDue > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {t("totalDue")}: ₹{selectedBuyerDue.toLocaleString()}
-                </p>
-              )}
-            </div>
+                      <SelectItem value="account">
+                        <span className="flex items-center gap-2">
+                          <CreditCard className="h-4 w-4" />
+                          {t("accountReceived")}
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="space-y-2">
-              <Label>{t("amount")} (₹) *</Label>
-              <Input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0"
-                min={1}
-                data-testid="input-amount"
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label>{t("buyerName")} *</Label>
+                  {loadingBuyers ? (
+                    <div className="text-sm text-muted-foreground">{t("loading")}</div>
+                  ) : buyersWithDues.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">{t("noBuyersWithDues")}</div>
+                  ) : (
+                    <Select value={buyerName} onValueChange={setBuyerName}>
+                      <SelectTrigger data-testid="select-buyer">
+                        <SelectValue placeholder={t("selectBuyer")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {buyersWithDues.map((buyer) => (
+                          <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
+                            <span className="flex items-center justify-between gap-4 w-full">
+                              <span>{buyer.buyerName}</span>
+                              <Badge variant="outline" className="text-xs">
+                                ₹{buyer.totalDue.toLocaleString()}
+                              </Badge>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {buyerName && selectedBuyerDue > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("totalDue")}: ₹{selectedBuyerDue.toLocaleString()}
+                    </p>
+                  )}
+                </div>
 
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                {t("receivedOn")}
-              </Label>
-              <Input
-                type="date"
-                value={receivedDate}
-                onChange={(e) => setReceivedDate(e.target.value)}
-                data-testid="input-received-date"
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label>{t("amount")} (₹) *</Label>
+                  <Input
+                    type="number"
+                    value={inwardAmount}
+                    onChange={(e) => setInwardAmount(e.target.value)}
+                    placeholder="0"
+                    min={1}
+                    data-testid="input-inward-amount"
+                  />
+                </div>
 
-            <Button
-              onClick={handleSubmit}
-              disabled={!buyerName || !amount || createReceiptMutation.isPending}
-              className="w-full"
-              data-testid="button-record-payment"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {createReceiptMutation.isPending ? t("saving") : t("recordPayment")}
-            </Button>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4" />
+                    {t("receivedOn")}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={receivedDate}
+                    onChange={(e) => setReceivedDate(e.target.value)}
+                    data-testid="input-received-date"
+                  />
+                </div>
+
+                <Button
+                  onClick={handleInwardSubmit}
+                  disabled={!buyerName || !inwardAmount || createReceiptMutation.isPending}
+                  className="w-full"
+                  data-testid="button-record-payment"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {createReceiptMutation.isPending ? t("saving") : t("recordPayment")}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>{t("expenseType")} *</Label>
+                  <Select value={expenseType} onValueChange={setExpenseType}>
+                    <SelectTrigger data-testid="select-expense-type">
+                      <SelectValue placeholder={t("selectExpenseType")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="salary">{t("salary")}</SelectItem>
+                      <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                      <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
+                      <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t("paymentMode")} *</Label>
+                  <Select value={expensePaymentMode} onValueChange={(v) => setExpensePaymentMode(v as "cash" | "account")}>
+                    <SelectTrigger data-testid="select-expense-payment-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">
+                        <span className="flex items-center gap-2">
+                          <Banknote className="h-4 w-4" />
+                          {t("cash")}
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="account">
+                        <span className="flex items-center gap-2">
+                          <CreditCard className="h-4 w-4" />
+                          {t("account")}
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t("amount")} (₹) *</Label>
+                  <Input
+                    type="number"
+                    value={expenseAmount}
+                    onChange={(e) => setExpenseAmount(e.target.value)}
+                    placeholder="0"
+                    min={1}
+                    data-testid="input-expense-amount"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4" />
+                    {t("paidOn")}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={expenseDate}
+                    onChange={(e) => setExpenseDate(e.target.value)}
+                    data-testid="input-expense-date"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t("remarks")}</Label>
+                  <Textarea
+                    value={expenseRemarks}
+                    onChange={(e) => setExpenseRemarks(e.target.value)}
+                    placeholder={t("remarks")}
+                    className="resize-none"
+                    rows={2}
+                    data-testid="input-expense-remarks"
+                  />
+                </div>
+
+                <Button
+                  onClick={handleExpenseSubmit}
+                  disabled={!expenseType || !expenseAmount || createExpenseMutation.isPending}
+                  className="w-full"
+                  data-testid="button-record-expense"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {createExpenseMutation.isPending ? t("saving") : t("recordExpense")}
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">{t("recentReceipts")}</CardTitle>
+            <CardTitle className="text-lg">{t("cashFlowHistory")}</CardTitle>
           </CardHeader>
           <CardContent>
-            {loadingReceipts ? (
+            {isLoading ? (
               <div className="text-sm text-muted-foreground">{t("loading")}</div>
-            ) : receipts.length === 0 ? (
-              <div className="text-sm text-muted-foreground text-center py-8">{t("noReceipts")}</div>
+            ) : allTransactions.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-8">{t("noTransactions")}</div>
             ) : (
-              <ScrollArea className="h-[400px]">
+              <ScrollArea className="h-[450px]">
                 <div className="space-y-3">
-                  {receipts.map((receipt) => (
+                  {allTransactions.map((transaction, index) => (
                     <div
-                      key={receipt.id}
-                      className="p-3 bg-muted/50 rounded-lg space-y-2"
-                      data-testid={`receipt-${receipt.id}`}
+                      key={`${transaction.type}-${transaction.data.id}`}
+                      className={`p-3 rounded-lg space-y-2 ${
+                        transaction.type === "inflow" 
+                          ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900" 
+                          : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"
+                      }`}
+                      data-testid={`transaction-${transaction.type}-${index}`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-medium">{receipt.buyerName}</span>
-                        <Badge variant={receipt.receiptType === "cash" ? "default" : "secondary"}>
-                          {receipt.receiptType === "cash" ? t("cash") : t("account")}
+                        <span className="font-medium flex items-center gap-2">
+                          {transaction.type === "inflow" ? (
+                            <>
+                              <ArrowDownLeft className="h-4 w-4 text-green-600" />
+                              {(transaction.data as CashReceipt).buyerName}
+                            </>
+                          ) : (
+                            <>
+                              <ArrowUpRight className="h-4 w-4 text-red-600" />
+                              {getExpenseTypeLabel((transaction.data as Expense).expenseType)}
+                            </>
+                          )}
+                        </span>
+                        <Badge variant={transaction.type === "inflow" ? "default" : "destructive"}>
+                          {transaction.type === "inflow" ? t("inflow") : t("outflow")}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">
-                          {format(new Date(receipt.receivedAt), "dd/MM/yyyy")}
+                          {format(transaction.date, "dd/MM/yyyy")}
                         </span>
-                        <span className="font-semibold text-primary">₹{receipt.amount.toLocaleString()}</span>
+                        <span className={`font-semibold ${
+                          transaction.type === "inflow" ? "text-green-600" : "text-red-600"
+                        }`}>
+                          {transaction.type === "inflow" ? "+" : "-"}₹{transaction.data.amount.toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex gap-2 text-xs">
-                        <span className="text-green-600">
-                          {t("appliedAmount")}: ₹{(receipt.appliedAmount || 0).toLocaleString()}
-                        </span>
-                        {(receipt.unappliedAmount || 0) > 0 && (
-                          <span className="text-amber-600">
-                            {t("unappliedAmount")}: ₹{receipt.unappliedAmount.toLocaleString()}
+                        <Badge variant="outline" className="text-xs">
+                          {transaction.type === "inflow" 
+                            ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
+                            : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
+                          }
+                        </Badge>
+                        {transaction.type === "outflow" && (transaction.data as Expense).remarks && (
+                          <span className="text-muted-foreground truncate">
+                            {(transaction.data as Expense).remarks}
+                          </span>
+                        )}
+                        {transaction.type === "inflow" && (
+                          <span className="text-green-600">
+                            {t("appliedAmount")}: ₹{((transaction.data as CashReceipt).appliedAmount || 0).toLocaleString()}
                           </span>
                         )}
                       </div>

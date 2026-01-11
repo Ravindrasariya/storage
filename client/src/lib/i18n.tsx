@@ -304,6 +304,21 @@ const translations: Translations = {
   salesAdjusted: { en: "sales adjusted", hi: "बिक्री समायोजित" },
   appliedAmount: { en: "Applied", hi: "लागू" },
   unappliedAmount: { en: "Unapplied", hi: "अलागू" },
+  
+  // Expense section
+  expense: { en: "Expense", hi: "व्यय" },
+  expenseType: { en: "Expense Type", hi: "व्यय प्रकार" },
+  salary: { en: "Salary", hi: "वेतन" },
+  gradingCharges: { en: "Grading Charges", hi: "ग्रेडिंग शुल्क" },
+  generalExpenses: { en: "General Expenses", hi: "सामान्य खर्च" },
+  paidOn: { en: "Paid On", hi: "भुगतान तिथि" },
+  recordExpense: { en: "Record Expense", hi: "व्यय दर्ज करें" },
+  expenseRecorded: { en: "Expense recorded successfully", hi: "व्यय सफलतापूर्वक दर्ज किया गया" },
+  cashFlowHistory: { en: "Cash Flow History", hi: "नकद प्रवाह इतिहास" },
+  noTransactions: { en: "No transactions recorded yet", hi: "अभी तक कोई लेनदेन दर्ज नहीं" },
+  inflow: { en: "Inflow", hi: "आवक" },
+  outflow: { en: "Outflow", hi: "जावक" },
+  selectExpenseType: { en: "Select expense type", hi: "व्यय प्रकार चुनें" },
 };
 
 interface I18nContextType {
