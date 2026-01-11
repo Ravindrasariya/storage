@@ -179,6 +179,18 @@ export const cashReceipts = pgTable("cash_receipts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Expenses - tracks outward cash/account payments
+export const expenses = pgTable("expenses", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  expenseType: text("expense_type").notNull(), // 'salary', 'hammali', 'grading_charges', 'general_expenses'
+  paymentMode: text("payment_mode").notNull(), // 'cash' or 'account'
+  amount: real("amount").notNull(),
+  paidAt: timestamp("paid_at").notNull(),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertChamberSchema = createInsertSchema(chambers).omit({ id: true });
@@ -190,6 +202,7 @@ export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).o
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
 export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, createdAt: true, appliedAmount: true, unappliedAmount: true });
+export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -212,6 +225,8 @@ export type ExitHistory = typeof exitHistory.$inferSelect;
 export type InsertExitHistory = z.infer<typeof insertExitHistorySchema>;
 export type CashReceipt = typeof cashReceipts.$inferSelect;
 export type InsertCashReceipt = z.infer<typeof insertCashReceiptSchema>;
+export type Expense = typeof expenses.$inferSelect;
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({
