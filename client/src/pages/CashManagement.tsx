@@ -275,6 +275,7 @@ export default function CashManagement() {
       totalAccountReceived,
       cashInHand,
       totalAccountExpenses,
+      totalCashExpenses,
     };
   }, [receipts, expensesList]);
 
@@ -326,7 +327,7 @@ export default function CashManagement() {
         {t("cashManagement")}
       </h1>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <Card data-testid="stat-total-cash-received">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
@@ -335,6 +336,18 @@ export default function CashManagement() {
             </div>
             <div className="text-xl font-bold text-green-600">
               {isLoading ? "..." : `₹${summary.totalCashReceived.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-cash-expense">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+              <ArrowUpRight className="h-4 w-4" />
+              {t("cashExpense")}
+            </div>
+            <div className="text-xl font-bold text-red-600">
+              {isLoading ? "..." : `₹${summary.totalCashExpenses.toLocaleString()}`}
             </div>
           </CardContent>
         </Card>

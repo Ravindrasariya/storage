@@ -323,6 +323,7 @@ const translations: Translations = {
   
   // Cash Summary
   totalCashReceived: { en: "Total Cash Received", hi: "कुल नकद प्राप्त" },
+  cashExpense: { en: "Cash Expense", hi: "नकद खर्च" },
   totalCashInHand: { en: "Cash in Hand", hi: "हाथ में नकद" },
   totalAccountReceived: { en: "Total Account Received", hi: "कुल खाते में प्राप्त" },
   totalExpenseFromAccount: { en: "Expense from Account", hi: "खाते से व्यय" },
