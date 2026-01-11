@@ -255,7 +255,7 @@ export const lotFormSchema = z.object({
   floor: z.number().min(1, "Floor is required"),
   position: z.string().min(1, "Position is required"),
   type: z.string().min(1, "Type is required"),
-  bagType: z.enum(["wafer", "seed", "ration"]),
+  bagType: z.enum(["wafer", "seed", "Ration"]),
   quality: z.enum(["poor", "medium", "good"]),
   potatoSize: z.enum(["large", "small"]),
   assayingType: z.enum(["Quality Check", "Visual"]),
