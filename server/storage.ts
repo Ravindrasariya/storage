@@ -612,12 +612,17 @@ export class DatabaseStorage implements IStorage {
       // Bags sold in this sale (using correct field name from schema)
       existing.bagsPurchased += sale.quantitySold || 0;
       
-      // Total value based on selling price (pricePerKg * quantitySold * approx weight per bag)
-      // Estimate ~50kg per bag average for potato bags
-      if (sale.pricePerKg && sale.quantitySold) {
-        existing.totalValue += sale.pricePerKg * sale.quantitySold * 50;
+      // Total value = pricePerKg * actual weight (netWeight)
+      // Use actual netWeight if available, otherwise estimate using originalBags * 50kg
+      if (sale.pricePerKg) {
+        if (sale.netWeight && sale.netWeight > 0) {
+          // Use actual net weight
+          existing.totalValue += sale.pricePerKg * sale.netWeight;
+        } else if (sale.quantitySold) {
+          // Fallback: estimate ~50kg per bag for potato bags
+          existing.totalValue += sale.pricePerKg * sale.quantitySold * 50;
+        }
       }
-      // Note: If no pricePerKg provided, we don't add to value as we can't estimate it
       
       // Total charges = cold storage rent + hammali + kata + extra hammali + grading
       // These are all captured in paidAmount and dueAmount fields from the sale
