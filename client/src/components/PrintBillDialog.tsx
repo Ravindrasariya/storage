@@ -280,7 +280,11 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       </div>
 
       <div className="payment-status">
-        भुगतान स्थिति: भुगतान हो गया
+        भुगतान स्थिति: {sale.paymentStatus === "paid" 
+          ? "भुगतान हो गया" 
+          : sale.paymentStatus === "partial" 
+            ? `आंशिक भुगतान (भुगतान: रु. ${(sale.paidAmount || 0).toLocaleString()}, बकाया: रु. ${(sale.dueAmount || 0).toLocaleString()})` 
+            : `बकाया (रु. ${totalCharges.toLocaleString()})`}
       </div>
 
       <div className="footer-note">
