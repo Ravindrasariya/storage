@@ -957,5 +957,43 @@ export async function registerRoutes(
     }
   });
 
+  // Expenses
+  app.get("/api/expenses", async (req, res) => {
+    try {
+      const expenseList = await storage.getExpenses(DEFAULT_COLD_STORAGE_ID);
+      res.json(expenseList);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch expenses" });
+    }
+  });
+
+  const createExpenseSchema = z.object({
+    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses"]),
+    paymentMode: z.enum(["cash", "account"]),
+    amount: z.number().positive(),
+    paidAt: z.string().transform((val) => new Date(val)),
+    remarks: z.string().optional(),
+  });
+
+  app.post("/api/expenses", async (req, res) => {
+    try {
+      const validatedData = createExpenseSchema.parse(req.body);
+      const expense = await storage.createExpense({
+        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        expenseType: validatedData.expenseType,
+        paymentMode: validatedData.paymentMode,
+        amount: validatedData.amount,
+        paidAt: validatedData.paidAt,
+        remarks: validatedData.remarks || null,
+      });
+      res.json(expense);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid expense data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create expense" });
+    }
+  });
+
   return httpServer;
 }
