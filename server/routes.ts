@@ -778,6 +778,70 @@ export async function registerRoutes(
     }
   });
 
+  // Exit History (Nikasi)
+  const createExitSchema = z.object({
+    bagsExited: z.number().min(1, "Must exit at least 1 bag"),
+  });
+
+  app.get("/api/sales-history/:id/exits", async (req, res) => {
+    try {
+      const exits = await storage.getExitsForSale(req.params.id);
+      const totalExited = await storage.getTotalExitedBags(req.params.id);
+      res.json({ exits, totalExited });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch exit history" });
+    }
+  });
+
+  app.post("/api/sales-history/:id/exits", async (req, res) => {
+    try {
+      const { bagsExited } = createExitSchema.parse(req.body);
+      
+      // Get the sale to verify bags available
+      const sales = await storage.getSalesHistory(DEFAULT_COLD_STORAGE_ID, {});
+      const sale = sales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
+      
+      // Check how many bags can still be exited
+      const totalExited = await storage.getTotalExitedBags(req.params.id);
+      const remainingToExit = sale.quantitySold - totalExited;
+      
+      if (bagsExited > remainingToExit) {
+        return res.status(400).json({ 
+          error: `Cannot exit ${bagsExited} bags. Only ${remainingToExit} bags remaining.` 
+        });
+      }
+      
+      const exit = await storage.createExit({
+        salesHistoryId: req.params.id,
+        lotId: sale.lotId,
+        coldStorageId: sale.coldStorageId,
+        bagsExited,
+      });
+      
+      res.status(201).json(exit);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid exit data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create exit" });
+    }
+  });
+
+  app.post("/api/sales-history/:id/exits/reverse-latest", async (req, res) => {
+    try {
+      const result = await storage.reverseLatestExit(req.params.id);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reverse exit" });
+    }
+  });
+
   // Maintenance Records
   const createMaintenanceSchema = z.object({
     taskDescription: z.string(),
