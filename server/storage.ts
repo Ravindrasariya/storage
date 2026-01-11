@@ -481,8 +481,17 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    // Add sold quantities from salesHistory to original distribution only
+    // Add sold quantities from salesHistory ONLY for historical data (after season reset)
+    // We track which lotIds we've already counted to avoid double-counting
+    const lotIdsFromLots = new Set(allLots.map(lot => lot.id));
+    
     for (const sale of allSales) {
+      // Skip if this sale's lot still exists in current lots (already counted via lot.size)
+      if (lotIdsFromLots.has(sale.lotId)) {
+        continue;
+      }
+      
+      // This is a historical sale (lot was deleted after season reset)
       // Try to find chamber by name if ID doesn't exist
       let existingOriginal = Array.from(chamberMapOriginal.values()).find(c => c.chamberName === sale.chamberName);
       if (!existingOriginal) {
@@ -513,14 +522,18 @@ export class DatabaseStorage implements IStorage {
       else if (lot.quality === "good") totalGoodRemaining += lot.remainingSize;
     }
     
-    // Calculate totals - original (from lots + sales history)
+    // Calculate totals - original (from lots + historical sales only)
     let totalPoor = 0, totalMedium = 0, totalGood = 0;
     for (const lot of allLots) {
       if (lot.quality === "poor") totalPoor += lot.size;
       else if (lot.quality === "medium") totalMedium += lot.size;
       else if (lot.quality === "good") totalGood += lot.size;
     }
+    // Only add sales from lots that no longer exist (historical data after reset)
     for (const sale of allSales) {
+      if (lotIdsFromLots.has(sale.lotId)) {
+        continue; // Skip - already counted via lot.size
+      }
       if (sale.quality === "poor") totalPoor += sale.quantitySold;
       else if (sale.quality === "medium") totalMedium += sale.quantitySold;
       else if (sale.quality === "good") totalGood += sale.quantitySold;
