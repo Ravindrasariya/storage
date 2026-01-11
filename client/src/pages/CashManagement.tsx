@@ -23,8 +23,8 @@ interface BuyerWithDue {
 }
 
 type TransactionItem = 
-  | { type: "inflow"; data: CashReceipt; date: Date }
-  | { type: "outflow"; data: Expense; date: Date };
+  | { type: "inflow"; data: CashReceipt; timestamp: number }
+  | { type: "outflow"; data: Expense; timestamp: number };
 
 export default function CashManagement() {
   const { t } = useI18n();
@@ -206,18 +206,25 @@ export default function CashManagement() {
     }
 
     // Combine and sort descending (latest first)
+    // Use timestamp in milliseconds for reliable sorting
+    const getTimestamp = (dateStr: string | Date): number => {
+      if (dateStr instanceof Date) return dateStr.getTime();
+      const parsed = Date.parse(dateStr);
+      return isNaN(parsed) ? new Date(dateStr).getTime() : parsed;
+    };
+
     return [
       ...filteredReceipts.map(r => ({ 
         type: "inflow" as const, 
         data: r, 
-        date: new Date(r.receivedAt) 
+        timestamp: getTimestamp(r.receivedAt)
       })),
       ...filteredExpenses.map(e => ({ 
         type: "outflow" as const, 
         data: e, 
-        date: new Date(e.paidAt) 
+        timestamp: getTimestamp(e.paidAt)
       })),
-    ].sort((a, b) => b.date.getTime() - a.date.getTime());
+    ].sort((a, b) => b.timestamp - a.timestamp);
   }, [receipts, expensesList, filterBuyer, filterCategory, filterMonth]);
 
   const isLoading = loadingReceipts || loadingExpenses;
@@ -780,7 +787,7 @@ export default function CashManagement() {
                         </div>
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground">
-                            {format(transaction.date, "dd/MM/yyyy")}
+                            {format(new Date(transaction.timestamp), "dd/MM/yyyy")}
                           </span>
                           <span className={`font-semibold ${
                             isReversed 
