@@ -62,7 +62,7 @@ interface LotData {
   lotNo: string;
   size: number;
   type: string;
-  bagType: "wafer" | "seed";
+  bagType: "wafer" | "seed" | "ration";
   chamberId: string;
   floor: number;
   position: string;
@@ -404,11 +404,12 @@ export default function LotEntry() {
     return chambers?.find(c => c.id === chamberId)?.name || chamberId;
   };
 
-  const getRate = (bagType: "wafer" | "seed") => {
+  const getRate = (bagType: "wafer" | "seed" | "ration") => {
     if (!coldStorage) return 0;
     if (bagType === "wafer") {
       return (coldStorage.waferColdCharge || 0) + (coldStorage.waferHammali || 0);
     }
+    // For seed and ration, use seed rates
     return (coldStorage.seedColdCharge || 0) + (coldStorage.seedHammali || 0);
   };
 
@@ -614,20 +615,20 @@ export default function LotEntry() {
                         <SelectItem value="Torus">Torus</SelectItem>
                         <SelectItem value="CS1">CS1</SelectItem>
                         <SelectItem value="CS3">CS3</SelectItem>
-                        <SelectItem value="Ration">Ration</SelectItem>
                         <SelectItem value="Others">Others</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
                     <label className="text-sm font-medium">{t("bagType")} *</label>
-                    <Select value={lot.bagType} onValueChange={(v) => updateLot(index, "bagType", v as "wafer" | "seed")}>
+                    <Select value={lot.bagType} onValueChange={(v) => updateLot(index, "bagType", v as "wafer" | "seed" | "ration")}>
                       <SelectTrigger data-testid={`select-bag-type-${index}`}>
                         <SelectValue placeholder="Select bag type" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="wafer">{t("wafer")}</SelectItem>
                         <SelectItem value="seed">{t("seed")}</SelectItem>
+                        <SelectItem value="ration">{t("ration") || "Ration"}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -930,7 +931,7 @@ export default function LotEntry() {
                           <td>{lot.lotNo}</td>
                           <td>{lot.type}</td>
                           <td>{lot.size}</td>
-                          <td>{lot.bagType === "wafer" ? t("wafer") : t("seed")}</td>
+                          <td>{lot.bagType === "wafer" ? t("wafer") : lot.bagType === "seed" ? t("seed") : (t("ration") || "Ration")}</td>
                           <td>{getChamberName(lot.chamberId)}</td>
                           <td>{lot.floor}</td>
                           <td>{lot.position}</td>
