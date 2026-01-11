@@ -179,18 +179,46 @@ export default function CashManagement() {
     }
   };
 
-  const allTransactions: TransactionItem[] = [
-    ...receipts.map(r => ({ 
-      type: "inflow" as const, 
-      data: r, 
-      date: new Date(r.receivedAt) 
-    })),
-    ...expensesList.map(e => ({ 
-      type: "outflow" as const, 
-      data: e, 
-      date: new Date(e.paidAt) 
-    })),
-  ].sort((a, b) => b.date.getTime() - a.date.getTime());
+  // Filter and sort transactions for display (latest first)
+  const allTransactions: TransactionItem[] = useMemo(() => {
+    // Apply filters to receipts
+    let filteredReceipts = receipts;
+    if (filterBuyer) {
+      filteredReceipts = filteredReceipts.filter(r => r.buyerName === filterBuyer);
+    }
+    if (filterMonth) {
+      filteredReceipts = filteredReceipts.filter(r => {
+        const date = new Date(r.receivedAt);
+        return format(date, "yyyy-MM") === filterMonth;
+      });
+    }
+
+    // Apply filters to expenses
+    let filteredExpenses = expensesList;
+    if (filterCategory) {
+      filteredExpenses = filteredExpenses.filter(e => e.expenseType === filterCategory);
+    }
+    if (filterMonth) {
+      filteredExpenses = filteredExpenses.filter(e => {
+        const date = new Date(e.paidAt);
+        return format(date, "yyyy-MM") === filterMonth;
+      });
+    }
+
+    // Combine and sort descending (latest first)
+    return [
+      ...filteredReceipts.map(r => ({ 
+        type: "inflow" as const, 
+        data: r, 
+        date: new Date(r.receivedAt) 
+      })),
+      ...filteredExpenses.map(e => ({ 
+        type: "outflow" as const, 
+        data: e, 
+        date: new Date(e.paidAt) 
+      })),
+    ].sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [receipts, expensesList, filterBuyer, filterCategory, filterMonth]);
 
   const isLoading = loadingReceipts || loadingExpenses;
 
