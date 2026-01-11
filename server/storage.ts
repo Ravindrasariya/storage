@@ -11,6 +11,7 @@ import {
   saleEditHistory,
   maintenanceRecords,
   exitHistory,
+  cashReceipts,
   type ColdStorage,
   type InsertColdStorage,
   type Chamber,
@@ -29,6 +30,8 @@ import {
   type InsertMaintenanceRecord,
   type ExitHistory,
   type InsertExitHistory,
+  type CashReceipt,
+  type InsertCashReceipt,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -97,6 +100,10 @@ export interface IStorage {
   getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
+  // Cash Receipts
+  getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
+  getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
+  createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1133,6 +1140,112 @@ export class DatabaseStorage implements IStorage {
       .where(eq(exitHistory.id, latestExit.id));
 
     return { success: true };
+  }
+
+  // Cash Receipts methods
+  async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
+    // Get all sales with due or partial payment status that have a buyer name
+    const sales = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
+        sql`${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != ''`
+      ));
+
+    // Group by buyer name and sum the due amounts
+    const buyerDues = new Map<string, number>();
+    for (const sale of sales) {
+      const buyerName = sale.buyerName || "";
+      if (!buyerName) continue;
+      
+      const dueAmount = sale.dueAmount || (sale.coldStorageCharge - (sale.paidAmount || 0));
+      const currentDue = buyerDues.get(buyerName) || 0;
+      buyerDues.set(buyerName, currentDue + dueAmount);
+    }
+
+    return Array.from(buyerDues.entries())
+      .map(([buyerName, totalDue]) => ({ buyerName, totalDue }))
+      .sort((a, b) => a.buyerName.localeCompare(b.buyerName));
+  }
+
+  async getCashReceipts(coldStorageId: string): Promise<CashReceipt[]> {
+    return db.select()
+      .from(cashReceipts)
+      .where(eq(cashReceipts.coldStorageId, coldStorageId))
+      .orderBy(desc(cashReceipts.receivedAt));
+  }
+
+  async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
+    // Get all sales for this buyer with due or partial status, ordered by sale date (FIFO)
+    const sales = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, data.coldStorageId),
+        eq(salesHistory.buyerName, data.buyerName),
+        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+      ))
+      .orderBy(salesHistory.soldAt); // FIFO - oldest first
+
+    let remainingAmount = data.amount;
+    let appliedAmount = 0;
+    let salesUpdated = 0;
+    const paymentMode = data.receiptType as "cash" | "account";
+
+    // Apply payment to each sale in FIFO order
+    for (const sale of sales) {
+      if (remainingAmount <= 0) break;
+
+      const saleDueAmount = sale.dueAmount || (sale.coldStorageCharge - (sale.paidAmount || 0));
+      
+      if (saleDueAmount <= 0) continue;
+
+      if (remainingAmount >= saleDueAmount) {
+        // Can fully pay this sale
+        await db.update(salesHistory)
+          .set({
+            paymentStatus: "paid",
+            paidAmount: sale.coldStorageCharge,
+            dueAmount: 0,
+            paymentMode: paymentMode,
+            paidAt: data.receivedAt,
+          })
+          .where(eq(salesHistory.id, sale.id));
+        
+        remainingAmount -= saleDueAmount;
+        appliedAmount += saleDueAmount;
+        salesUpdated++;
+      } else {
+        // Can only partially pay this sale
+        const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
+        const newDueAmount = sale.coldStorageCharge - newPaidAmount;
+        
+        await db.update(salesHistory)
+          .set({
+            paymentStatus: "partial",
+            paidAmount: newPaidAmount,
+            dueAmount: newDueAmount,
+            paymentMode: paymentMode,
+          })
+          .where(eq(salesHistory.id, sale.id));
+        
+        appliedAmount += remainingAmount;
+        remainingAmount = 0;
+        salesUpdated++;
+      }
+    }
+
+    // Create the receipt record
+    const [receipt] = await db.insert(cashReceipts)
+      .values({
+        id: randomUUID(),
+        ...data,
+        appliedAmount: appliedAmount,
+        unappliedAmount: remainingAmount,
+      })
+      .returning();
+
+    return { receipt, salesUpdated };
   }
 }
 
