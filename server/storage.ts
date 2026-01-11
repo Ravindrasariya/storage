@@ -117,6 +117,7 @@ export interface IStorage {
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
   // Bill number assignment
   assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number>;
+  assignLotBillNumber(lotId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1597,6 +1598,41 @@ export class DatabaseStorage implements IStorage {
           : { salesBillNumber: billNumber }
       )
       .where(eq(salesHistory.id, saleId));
+    
+    return billNumber;
+  }
+
+  async assignLotBillNumber(lotId: string): Promise<number> {
+    // Get the lot to find its coldStorageId
+    const [lot] = await db.select()
+      .from(lots)
+      .where(eq(lots.id, lotId));
+    
+    if (!lot) {
+      throw new Error("Lot not found");
+    }
+    
+    // Check if bill number already assigned
+    if (lot.entryBillNumber) {
+      return lot.entryBillNumber;
+    }
+    
+    // Atomically increment and get the bill number using UPDATE RETURNING
+    const [updatedStorage] = await db.update(coldStorages)
+      .set({ nextEntryBillNumber: sql`COALESCE(${coldStorages.nextEntryBillNumber}, 0) + 1` })
+      .where(eq(coldStorages.id, lot.coldStorageId))
+      .returning({ billNumber: coldStorages.nextEntryBillNumber });
+    
+    if (!updatedStorage) {
+      throw new Error("Cold storage not found");
+    }
+    
+    const billNumber = updatedStorage.billNumber;
+    
+    // Update the lot with the assigned bill number
+    await db.update(lots)
+      .set({ entryBillNumber: billNumber })
+      .where(eq(lots.id, lotId));
     
     return billNumber;
   }
