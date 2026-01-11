@@ -48,10 +48,11 @@ Core entities:
 - **cashFlow**: Cash management with FIFO-based payment allocation
 
 ### Bill Number System
-- Three independent bill number sequences: Exit, Cold Storage Deduction, Sales
+- Four independent bill number sequences: Exit, Cold Storage Deduction, Sales, and Lot Entry
 - Bill numbers assigned atomically on first print using UPDATE RETURNING pattern
-- Numbers persist across reprints (stored in salesHistory/exitEntries)
+- Numbers persist across reprints (stored in salesHistory/exitEntries/lots)
 - All counters reset to 1 during season reset
+- Lot entry bill numbers stored in lots.entryBillNumber, assigned when Print is clicked in receipt dialog
 
 ### Build and Deployment
 - Development: Vite dev server with HMR, Express API on same port
