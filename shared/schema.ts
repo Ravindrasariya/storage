@@ -15,6 +15,8 @@ export const coldStorages = pgTable("cold_storages", {
   seedHammali: real("seed_hammali"), // Hammali charge for seed
   linkedPhones: text("linked_phones").array().notNull(), // Mobile numbers with access
   nextExitBillNumber: integer("next_exit_bill_number").notNull().default(1), // Auto-increment counter for exit bills
+  nextColdStorageBillNumber: integer("next_cold_storage_bill_number").notNull().default(1), // Counter for cold storage deduction bills
+  nextSalesBillNumber: integer("next_sales_bill_number").notNull().default(1), // Counter for sales bills
 });
 
 // Chambers in cold storage
@@ -112,6 +114,9 @@ export const salesHistory = pgTable("sales_history", {
   entryDate: timestamp("entry_date"), // When lot was originally entered in cold storage (nullable for existing records)
   saleYear: integer("sale_year").notNull(),
   soldAt: timestamp("sold_at").notNull().defaultNow(),
+  // Bill numbers (assigned on first print, null means never printed)
+  coldStorageBillNumber: integer("cold_storage_bill_number"), // Bill number for cold storage deduction receipt
+  salesBillNumber: integer("sales_bill_number"), // Bill number for sales bill
 });
 
 // Edit history for tracking changes
