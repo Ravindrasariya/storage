@@ -293,9 +293,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       <div className="footer-note">
         यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
       </div>
-      <div className="branding">
-        <span className="krashu">Krashu</span><span className="ved">Ved</span> द्वारा निर्मित
-      </div>
     </div>
   );
 
@@ -420,9 +417,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
       <div className="footer-note">
         यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
-      </div>
-      <div className="branding">
-        <span className="krashu">Krashu</span><span className="ved">Ved</span> द्वारा निर्मित
       </div>
     </div>
   );
