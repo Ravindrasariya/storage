@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { Printer, FileText, Receipt } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
+import { calculateTotalColdCharges } from "@shared/schema";
 
 interface PrintBillDialogProps {
   sale: SalesHistory;
@@ -175,7 +176,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     }
   };
 
-  const totalCharges = (sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+  const totalCharges = calculateTotalColdCharges(sale);
   const totalIncome = (sale.netWeight || 0) * (sale.pricePerKg || 0);
   const netIncome = totalIncome - totalCharges;
   

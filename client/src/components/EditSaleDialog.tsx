@@ -13,6 +13,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Pencil, Save, X, RotateCcw, History } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
+import { calculateTotalColdCharges } from "@shared/schema";
 
 interface EditSaleDialogProps {
   sale: SalesHistory | null;
@@ -32,9 +33,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
   const [showReverseConfirm, setShowReverseConfirm] = useState(false);
 
-  const totalCharge = sale 
-    ? (sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0)
-    : 0;
+  const totalCharge = sale ? calculateTotalColdCharges(sale) : 0;
 
   const { data: editHistory = [] } = useQuery<SaleEditHistory[]>({
     queryKey: ["/api/sales-history", sale?.id, "edit-history"],
