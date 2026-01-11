@@ -147,6 +147,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
   const handleConfirmSale = () => {
     if (selectedLot) {
+      // Validate buyer name is required
+      if (!buyerName.trim()) {
+        toast({
+          title: t("error"),
+          description: "Buyer name is required / खरीदार का नाम आवश्यक है",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
       const qty = saleMode === "partial" ? partialQuantity : selectedLot.remainingSize;
       const totalCharge = saleMode === "partial" 
@@ -479,7 +489,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>{t("buyerName")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
                 <Input
                   type="text"
                   value={buyerName}
@@ -578,7 +588,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>{t("buyerName")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
                 <Input
                   type="text"
                   value={buyerName}
