@@ -268,6 +268,25 @@ const translations: Translations = {
   reversing: { en: "Reversing...", hi: "वापस कर रहा है..." },
   saleReversed: { en: "Sale reversed successfully. Lot moved back to inventory.", hi: "बिक्री सफलतापूर्वक वापस कर दी गई। लॉट वापस इन्वेंट्री में चला गया।" },
   failedToReverseSale: { en: "Failed to reverse sale", hi: "बिक्री वापस करने में विफल" },
+
+  // Exit (Nikasi)
+  exit: { en: "Exit", hi: "निकासी" },
+  exitReceipt: { en: "Exit Receipt", hi: "निकासी रसीद" },
+  bagsToExit: { en: "Bags to Exit", hi: "निकासी के लिए बैग" },
+  maxBagsToExit: { en: "Max bags available for exit", hi: "निकासी के लिए उपलब्ध अधिकतम बैग" },
+  totalExited: { en: "Total Exited", hi: "कुल निकासी" },
+  remainingToExit: { en: "Remaining to Exit", hi: "निकासी के लिए शेष" },
+  exitHistory: { en: "Exit History", hi: "निकासी इतिहास" },
+  noExitHistory: { en: "No exit history", hi: "कोई निकासी इतिहास नहीं" },
+  exitDate: { en: "Exit Date", hi: "निकासी तिथि" },
+  bagsExited: { en: "Bags Exited", hi: "निकासी किए गए बैग" },
+  reverseExit: { en: "Reverse Latest Exit", hi: "नवीनतम निकासी वापस करें" },
+  exitReversed: { en: "Exit reversed successfully", hi: "निकासी सफलतापूर्वक वापस कर दी गई" },
+  failedToReverseExit: { en: "Failed to reverse exit", hi: "निकासी वापस करने में विफल" },
+  exitCreated: { en: "Exit recorded successfully", hi: "निकासी सफलतापूर्वक दर्ज की गई" },
+  failedToCreateExit: { en: "Failed to record exit", hi: "निकासी दर्ज करने में विफल" },
+  coldStorageManagerSignature: { en: "Cold Storage Manager Signature", hi: "शीत भंडार प्रबंधक हस्ताक्षर" },
+  reversed: { en: "Reversed", hi: "वापस" },
 };
 
 interface I18nContextType {
