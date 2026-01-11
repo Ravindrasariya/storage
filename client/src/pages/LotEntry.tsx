@@ -596,8 +596,8 @@ export default function LotEntry() {
                     <Input
                       type="number"
                       min={0}
-                      value={lot.size}
-                      onChange={(e) => updateLot(index, "size", parseInt(e.target.value) || 0)}
+                      value={lot.size === 0 ? "" : lot.size}
+                      onChange={(e) => updateLot(index, "size", e.target.value === "" ? 0 : parseInt(e.target.value))}
                       data-testid={`input-size-${index}`}
                     />
                   </div>
@@ -660,8 +660,8 @@ export default function LotEntry() {
                     <Input
                       type="number"
                       min={0}
-                      value={lot.floor}
-                      onChange={(e) => updateLot(index, "floor", parseInt(e.target.value) || 0)}
+                      value={lot.floor === 0 ? "" : lot.floor}
+                      onChange={(e) => updateLot(index, "floor", e.target.value === "" ? 0 : parseInt(e.target.value))}
                       data-testid={`input-floor-${index}`}
                     />
                   </div>
