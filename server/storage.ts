@@ -115,6 +115,8 @@ export interface IStorage {
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
   // Admin
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
+  // Bill number assignment
+  assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -751,9 +753,13 @@ export class DatabaseStorage implements IStorage {
       .set({ currentFill: 0 })
       .where(eq(chambers.coldStorageId, coldStorageId));
     
-    // Reset the exit bill number counter to 1
+    // Reset all bill number counters to 1
     await db.update(coldStorages)
-      .set({ nextExitBillNumber: 1 })
+      .set({ 
+        nextExitBillNumber: 1,
+        nextColdStorageBillNumber: 1,
+        nextSalesBillNumber: 1,
+      })
       .where(eq(coldStorages.id, coldStorageId));
   }
 
@@ -1538,6 +1544,61 @@ export class DatabaseStorage implements IStorage {
       updated, 
       message: `Recalculated ${updated} sales records and updated lot totals` 
     };
+  }
+
+  async assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number> {
+    // Get the sale to find its coldStorageId
+    const [sale] = await db.select()
+      .from(salesHistory)
+      .where(eq(salesHistory.id, saleId));
+    
+    if (!sale) {
+      throw new Error("Sale not found");
+    }
+    
+    // Check if bill number already assigned
+    const existingBillNumber = billType === "coldStorage" 
+      ? sale.coldStorageBillNumber 
+      : sale.salesBillNumber;
+    
+    if (existingBillNumber) {
+      return existingBillNumber;
+    }
+    
+    // Atomically increment and get the bill number using UPDATE RETURNING
+    const counterColumn = billType === "coldStorage" 
+      ? coldStorages.nextColdStorageBillNumber 
+      : coldStorages.nextSalesBillNumber;
+    
+    const [updatedStorage] = await db.update(coldStorages)
+      .set(
+        billType === "coldStorage" 
+          ? { nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 0) + 1` }
+          : { nextSalesBillNumber: sql`COALESCE(${coldStorages.nextSalesBillNumber}, 0) + 1` }
+      )
+      .where(eq(coldStorages.id, sale.coldStorageId))
+      .returning(
+        billType === "coldStorage" 
+          ? { billNumber: coldStorages.nextColdStorageBillNumber }
+          : { billNumber: coldStorages.nextSalesBillNumber }
+      );
+    
+    if (!updatedStorage) {
+      throw new Error("Cold storage not found");
+    }
+    
+    const billNumber = updatedStorage.billNumber;
+    
+    // Update the sale with the assigned bill number
+    await db.update(salesHistory)
+      .set(
+        billType === "coldStorage" 
+          ? { coldStorageBillNumber: billNumber }
+          : { salesBillNumber: billNumber }
+      )
+      .where(eq(salesHistory.id, saleId));
+    
+    return billNumber;
   }
 }
 
