@@ -191,6 +191,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <p className="text-center text-muted-foreground mb-4">
+            Please Enter Your Login Details
+          </p>
           <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="mobileNumber">{t("mobileNumber") || "Mobile Number"}</Label>
@@ -269,6 +272,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             >
               {t("changePassword") || "Change Password"}
             </Button>
+          </div>
+
+          <div className="mt-6 pt-4 border-t text-center text-sm text-muted-foreground">
+            Need Help? Please reach out to{" "}
+            <span className="text-green-600 font-medium">Krashu</span>
+            <span className="text-orange-500 font-medium">Ved</span>{" "}
+            <a href="tel:8882589392" className="font-medium text-chart-1 hover:underline">
+              8882589392
+            </a>
           </div>
         </CardContent>
       </Card>
