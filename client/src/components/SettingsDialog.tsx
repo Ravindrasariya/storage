@@ -69,6 +69,30 @@ export function SettingsDialog() {
   const [chamberEdits, setChamberEdits] = useState<Chamber[]>([]);
   const [floorEdits, setFloorEdits] = useState<ChamberFloorsData>({});
 
+  // Validation: Check if any chamber's floor total exceeds its capacity
+  const getFloorExceedsErrors = (): Map<string, { floorTotal: number; chamberCapacity: number }> => {
+    const errors = new Map<string, { floorTotal: number; chamberCapacity: number }>();
+    for (const chamber of chamberEdits) {
+      const floors = floorEdits[chamber.id] || chamberFloors?.[chamber.id] || [];
+      const floorTotal = floors.reduce((sum, f) => sum + f.capacity, 0);
+      if (floorTotal > chamber.capacity) {
+        errors.set(chamber.id, { floorTotal, chamberCapacity: chamber.capacity });
+      }
+    }
+    return errors;
+  };
+
+  // Validation: Check if total chamber capacity exceeds overall capacity
+  const getTotalChamberCapacity = (): number => {
+    return chamberEdits.reduce((sum, c) => sum + c.capacity, 0);
+  };
+
+  const floorExceedsErrors = getFloorExceedsErrors();
+  const totalChamberCapacity = getTotalChamberCapacity();
+  const overallCapacity = settings?.totalCapacity || 0;
+  const chamberExceedsOverall = totalChamberCapacity > overallCapacity && overallCapacity > 0;
+  const hasValidationErrors = floorExceedsErrors.size > 0 || chamberExceedsOverall;
+
   interface MaintenanceRow {
     id?: string;
     taskDescription: string;
@@ -606,7 +630,13 @@ export function SettingsDialog() {
 
           <Card className="p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-semibold">{t("chambers")}</h4>
+              <div>
+                <h4 className="font-semibold">{t("chambers")}</h4>
+                <p className={`text-sm ${chamberExceedsOverall ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                  {t("total")}: {totalChamberCapacity.toLocaleString()} / {overallCapacity.toLocaleString()} {t("bags")}
+                  {chamberExceedsOverall && ` (${t("exceedsLimit") || "Exceeds limit"})`}
+                </p>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -675,8 +705,9 @@ export function SettingsDialog() {
                     {isExpanded && (
                       <div className="ml-8 pl-4 border-l-2 border-muted space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
+                          <span className={`text-sm ${floorExceedsErrors.has(chamber.id) ? "text-destructive font-medium" : "text-muted-foreground"}`}>
                             {t("floor")} {t("capacity")}: {floorTotal.toLocaleString()} / {chamber.capacity.toLocaleString()} {t("bags")}
+                            {floorExceedsErrors.has(chamber.id) && ` (${t("exceedsLimit") || "Exceeds limit"})`}
                           </span>
                           <Button
                             variant="outline"
@@ -743,7 +774,7 @@ export function SettingsDialog() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={updateSettingsMutation.isPending || updateChamberMutation.isPending}
+              disabled={updateSettingsMutation.isPending || updateChamberMutation.isPending || hasValidationErrors}
               data-testid="button-save-settings"
               className="w-full sm:w-auto"
             >
