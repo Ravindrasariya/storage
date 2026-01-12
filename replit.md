@@ -1,8 +1,8 @@
-# Cold Storage Manager
+# Cold Store Manager
 
 ## Overview
 
-Cold Storage Manager is a full-stack web application for managing cold storage operations. It helps track potato lots, monitor chamber capacity, assess quality, and analyze storage performance. The app supports bilingual operation (English/Hindi) and provides a comprehensive dashboard for cold storage operators.
+Cold Store Manager is a full-stack web application for managing cold storage operations. It helps track potato lots, monitor chamber capacity, assess quality, and analyze storage performance. The app supports bilingual operation (English/Hindi) and provides a comprehensive dashboard for cold storage operators.
 
 ## User Preferences
 

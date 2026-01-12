@@ -11,7 +11,7 @@ interface Translations {
 
 const translations: Translations = {
   // App Header
-  appTitle: { en: "Cold Storage Manager", hi: "शीत भंडार प्रबंधक" },
+  appTitle: { en: "Cold Store Manager", hi: "शीत भंडार प्रबंधक" },
   dashboard: { en: "Dashboard", hi: "डैशबोर्ड" },
   newLot: { en: "New Lot Entry", hi: "नया लॉट प्रविष्टि" },
   searchEdit: { en: "Search / Edit", hi: "खोजें / संपादित करें" },
@@ -290,7 +290,7 @@ const translations: Translations = {
   failedToReverseExit: { en: "Failed to reverse exit", hi: "निकासी वापस करने में विफल" },
   exitCreated: { en: "Exit recorded successfully", hi: "निकासी सफलतापूर्वक दर्ज की गई" },
   failedToCreateExit: { en: "Failed to record exit", hi: "निकासी दर्ज करने में विफल" },
-  coldStorageManagerSignature: { en: "Cold Storage Manager Signature", hi: "शीत भंडार प्रबंधक हस्ताक्षर" },
+  coldStorageManagerSignature: { en: "Cold Store Manager Signature", hi: "शीत भंडार प्रबंधक हस्ताक्षर" },
   reversed: { en: "Reversed", hi: "वापस" },
 
   // Cash Management

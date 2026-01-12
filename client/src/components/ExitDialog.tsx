@@ -320,7 +320,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             <div className="signature">
               <div className="signature-line">
                 शीत भंडार प्रबंधक हस्ताक्षर<br/>
-                Cold Storage Manager Signature
+                Cold Store Manager Signature
               </div>
             </div>
 

@@ -33,7 +33,7 @@
 
 ### Navigation & Header
 **Top App Bar:**
-- Fixed header with app title "Cold Storage Manager"
+- Fixed header with app title "Cold Store Manager"
 - Language toggle (EN/HI) as icon button top-right
 - Hamburger menu (mobile) / horizontal nav (desktop)
 - Elevation shadow for depth
