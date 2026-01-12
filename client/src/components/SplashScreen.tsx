@@ -7,8 +7,18 @@ interface SplashScreenProps {
 
 export function SplashScreen({ onComplete }: SplashScreenProps) {
   const [fadeOut, setFadeOut] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   useEffect(() => {
+    const img = new Image();
+    img.src = logoImage;
+    img.onload = () => setImageLoaded(true);
+    img.onerror = () => setImageLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!imageLoaded) return;
+
     const fadeTimer = setTimeout(() => {
       setFadeOut(true);
     }, 1800);
@@ -21,7 +31,7 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
       clearTimeout(fadeTimer);
       clearTimeout(completeTimer);
     };
-  }, [onComplete]);
+  }, [onComplete, imageLoaded]);
 
   return (
     <div
