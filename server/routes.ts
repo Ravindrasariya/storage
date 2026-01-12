@@ -4,6 +4,27 @@ import { storage } from "./storage";
 import { lotFormSchema, insertChamberFloorSchema } from "@shared/schema";
 import { z } from "zod";
 
+// CAPTCHA verification helper
+async function verifyCaptcha(token: string): Promise<boolean> {
+  const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+  if (!secretKey) {
+    console.log("RECAPTCHA_SECRET_KEY not configured, skipping captcha verification");
+    return true; // Skip verification if not configured
+  }
+
+  try {
+    const response = await fetch(
+      `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`,
+      { method: "POST" }
+    );
+    const data = await response.json() as { success: boolean };
+    return data.success;
+  } catch (error) {
+    console.error("CAPTCHA verification error:", error);
+    return false;
+  }
+}
+
 // Extend Express Request to include auth context
 interface AuthContext {
   userId: string;
@@ -1428,10 +1449,21 @@ export async function registerRoutes(
   // User login
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { mobileNumber, password } = req.body;
+      const { mobileNumber, password, captchaToken } = req.body;
       
       if (!mobileNumber || !password) {
         return res.status(400).json({ error: "Mobile number and password are required" });
+      }
+
+      // Verify CAPTCHA if secret key is configured
+      if (process.env.RECAPTCHA_SECRET_KEY) {
+        if (!captchaToken) {
+          return res.status(400).json({ error: "CAPTCHA verification required" });
+        }
+        const captchaValid = await verifyCaptcha(captchaToken);
+        if (!captchaValid) {
+          return res.status(400).json({ error: "CAPTCHA verification failed. Please try again." });
+        }
       }
 
       const result = await storage.authenticateUser(mobileNumber, password);

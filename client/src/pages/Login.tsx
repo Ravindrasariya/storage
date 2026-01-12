@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Snowflake, Eye, EyeOff, Loader2 } from "lucide-react";
+import ReCAPTCHA from "react-google-recaptcha";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,8 @@ interface LoginProps {
   onLoginSuccess: (user: any, coldStorage: any, token: string) => void;
 }
 
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "";
+
 export default function Login({ onLoginSuccess }: LoginProps) {
   const { t } = useI18n();
   const { toast } = useToast();
@@ -47,6 +50,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState<any>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -66,17 +71,28 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   });
 
   const onLogin = async (data: LoginFormData) => {
+    if (RECAPTCHA_SITE_KEY && !captchaToken) {
+      toast({
+        title: t("captchaRequired") || "Verification required",
+        description: t("pleaseCompleteCaptcha") || "Please complete the CAPTCHA verification",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, captchaToken }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
+        recaptchaRef.current?.reset();
+        setCaptchaToken(null);
         throw new Error(result.error || "Login failed");
       }
 
@@ -240,10 +256,22 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               )}
             </div>
 
+            {RECAPTCHA_SITE_KEY && (
+              <div className="flex justify-center">
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={RECAPTCHA_SITE_KEY}
+                  onChange={(token) => setCaptchaToken(token)}
+                  onExpired={() => setCaptchaToken(null)}
+                  data-testid="recaptcha"
+                />
+              </div>
+            )}
+
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading}
+              disabled={isLoading || (RECAPTCHA_SITE_KEY && !captchaToken)}
               data-testid="button-login"
             >
               {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

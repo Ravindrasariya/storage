@@ -359,6 +359,8 @@ const translations: Translations = {
   confirmPassword: { en: "Confirm Password", hi: "पासवर्ड की पुष्टि करें" },
   loginSuccess: { en: "Login successful", hi: "लॉगिन सफल" },
   loginFailed: { en: "Login failed", hi: "लॉगिन विफल" },
+  captchaRequired: { en: "Verification required", hi: "सत्यापन आवश्यक" },
+  pleaseCompleteCaptcha: { en: "Please complete the CAPTCHA verification", hi: "कृपया CAPTCHA सत्यापन पूरा करें" },
   passwordChanged: { en: "Password changed", hi: "पासवर्ड बदला गया" },
   passwordChangedSuccess: { en: "Your password has been updated successfully", hi: "आपका पासवर्ड सफलतापूर्वक अपडेट किया गया" },
   enterCredentials: { en: "Enter credentials", hi: "क्रेडेंशियल दर्ज करें" },
