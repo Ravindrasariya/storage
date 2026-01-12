@@ -20,7 +20,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  const DEFAULT_COLD_STORAGE_ID = "cs-default";
 
   // Authentication middleware - extracts user's coldStorageId from session token
   const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -113,6 +112,15 @@ export async function registerRoutes(
 
   app.get("/api/chambers/:chamberId/floors", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify chamber belongs to user's cold storage
+      const chamber = await storage.getChamber(req.params.chamberId);
+      if (!chamber) {
+        return res.status(404).json({ error: "Chamber not found" });
+      }
+      if (chamber.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const floors = await storage.getChamberFloors(req.params.chamberId);
       res.json(floors);
     } catch (error) {
@@ -122,7 +130,16 @@ export async function registerRoutes(
 
   app.post("/api/chamber-floors", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validated = insertChamberFloorSchema.parse(req.body);
+      // Verify chamber belongs to user's cold storage
+      const chamber = await storage.getChamber(validated.chamberId);
+      if (!chamber) {
+        return res.status(404).json({ error: "Chamber not found" });
+      }
+      if (chamber.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const floor = await storage.createChamberFloor(validated);
       res.status(201).json(floor);
     } catch (error) {
@@ -140,7 +157,17 @@ export async function registerRoutes(
 
   app.patch("/api/chamber-floors/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validated = updateFloorSchema.parse(req.body);
+      // Get floor and verify chamber ownership
+      const existingFloor = await storage.getChamberFloor(req.params.id);
+      if (!existingFloor) {
+        return res.status(404).json({ error: "Chamber floor not found" });
+      }
+      const chamber = await storage.getChamber(existingFloor.chamberId);
+      if (!chamber || chamber.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const floor = await storage.updateChamberFloor(req.params.id, validated);
       if (!floor) {
         return res.status(404).json({ error: "Chamber floor not found" });
@@ -156,6 +183,16 @@ export async function registerRoutes(
 
   app.delete("/api/chamber-floors/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Get floor and verify chamber ownership
+      const existingFloor = await storage.getChamberFloor(req.params.id);
+      if (!existingFloor) {
+        return res.status(404).json({ error: "Chamber floor not found" });
+      }
+      const chamber = await storage.getChamber(existingFloor.chamberId);
+      if (!chamber || chamber.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       await storage.deleteChamberFloor(req.params.id);
       res.json({ success: true });
     } catch (error) {
