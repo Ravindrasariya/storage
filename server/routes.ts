@@ -56,9 +56,12 @@ export async function registerRoutes(
     }
   };
 
-  // Helper to get coldStorageId - uses auth context if available, falls back to default
+  // Helper to get coldStorageId - throws if auth context is missing (must be used after requireAuth)
   const getColdStorageId = (req: AuthenticatedRequest): string => {
-    return req.authContext?.coldStorageId || DEFAULT_COLD_STORAGE_ID;
+    if (!req.authContext?.coldStorageId) {
+      throw new Error("Authentication context missing - route must use requireAuth middleware");
+    }
+    return req.authContext.coldStorageId;
   };
 
   // Initialize default data in database
@@ -321,9 +324,14 @@ export async function registerRoutes(
 
   app.get("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
       if (!lot) {
         return res.status(404).json({ error: "Lot not found" });
+      }
+      // Verify ownership - lot must belong to user's cold storage
+      if (lot.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
       }
       res.json(lot);
     } catch (error) {
@@ -343,9 +351,14 @@ export async function registerRoutes(
 
   app.patch("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
       if (!lot) {
         return res.status(404).json({ error: "Lot not found" });
+      }
+      // Verify ownership - lot must belong to user's cold storage
+      if (lot.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       // Validate only allowed fields
@@ -387,9 +400,14 @@ export async function registerRoutes(
   // Reverse the latest edit
   app.post("/api/lots/:id/reverse-edit", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
       if (!lot) {
         return res.status(404).json({ error: "Lot not found" });
+      }
+      // Verify ownership
+      if (lot.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const { historyId } = req.body;
@@ -446,9 +464,14 @@ export async function registerRoutes(
 
   app.post("/api/lots/:id/partial-sale", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
       if (!lot) {
         return res.status(404).json({ error: "Lot not found" });
+      }
+      // Verify ownership
+      if (lot.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight } = req.body;
@@ -589,6 +612,15 @@ export async function registerRoutes(
 
   app.get("/api/lots/:id/history", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify lot ownership before showing history
+      const lot = await storage.getLot(req.params.id);
+      if (!lot) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+      if (lot.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const history = await storage.getLotHistory(req.params.id);
       res.json(history);
     } catch (error) {
@@ -613,7 +645,17 @@ export async function registerRoutes(
 
   app.post("/api/lots/:id/finalize-sale", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validatedData = finalizeSaleSchema.parse(req.body);
+      
+      // Verify lot ownership before allowing sale
+      const existingLot = await storage.getLot(req.params.id);
+      if (!existingLot) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+      if (existingLot.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       
       // Update position if provided
       if (validatedData.position) {
@@ -761,6 +803,15 @@ export async function registerRoutes(
 
   app.patch("/api/chambers/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      const chamber = await storage.getChamber(req.params.id);
+      if (!chamber) {
+        return res.status(404).json({ error: "Chamber not found" });
+      }
+      // Verify ownership
+      if (chamber.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const updated = await storage.updateChamber(req.params.id, req.body);
       res.json(updated);
     } catch (error) {
@@ -770,6 +821,15 @@ export async function registerRoutes(
 
   app.delete("/api/chambers/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      const chamber = await storage.getChamber(req.params.id);
+      if (!chamber) {
+        return res.status(404).json({ error: "Chamber not found" });
+      }
+      // Verify ownership
+      if (chamber.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const deleted = await storage.deleteChamber(req.params.id);
       if (!deleted) {
         return res.status(400).json({ error: "Cannot delete chamber with existing lots" });
@@ -821,6 +881,13 @@ export async function registerRoutes(
 
   app.patch("/api/sales-history/:id/mark-paid", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify ownership by checking if sale belongs to user's cold storage
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
+      const sale = currentSales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
       const updated = await storage.markSaleAsPaid(req.params.id);
       if (!updated) {
         return res.status(404).json({ error: "Sale not found" });
@@ -833,6 +900,13 @@ export async function registerRoutes(
 
   app.patch("/api/sales-history/:id/mark-due", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify ownership
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
+      const sale = currentSales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
       const updated = await storage.markSaleAsDue(req.params.id);
       if (!updated) {
         return res.status(404).json({ error: "Sale not found" });
@@ -858,9 +932,14 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const validatedData = updateSalesHistorySchema.parse(req.body);
       
-      // Get current sale data before update for logging
+      // Get current sale data before update for logging - also serves as ownership check
       const currentSales = await storage.getSalesHistory(coldStorageId, {});
       const currentSale = currentSales.find(s => s.id === req.params.id);
+      
+      // Ownership check - sale must belong to user's cold storage
+      if (!currentSale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
       
       const updated = await storage.updateSalesHistory(req.params.id, validatedData);
       if (!updated) {
@@ -897,6 +976,13 @@ export async function registerRoutes(
 
   app.get("/api/sales-history/:id/edit-history", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify ownership
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
+      const sale = currentSales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
       const history = await storage.getSaleEditHistory(req.params.id);
       res.json(history);
     } catch (error) {
@@ -906,6 +992,13 @@ export async function registerRoutes(
 
   app.post("/api/sales-history/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify ownership before allowing reversal
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
+      const sale = currentSales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
       const result = await storage.reverseSale(req.params.id);
       if (!result.success) {
         const statusCode = result.errorType === "not_found" ? 404 : 400;
@@ -924,6 +1017,13 @@ export async function registerRoutes(
 
   app.get("/api/sales-history/:id/exits", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify ownership
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
+      const sale = currentSales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
       const exits = await storage.getExitsForSale(req.params.id);
       const totalExited = await storage.getTotalExitedBags(req.params.id);
       res.json({ exits, totalExited });
@@ -970,8 +1070,15 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sales-history/:id/exits/reverse-latest", async (req, res) => {
+  app.post("/api/sales-history/:id/exits/reverse-latest", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify ownership
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
+      const sale = currentSales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
       const result = await storage.reverseLatestExit(req.params.id);
       if (!result.success) {
         return res.status(400).json({ error: result.message });
@@ -987,8 +1094,15 @@ export async function registerRoutes(
     billType: z.enum(["coldStorage", "sales"]),
   });
 
-  app.post("/api/sales-history/:id/assign-bill-number", async (req, res) => {
+  app.post("/api/sales-history/:id/assign-bill-number", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify ownership
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
+      const sale = currentSales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
       const { billType } = assignBillNumberSchema.parse(req.body);
       const billNumber = await storage.assignBillNumber(req.params.id, billType);
       res.json({ billNumber });
@@ -1003,6 +1117,15 @@ export async function registerRoutes(
   // Lot bill number assignment
   app.post("/api/lots/:id/assign-bill-number", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      const lot = await storage.getLot(req.params.id);
+      if (!lot) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+      // Verify ownership
+      if (lot.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const billNumber = await storage.assignLotBillNumber(req.params.id);
       res.json({ billNumber });
     } catch (error) {
@@ -1054,7 +1177,14 @@ export async function registerRoutes(
 
   app.patch("/api/maintenance/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validatedData = updateMaintenanceSchema.parse(req.body);
+      // Verify ownership
+      const records = await storage.getMaintenanceRecords(coldStorageId);
+      const record = records.find(r => r.id === req.params.id);
+      if (!record) {
+        return res.status(404).json({ error: "Maintenance record not found" });
+      }
       const updated = await storage.updateMaintenanceRecord(req.params.id, validatedData);
       if (!updated) {
         return res.status(404).json({ error: "Maintenance record not found" });
@@ -1070,6 +1200,13 @@ export async function registerRoutes(
 
   app.delete("/api/maintenance/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
+      // Verify ownership
+      const records = await storage.getMaintenanceRecords(coldStorageId);
+      const record = records.find(r => r.id === req.params.id);
+      if (!record) {
+        return res.status(404).json({ error: "Maintenance record not found" });
+      }
       const deleted = await storage.deleteMaintenanceRecord(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Maintenance record not found" });
@@ -1173,7 +1310,14 @@ export async function registerRoutes(
   // Reverse cash receipt
   app.post("/api/cash-receipts/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { id } = req.params;
+      // Verify ownership
+      const receipts = await storage.getCashReceipts(coldStorageId);
+      const receipt = receipts.find(r => r.id === id);
+      if (!receipt) {
+        return res.status(404).json({ error: "Cash receipt not found" });
+      }
       const result = await storage.reverseCashReceipt(id);
       if (!result.success) {
         return res.status(400).json({ error: result.message });
@@ -1187,7 +1331,14 @@ export async function registerRoutes(
   // Reverse expense
   app.post("/api/expenses/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { id } = req.params;
+      // Verify ownership
+      const expenseList = await storage.getExpenses(coldStorageId);
+      const expense = expenseList.find(e => e.id === id);
+      if (!expense) {
+        return res.status(404).json({ error: "Expense not found" });
+      }
       const result = await storage.reverseExpense(id);
       if (!result.success) {
         return res.status(400).json({ error: result.message });
