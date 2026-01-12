@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { authFetch } from "@/lib/queryClient";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,7 @@ export default function SalesHistoryPage() {
     queryKey: ["/api/sales-history", yearFilter, farmerFilter, mobileFilter, paymentFilter, buyerFilter],
     queryFn: async () => {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/sales-history${queryString ? `?${queryString}` : ""}`);
+      const response = await authFetch(`/api/sales-history${queryString ? `?${queryString}` : ""}`);
       if (!response.ok) throw new Error("Failed to fetch sales history");
       return response.json();
     },

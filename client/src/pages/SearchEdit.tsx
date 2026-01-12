@@ -26,7 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LotCard } from "@/components/LotCard";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { ArrowLeft, Search, Phone, Package, Filter, User } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
@@ -221,7 +221,7 @@ export default function SearchEdit() {
         url += `&paymentDue=true`;
       }
       
-      const response = await fetch(url);
+      const response = await authFetch(url);
       if (response.ok) {
         const data = await response.json();
         setSearchResults(data);
@@ -245,7 +245,7 @@ export default function SearchEdit() {
     });
 
     try {
-      const response = await fetch(`/api/lots/${lot.id}/history`);
+      const response = await authFetch(`/api/lots/${lot.id}/history`);
       if (response.ok) {
         const data = await response.json();
         setEditHistory(data);
@@ -681,7 +681,7 @@ export default function SearchEdit() {
                   });
                   // Refresh the lot and history
                   if (selectedLot) {
-                    const lotResponse = await fetch(`/api/lots/${selectedLot.id}`);
+                    const lotResponse = await authFetch(`/api/lots/${selectedLot.id}`);
                     if (lotResponse.ok) {
                       const updatedLot = await lotResponse.json();
                       setSelectedLot(updatedLot);
@@ -692,7 +692,7 @@ export default function SearchEdit() {
                         quality: updatedLot.quality,
                       });
                     }
-                    const historyResponse = await fetch(`/api/lots/${selectedLot.id}/history`);
+                    const historyResponse = await authFetch(`/api/lots/${selectedLot.id}/history`);
                     if (historyResponse.ok) {
                       setEditHistory(await historyResponse.json());
                     }

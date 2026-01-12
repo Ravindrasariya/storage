@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { LogOut, Printer, Save } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, ExitHistory, ColdStorage } from "@shared/schema";
@@ -37,7 +37,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     queryKey: ["/api/sales-history", sale?.id, "exits"],
     queryFn: async () => {
       if (!sale?.id) return { exits: [], totalExited: 0 };
-      const response = await fetch(`/api/sales-history/${sale.id}/exits`);
+      const response = await authFetch(`/api/sales-history/${sale.id}/exits`);
       return response.json();
     },
     enabled: !!sale?.id && open,

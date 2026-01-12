@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { authFetch } from "@/lib/queryClient";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -257,7 +258,7 @@ export function SettingsDialog() {
 
   const handleResetSeason = async () => {
     try {
-      const response = await fetch("/api/reset-season/check");
+      const response = await authFetch("/api/reset-season/check");
       const eligibility = await response.json();
       
       if (!eligibility.canReset) {

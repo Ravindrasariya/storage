@@ -2,9 +2,20 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 const AUTH_TOKEN_KEY = "cold_store_auth_token";
 
-function getAuthHeaders(): Record<string, string> {
+export function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem(AUTH_TOKEN_KEY);
   return token ? { "x-auth-token": token } : {};
+}
+
+export async function authFetch(url: string, options?: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...options?.headers,
+    },
+    credentials: "include",
+  });
 }
 
 async function throwIfResNotOk(res: Response) {

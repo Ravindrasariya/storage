@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
+import { authFetch } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,7 +28,7 @@ export default function Analytics() {
       const url = selectedYear && selectedYear !== "all" 
         ? `/api/analytics/quality?year=${selectedYear}` 
         : "/api/analytics/quality";
-      const response = await fetch(url);
+      const response = await authFetch(url);
       if (!response.ok) throw new Error("Failed to fetch quality stats");
       return response.json();
     },
@@ -39,7 +40,7 @@ export default function Analytics() {
       const url = selectedYear && selectedYear !== "all" 
         ? `/api/analytics/payments?year=${selectedYear}` 
         : "/api/analytics/payments";
-      const response = await fetch(url);
+      const response = await authFetch(url);
       if (!response.ok) throw new Error("Failed to fetch payment stats");
       return response.json();
     },
@@ -51,7 +52,7 @@ export default function Analytics() {
       const url = selectedYear && selectedYear !== "all" 
         ? `/api/analytics/merchants?year=${selectedYear}` 
         : "/api/analytics/merchants";
-      const response = await fetch(url);
+      const response = await authFetch(url);
       if (!response.ok) throw new Error("Failed to fetch merchant stats");
       return response.json();
     },

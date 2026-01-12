@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { Pencil, Save, X, RotateCcw, History } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
@@ -39,7 +39,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     queryKey: ["/api/sales-history", sale?.id, "edit-history"],
     queryFn: async () => {
       if (!sale?.id) return [];
-      const response = await fetch(`/api/sales-history/${sale.id}/edit-history`);
+      const response = await authFetch(`/api/sales-history/${sale.id}/edit-history`);
       return response.json();
     },
     enabled: !!sale?.id && open,
