@@ -3,6 +3,7 @@ import { eq, and, like, ilike, desc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
+  coldStorageUsers,
   chambers,
   chamberFloors,
   lots,
@@ -15,6 +16,8 @@ import {
   expenses,
   type ColdStorage,
   type InsertColdStorage,
+  type ColdStorageUser,
+  type InsertColdStorageUser,
   type Chamber,
   type InsertChamber,
   type ChamberFloor,
@@ -118,6 +121,16 @@ export interface IStorage {
   // Bill number assignment
   assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number>;
   assignLotBillNumber(lotId: string): Promise<number>;
+  // Admin - Cold Storage Management
+  getAllColdStorages(): Promise<ColdStorage[]>;
+  createColdStorage(data: InsertColdStorage): Promise<ColdStorage>;
+  deleteColdStorage(id: string): Promise<boolean>;
+  // Cold Storage Users
+  getColdStorageUsers(coldStorageId: string): Promise<ColdStorageUser[]>;
+  createColdStorageUser(data: InsertColdStorageUser): Promise<ColdStorageUser>;
+  updateColdStorageUser(id: string, updates: Partial<ColdStorageUser>): Promise<ColdStorageUser | undefined>;
+  deleteColdStorageUser(id: string): Promise<boolean>;
+  resetUserPassword(userId: string, newPassword: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1636,6 +1649,69 @@ export class DatabaseStorage implements IStorage {
       .where(eq(lots.id, lotId));
     
     return billNumber;
+  }
+
+  // Admin - Cold Storage Management
+  async getAllColdStorages(): Promise<ColdStorage[]> {
+    return await db.select().from(coldStorages);
+  }
+
+  async createColdStorage(data: InsertColdStorage): Promise<ColdStorage> {
+    const id = `cs-${randomUUID()}`;
+    const [newStorage] = await db.insert(coldStorages)
+      .values({ ...data, id })
+      .returning();
+    return newStorage;
+  }
+
+  async deleteColdStorage(id: string): Promise<boolean> {
+    // First delete all users for this cold storage
+    await db.delete(coldStorageUsers).where(eq(coldStorageUsers.coldStorageId, id));
+    // Then delete chambers and their floors
+    const chambersToDelete = await db.select().from(chambers).where(eq(chambers.coldStorageId, id));
+    for (const chamber of chambersToDelete) {
+      await db.delete(chamberFloors).where(eq(chamberFloors.chamberId, chamber.id));
+    }
+    await db.delete(chambers).where(eq(chambers.coldStorageId, id));
+    // Delete the cold storage
+    const result = await db.delete(coldStorages).where(eq(coldStorages.id, id));
+    return true;
+  }
+
+  // Cold Storage Users
+  async getColdStorageUsers(coldStorageId: string): Promise<ColdStorageUser[]> {
+    return await db.select()
+      .from(coldStorageUsers)
+      .where(eq(coldStorageUsers.coldStorageId, coldStorageId));
+  }
+
+  async createColdStorageUser(data: InsertColdStorageUser): Promise<ColdStorageUser> {
+    const id = `user-${randomUUID()}`;
+    const [newUser] = await db.insert(coldStorageUsers)
+      .values({ ...data, id })
+      .returning();
+    return newUser;
+  }
+
+  async updateColdStorageUser(id: string, updates: Partial<ColdStorageUser>): Promise<ColdStorageUser | undefined> {
+    const [updated] = await db.update(coldStorageUsers)
+      .set(updates)
+      .where(eq(coldStorageUsers.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteColdStorageUser(id: string): Promise<boolean> {
+    await db.delete(coldStorageUsers).where(eq(coldStorageUsers.id, id));
+    return true;
+  }
+
+  async resetUserPassword(userId: string, newPassword: string): Promise<boolean> {
+    const [updated] = await db.update(coldStorageUsers)
+      .set({ password: newPassword })
+      .where(eq(coldStorageUsers.id, userId))
+      .returning();
+    return !!updated;
   }
 }
 

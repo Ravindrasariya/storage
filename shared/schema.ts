@@ -6,6 +6,11 @@ import { z } from "zod";
 export const coldStorages = pgTable("cold_storages", {
   id: varchar("id").primaryKey(),
   name: text("name").notNull(),
+  address: text("address"), // Cold storage address
+  tehsil: text("tehsil"), // Tehsil
+  district: text("district"), // District
+  state: text("state"), // State
+  pincode: text("pincode"), // Pincode
   totalCapacity: integer("total_capacity").notNull(), // Total bags capacity
   waferRate: real("wafer_rate").notNull(), // Per bag rate for wafer (total)
   seedRate: real("seed_rate").notNull(), // Per bag rate for seed (total)
@@ -18,6 +23,17 @@ export const coldStorages = pgTable("cold_storages", {
   nextColdStorageBillNumber: integer("next_cold_storage_bill_number").notNull().default(1), // Counter for cold storage deduction bills
   nextSalesBillNumber: integer("next_sales_bill_number").notNull().default(1), // Counter for sales bills
   nextEntryBillNumber: integer("next_entry_bill_number").notNull().default(1), // Counter for lot entry receipts
+});
+
+// Cold Storage Users - users who can access a cold storage
+export const coldStorageUsers = pgTable("cold_storage_users", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  name: text("name").notNull(),
+  mobileNumber: text("mobile_number").notNull(),
+  password: text("password").notNull(), // Stored as plain text for admin viewing (simple system)
+  accessType: text("access_type").notNull(), // 'view' or 'edit'
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // Chambers in cold storage
@@ -206,6 +222,7 @@ export const expenses = pgTable("expenses", {
 
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
+export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
 export const insertChamberSchema = createInsertSchema(chambers).omit({ id: true });
 export const insertChamberFloorSchema = createInsertSchema(chamberFloors).omit({ id: true });
 export const insertLotSchema = createInsertSchema(lots).omit({ id: true, createdAt: true });
@@ -220,6 +237,8 @@ export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true,
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
 export type InsertColdStorage = z.infer<typeof insertColdStorageSchema>;
+export type ColdStorageUser = typeof coldStorageUsers.$inferSelect;
+export type InsertColdStorageUser = z.infer<typeof insertColdStorageUserSchema>;
 export type Chamber = typeof chambers.$inferSelect;
 export type InsertChamber = z.infer<typeof insertChamberSchema>;
 export type ChamberFloor = typeof chamberFloors.$inferSelect;

@@ -26,6 +26,7 @@ import SearchEdit from "@/pages/SearchEdit";
 import Analytics from "@/pages/Analytics";
 import SalesHistory from "@/pages/SalesHistory";
 import CashManagement from "@/pages/CashManagement";
+import Admin from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
 import { useState } from "react";
 
@@ -114,6 +115,7 @@ function Router() {
       <Route path="/analytics" component={Analytics} />
       <Route path="/sales-history" component={SalesHistory} />
       <Route path="/cash-management" component={CashManagement} />
+      <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
   );

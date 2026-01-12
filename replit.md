@@ -39,13 +39,23 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Schema
 Core entities:
-- **coldStorages**: Configuration for each cold storage facility (includes bill number counters for exit, cold storage deduction, and sales bills)
+- **coldStorages**: Configuration for each cold storage facility (includes bill number counters, address fields: address, tehsil, district, state, pincode)
+- **coldStorageUsers**: Users who can access a cold storage (name, mobileNumber, password, accessType: view/edit)
 - **chambers**: Storage chambers within a facility with capacity tracking
 - **lots**: Farmer lot entries with location, quality, and bag information
 - **lotEditHistory**: Audit trail for lot modifications and partial sales
 - **salesHistory**: Complete sales records with unique bill numbers (coldStorageBillNumber, salesBillNumber)
 - **exitEntries**: Exit/Nikasi entries with unique bill numbers
 - **cashFlow**: Cash management with FIFO-based payment allocation
+
+### Admin Panel
+- Hidden admin page at `/admin` (not in main navigation)
+- Password-protected with ADMIN_PASSWORD environment variable (default: admin123)
+- Token-based session authentication for all admin API routes
+- Features:
+  - Cold storage management (create, edit, delete)
+  - Collapsible rows showing cold storage details and address
+  - User management per cold storage (add users, set access type, reset passwords)
 
 ### Bill Number System
 - Four independent bill number sequences: Exit, Cold Storage Deduction, Sales, and Lot Entry

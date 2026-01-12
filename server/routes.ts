@@ -1061,5 +1061,222 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== ADMIN ROUTES ====================
+  
+  // Admin password from environment variable (default: "admin123" for development)
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+  
+  // Simple session token for admin (in-memory, resets on server restart)
+  let adminSessionToken: string | null = null;
+  
+  // Generate a simple random token
+  const generateToken = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let token = '';
+    for (let i = 0; i < 32; i++) {
+      token += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return token;
+  };
+  
+  // Middleware to verify admin session
+  const verifyAdminSession = (req: any, res: any, next: any) => {
+    const token = req.headers['x-admin-token'];
+    if (!token || token !== adminSessionToken) {
+      return res.status(401).json({ error: "Unauthorized - please login" });
+    }
+    next();
+  };
+
+  // Admin login
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const { password } = req.body;
+      if (password === ADMIN_PASSWORD) {
+        adminSessionToken = generateToken();
+        res.json({ success: true, token: adminSessionToken });
+      } else {
+        res.status(401).json({ error: "Invalid password" });
+      }
+    } catch (error) {
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+  
+  // Admin logout
+  app.post("/api/admin/logout", (req, res) => {
+    adminSessionToken = null;
+    res.json({ success: true });
+  });
+
+  // Get all cold storages (protected)
+  app.get("/api/admin/cold-storages", verifyAdminSession, async (req, res) => {
+    try {
+      const coldStorages = await storage.getAllColdStorages();
+      res.json(coldStorages);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch cold storages" });
+    }
+  });
+
+  // Create cold storage
+  const createColdStorageSchema = z.object({
+    name: z.string().min(1, "Name is required"),
+    address: z.string().optional(),
+    tehsil: z.string().optional(),
+    district: z.string().optional(),
+    state: z.string().optional(),
+    pincode: z.string().optional(),
+    totalCapacity: z.number().int().positive(),
+    waferRate: z.number().positive(),
+    seedRate: z.number().positive(),
+    waferColdCharge: z.number().optional(),
+    waferHammali: z.number().optional(),
+    seedColdCharge: z.number().optional(),
+    seedHammali: z.number().optional(),
+    linkedPhones: z.array(z.string()),
+  });
+
+  app.post("/api/admin/cold-storages", verifyAdminSession, async (req, res) => {
+    try {
+      const validated = createColdStorageSchema.parse(req.body);
+      const coldStorage = await storage.createColdStorage(validated);
+      res.status(201).json(coldStorage);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create cold storage" });
+    }
+  });
+
+  // Update cold storage (protected)
+  const updateColdStorageSchema = z.object({
+    name: z.string().optional(),
+    address: z.string().optional(),
+    tehsil: z.string().optional(),
+    district: z.string().optional(),
+    state: z.string().optional(),
+    pincode: z.string().optional(),
+    totalCapacity: z.number().int().positive().optional(),
+    waferRate: z.number().positive().optional(),
+    seedRate: z.number().positive().optional(),
+    waferColdCharge: z.number().optional(),
+    waferHammali: z.number().optional(),
+    seedColdCharge: z.number().optional(),
+    seedHammali: z.number().optional(),
+    linkedPhones: z.array(z.string()).optional(),
+  });
+  
+  app.patch("/api/admin/cold-storages/:id", verifyAdminSession, async (req, res) => {
+    try {
+      const validated = updateColdStorageSchema.parse(req.body);
+      const updated = await storage.updateColdStorage(req.params.id, validated);
+      if (!updated) {
+        return res.status(404).json({ error: "Cold storage not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update cold storage" });
+    }
+  });
+
+  // Delete cold storage (protected)
+  app.delete("/api/admin/cold-storages/:id", verifyAdminSession, async (req, res) => {
+    try {
+      await storage.deleteColdStorage(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete cold storage" });
+    }
+  });
+
+  // Get users for a cold storage (protected)
+  app.get("/api/admin/cold-storages/:coldStorageId/users", verifyAdminSession, async (req, res) => {
+    try {
+      const users = await storage.getColdStorageUsers(req.params.coldStorageId);
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  // Create user for a cold storage
+  const createUserSchema = z.object({
+    name: z.string().min(1, "Name is required"),
+    mobileNumber: z.string().regex(/^\d{10}$/, "Mobile number must be 10 digits"),
+    password: z.string().min(4, "Password must be at least 4 characters"),
+    accessType: z.enum(["view", "edit"]),
+  });
+
+  app.post("/api/admin/cold-storages/:coldStorageId/users", verifyAdminSession, async (req, res) => {
+    try {
+      const validated = createUserSchema.parse(req.body);
+      const user = await storage.createColdStorageUser({
+        ...validated,
+        coldStorageId: req.params.coldStorageId,
+      });
+      res.status(201).json(user);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+
+  // Update user (protected)
+  const updateUserSchema = z.object({
+    name: z.string().optional(),
+    mobileNumber: z.string().regex(/^\d{10}$/).optional(),
+    accessType: z.enum(["view", "edit"]).optional(),
+  });
+  
+  app.patch("/api/admin/users/:id", verifyAdminSession, async (req, res) => {
+    try {
+      const validated = updateUserSchema.parse(req.body);
+      const updated = await storage.updateColdStorageUser(req.params.id, validated);
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  // Delete user (protected)
+  app.delete("/api/admin/users/:id", verifyAdminSession, async (req, res) => {
+    try {
+      await storage.deleteColdStorageUser(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  // Reset user password (protected)
+  app.post("/api/admin/users/:id/reset-password", verifyAdminSession, async (req, res) => {
+    try {
+      const { newPassword } = req.body;
+      if (!newPassword || newPassword.length < 4) {
+        return res.status(400).json({ error: "Password must be at least 4 characters" });
+      }
+      const success = await storage.resetUserPassword(req.params.id, newPassword);
+      if (!success) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reset password" });
+    }
+  });
+
   return httpServer;
 }
