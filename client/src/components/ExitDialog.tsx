@@ -96,29 +96,61 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       <head>
         <title>${t("exitReceipt")}</title>
         <style>
-          @page { size: A5; margin: 10mm; }
+          @page { size: A4; margin: 8mm; }
           body { 
             font-family: 'Noto Sans Devanagari', Arial, sans-serif; 
-            padding: 20px; 
-            max-width: 420px;
-            margin: 0 auto;
-            font-size: 12px;
+            padding: 0;
+            margin: 0;
+            font-size: 11px;
           }
-          .header { text-align: center; margin-bottom: 20px; }
-          .header h1 { font-size: 18px; margin: 0 0 5px; }
-          .header h2 { font-size: 14px; margin: 0; font-weight: normal; border: 1px solid #000; padding: 5px; display: inline-block; }
-          .details { margin-bottom: 15px; }
-          .details-row { display: flex; margin-bottom: 5px; }
-          .details-label { font-weight: bold; width: 45%; }
-          .details-value { width: 55%; }
-          .separator { border-top: 1px dashed #000; margin: 15px 0; }
-          .signature { margin-top: 50px; text-align: right; }
-          .signature-line { border-top: 1px solid #000; width: 200px; margin-left: auto; padding-top: 5px; }
-          .footer { text-align: center; margin-top: 20px; font-size: 10px; color: #666; }
+          .copies-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+          }
+          .copy {
+            flex: 1;
+            padding: 10px 15px;
+            border-bottom: 2px dashed #000;
+            page-break-inside: avoid;
+          }
+          .copy:last-child {
+            border-bottom: none;
+          }
+          .copy-label {
+            text-align: right;
+            font-size: 9px;
+            font-weight: bold;
+            color: #666;
+            margin-bottom: 5px;
+          }
+          .header { text-align: center; margin-bottom: 8px; }
+          .header h1 { font-size: 16px; margin: 0 0 3px; }
+          .header h2 { font-size: 12px; margin: 0; font-weight: normal; border: 1px solid #000; padding: 3px 8px; display: inline-block; }
+          .header h3 { font-size: 12px; margin: 5px 0 0; }
+          .details { margin-bottom: 8px; }
+          .details-row { display: flex; margin-bottom: 2px; }
+          .details-row-double { display: flex; margin-bottom: 2px; }
+          .details-row-double > div { flex: 1; display: flex; }
+          .details-label { font-weight: bold; width: 45%; font-size: 10px; }
+          .details-value { width: 55%; font-size: 10px; }
+          .separator { border-top: 1px dashed #000; margin: 6px 0; }
+          .signature { margin-top: 15px; text-align: right; }
+          .signature-line { border-top: 1px solid #000; width: 180px; margin-left: auto; padding-top: 3px; font-size: 9px; }
+          .footer { text-align: center; margin-top: 8px; font-size: 9px; color: #666; }
         </style>
       </head>
       <body>
-        ${printContent}
+        <div class="copies-container">
+          <div class="copy">
+            <div class="copy-label">OFFICE COPY / कार्यालय प्रति</div>
+            ${printContent}
+          </div>
+          <div class="copy">
+            <div class="copy-label">CUSTOMER COPY / ग्राहक प्रति</div>
+            ${printContent}
+          </div>
+        </div>
       </body>
       </html>
     `);
@@ -261,21 +293,29 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             <div className="header">
               <h1>{coldStorage?.name || "Cold Storage"}</h1>
               <h2>निकासी रसीद / Exit Receipt</h2>
-              <h3 style={{ marginTop: "10px", fontSize: "14px" }}>बिल नंबर / Bill No: <strong>{lastExit?.billNumber || "-"}</strong></h3>
+              <h3 style={{ marginTop: "5px", fontSize: "12px" }}>बिल नंबर / Bill No: <strong>{lastExit?.billNumber || "-"}</strong></h3>
             </div>
 
             <div className="details">
-              <div className="details-row">
-                <span className="details-label">बिक्री तिथि / Sale Date:</span>
-                <span className="details-value">{formatDate(sale.soldAt)}</span>
+              <div className="details-row-double">
+                <div>
+                  <span className="details-label">बिक्री तिथि / Sale:</span>
+                  <span className="details-value">{formatDate(sale.soldAt)}</span>
+                </div>
+                <div>
+                  <span className="details-label">निकासी तिथि / Exit:</span>
+                  <span className="details-value">{lastExit ? formatDate(lastExit.exitDate) : formatDate(new Date())}</span>
+                </div>
               </div>
-              <div className="details-row">
-                <span className="details-label">निकासी तिथि / Exit Date:</span>
-                <span className="details-value">{lastExit ? formatDate(lastExit.exitDate) : formatDate(new Date())}</span>
-              </div>
-              <div className="details-row">
-                <span className="details-label">लॉट नंबर / Lot No:</span>
-                <span className="details-value">{sale.lotNo}</span>
+              <div className="details-row-double">
+                <div>
+                  <span className="details-label">लॉट नंबर / Lot:</span>
+                  <span className="details-value">{sale.lotNo}</span>
+                </div>
+                <div>
+                  <span className="details-label">आलू / Potato:</span>
+                  <span className="details-value">{sale.potatoType}</span>
+                </div>
               </div>
               <div className="details-row">
                 <span className="details-label">किसान / Farmer:</span>
@@ -286,46 +326,46 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                 <span className="details-value">{sale.buyerName || "-"}</span>
               </div>
               <div className="separator"></div>
-              <div className="details-row">
-                <span className="details-label">कुल बेचे / Total Sold:</span>
-                <span className="details-value">{sale.quantitySold} बैग / bags</span>
+              <div className="details-row-double">
+                <div>
+                  <span className="details-label">कुल बेचे / Sold:</span>
+                  <span className="details-value">{sale.quantitySold} bags</span>
+                </div>
+                <div>
+                  <span className="details-label">निकासी / Exited:</span>
+                  <span className="details-value"><strong>{lastExit?.bagsExited || bagsToExit} bags</strong></span>
+                </div>
               </div>
-              <div className="details-row">
-                <span className="details-label">निकासी किए / Exited Now:</span>
-                <span className="details-value"><strong>{lastExit?.bagsExited || bagsToExit} बैग / bags</strong></span>
+              <div className="details-row-double">
+                <div>
+                  <span className="details-label">बैग / Bag:</span>
+                  <span className="details-value">{sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
+                </div>
+                <div>
+                  <span className="details-label">कक्ष / Chamber:</span>
+                  <span className="details-value">{sale.chamberName}</span>
+                </div>
               </div>
-              <div className="separator"></div>
-              <div className="details-row">
-                <span className="details-label">बैग प्रकार / Bag Type:</span>
-                <span className="details-value">{sale.bagType === "wafer" ? "वेफर / Wafer" : "बीज / Seed"}</span>
-              </div>
-              <div className="details-row">
-                <span className="details-label">आलू प्रकार / Potato Type:</span>
-                <span className="details-value">{sale.potatoType}</span>
-              </div>
-              <div className="details-row">
-                <span className="details-label">कक्ष / Chamber:</span>
-                <span className="details-value">{sale.chamberName}</span>
-              </div>
-              <div className="details-row">
-                <span className="details-label">मंजिल / Floor:</span>
-                <span className="details-value">{sale.floor}</span>
-              </div>
-              <div className="details-row">
-                <span className="details-label">स्थिति / Position:</span>
-                <span className="details-value">{sale.position}</span>
+              <div className="details-row-double">
+                <div>
+                  <span className="details-label">मंजिल / Floor:</span>
+                  <span className="details-value">{sale.floor}</span>
+                </div>
+                <div>
+                  <span className="details-label">स्थिति / Position:</span>
+                  <span className="details-value">{sale.position}</span>
+                </div>
               </div>
             </div>
 
             <div className="signature">
               <div className="signature-line">
-                शीत भंडार प्रबंधक हस्ताक्षर<br/>
-                Cold Store Manager Signature
+                प्रबंधक हस्ताक्षर / Manager Sign
               </div>
             </div>
 
             <div className="footer">
-              यह कंप्यूटर द्वारा जनित रसीद है / This is a computer generated receipt
+              कंप्यूटर जनित रसीद / Computer generated receipt
             </div>
           </div>
 
