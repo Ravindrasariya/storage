@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Snowflake } from "lucide-react";
+import logoImage from "@assets/Gemini_Generated_Image_lu75dlu75dlu75dl_1768194752072.png";
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -29,9 +29,11 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
       data-testid="splash-screen"
     >
       <div className="flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-500">
-        <div className="text-blue-500 animate-spin" style={{ animationDuration: "3s" }}>
-          <Snowflake className="h-20 w-20" />
-        </div>
+        <img 
+          src={logoImage} 
+          alt="KrashuVed Logo" 
+          className="h-24 w-auto"
+        />
         
         <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500 delay-300">
           <h1 className="text-5xl font-bold tracking-tight">
@@ -39,7 +41,7 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
             <span className="text-orange-500">Ved</span>
           </h1>
           <p className="mt-2 text-gray-500 text-lg animate-in fade-in duration-500 delay-700">
-            Cold Store Manager
+            Your Trust, Our Priority
           </p>
         </div>
       </div>
