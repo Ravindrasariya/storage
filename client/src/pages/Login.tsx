@@ -156,17 +156,28 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   };
 
   const handleLoginForChangePassword = async (data: LoginFormData) => {
+    if (RECAPTCHA_SITE_KEY && !captchaToken) {
+      toast({
+        title: t("captchaRequired") || "Verification required",
+        description: t("pleaseCompleteCaptcha") || "Please complete the CAPTCHA verification",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, captchaToken }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
+        recaptchaRef.current?.reset();
+        setCaptchaToken(null);
         throw new Error(result.error || "Login failed");
       }
 
