@@ -79,6 +79,9 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record payment", variant: "destructive" });
@@ -119,6 +122,9 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -235,8 +241,8 @@ export default function CashManagement() {
       // Primary sort by timestamp (newest first)
       const timeDiff = b.timestamp - a.timestamp;
       if (timeDiff !== 0) return timeDiff;
-      // Secondary sort by ID (highest ID = most recent entry)
-      return b.data.id - a.data.id;
+      // Secondary sort by ID (string comparison for UUIDs)
+      return String(b.data.id).localeCompare(String(a.data.id));
     });
   }, [receipts, expensesList, filterBuyer, filterCategory, filterMonth]);
 
