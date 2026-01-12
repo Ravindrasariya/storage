@@ -33,9 +33,11 @@ export default function CashManagement() {
   const [activeTab, setActiveTab] = useState<"inward" | "expense">("inward");
   
   const [buyerName, setBuyerName] = useState("");
+  const [customBuyerName, setCustomBuyerName] = useState("");
   const [receiptType, setReceiptType] = useState<"cash" | "account">("cash");
   const [inwardAmount, setInwardAmount] = useState("");
   const [receivedDate, setReceivedDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [inwardRemarks, setInwardRemarks] = useState("");
 
   const [expenseType, setExpenseType] = useState<string>("");
   const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account">("cash");
@@ -60,7 +62,7 @@ export default function CashManagement() {
   });
 
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { buyerName: string; receiptType: string; amount: number; receivedAt: string }) => {
+    mutationFn: async (data: { buyerName: string; receiptType: string; amount: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -70,8 +72,10 @@ export default function CashManagement() {
         description: `${t("paymentRecorded")} - ${result.salesUpdated} ${t("salesAdjusted")}`,
       });
       setBuyerName("");
+      setCustomBuyerName("");
       setInwardAmount("");
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
+      setInwardRemarks("");
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
@@ -139,16 +143,19 @@ export default function CashManagement() {
   });
 
   const handleInwardSubmit = () => {
-    if (!buyerName || !inwardAmount || parseFloat(inwardAmount) <= 0) {
+    const finalBuyerName = buyerName === "__other__" ? customBuyerName.trim() : buyerName;
+    
+    if (!finalBuyerName || !inwardAmount || parseFloat(inwardAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
 
     createReceiptMutation.mutate({
-      buyerName,
+      buyerName: finalBuyerName,
       receiptType,
       amount: parseFloat(inwardAmount),
       receivedAt: new Date(receivedDate).toISOString(),
+      notes: inwardRemarks || undefined,
     });
   };
 
@@ -544,10 +551,13 @@ export default function CashManagement() {
                   <Label>{t("buyerName")} *</Label>
                   {loadingBuyers ? (
                     <div className="text-sm text-muted-foreground">{t("loading")}</div>
-                  ) : buyersWithDues.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">{t("noBuyersWithDues")}</div>
                   ) : (
-                    <Select value={buyerName} onValueChange={setBuyerName}>
+                    <Select value={buyerName} onValueChange={(value) => {
+                      setBuyerName(value);
+                      if (value !== "__other__") {
+                        setCustomBuyerName("");
+                      }
+                    }}>
                       <SelectTrigger data-testid="select-buyer">
                         <SelectValue placeholder={t("selectBuyer")} />
                       </SelectTrigger>
@@ -562,10 +572,21 @@ export default function CashManagement() {
                             </span>
                           </SelectItem>
                         ))}
+                        <SelectItem value="__other__">
+                          <span className="text-muted-foreground italic">{t("other") || "Other"}</span>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   )}
-                  {buyerName && selectedBuyerDue > 0 && (
+                  {buyerName === "__other__" && (
+                    <Input
+                      value={customBuyerName}
+                      onChange={(e) => setCustomBuyerName(e.target.value)}
+                      placeholder={t("enterBuyerName") || "Enter buyer name"}
+                      data-testid="input-custom-buyer-name"
+                    />
+                  )}
+                  {buyerName && buyerName !== "__other__" && selectedBuyerDue > 0 && (
                     <p className="text-xs text-muted-foreground">
                       {t("totalDue")}: ₹{selectedBuyerDue.toLocaleString()}
                     </p>
@@ -597,9 +618,21 @@ export default function CashManagement() {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label>{t("remarks")}</Label>
+                  <Textarea
+                    value={inwardRemarks}
+                    onChange={(e) => setInwardRemarks(e.target.value)}
+                    placeholder={t("remarks")}
+                    className="resize-none"
+                    rows={2}
+                    data-testid="input-inward-remarks"
+                  />
+                </div>
+
                 <Button
                   onClick={handleInwardSubmit}
-                  disabled={!buyerName || !inwardAmount || createReceiptMutation.isPending}
+                  disabled={!buyerName || (buyerName === "__other__" && !customBuyerName.trim()) || !inwardAmount || createReceiptMutation.isPending}
                   className="w-full"
                   data-testid="button-record-payment"
                 >
@@ -797,7 +830,7 @@ export default function CashManagement() {
                             {transaction.type === "inflow" ? "+" : "-"}₹{transaction.data.amount.toLocaleString()}
                           </span>
                         </div>
-                        <div className="flex gap-2 text-xs">
+                        <div className="flex flex-wrap gap-2 text-xs">
                           <Badge variant="outline" className="text-xs">
                             {transaction.type === "inflow" 
                               ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
@@ -807,6 +840,11 @@ export default function CashManagement() {
                           {transaction.type === "outflow" && (transaction.data as Expense).remarks && (
                             <span className="text-muted-foreground truncate">
                               {(transaction.data as Expense).remarks}
+                            </span>
+                          )}
+                          {transaction.type === "inflow" && (transaction.data as CashReceipt).notes && (
+                            <span className="text-muted-foreground truncate">
+                              {(transaction.data as CashReceipt).notes}
                             </span>
                           )}
                           {transaction.type === "inflow" && !isReversed && (

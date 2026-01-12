@@ -233,6 +233,7 @@ const translations: Translations = {
   // Merchant Analysis
   merchantAnalysis: { en: "Merchant Analysis", hi: "व्यापारी विश्लेषण" },
   selectBuyer: { en: "Select Buyer", hi: "खरीदार चुनें" },
+  other: { en: "Other", hi: "अन्य" },
   allBuyers: { en: "All Buyers", hi: "सभी खरीदार" },
   bagsPurchased: { en: "Bags Purchased", hi: "खरीदे गए बैग" },
   totalValueINR: { en: "Total Value (INR)", hi: "कुल मूल्य (INR)" },
