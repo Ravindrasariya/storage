@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import logoImage from "@assets/Gemini_Generated_Image_lu75dlu75dlu75dl_1768194752072.png";
+import logoImage from "@assets/Gemini_Generated_Image_lu75dlu75dlu75dl(1)_1768195085916.png";
 
 interface SplashScreenProps {
   onComplete: () => void;
