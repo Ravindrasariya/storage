@@ -97,7 +97,6 @@ export function SettingsDialog() {
     id?: string;
     taskDescription: string;
     responsiblePerson: string;
-    nextDueDate: string;
     isNew?: boolean;
   }
   const [maintenanceRows, setMaintenanceRows] = useState<MaintenanceRow[]>([]);
@@ -109,10 +108,9 @@ export function SettingsDialog() {
           id: r.id,
           taskDescription: r.taskDescription,
           responsiblePerson: r.responsiblePerson,
-          nextDueDate: r.nextDueDate,
         })));
       } else if (maintenanceRows.length === 0) {
-        setMaintenanceRows([{ taskDescription: "", responsiblePerson: "", nextDueDate: "", isNew: true }]);
+        setMaintenanceRows([{ taskDescription: "", responsiblePerson: "", isNew: true }]);
       }
     }
   }, [open, maintenanceRecords]);
@@ -140,10 +138,9 @@ export function SettingsDialog() {
           id: r.id,
           taskDescription: r.taskDescription,
           responsiblePerson: r.responsiblePerson,
-          nextDueDate: r.nextDueDate,
         })));
       } else {
-        setMaintenanceRows([{ taskDescription: "", responsiblePerson: "", nextDueDate: "", isNew: true }]);
+        setMaintenanceRows([{ taskDescription: "", responsiblePerson: "", isNew: true }]);
       }
     }
   };
@@ -256,7 +253,7 @@ export function SettingsDialog() {
   });
 
   const createMaintenanceMutation = useMutation({
-    mutationFn: async (data: { taskDescription: string; responsiblePerson: string; nextDueDate: string }) => {
+    mutationFn: async (data: { taskDescription: string; responsiblePerson: string }) => {
       return apiRequest("POST", "/api/maintenance", data);
     },
     onSuccess: () => {
@@ -265,7 +262,7 @@ export function SettingsDialog() {
   });
 
   const updateMaintenanceMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; taskDescription: string; responsiblePerson: string; nextDueDate: string }) => {
+    mutationFn: async ({ id, ...data }: { id: string; taskDescription: string; responsiblePerson: string }) => {
       return apiRequest("PATCH", `/api/maintenance/${id}`, data);
     },
     onSuccess: () => {
@@ -458,7 +455,7 @@ export function SettingsDialog() {
   };
 
   const handleAddMaintenanceRow = () => {
-    setMaintenanceRows(prev => [...prev, { taskDescription: "", responsiblePerson: "", nextDueDate: "", isNew: true }]);
+    setMaintenanceRows(prev => [...prev, { taskDescription: "", responsiblePerson: "", isNew: true }]);
   };
 
   const handleDeleteMaintenanceRow = (index: number) => {
@@ -469,7 +466,7 @@ export function SettingsDialog() {
     setMaintenanceRows(prev => prev.filter((_, i) => i !== index));
   };
 
-  const updateMaintenanceRow = (index: number, field: "taskDescription" | "responsiblePerson" | "nextDueDate", value: string) => {
+  const updateMaintenanceRow = (index: number, field: "taskDescription" | "responsiblePerson", value: string) => {
     setMaintenanceRows(prev => 
       prev.map((row, i) => i === index ? { ...row, [field]: value } : row)
     );
@@ -479,11 +476,10 @@ export function SettingsDialog() {
     try {
       for (const row of maintenanceRows) {
         if (row.isNew || !row.id) {
-          if (row.taskDescription || row.responsiblePerson || row.nextDueDate) {
+          if (row.taskDescription || row.responsiblePerson) {
             await createMaintenanceMutation.mutateAsync({
               taskDescription: row.taskDescription,
               responsiblePerson: row.responsiblePerson,
-              nextDueDate: row.nextDueDate,
             });
           }
         } else {
@@ -491,7 +487,6 @@ export function SettingsDialog() {
             id: row.id,
             taskDescription: row.taskDescription,
             responsiblePerson: row.responsiblePerson,
-            nextDueDate: row.nextDueDate,
           });
         }
       }
@@ -502,8 +497,7 @@ export function SettingsDialog() {
         id: r.id,
         taskDescription: r.taskDescription,
         responsiblePerson: r.responsiblePerson,
-        nextDueDate: r.nextDueDate,
-      })) || [{ taskDescription: "", responsiblePerson: "", nextDueDate: "", isNew: true }]);
+      })) || [{ taskDescription: "", responsiblePerson: "", isNew: true }]);
       toast({
         title: t("success"),
         description: "Maintenance records saved successfully",
@@ -808,9 +802,8 @@ export function SettingsDialog() {
 
             <div className="space-y-3">
               <div className="hidden sm:grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground px-2">
-                <span className="col-span-4">{t("taskDescription") || "Task Description"}</span>
-                <span className="col-span-3">{t("responsiblePerson") || "Responsible Person"}</span>
-                <span className="col-span-3">{t("nextDueDate") || "Next Due Date"}</span>
+                <span className="col-span-5">{t("taskDescription") || "Task Description"}</span>
+                <span className="col-span-5">{t("responsiblePerson") || "Responsible Person"}</span>
                 <span className="col-span-2"></span>
               </div>
               {maintenanceRows.map((row, index) => (
@@ -818,25 +811,18 @@ export function SettingsDialog() {
                   <Input
                     value={row.taskDescription}
                     onChange={(e) => updateMaintenanceRow(index, "taskDescription", e.target.value)}
-                    className="w-full sm:col-span-4"
+                    className="w-full sm:col-span-5"
                     placeholder={t("taskDescription") || "Task description"}
                     data-testid={`input-maintenance-task-${index}`}
                   />
                   <Input
                     value={row.responsiblePerson}
                     onChange={(e) => updateMaintenanceRow(index, "responsiblePerson", e.target.value)}
-                    className="w-full sm:col-span-3"
+                    className="w-full sm:col-span-5"
                     placeholder={t("responsiblePerson") || "Person name"}
                     data-testid={`input-maintenance-person-${index}`}
                   />
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={row.nextDueDate}
-                      onChange={(e) => updateMaintenanceRow(index, "nextDueDate", e.target.value)}
-                      className="flex-1 sm:col-span-3"
-                      placeholder="DD/MM/YYYY"
-                      data-testid={`input-maintenance-date-${index}`}
-                    />
+                  <div className="flex items-center justify-end sm:col-span-2">
                     <Button
                       variant="ghost"
                       size="icon"
