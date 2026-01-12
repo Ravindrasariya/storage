@@ -102,7 +102,7 @@ export default function LotEntry() {
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
   const [showReceipt, setShowReceipt] = useState(false);
   const [savedData, setSavedData] = useState<{ farmer: FarmerData; lots: LotData[]; entryDate: Date; lotIds: string[] } | null>(null);
-  const [billNumbers, setBillNumbers] = useState<Record<string, number>>({});
+  const [entryBillNumber, setEntryBillNumber] = useState<number | null>(null);
   const [billNumbersLoading, setBillNumbersLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -263,8 +263,24 @@ export default function LotEntry() {
       });
       
       clearSavedData();
+      
+      // Store data for receipt before resetting form
+      const receiptData = { farmer: farmerData, lots: [...lots], entryDate: new Date(), lotIds: createdLotIds };
+      
+      // Reset form state
+      form.reset({
+        farmerName: "",
+        village: "",
+        tehsil: "",
+        district: "",
+        state: "",
+        contactNumber: "",
+      });
+      setLots([{ ...defaultLotData }]);
+      setImagePreviews({});
+      
       if (printAfterSave) {
-        setSavedData({ farmer: farmerData, lots: [...lots], entryDate: new Date(), lotIds: createdLotIds });
+        setSavedData(receiptData);
         setShowReceipt(true);
       } else {
         navigate("/");
@@ -291,59 +307,49 @@ export default function LotEntry() {
       return;
     }
     
-    // Assign bill numbers on first print if not already assigned
-    let billNumbersToUse = billNumbers;
-    if (Object.keys(billNumbers).length === 0) {
+    // Assign single bill number on first print (use first lot ID to get a bill number)
+    let billNumberToUse = entryBillNumber;
+    if (!entryBillNumber) {
       setBillNumbersLoading(true);
-      const newBillNumbers: Record<string, number> = {};
-      let hasError = false;
       
-      for (const lotId of savedData.lotIds) {
-        try {
-          const response = await apiRequest("POST", `/api/lots/${lotId}/assign-bill-number`, {});
-          const billData = await response.json();
-          if (billData && billData.billNumber) {
-            newBillNumbers[lotId] = billData.billNumber;
-          } else {
-            hasError = true;
-          }
-        } catch (e) {
-          console.error("Failed to assign bill number for lot", lotId, e);
-          hasError = true;
+      try {
+        // Use first lot to assign bill number - all lots share the same entry bill number
+        const response = await apiRequest("POST", `/api/lots/${savedData.lotIds[0]}/assign-bill-number`, {});
+        const billData = await response.json();
+        
+        if (billData && billData.billNumber) {
+          setEntryBillNumber(billData.billNumber);
+          billNumberToUse = billData.billNumber;
+        } else {
+          throw new Error("No bill number returned");
         }
-      }
-      
-      setBillNumbersLoading(false);
-      
-      if (hasError || Object.keys(newBillNumbers).length !== savedData.lotIds.length) {
+      } catch (e) {
+        console.error("Failed to assign bill number", e);
+        setBillNumbersLoading(false);
         toast({
           title: t("error"),
-          description: "Failed to assign bill numbers. Please try again.",
+          description: "Failed to assign bill number. Please try again.",
           variant: "destructive",
         });
         return;
       }
       
-      setBillNumbers(newBillNumbers);
-      billNumbersToUse = newBillNumbers;
+      setBillNumbersLoading(false);
     }
     
-    // Use billNumbersToUse directly to avoid async state issues
-    doPrint(billNumbersToUse);
+    // Use billNumberToUse directly to avoid async state issues
+    doPrint(billNumberToUse!);
   };
 
-  const doPrint = (currentBillNumbers: Record<string, number>) => {
+  const doPrint = (billNumber: number) => {
     if (!printRef.current || !savedData) return;
     
-    // Generate bill numbers string directly from passed data
-    const billNumbersStr = savedData.lotIds.map((id) => currentBillNumbers[id] || "-").join(", ");
-    
-    // Get the print content but replace the placeholder with actual bill numbers
+    // Get the print content but replace the placeholder with actual bill number
     let printContent = printRef.current.innerHTML;
-    // Replace the placeholder message with actual bill numbers
+    // Replace the placeholder message with actual bill number
     printContent = printContent.replace(
       /\(Bill number will be assigned on print\)/g,
-      `बिल नंबर / Bill No: <strong>${billNumbersStr}</strong>`
+      `बिल नंबर / Bill No: <strong>${billNumber}</strong>`
     );
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -926,6 +932,7 @@ export default function LotEntry() {
       <Dialog open={showReceipt} onOpenChange={(open) => {
         if (!open) {
           setShowReceipt(false);
+          setEntryBillNumber(null);
           navigate("/");
         }
       }}>
@@ -945,10 +952,8 @@ export default function LotEntry() {
                   <h2>{t("lotEntryReceipt") || "Lot Entry Receipt"}</h2>
                   {savedData.lotIds.length > 0 && (
                     <div style={{ marginTop: "8px", fontSize: "14px" }}>
-                      {billNumbersLoading ? "Loading..." : Object.keys(billNumbers).length > 0 ? (
-                        <>बिल नंबर / Bill No: <strong>
-                          {savedData.lotIds.map((id) => billNumbers[id] || "-").join(", ")}
-                        </strong></>
+                      {billNumbersLoading ? "Loading..." : entryBillNumber ? (
+                        <>बिल नंबर / Bill No: <strong>{entryBillNumber}</strong></>
                       ) : (
                         <span style={{ color: "#666", fontStyle: "italic" }}>
                           (Bill number will be assigned on print)
@@ -1036,7 +1041,7 @@ export default function LotEntry() {
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => { setShowReceipt(false); navigate("/"); }}>
+                <Button variant="outline" onClick={() => { setShowReceipt(false); setEntryBillNumber(null); navigate("/"); }}>
                   {t("close")}
                 </Button>
                 <Button onClick={handlePrint} disabled={billNumbersLoading}>
