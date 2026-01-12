@@ -571,9 +571,11 @@ export async function registerRoutes(
       const totalPrice = quantitySold * pricePerBag;
 
       // Get cold storage to calculate storage charge and rate breakdown
+      // Wafer and Ration bags use wafer rates, Seed bags use seed rates
       const coldStorage = await storage.getColdStorage(lot.coldStorageId);
-      const rate = coldStorage ? (lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate) : 0;
-      const hammaliRate = coldStorage ? (lot.bagType === "wafer" ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
+      const useWaferRates = lot.bagType === "wafer" || lot.bagType === "Ration";
+      const rate = coldStorage ? (useWaferRates ? coldStorage.waferRate : coldStorage.seedRate) : 0;
+      const hammaliRate = coldStorage ? (useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
       const coldChargeRate = rate - hammaliRate; // Cold storage charge is rate minus hammali
       const storageCharge = quantitySold * rate;
       

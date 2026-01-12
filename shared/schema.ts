@@ -325,12 +325,15 @@ export interface DashboardStats {
   peakUtilization: number; // Peak bags ever stored
   currentUtilization: number; // Current bags stored
   totalFarmers: number;
+  remainingFarmers: number; // Farmers with lots that still have bags
   totalLots: number;
   remainingLots: number; // Lots with remaining bags
   totalWaferBags: number;
   remainingWaferBags: number;
   totalSeedBags: number;
   remainingSeedBags: number;
+  totalRationBags: number;
+  remainingRationBags: number;
   waferRate: number;
   seedRate: number;
   waferColdCharge: number;

@@ -72,8 +72,9 @@ export default function Dashboard() {
           testId="text-capacity-used"
         />
         <StatCard
-          title={t("distinctFarmers")}
-          value={stats?.totalFarmers || 0}
+          title={t("farmers")}
+          value={`${stats?.totalFarmers || 0} / ${stats?.remainingFarmers || 0}`}
+          subtitle="Total / Remaining"
           icon={Users}
           colorClass="bg-purple-50 dark:bg-purple-950/30"
           testId="text-total-farmers"
@@ -101,6 +102,14 @@ export default function Dashboard() {
           icon={Boxes}
           colorClass="bg-amber-50 dark:bg-amber-950/30"
           testId="text-seed-bags"
+        />
+        <StatCard
+          title={t("ration") + " " + t("bags")}
+          value={`${stats?.totalRationBags?.toLocaleString() || 0} / ${stats?.remainingRationBags?.toLocaleString() || 0}`}
+          subtitle="Total / Remaining"
+          icon={Boxes}
+          colorClass="bg-rose-50 dark:bg-rose-950/30"
+          testId="text-ration-bags"
         />
       </div>
 

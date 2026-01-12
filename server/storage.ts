@@ -441,7 +441,13 @@ export class DatabaseStorage implements IStorage {
 
     const currentUtilization = allLots.reduce((sum, lot) => sum + lot.remainingSize, 0);
     const peakUtilization = allLots.reduce((sum, lot) => sum + lot.size, 0);
+    
+    // Total unique farmers (all lots)
     const uniqueFarmers = new Set(allLots.map((lot) => lot.contactNumber));
+    // Remaining unique farmers (lots with remaining bags > 0)
+    const remainingFarmers = new Set(
+      allLots.filter((lot) => lot.remainingSize > 0).map((lot) => lot.contactNumber)
+    );
     
     const totalWaferBags = allLots
       .filter((lot) => lot.bagType === "wafer")
@@ -454,6 +460,12 @@ export class DatabaseStorage implements IStorage {
       .reduce((sum, lot) => sum + lot.size, 0);
     const remainingSeedBags = allLots
       .filter((lot) => lot.bagType === "seed")
+      .reduce((sum, lot) => sum + lot.remainingSize, 0);
+    const totalRationBags = allLots
+      .filter((lot) => lot.bagType === "Ration")
+      .reduce((sum, lot) => sum + lot.size, 0);
+    const remainingRationBags = allLots
+      .filter((lot) => lot.bagType === "Ration")
       .reduce((sum, lot) => sum + lot.remainingSize, 0);
     
     const remainingLots = allLots.filter((lot) => lot.remainingSize > 0).length;
@@ -476,9 +488,17 @@ export class DatabaseStorage implements IStorage {
     const saleLots = allLots
       .filter((lot) => lot.upForSale === 1 && lot.remainingSize > 0 && lot.saleStatus !== "sold")
       .map((lot) => {
-        const isWafer = lot.bagType === "wafer";
-        const coldCharge = isWafer ? (coldStorage?.waferColdCharge || coldStorage?.waferRate || 0) : (coldStorage?.seedColdCharge || coldStorage?.seedRate || 0);
-        const hammali = isWafer ? (coldStorage?.waferHammali || 0) : (coldStorage?.seedHammali || 0);
+        // Wafer and Ration use wafer rates, Seed uses seed rates
+        const useWaferRates = lot.bagType === "wafer" || lot.bagType === "Ration";
+        const coldCharge = useWaferRates 
+          ? (coldStorage?.waferColdCharge || coldStorage?.waferRate || 0) 
+          : (coldStorage?.seedColdCharge || coldStorage?.seedRate || 0);
+        const hammali = useWaferRates 
+          ? (coldStorage?.waferHammali || 0) 
+          : (coldStorage?.seedHammali || 0);
+        const rate = useWaferRates 
+          ? (coldStorage?.waferRate || 0) 
+          : (coldStorage?.seedRate || 0);
         return {
           id: lot.id,
           lotNo: lot.lotNo,
@@ -494,7 +514,7 @@ export class DatabaseStorage implements IStorage {
           type: lot.type,
           quality: lot.quality,
           potatoSize: lot.potatoSize,
-          rate: isWafer ? (coldStorage?.waferRate || 0) : (coldStorage?.seedRate || 0),
+          rate,
           coldCharge,
           hammali,
         };
@@ -507,12 +527,15 @@ export class DatabaseStorage implements IStorage {
       peakUtilization,
       currentUtilization,
       totalFarmers: uniqueFarmers.size,
+      remainingFarmers: remainingFarmers.size,
       totalLots: allLots.length,
       remainingLots,
       totalWaferBags,
       remainingWaferBags,
       totalSeedBags,
       remainingSeedBags,
+      totalRationBags,
+      remainingRationBags,
       waferRate: coldStorage?.waferRate || 0,
       seedRate: coldStorage?.seedRate || 0,
       waferColdCharge: coldStorage?.waferColdCharge || coldStorage?.waferRate || 0,
@@ -872,8 +895,10 @@ export class DatabaseStorage implements IStorage {
     const coldStorage = await this.getColdStorage(lot.coldStorageId);
     if (!coldStorage) return undefined;
 
-    const rate = lot.bagType === "wafer" ? coldStorage.waferRate : coldStorage.seedRate;
-    const hammaliRate = lot.bagType === "wafer" ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
+    // Wafer and Ration bags use wafer rates, Seed bags use seed rates
+    const useWaferRates = lot.bagType === "wafer" || lot.bagType === "Ration";
+    const rate = useWaferRates ? coldStorage.waferRate : coldStorage.seedRate;
+    const hammaliRate = useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
     const coldChargeRate = rate - hammaliRate; // Cold storage charge is rate minus hammali
     const saleCharge = rate * lot.remainingSize;
     

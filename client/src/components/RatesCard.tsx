@@ -43,7 +43,7 @@ export function RatesCard({
               {formatRate(waferColdCharge, waferHammali, waferRate)}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">{t("wafer")}</p>
+          <p className="text-sm text-muted-foreground mt-1">{t("wafer")}/{t("ration")}</p>
           {hasSplitRates(waferColdCharge, waferHammali) && (
             <p className="text-xs text-muted-foreground mt-1">
               ({t("total")}: {waferRate})
