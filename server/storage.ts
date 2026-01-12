@@ -305,8 +305,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBatchLots(insertLots: InsertLot[], coldStorageId: string): Promise<{ lots: Lot[]; entrySequence: number }> {
-    // Get the next entry sequence atomically
-    const entrySequence = await this.getNextEntrySequence(coldStorageId);
+    // Get the current entry sequence (before incrementing)
+    const coldStorage = await this.getColdStorage(coldStorageId);
+    const entrySequence = coldStorage?.nextEntryBillNumber ?? 1;
+    
+    // Increment the counter for the next batch (done atomically)
+    await db
+      .update(coldStorages)
+      .set({ nextEntryBillNumber: sql`COALESCE(${coldStorages.nextEntryBillNumber}, 0) + 1` })
+      .where(eq(coldStorages.id, coldStorageId));
     
     const createdLots: Lot[] = [];
     
