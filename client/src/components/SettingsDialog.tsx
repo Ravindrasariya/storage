@@ -284,7 +284,6 @@ export function SettingsDialog() {
 
     try {
       await updateSettingsMutation.mutateAsync({
-        name: settings.name,
         totalCapacity: settings.totalCapacity,
         waferRate: (settings.waferColdCharge || 0) + (settings.waferHammali || 0),
         seedRate: (settings.seedColdCharge || 0) + (settings.seedHammali || 0),
@@ -506,14 +505,14 @@ export function SettingsDialog() {
               <Label>{t("name")}</Label>
               <Input
                 value={settings?.name || ""}
-                onChange={(e) =>
-                  setSettings((prev) =>
-                    prev ? { ...prev, name: e.target.value } : null
-                  )
-                }
+                disabled
+                className="bg-muted cursor-not-allowed"
                 placeholder={t("coldStorageName")}
                 data-testid="input-cold-storage-name"
               />
+              <p className="text-xs text-muted-foreground">
+                Name is set by admin and cannot be changed here.
+              </p>
             </div>
           </Card>
 
