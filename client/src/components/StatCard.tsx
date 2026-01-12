@@ -12,17 +12,17 @@ interface StatCardProps {
 
 export function StatCard({ title, value, subtitle, icon: Icon, colorClass, testId }: StatCardProps) {
   return (
-    <Card className={`p-4 sm:p-6 ${colorClass} border-0`}>
-      <div className="flex items-start justify-between gap-4">
+    <Card className={`p-3 sm:p-4 ${colorClass} border-0`}>
+      <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-2xl sm:text-3xl font-bold mt-1" data-testid={testId}>{value}</p>
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          <p className="text-xl sm:text-2xl font-bold mt-1" data-testid={testId}>{value}</p>
           {subtitle && (
-            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
           )}
         </div>
-        <div className="p-2 sm:p-3 rounded-lg bg-background/50 shrink-0">
-          <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-foreground" />
+        <div className="p-1.5 sm:p-2 rounded-lg bg-background/50 shrink-0">
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-foreground" />
         </div>
       </div>
     </Card>
