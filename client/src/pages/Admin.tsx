@@ -433,10 +433,6 @@ function ColdStorageRow({
                   <span className="text-muted-foreground">Pincode:</span>{" "}
                   <span className="font-medium">{storage.pincode || "-"}</span>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Capacity:</span>{" "}
-                  <span className="font-medium">{storage.totalCapacity.toLocaleString()} bags</span>
-                </div>
               </div>
             )}
 
@@ -462,13 +458,6 @@ function AddColdStorageForm({ onSubmit, isPending, onCancel }: AddColdStorageFor
     district: "",
     state: "",
     pincode: "",
-    totalCapacity: 10000,
-    waferRate: 50,
-    seedRate: 55,
-    waferColdCharge: 45,
-    waferHammali: 5,
-    seedColdCharge: 50,
-    seedHammali: 5,
     linkedPhones: [] as string[],
   });
 
@@ -523,34 +512,10 @@ function AddColdStorageForm({ onSubmit, isPending, onCancel }: AddColdStorageFor
             onChange={(e) => setFormData((p) => ({ ...p, pincode: e.target.value }))}
           />
         </div>
-        <div>
-          <Label>Total Capacity (bags) *</Label>
-          <Input
-            type="number"
-            value={formData.totalCapacity}
-            onChange={(e) => setFormData((p) => ({ ...p, totalCapacity: parseInt(e.target.value) || 0 }))}
-            required
-          />
-        </div>
-        <div>
-          <Label>Wafer Rate *</Label>
-          <Input
-            type="number"
-            value={formData.waferRate}
-            onChange={(e) => setFormData((p) => ({ ...p, waferRate: parseFloat(e.target.value) || 0 }))}
-            required
-          />
-        </div>
-        <div>
-          <Label>Seed Rate *</Label>
-          <Input
-            type="number"
-            value={formData.seedRate}
-            onChange={(e) => setFormData((p) => ({ ...p, seedRate: parseFloat(e.target.value) || 0 }))}
-            required
-          />
-        </div>
       </div>
+      <p className="text-sm text-muted-foreground">
+        Capacity and rates can be configured from the main dashboard after creation.
+      </p>
       <div className="flex justify-end gap-3">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel

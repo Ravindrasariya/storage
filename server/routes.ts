@@ -1119,7 +1119,7 @@ export async function registerRoutes(
     }
   });
 
-  // Create cold storage
+  // Create cold storage (only name and address fields - capacity/rates set from dashboard)
   const createColdStorageSchema = z.object({
     name: z.string().min(1, "Name is required"),
     address: z.string().optional(),
@@ -1127,20 +1127,20 @@ export async function registerRoutes(
     district: z.string().optional(),
     state: z.string().optional(),
     pincode: z.string().optional(),
-    totalCapacity: z.number().int().positive(),
-    waferRate: z.number().positive(),
-    seedRate: z.number().positive(),
-    waferColdCharge: z.number().optional(),
-    waferHammali: z.number().optional(),
-    seedColdCharge: z.number().optional(),
-    seedHammali: z.number().optional(),
-    linkedPhones: z.array(z.string()),
+    linkedPhones: z.array(z.string()).optional(),
   });
 
   app.post("/api/admin/cold-storages", verifyAdminSession, async (req, res) => {
     try {
       const validated = createColdStorageSchema.parse(req.body);
-      const coldStorage = await storage.createColdStorage(validated);
+      // Add default values for capacity and rates (user will configure from dashboard)
+      const coldStorage = await storage.createColdStorage({
+        ...validated,
+        linkedPhones: validated.linkedPhones || [],
+        totalCapacity: 10000,
+        waferRate: 50,
+        seedRate: 55,
+      });
       res.status(201).json(coldStorage);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1150,7 +1150,7 @@ export async function registerRoutes(
     }
   });
 
-  // Update cold storage (protected)
+  // Update cold storage (protected - only name and address fields, no capacity/rates)
   const updateColdStorageSchema = z.object({
     name: z.string().optional(),
     address: z.string().optional(),
@@ -1158,14 +1158,6 @@ export async function registerRoutes(
     district: z.string().optional(),
     state: z.string().optional(),
     pincode: z.string().optional(),
-    totalCapacity: z.number().int().positive().optional(),
-    waferRate: z.number().positive().optional(),
-    seedRate: z.number().positive().optional(),
-    waferColdCharge: z.number().optional(),
-    waferHammali: z.number().optional(),
-    seedColdCharge: z.number().optional(),
-    seedHammali: z.number().optional(),
-    linkedPhones: z.array(z.string()).optional(),
   });
   
   app.patch("/api/admin/cold-storages/:id", verifyAdminSession, async (req, res) => {
