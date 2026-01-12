@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -92,6 +92,8 @@ const defaultLotData: LotData = {
   remarks: "",
 };
 
+const STORAGE_KEY = "lotEntryFormData";
+
 export default function LotEntry() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
@@ -102,6 +104,7 @@ export default function LotEntry() {
   const [savedData, setSavedData] = useState<{ farmer: FarmerData; lots: LotData[]; entryDate: Date; lotIds: string[] } | null>(null);
   const [billNumbers, setBillNumbers] = useState<Record<string, number>>({});
   const [billNumbersLoading, setBillNumbersLoading] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
@@ -123,6 +126,43 @@ export default function LotEntry() {
       contactNumber: "",
     },
   });
+
+  // Load saved form data from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const { farmer, lots: savedLots, imagePreviews: savedPreviews } = JSON.parse(saved);
+        if (farmer) {
+          form.reset(farmer);
+        }
+        if (savedLots && savedLots.length > 0) {
+          setLots(savedLots);
+        }
+        if (savedPreviews) {
+          setImagePreviews(savedPreviews);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load saved form data", e);
+    }
+    setIsInitialized(true);
+  }, []);
+
+  // Save form data to localStorage whenever it changes
+  useEffect(() => {
+    if (!isInitialized) return;
+    try {
+      const farmer = form.getValues();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ farmer, lots, imagePreviews }));
+    } catch (e) {
+      console.error("Failed to save form data", e);
+    }
+  }, [lots, imagePreviews, isInitialized, form.watch()]);
+
+  const clearSavedData = () => {
+    localStorage.removeItem(STORAGE_KEY);
+  };
 
   const createLotMutation = useMutation({
     mutationFn: async (data: FarmerData & LotData) => {
@@ -222,6 +262,7 @@ export default function LotEntry() {
         description: `${lots.length} lot(s) created successfully`,
       });
       
+      clearSavedData();
       if (printAfterSave) {
         setSavedData({ farmer: farmerData, lots: [...lots], entryDate: new Date(), lotIds: createdLotIds });
         setShowReceipt(true);
@@ -861,7 +902,10 @@ export default function LotEntry() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => navigate("/")}
+              onClick={() => {
+                clearSavedData();
+                navigate("/");
+              }}
               data-testid="button-cancel"
             >
               {t("cancel")}
