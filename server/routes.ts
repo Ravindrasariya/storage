@@ -359,6 +359,22 @@ export async function registerRoutes(
     }
   });
 
+  // Get all lots with the same entry sequence (for printing entry receipt)
+  // This route must come BEFORE /api/lots/:id to avoid matching "by-entry-sequence" as an id
+  app.get("/api/lots/by-entry-sequence/:entrySequence", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const entrySequence = parseInt(req.params.entrySequence, 10);
+      if (isNaN(entrySequence)) {
+        return res.status(400).json({ error: "Invalid entry sequence" });
+      }
+      const lotsInBatch = await storage.getLotsByEntrySequence(entrySequence, coldStorageId);
+      res.json(lotsInBatch);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch lots by entry sequence" });
+    }
+  });
+
   app.get("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

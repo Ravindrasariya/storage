@@ -71,6 +71,7 @@ export interface IStorage {
   searchLotsByLotNoAndSize(lotNo: string, size: string, coldStorageId: string): Promise<Lot[]>;
   searchLotsByFarmerName(query: string, coldStorageId: string): Promise<Lot[]>;
   getAllLots(coldStorageId: string): Promise<Lot[]>;
+  getLotsByEntrySequence(entrySequence: number, coldStorageId: string): Promise<Lot[]>;
   createEditHistory(history: InsertLotEditHistory): Promise<LotEditHistory>;
   getLotHistory(lotId: string): Promise<LotEditHistory[]>;
   deleteEditHistory(historyId: string): Promise<void>;
@@ -396,6 +397,15 @@ export class DatabaseStorage implements IStorage {
 
   async getAllLots(coldStorageId: string): Promise<Lot[]> {
     return db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
+  }
+
+  async getLotsByEntrySequence(entrySequence: number, coldStorageId: string): Promise<Lot[]> {
+    return db.select().from(lots).where(
+      and(
+        eq(lots.coldStorageId, coldStorageId),
+        eq(lots.entrySequence, entrySequence)
+      )
+    );
   }
 
   async createEditHistory(insertHistory: InsertLotEditHistory): Promise<LotEditHistory> {
