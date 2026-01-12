@@ -523,10 +523,10 @@ export function SettingsDialog() {
               <Label>{t("overallCapacity")} ({t("bags")})</Label>
               <Input
                 type="number"
-                value={settings?.totalCapacity || 0}
+                value={settings?.totalCapacity ?? ""}
                 onChange={(e) =>
                   setSettings((prev) =>
-                    prev ? { ...prev, totalCapacity: Number(e.target.value) } : null
+                    prev ? { ...prev, totalCapacity: e.target.value === "" ? 0 : Number(e.target.value) } : null
                   )
                 }
                 data-testid="input-total-capacity"
@@ -541,10 +541,10 @@ export function SettingsDialog() {
                 <Label>{t("coldStorageCharge")}</Label>
                 <Input
                   type="number"
-                  value={settings?.waferColdCharge || 0}
+                  value={settings?.waferColdCharge ?? ""}
                   onChange={(e) =>
                     setSettings((prev) =>
-                      prev ? { ...prev, waferColdCharge: Number(e.target.value) } : null
+                      prev ? { ...prev, waferColdCharge: e.target.value === "" ? 0 : Number(e.target.value) } : null
                     )
                   }
                   data-testid="input-wafer-cold-charge"
@@ -554,10 +554,10 @@ export function SettingsDialog() {
                 <Label>{t("hammali")}</Label>
                 <Input
                   type="number"
-                  value={settings?.waferHammali || 0}
+                  value={settings?.waferHammali ?? ""}
                   onChange={(e) =>
                     setSettings((prev) =>
-                      prev ? { ...prev, waferHammali: Number(e.target.value) } : null
+                      prev ? { ...prev, waferHammali: e.target.value === "" ? 0 : Number(e.target.value) } : null
                     )
                   }
                   data-testid="input-wafer-hammali"
@@ -576,10 +576,10 @@ export function SettingsDialog() {
                 <Label>{t("coldStorageCharge")}</Label>
                 <Input
                   type="number"
-                  value={settings?.seedColdCharge || 0}
+                  value={settings?.seedColdCharge ?? ""}
                   onChange={(e) =>
                     setSettings((prev) =>
-                      prev ? { ...prev, seedColdCharge: Number(e.target.value) } : null
+                      prev ? { ...prev, seedColdCharge: e.target.value === "" ? 0 : Number(e.target.value) } : null
                     )
                   }
                   data-testid="input-seed-cold-charge"
@@ -589,10 +589,10 @@ export function SettingsDialog() {
                 <Label>{t("hammali")}</Label>
                 <Input
                   type="number"
-                  value={settings?.seedHammali || 0}
+                  value={settings?.seedHammali ?? ""}
                   onChange={(e) =>
                     setSettings((prev) =>
-                      prev ? { ...prev, seedHammali: Number(e.target.value) } : null
+                      prev ? { ...prev, seedHammali: e.target.value === "" ? 0 : Number(e.target.value) } : null
                     )
                   }
                   data-testid="input-seed-hammali"
@@ -641,8 +641,8 @@ export function SettingsDialog() {
                       <div className="flex items-center gap-2 pl-8 sm:pl-0">
                         <Input
                           type="number"
-                          value={chamber.capacity}
-                          onChange={(e) => updateChamber(chamber.id, "capacity", e.target.value)}
+                          value={chamber.capacity || ""}
+                          onChange={(e) => updateChamber(chamber.id, "capacity", e.target.value === "" ? "0" : e.target.value)}
                           className="w-24 sm:w-28"
                           placeholder="Capacity"
                           data-testid={`input-chamber-capacity-${chamber.id}`}
@@ -700,8 +700,8 @@ export function SettingsDialog() {
                                 <span className="text-sm w-16">{t("floor")}</span>
                                 <Input
                                   type="number"
-                                  value={editedFloor.floorNumber}
-                                  onChange={(e) => updateFloorEdit(chamber.id, floor.id, "floorNumber", Number(e.target.value))}
+                                  value={editedFloor.floorNumber || ""}
+                                  onChange={(e) => updateFloorEdit(chamber.id, floor.id, "floorNumber", e.target.value === "" ? 0 : Number(e.target.value))}
                                   onBlur={() => handleUpdateFloor(editedFloor)}
                                   className="w-20"
                                   data-testid={`input-floor-number-${floor.id}`}
@@ -709,8 +709,8 @@ export function SettingsDialog() {
                                 <span className="text-sm">{t("capacity")}:</span>
                                 <Input
                                   type="number"
-                                  value={editedFloor.capacity}
-                                  onChange={(e) => updateFloorEdit(chamber.id, floor.id, "capacity", Number(e.target.value))}
+                                  value={editedFloor.capacity || ""}
+                                  onChange={(e) => updateFloorEdit(chamber.id, floor.id, "capacity", e.target.value === "" ? 0 : Number(e.target.value))}
                                   onBlur={() => handleUpdateFloor(editedFloor)}
                                   className="w-24"
                                   data-testid={`input-floor-capacity-${floor.id}`}
