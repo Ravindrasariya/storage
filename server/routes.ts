@@ -781,8 +781,9 @@ export async function registerRoutes(
   });
 
   // Sales History
-  app.get("/api/sales-history", async (req, res) => {
+  app.get("/api/sales-history", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { year, farmerName, contactNumber, paymentStatus, buyerName } = req.query;
       
       const filters: {
@@ -801,23 +802,24 @@ export async function registerRoutes(
       }
       if (buyerName) filters.buyerName = buyerName as string;
       
-      const salesHistory = await storage.getSalesHistory(DEFAULT_COLD_STORAGE_ID, filters);
+      const salesHistory = await storage.getSalesHistory(coldStorageId, filters);
       res.json(salesHistory);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch sales history" });
     }
   });
 
-  app.get("/api/sales-history/years", async (req, res) => {
+  app.get("/api/sales-history/years", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const years = await storage.getSalesYears(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const years = await storage.getSalesYears(coldStorageId);
       res.json(years);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch sales years" });
     }
   });
 
-  app.patch("/api/sales-history/:id/mark-paid", async (req, res) => {
+  app.patch("/api/sales-history/:id/mark-paid", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const updated = await storage.markSaleAsPaid(req.params.id);
       if (!updated) {
@@ -829,7 +831,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/sales-history/:id/mark-due", async (req, res) => {
+  app.patch("/api/sales-history/:id/mark-due", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const updated = await storage.markSaleAsDue(req.params.id);
       if (!updated) {
@@ -851,12 +853,13 @@ export async function registerRoutes(
     netWeight: z.number().nullable().optional(),
   });
 
-  app.patch("/api/sales-history/:id", async (req, res) => {
+  app.patch("/api/sales-history/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validatedData = updateSalesHistorySchema.parse(req.body);
       
       // Get current sale data before update for logging
-      const currentSales = await storage.getSalesHistory(DEFAULT_COLD_STORAGE_ID, {});
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
       const currentSale = currentSales.find(s => s.id === req.params.id);
       
       const updated = await storage.updateSalesHistory(req.params.id, validatedData);
@@ -892,7 +895,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/sales-history/:id/edit-history", async (req, res) => {
+  app.get("/api/sales-history/:id/edit-history", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const history = await storage.getSaleEditHistory(req.params.id);
       res.json(history);
@@ -901,7 +904,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sales-history/:id/reverse", async (req, res) => {
+  app.post("/api/sales-history/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const result = await storage.reverseSale(req.params.id);
       if (!result.success) {
@@ -919,7 +922,7 @@ export async function registerRoutes(
     bagsExited: z.number().min(1, "Must exit at least 1 bag"),
   });
 
-  app.get("/api/sales-history/:id/exits", async (req, res) => {
+  app.get("/api/sales-history/:id/exits", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const exits = await storage.getExitsForSale(req.params.id);
       const totalExited = await storage.getTotalExitedBags(req.params.id);
@@ -929,12 +932,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sales-history/:id/exits", async (req, res) => {
+  app.post("/api/sales-history/:id/exits", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { bagsExited } = createExitSchema.parse(req.body);
       
       // Get the sale to verify bags available
-      const sales = await storage.getSalesHistory(DEFAULT_COLD_STORAGE_ID, {});
+      const sales = await storage.getSalesHistory(coldStorageId, {});
       const sale = sales.find(s => s.id === req.params.id);
       if (!sale) {
         return res.status(404).json({ error: "Sale not found" });
@@ -997,7 +1001,7 @@ export async function registerRoutes(
   });
 
   // Lot bill number assignment
-  app.post("/api/lots/:id/assign-bill-number", async (req, res) => {
+  app.post("/api/lots/:id/assign-bill-number", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const billNumber = await storage.assignLotBillNumber(req.params.id);
       res.json({ billNumber });
@@ -1019,20 +1023,22 @@ export async function registerRoutes(
     nextDueDate: z.string().optional(),
   });
 
-  app.get("/api/maintenance", async (req, res) => {
+  app.get("/api/maintenance", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const records = await storage.getMaintenanceRecords(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const records = await storage.getMaintenanceRecords(coldStorageId);
       res.json(records);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch maintenance records" });
     }
   });
 
-  app.post("/api/maintenance", async (req, res) => {
+  app.post("/api/maintenance", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validatedData = createMaintenanceSchema.parse(req.body);
       const record = await storage.createMaintenanceRecord({
-        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        coldStorageId: coldStorageId,
         taskDescription: validatedData.taskDescription,
         responsiblePerson: validatedData.responsiblePerson,
         nextDueDate: validatedData.nextDueDate,
@@ -1046,7 +1052,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/maintenance/:id", async (req, res) => {
+  app.patch("/api/maintenance/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = updateMaintenanceSchema.parse(req.body);
       const updated = await storage.updateMaintenanceRecord(req.params.id, validatedData);
@@ -1062,7 +1068,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/maintenance/:id", async (req, res) => {
+  app.delete("/api/maintenance/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const deleted = await storage.deleteMaintenanceRecord(req.params.id);
       if (!deleted) {
@@ -1075,18 +1081,20 @@ export async function registerRoutes(
   });
 
   // Cash Receipts (Cash Management)
-  app.get("/api/cash-receipts/buyers-with-dues", async (req, res) => {
+  app.get("/api/cash-receipts/buyers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const buyers = await storage.getBuyersWithDues(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const buyers = await storage.getBuyersWithDues(coldStorageId);
       res.json(buyers);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch buyers with dues" });
     }
   });
 
-  app.get("/api/cash-receipts", async (req, res) => {
+  app.get("/api/cash-receipts", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const receipts = await storage.getCashReceipts(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const receipts = await storage.getCashReceipts(coldStorageId);
       res.json(receipts);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch cash receipts" });
@@ -1101,11 +1109,12 @@ export async function registerRoutes(
     notes: z.string().optional(),
   });
 
-  app.post("/api/cash-receipts", async (req, res) => {
+  app.post("/api/cash-receipts", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validatedData = createCashReceiptSchema.parse(req.body);
       const result = await storage.createCashReceiptWithFIFO({
-        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        coldStorageId: coldStorageId,
         buyerName: validatedData.buyerName,
         receiptType: validatedData.receiptType,
         amount: validatedData.amount,
@@ -1122,9 +1131,10 @@ export async function registerRoutes(
   });
 
   // Expenses
-  app.get("/api/expenses", async (req, res) => {
+  app.get("/api/expenses", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const expenseList = await storage.getExpenses(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const expenseList = await storage.getExpenses(coldStorageId);
       res.json(expenseList);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch expenses" });
@@ -1139,11 +1149,12 @@ export async function registerRoutes(
     remarks: z.string().optional(),
   });
 
-  app.post("/api/expenses", async (req, res) => {
+  app.post("/api/expenses", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validatedData = createExpenseSchema.parse(req.body);
       const expense = await storage.createExpense({
-        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        coldStorageId: coldStorageId,
         expenseType: validatedData.expenseType,
         paymentMode: validatedData.paymentMode,
         amount: validatedData.amount,
@@ -1160,7 +1171,7 @@ export async function registerRoutes(
   });
 
   // Reverse cash receipt
-  app.post("/api/cash-receipts/:id/reverse", async (req, res) => {
+  app.post("/api/cash-receipts/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const result = await storage.reverseCashReceipt(id);
@@ -1174,7 +1185,7 @@ export async function registerRoutes(
   });
 
   // Reverse expense
-  app.post("/api/expenses/:id/reverse", async (req, res) => {
+  app.post("/api/expenses/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const result = await storage.reverseExpense(id);
@@ -1188,9 +1199,10 @@ export async function registerRoutes(
   });
 
   // Recalculate all sales records to fix paidAmount/dueAmount
-  app.post("/api/admin/recalculate-sales-charges", async (req, res) => {
+  app.post("/api/admin/recalculate-sales-charges", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const result = await storage.recalculateSalesCharges(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.recalculateSalesCharges(coldStorageId);
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to recalculate sales charges" });
