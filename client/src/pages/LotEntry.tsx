@@ -306,114 +306,113 @@ export default function LotEntry() {
     if (!printRef.current || !savedData) return;
     
     const printContent = printRef.current.innerHTML;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    printWindow.document.write(`
+    const printStyles = `
+      @page { size: A4; margin: 8mm; }
+      body { 
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        font-size: 13px; 
+        line-height: 1.3;
+        color: #333;
+        margin: 0;
+        padding: 0;
+      }
+      .copies-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      .copy {
+        flex: 1;
+        padding: 10px 15px;
+        border-bottom: 2px dashed #000;
+        page-break-inside: avoid;
+        overflow: hidden;
+      }
+      .copy:last-child {
+        border-bottom: none;
+      }
+      .copy-label {
+        text-align: right;
+        font-size: 11px;
+        font-weight: bold;
+        color: #666;
+        margin-bottom: 5px;
+      }
+      .receipt-header {
+        text-align: center;
+        border-bottom: 2px solid #333;
+        padding-bottom: 8px;
+        margin-bottom: 10px;
+      }
+      .receipt-header h1 {
+        font-size: 18px;
+        margin: 0 0 3px 0;
+      }
+      .receipt-header h2 {
+        font-size: 14px;
+        margin: 0;
+        color: #555;
+      }
+      .section {
+        margin-bottom: 10px;
+      }
+      .section-title {
+        font-size: 12px;
+        font-weight: bold;
+        background: #f0f0f0;
+        padding: 4px 8px;
+        margin-bottom: 6px;
+        border-left: 3px solid #333;
+      }
+      .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3px 15px;
+      }
+      .info-row {
+        display: flex;
+        gap: 5px;
+      }
+      .info-label {
+        font-weight: 600;
+        min-width: 80px;
+      }
+      .lots-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+      .lots-table th, .lots-table td {
+        border: 1px solid #ccc;
+        padding: 4px 6px;
+        text-align: left;
+      }
+      .lots-table th {
+        background: #f5f5f5;
+        font-weight: 600;
+      }
+      .entry-date {
+        text-align: right;
+        font-size: 10px;
+        color: #666;
+        margin-top: 8px;
+      }
+      .footer-note {
+        text-align: center;
+        font-size: 9px;
+        color: #666;
+        margin-top: 10px;
+        padding-top: 6px;
+        border-top: 1px solid #ccc;
+      }
+    `;
+    
+    const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <title>Lot Entry Receipt</title>
-        <style>
-          @page { size: A4; margin: 8mm; }
-          body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            font-size: 13px; 
-            line-height: 1.3;
-            color: #333;
-            margin: 0;
-            padding: 0;
-          }
-          .copies-container {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-          }
-          .copy {
-            flex: 1;
-            padding: 10px 15px;
-            border-bottom: 2px dashed #000;
-            page-break-inside: avoid;
-            overflow: hidden;
-          }
-          .copy:last-child {
-            border-bottom: none;
-          }
-          .copy-label {
-            text-align: right;
-            font-size: 11px;
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 5px;
-          }
-          .receipt-header {
-            text-align: center;
-            border-bottom: 2px solid #333;
-            padding-bottom: 8px;
-            margin-bottom: 10px;
-          }
-          .receipt-header h1 {
-            font-size: 18px;
-            margin: 0 0 3px 0;
-          }
-          .receipt-header h2 {
-            font-size: 14px;
-            margin: 0;
-            color: #555;
-          }
-          .section {
-            margin-bottom: 10px;
-          }
-          .section-title {
-            font-size: 12px;
-            font-weight: bold;
-            background: #f0f0f0;
-            padding: 4px 8px;
-            margin-bottom: 6px;
-            border-left: 3px solid #333;
-          }
-          .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3px 15px;
-          }
-          .info-row {
-            display: flex;
-            gap: 5px;
-          }
-          .info-label {
-            font-weight: 600;
-            min-width: 80px;
-          }
-          .lots-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 11px;
-          }
-          .lots-table th, .lots-table td {
-            border: 1px solid #ccc;
-            padding: 4px 6px;
-            text-align: left;
-          }
-          .lots-table th {
-            background: #f5f5f5;
-            font-weight: 600;
-          }
-          .entry-date {
-            text-align: right;
-            font-size: 10px;
-            color: #666;
-            margin-top: 8px;
-          }
-          .footer-note {
-            text-align: center;
-            font-size: 9px;
-            color: #666;
-            margin-top: 10px;
-            padding-top: 6px;
-            border-top: 1px solid #ccc;
-          }
-        </style>
+        <style>${printStyles}</style>
       </head>
       <body>
         <div class="copies-container">
@@ -428,9 +427,39 @@ export default function LotEntry() {
         </div>
       </body>
       </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
+    `;
+
+    // Try window.open first (works on desktop)
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.print();
+    } else {
+      // Fallback for mobile: use hidden iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      iframe.style.left = '-9999px';
+      document.body.appendChild(iframe);
+      
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(htmlContent);
+        iframeDoc.close();
+        
+        setTimeout(() => {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
+        }, 250);
+      }
+    }
   };
 
   const getChamberName = (chamberId: string) => {

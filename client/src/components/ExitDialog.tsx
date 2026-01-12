@@ -87,58 +87,57 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     if (!printRef.current) return;
     
     const printContent = printRef.current.innerHTML;
-    const printWindow = window.open("", "_blank", "width=595,height=842");
-    if (!printWindow) return;
+    const printStyles = `
+      @page { size: A4; margin: 8mm; }
+      body { 
+        font-family: 'Noto Sans Devanagari', Arial, sans-serif; 
+        padding: 0;
+        margin: 0;
+        font-size: 14px;
+      }
+      .copies-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      .copy {
+        flex: 1;
+        padding: 12px 20px;
+        border-bottom: 2px dashed #000;
+        page-break-inside: avoid;
+      }
+      .copy:last-child {
+        border-bottom: none;
+      }
+      .copy-label {
+        text-align: right;
+        font-size: 11px;
+        font-weight: bold;
+        color: #666;
+        margin-bottom: 8px;
+      }
+      .header { text-align: center; margin-bottom: 12px; }
+      .header h1 { font-size: 20px; margin: 0 0 5px; }
+      .header h2 { font-size: 16px; margin: 0; font-weight: normal; border: 1px solid #000; padding: 4px 10px; display: inline-block; }
+      .header h3 { font-size: 15px; margin: 8px 0 0; }
+      .details { margin-bottom: 10px; }
+      .details-row { display: flex; margin-bottom: 4px; }
+      .details-row-double { display: flex; margin-bottom: 4px; }
+      .details-row-double > div { flex: 1; display: flex; }
+      .details-label { font-weight: bold; width: 45%; font-size: 13px; }
+      .details-value { width: 55%; font-size: 13px; }
+      .separator { border-top: 1px dashed #000; margin: 8px 0; }
+      .signature { margin-top: 20px; text-align: right; }
+      .signature-line { border-top: 1px solid #000; width: 200px; margin-left: auto; padding-top: 5px; font-size: 12px; }
+      .footer { text-align: center; margin-top: 10px; font-size: 11px; color: #666; }
+    `;
 
-    printWindow.document.write(`
+    const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <title>${t("exitReceipt")}</title>
-        <style>
-          @page { size: A4; margin: 8mm; }
-          body { 
-            font-family: 'Noto Sans Devanagari', Arial, sans-serif; 
-            padding: 0;
-            margin: 0;
-            font-size: 14px;
-          }
-          .copies-container {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-          }
-          .copy {
-            flex: 1;
-            padding: 12px 20px;
-            border-bottom: 2px dashed #000;
-            page-break-inside: avoid;
-          }
-          .copy:last-child {
-            border-bottom: none;
-          }
-          .copy-label {
-            text-align: right;
-            font-size: 11px;
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 8px;
-          }
-          .header { text-align: center; margin-bottom: 12px; }
-          .header h1 { font-size: 20px; margin: 0 0 5px; }
-          .header h2 { font-size: 16px; margin: 0; font-weight: normal; border: 1px solid #000; padding: 4px 10px; display: inline-block; }
-          .header h3 { font-size: 15px; margin: 8px 0 0; }
-          .details { margin-bottom: 10px; }
-          .details-row { display: flex; margin-bottom: 4px; }
-          .details-row-double { display: flex; margin-bottom: 4px; }
-          .details-row-double > div { flex: 1; display: flex; }
-          .details-label { font-weight: bold; width: 45%; font-size: 13px; }
-          .details-value { width: 55%; font-size: 13px; }
-          .separator { border-top: 1px dashed #000; margin: 8px 0; }
-          .signature { margin-top: 20px; text-align: right; }
-          .signature-line { border-top: 1px solid #000; width: 200px; margin-left: auto; padding-top: 5px; font-size: 12px; }
-          .footer { text-align: center; margin-top: 10px; font-size: 11px; color: #666; }
-        </style>
+        <style>${printStyles}</style>
       </head>
       <body>
         <div class="copies-container">
@@ -153,14 +152,43 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
         </div>
       </body>
       </html>
-    `);
+    `;
 
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+    // Try window.open first (works on desktop)
+    const printWindow = window.open("", "_blank", "width=595,height=842");
+    if (printWindow) {
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    } else {
+      // Fallback for mobile: use hidden iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      iframe.style.left = '-9999px';
+      document.body.appendChild(iframe);
+      
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(htmlContent);
+        iframeDoc.close();
+        
+        setTimeout(() => {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
+        }, 250);
+      }
+    }
   };
 
   const formatDate = (date: Date | string) => {

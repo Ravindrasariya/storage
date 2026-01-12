@@ -63,149 +63,178 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   }, [open]);
 
   const handlePrint = () => {
-    if (printRef.current) {
-      const printContent = printRef.current.innerHTML;
-      const printWindow = window.open("", "_blank", "width=600,height=800");
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>${billType === "deduction" ? "शीत भण्डार कटौती बिल" : "विक्रय बिल"}</title>
-            <style>
-              @page {
-                size: A4;
-                margin: 10mm;
-              }
-              * { box-sizing: border-box; }
-              body {
-                font-family: Arial, sans-serif;
-                font-size: 14px;
-                line-height: 1.4;
-                margin: 0;
-                padding: 10mm;
-              }
-              .bill-header {
-                text-align: center;
-                border-bottom: 2px solid #333;
-                padding-bottom: 8px;
-                margin-bottom: 12px;
-              }
-              .bill-header h1 {
-                margin: 0 0 4px 0;
-                font-size: 22px;
-                font-weight: bold;
-              }
-              .bill-header h2 {
-                margin: 0;
-                font-size: 16px;
-                color: #666;
-              }
-              .two-column {
-                display: flex;
-                gap: 24px;
-                margin-bottom: 12px;
-              }
-              .two-column > div {
-                flex: 1;
-              }
-              .section {
-                margin-bottom: 12px;
-              }
-              .section-title {
-                font-weight: bold;
-                font-size: 14px;
-                border-bottom: 1px solid #ccc;
-                padding-bottom: 3px;
-                margin-bottom: 6px;
-              }
-              .info-row {
-                display: flex;
-                justify-content: space-between;
-                padding: 3px 0;
-                font-size: 13px;
-              }
-              .info-label {
-                font-weight: 500;
-                color: #555;
-              }
-              .info-value {
-                text-align: right;
-              }
-              .charges-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 8px;
-                font-size: 13px;
-              }
-              .charges-table th, .charges-table td {
-                border: 1px solid #ccc;
-                padding: 6px 8px;
-                text-align: left;
-              }
-              .charges-table th {
-                background: #f5f5f5;
-                font-weight: bold;
-              }
-              .charges-table .amount {
-                text-align: right;
-                white-space: nowrap;
-              }
-              .total-row {
-                font-weight: bold;
-                background: #e8f4e8;
-              }
-              .total-row.income {
-                background: #e8f0ff;
-              }
-              .total-row.net-income {
-                background: #d4f4d4;
-                font-size: 15px;
-              }
-              .payment-status {
-                margin-top: 14px;
-                padding: 10px;
-                background: #d4edda;
-                color: #155724;
-                border-radius: 4px;
-                text-align: center;
-                font-weight: bold;
-                font-size: 14px;
-              }
-              .footer-note {
-                margin-top: 16px;
-                padding-top: 8px;
-                border-top: 1px dashed #ccc;
-                text-align: center;
-                font-size: 11px;
-                color: #666;
-                font-style: italic;
-              }
-              .branding {
-                margin-top: 10px;
-                text-align: center;
-                font-size: 12px;
-              }
-              .krashu {
-                color: #16a34a;
-                font-weight: 600;
-              }
-              .ved {
-                color: #f97316;
-                font-weight: 600;
-              }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-          </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
+    if (!printRef.current) return;
+    
+    const printContent = printRef.current.innerHTML;
+    const printStyles = `
+      @page {
+        size: A4;
+        margin: 10mm;
+      }
+      * { box-sizing: border-box; }
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.4;
+        margin: 0;
+        padding: 10mm;
+      }
+      .bill-header {
+        text-align: center;
+        border-bottom: 2px solid #333;
+        padding-bottom: 8px;
+        margin-bottom: 12px;
+      }
+      .bill-header h1 {
+        margin: 0 0 4px 0;
+        font-size: 22px;
+        font-weight: bold;
+      }
+      .bill-header h2 {
+        margin: 0;
+        font-size: 16px;
+        color: #666;
+      }
+      .two-column {
+        display: flex;
+        gap: 24px;
+        margin-bottom: 12px;
+      }
+      .two-column > div {
+        flex: 1;
+      }
+      .section {
+        margin-bottom: 12px;
+      }
+      .section-title {
+        font-weight: bold;
+        font-size: 14px;
+        border-bottom: 1px solid #ccc;
+        padding-bottom: 3px;
+        margin-bottom: 6px;
+      }
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 3px 0;
+        font-size: 13px;
+      }
+      .info-label {
+        font-weight: 500;
+        color: #555;
+      }
+      .info-value {
+        text-align: right;
+      }
+      .charges-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+        font-size: 13px;
+      }
+      .charges-table th, .charges-table td {
+        border: 1px solid #ccc;
+        padding: 6px 8px;
+        text-align: left;
+      }
+      .charges-table th {
+        background: #f5f5f5;
+        font-weight: bold;
+      }
+      .charges-table .amount {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .total-row {
+        font-weight: bold;
+        background: #e8f4e8;
+      }
+      .total-row.income {
+        background: #e8f0ff;
+      }
+      .total-row.net-income {
+        background: #d4f4d4;
+        font-size: 15px;
+      }
+      .payment-status {
+        margin-top: 14px;
+        padding: 10px;
+        background: #d4edda;
+        color: #155724;
+        border-radius: 4px;
+        text-align: center;
+        font-weight: bold;
+        font-size: 14px;
+      }
+      .footer-note {
+        margin-top: 16px;
+        padding-top: 8px;
+        border-top: 1px dashed #ccc;
+        text-align: center;
+        font-size: 11px;
+        color: #666;
+        font-style: italic;
+      }
+      .branding {
+        margin-top: 10px;
+        text-align: center;
+        font-size: 12px;
+      }
+      .krashu {
+        color: #16a34a;
+        font-weight: 600;
+      }
+      .ved {
+        color: #f97316;
+        font-weight: 600;
+      }
+    `;
+    
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${billType === "deduction" ? "शीत भण्डार कटौती बिल" : "विक्रय बिल"}</title>
+        <style>${printStyles}</style>
+      </head>
+      <body>
+        ${printContent}
+      </body>
+      </html>
+    `;
+
+    // Try window.open first (works on desktop)
+    const printWindow = window.open("", "_blank", "width=600,height=800");
+    if (printWindow) {
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    } else {
+      // Fallback for mobile: use hidden iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      iframe.style.left = '-9999px';
+      document.body.appendChild(iframe);
+      
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(htmlContent);
+        iframeDoc.close();
+        
         setTimeout(() => {
-          printWindow.print();
-          printWindow.close();
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
         }, 250);
       }
     }
