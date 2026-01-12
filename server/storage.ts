@@ -1333,11 +1333,12 @@ export class DatabaseStorage implements IStorage {
       if (!buyerName) continue;
       
       // Calculate total charges including all surcharges
+      // Always recalculate from totalCharges - paidAmount to ensure accuracy
       const totalCharges = (sale.coldStorageCharge || 0) + 
                           (sale.kataCharges || 0) + 
                           (sale.extraHammali || 0) + 
                           (sale.gradingCharges || 0);
-      const dueAmount = sale.dueAmount || (totalCharges - (sale.paidAmount || 0));
+      const dueAmount = totalCharges - (sale.paidAmount || 0);
       if (dueAmount > 0) {
         const currentDue = buyerDues.get(buyerName) || 0;
         buyerDues.set(buyerName, currentDue + dueAmount);
@@ -1377,11 +1378,12 @@ export class DatabaseStorage implements IStorage {
       if (remainingAmount <= 0) break;
 
       // Calculate total charges including all surcharges
+      // Always recalculate from totalCharges - paidAmount to ensure accuracy
       const totalCharges = (sale.coldStorageCharge || 0) + 
                           (sale.kataCharges || 0) + 
                           (sale.extraHammali || 0) + 
                           (sale.gradingCharges || 0);
-      const saleDueAmount = sale.dueAmount || (totalCharges - (sale.paidAmount || 0));
+      const saleDueAmount = totalCharges - (sale.paidAmount || 0);
       
       if (saleDueAmount <= 0) continue;
 
@@ -1517,11 +1519,12 @@ export class DatabaseStorage implements IStorage {
         if (remainingAmount <= 0) break;
 
         // Calculate total charges including all surcharges
+        // Always recalculate from totalCharges - paidAmount to ensure accuracy
         const totalCharges = (sale.coldStorageCharge || 0) + 
                             (sale.kataCharges || 0) + 
                             (sale.extraHammali || 0) + 
                             (sale.gradingCharges || 0);
-        const saleDueAmount = sale.dueAmount || (totalCharges - (sale.paidAmount || 0));
+        const saleDueAmount = totalCharges - (sale.paidAmount || 0);
         
         if (saleDueAmount <= 0) continue;
 
