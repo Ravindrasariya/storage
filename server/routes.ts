@@ -35,7 +35,7 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Invalid or expired session" });
       }
 
-      const user = await storage.getColdStorageUser(session.userId);
+      const user = await storage.getUserById(session.userId);
       if (!user) {
         return res.status(401).json({ error: "User not found" });
       }

@@ -55,6 +55,7 @@ export interface IStorage {
   getFloorCapacityByChamber(coldStorageId: string): Promise<Record<string, { floor: number; bags: number }[]>>;
   // Chamber floors
   getChamberFloors(chamberId: string): Promise<ChamberFloor[]>;
+  getChamberFloor(id: string): Promise<ChamberFloor | undefined>;
   getAllChamberFloors(coldStorageId: string): Promise<Record<string, ChamberFloor[]>>;
   createChamberFloor(data: InsertChamberFloor): Promise<ChamberFloor>;
   updateChamberFloor(id: string, updates: Partial<ChamberFloor>): Promise<ChamberFloor | undefined>;
@@ -226,6 +227,11 @@ export class DatabaseStorage implements IStorage {
 
   async getChamberFloors(chamberId: string): Promise<ChamberFloor[]> {
     return db.select().from(chamberFloors).where(eq(chamberFloors.chamberId, chamberId));
+  }
+
+  async getChamberFloor(id: string): Promise<ChamberFloor | undefined> {
+    const [result] = await db.select().from(chamberFloors).where(eq(chamberFloors.id, id));
+    return result;
   }
 
   async getAllChamberFloors(coldStorageId: string): Promise<Record<string, ChamberFloor[]>> {
