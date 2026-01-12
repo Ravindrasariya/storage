@@ -148,7 +148,7 @@ export async function registerRoutes(
     lots: z.array(z.object({
       size: z.number().int().positive(),
       type: z.string().min(1),
-      bagType: z.enum(["wafer", "seed"]),
+      bagType: z.enum(["wafer", "seed", "Ration"]),
       chamberId: z.string().min(1),
       floor: z.number().int().positive(),
       position: z.string().min(1),
@@ -171,6 +171,7 @@ export async function registerRoutes(
         ...farmer,
         ...lotData,
         lotNo: "", // Will be set by createBatchLots
+        coldStorageId: DEFAULT_COLD_STORAGE_ID,
         remainingSize: lotData.size,
       }));
       

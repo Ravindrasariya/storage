@@ -59,7 +59,6 @@ const farmerSchema = z.object({
 type FarmerData = z.infer<typeof farmerSchema>;
 
 interface LotData {
-  lotNo: string;
   size: number;
   type: string;
   bagType: "wafer" | "seed" | "Ration";
@@ -76,7 +75,6 @@ interface LotData {
 }
 
 const defaultLotData: LotData = {
-  lotNo: "",
   size: 1,
   type: "",
   bagType: "wafer",
@@ -101,9 +99,8 @@ export default function LotEntry() {
   const [lots, setLots] = useState<LotData[]>([{ ...defaultLotData }]);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
   const [showReceipt, setShowReceipt] = useState(false);
-  const [savedData, setSavedData] = useState<{ farmer: FarmerData; lots: LotData[]; entryDate: Date; lotIds: string[] } | null>(null);
-  const [entryBillNumber, setEntryBillNumber] = useState<number | null>(null);
-  const [billNumbersLoading, setBillNumbersLoading] = useState(false);
+  const [savedData, setSavedData] = useState<{ farmer: FarmerData; lots: LotData[]; entryDate: Date; entrySequence: number } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -113,6 +110,11 @@ export default function LotEntry() {
 
   const { data: coldStorage } = useQuery<ColdStorageSettings>({
     queryKey: ["/api/cold-storage"],
+  });
+
+  // Fetch next entry sequence for display
+  const { data: nextSequenceData } = useQuery<{ nextSequence: number }>({
+    queryKey: ["/api/next-entry-sequence"],
   });
 
   const form = useForm<FarmerData>({
@@ -164,14 +166,15 @@ export default function LotEntry() {
     localStorage.removeItem(STORAGE_KEY);
   };
 
-  const createLotMutation = useMutation({
-    mutationFn: async (data: FarmerData & LotData) => {
-      const response = await apiRequest("POST", "/api/lots", data);
+  const createBatchLotsMutation = useMutation({
+    mutationFn: async (data: { farmer: FarmerData; lots: LotData[] }) => {
+      const response = await apiRequest("POST", "/api/lots/batch", data);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/next-entry-sequence"] });
     },
     onError: (error: Error) => {
       toast({
@@ -221,10 +224,6 @@ export default function LotEntry() {
   const validateLots = (): boolean => {
     for (let i = 0; i < lots.length; i++) {
       const lot = lots[i];
-      if (!lot.lotNo) {
-        toast({ title: t("error"), description: `Lot ${i + 1}: Lot number is required`, variant: "destructive" });
-        return false;
-      }
       if (lot.size < 1) {
         toast({ title: t("error"), description: `Lot ${i + 1}: Size must be at least 1`, variant: "destructive" });
         return false;
@@ -248,24 +247,24 @@ export default function LotEntry() {
   const onSubmit = async (farmerData: FarmerData, printAfterSave: boolean = false) => {
     if (!validateLots()) return;
 
+    setIsSubmitting(true);
     try {
-      const createdLotIds: string[] = [];
-      for (const lot of lots) {
-        const lotData = await createLotMutation.mutateAsync({ ...farmerData, ...lot });
-        // mutationFn now returns parsed JSON directly
-        if (lotData && lotData.id) {
-          createdLotIds.push(lotData.id);
-        }
-      }
+      const result = await createBatchLotsMutation.mutateAsync({ farmer: farmerData, lots });
+      
       toast({
         title: t("success"),
-        description: `${lots.length} lot(s) created successfully`,
+        description: `${lots.length} lot(s) created successfully with Lot # ${result.entrySequence}`,
       });
       
       clearSavedData();
       
       // Store data for receipt before resetting form
-      const receiptData = { farmer: farmerData, lots: [...lots], entryDate: new Date(), lotIds: createdLotIds };
+      const receiptData = { 
+        farmer: farmerData, 
+        lots: [...lots], 
+        entryDate: new Date(), 
+        entrySequence: result.entrySequence 
+      };
       
       // Reset form state
       form.reset({
@@ -287,6 +286,8 @@ export default function LotEntry() {
       }
     } catch (error) {
       // Error handled by mutation onError
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -294,63 +295,17 @@ export default function LotEntry() {
     form.handleSubmit((data) => onSubmit(data, true))();
   };
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     if (!printRef.current || !savedData) return;
     
-    // Validate we have lot IDs
-    if (savedData.lotIds.length === 0) {
-      toast({
-        title: t("error"),
-        description: "No lot IDs available for bill number assignment",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Assign single bill number on first print (use first lot ID to get a bill number)
-    let billNumberToUse = entryBillNumber;
-    if (!entryBillNumber) {
-      setBillNumbersLoading(true);
-      
-      try {
-        // Use first lot to assign bill number - all lots share the same entry bill number
-        const response = await apiRequest("POST", `/api/lots/${savedData.lotIds[0]}/assign-bill-number`, {});
-        const billData = await response.json();
-        
-        if (billData && billData.billNumber) {
-          setEntryBillNumber(billData.billNumber);
-          billNumberToUse = billData.billNumber;
-        } else {
-          throw new Error("No bill number returned");
-        }
-      } catch (e) {
-        console.error("Failed to assign bill number", e);
-        setBillNumbersLoading(false);
-        toast({
-          title: t("error"),
-          description: "Failed to assign bill number. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      setBillNumbersLoading(false);
-    }
-    
-    // Use billNumberToUse directly to avoid async state issues
-    doPrint(billNumberToUse!);
+    // Entry sequence is already assigned when lots are created
+    doPrint(savedData.entrySequence);
   };
 
   const doPrint = (billNumber: number) => {
     if (!printRef.current || !savedData) return;
     
-    // Get the print content but replace the placeholder with actual bill number
-    let printContent = printRef.current.innerHTML;
-    // Replace the placeholder message with actual bill number
-    printContent = printContent.replace(
-      /\(Bill number will be assigned on print\)/g,
-      `बिल नंबर / Bill No: <strong>${billNumber}</strong>`
-    );
+    const printContent = printRef.current.innerHTML;
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
@@ -676,13 +631,10 @@ export default function LotEntry() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium">{t("lotNo")} *</label>
-                    <Input
-                      value={lot.lotNo}
-                      onChange={(e) => updateLot(index, "lotNo", e.target.value)}
-                      placeholder="Enter lot number"
-                      data-testid={`input-lot-no-${index}`}
-                    />
+                    <label className="text-sm font-medium">{t("lotNo")}</label>
+                    <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center text-muted-foreground">
+                      {nextSequenceData?.nextSequence ?? "..."} (Auto-assigned)
+                    </div>
                   </div>
                   <div>
                     <label className="text-sm font-medium">{t("size")} *</label>
@@ -919,11 +871,11 @@ export default function LotEntry() {
             <Button
               type="button"
               onClick={handleSaveAndPrint}
-              disabled={createLotMutation.isPending}
+              disabled={isSubmitting}
               data-testid="button-save-print"
             >
               <Printer className="h-4 w-4 mr-2" />
-              {createLotMutation.isPending ? t("loading") : (t("saveAndPrint") || "Save & Print")}
+              {isSubmitting ? t("loading") : (t("saveAndPrint") || "Save & Print")}
             </Button>
           </div>
         </form>
@@ -932,7 +884,6 @@ export default function LotEntry() {
       <Dialog open={showReceipt} onOpenChange={(open) => {
         if (!open) {
           setShowReceipt(false);
-          setEntryBillNumber(null);
           navigate("/");
         }
       }}>
@@ -950,17 +901,9 @@ export default function LotEntry() {
                 <div className="receipt-header">
                   <h1>{coldStorage?.name || "Cold Storage"}</h1>
                   <h2>{t("lotEntryReceipt") || "Lot Entry Receipt"}</h2>
-                  {savedData.lotIds.length > 0 && (
-                    <div style={{ marginTop: "8px", fontSize: "14px" }}>
-                      {billNumbersLoading ? "Loading..." : entryBillNumber ? (
-                        <>बिल नंबर / Bill No: <strong>{entryBillNumber}</strong></>
-                      ) : (
-                        <span style={{ color: "#666", fontStyle: "italic" }}>
-                          (Bill number will be assigned on print)
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ marginTop: "8px", fontSize: "14px" }}>
+                    <>लॉट / बिल नंबर / Lot / Bill No: <strong>{savedData.entrySequence}</strong></>
+                  </div>
                 </div>
 
                 <div className="section">
@@ -1015,7 +958,7 @@ export default function LotEntry() {
                       {savedData.lots.map((lot, index) => (
                         <tr key={index}>
                           <td>{index + 1}</td>
-                          <td>{lot.lotNo}</td>
+                          <td>{savedData.entrySequence}</td>
                           <td>{lot.type}</td>
                           <td>{lot.size}</td>
                           <td>{lot.bagType === "wafer" ? t("wafer") : lot.bagType === "seed" ? t("seed") : "Ration"}</td>
@@ -1041,12 +984,12 @@ export default function LotEntry() {
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => { setShowReceipt(false); setEntryBillNumber(null); navigate("/"); }}>
+                <Button variant="outline" onClick={() => { setShowReceipt(false); navigate("/"); }}>
                   {t("close")}
                 </Button>
-                <Button onClick={handlePrint} disabled={billNumbersLoading}>
+                <Button onClick={handlePrint}>
                   <Printer className="h-4 w-4 mr-2" />
-                  {billNumbersLoading ? "Loading..." : t("print")}
+                  {t("print")}
                 </Button>
               </div>
             </>
