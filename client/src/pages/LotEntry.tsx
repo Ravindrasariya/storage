@@ -313,45 +313,67 @@ export default function LotEntry() {
       <head>
         <title>Lot Entry Receipt</title>
         <style>
-          @page { size: A4; margin: 15mm; }
+          @page { size: A4; margin: 8mm; }
           body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            font-size: 12px; 
-            line-height: 1.4;
+            font-size: 13px; 
+            line-height: 1.3;
             color: #333;
             margin: 0;
             padding: 0;
           }
+          .copies-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+          }
+          .copy {
+            flex: 1;
+            padding: 10px 15px;
+            border-bottom: 2px dashed #000;
+            page-break-inside: avoid;
+            overflow: hidden;
+          }
+          .copy:last-child {
+            border-bottom: none;
+          }
+          .copy-label {
+            text-align: right;
+            font-size: 11px;
+            font-weight: bold;
+            color: #666;
+            margin-bottom: 5px;
+          }
           .receipt-header {
             text-align: center;
             border-bottom: 2px solid #333;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
           }
           .receipt-header h1 {
-            font-size: 20px;
-            margin: 0 0 5px 0;
+            font-size: 18px;
+            margin: 0 0 3px 0;
           }
           .receipt-header h2 {
-            font-size: 16px;
+            font-size: 14px;
             margin: 0;
             color: #555;
           }
           .section {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
           }
           .section-title {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
             background: #f0f0f0;
-            padding: 5px 8px;
-            margin-bottom: 8px;
+            padding: 4px 8px;
+            margin-bottom: 6px;
             border-left: 3px solid #333;
           }
           .info-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 5px 15px;
+            gap: 3px 15px;
           }
           .info-row {
             display: flex;
@@ -368,7 +390,7 @@ export default function LotEntry() {
           }
           .lots-table th, .lots-table td {
             border: 1px solid #ccc;
-            padding: 6px 8px;
+            padding: 4px 6px;
             text-align: left;
           }
           .lots-table th {
@@ -377,22 +399,31 @@ export default function LotEntry() {
           }
           .entry-date {
             text-align: right;
-            font-size: 11px;
+            font-size: 10px;
             color: #666;
-            margin-top: 15px;
+            margin-top: 8px;
           }
           .footer-note {
             text-align: center;
-            font-size: 10px;
+            font-size: 9px;
             color: #666;
-            margin-top: 20px;
-            padding-top: 10px;
+            margin-top: 10px;
+            padding-top: 6px;
             border-top: 1px solid #ccc;
           }
         </style>
       </head>
       <body>
-        ${printContent}
+        <div class="copies-container">
+          <div class="copy">
+            <div class="copy-label">OFFICE COPY / कार्यालय प्रति</div>
+            ${printContent}
+          </div>
+          <div class="copy">
+            <div class="copy-label">CUSTOMER COPY / ग्राहक प्रति</div>
+            ${printContent}
+          </div>
+        </div>
       </body>
       </html>
     `);
