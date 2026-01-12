@@ -54,7 +54,7 @@ export default function Dashboard() {
         <SettingsDialog />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <StatCard
           title={t("overallCapacity")}
           value={stats?.totalCapacity.toLocaleString() || "0"}
@@ -79,6 +79,9 @@ export default function Dashboard() {
           colorClass="bg-purple-50 dark:bg-purple-950/30"
           testId="text-total-farmers"
         />
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           title={t("totalLots")}
           value={`${stats?.totalLots || 0} / ${stats?.remainingLots || 0}`}
