@@ -243,8 +243,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
           </div>
 
           <div className="space-y-4">
-            <h4 className="font-medium">{t("editableFields")}</h4>
-            
             <div className="space-y-2">
               <Label htmlFor="buyerName">{t("buyerName")}</Label>
               <Input
