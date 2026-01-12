@@ -171,8 +171,9 @@ export function SettingsDialog() {
   });
 
   const addChamberMutation = useMutation({
-    mutationFn: async (data: { name: string; capacity: number; coldStorageId: string }) => {
-      return apiRequest("POST", "/api/chambers", data);
+    mutationFn: async (data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber> => {
+      const response = await apiRequest("POST", "/api/chambers", data);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
@@ -195,8 +196,9 @@ export function SettingsDialog() {
   });
 
   const addFloorMutation = useMutation({
-    mutationFn: async (data: { chamberId: string; floorNumber: number; capacity: number }) => {
-      return apiRequest("POST", "/api/chamber-floors", data);
+    mutationFn: async (data: { chamberId: string; floorNumber: number; capacity: number }): Promise<ChamberFloor> => {
+      const response = await apiRequest("POST", "/api/chamber-floors", data);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
@@ -342,17 +344,17 @@ export function SettingsDialog() {
 
   const handleAddChamber = async () => {
     if (!coldStorage) return;
-    const newChamberNumber = (chambers?.length || 0) + 1;
+    const newChamberNumber = chamberEdits.length + 1;
     try {
-      await addChamberMutation.mutateAsync({
+      const newChamber = await addChamberMutation.mutateAsync({
         name: `Chamber ${newChamberNumber}`,
         capacity: 10000,
         coldStorageId: coldStorage.id,
       });
-      const newChambers = await queryClient.fetchQuery<Chamber[]>({
-        queryKey: ["/api/chambers"],
-      });
-      setChamberEdits(newChambers || []);
+      // Append new chamber to existing edits (preserving unsaved changes)
+      setChamberEdits((prev) => [...prev, newChamber]);
+      // Invalidate cache for future fetches
+      queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
     } catch (error) {
       toast({
         title: t("error"),
@@ -384,21 +386,24 @@ export function SettingsDialog() {
   };
 
   const handleAddFloor = async (chamberId: string) => {
-    const existingFloors = chamberFloors?.[chamberId] || [];
+    const existingFloors = floorEdits[chamberId] || chamberFloors?.[chamberId] || [];
     const nextFloorNumber = existingFloors.length > 0 
       ? Math.max(...existingFloors.map(f => f.floorNumber)) + 1 
       : 1;
     
     try {
-      await addFloorMutation.mutateAsync({
+      const newFloor = await addFloorMutation.mutateAsync({
         chamberId,
         floorNumber: nextFloorNumber,
         capacity: 1000,
       });
-      const newFloors = await queryClient.fetchQuery<ChamberFloorsData>({
-        queryKey: ["/api/chamber-floors"],
-      });
-      setFloorEdits(newFloors || {});
+      // Append new floor to existing edits (preserving unsaved changes)
+      setFloorEdits((prev) => ({
+        ...prev,
+        [chamberId]: [...(prev[chamberId] || chamberFloors?.[chamberId] || []), newFloor],
+      }));
+      // Invalidate cache for future fetches
+      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
     } catch (error) {
       toast({
         title: t("error"),
