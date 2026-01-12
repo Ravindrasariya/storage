@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Edit, Phone, MapPin, Package, Layers, ShoppingCart, CheckCircle, Clock, Receipt } from "lucide-react";
+import { Edit, Phone, MapPin, Package, Layers, ShoppingCart, CheckCircle, Clock, Receipt, Printer } from "lucide-react";
 import type { Lot } from "@shared/schema";
 
 interface LotCardProps {
@@ -13,12 +13,12 @@ interface LotCardProps {
   onEdit: (lot: Lot) => void;
   onPartialSale?: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
-  // Optional calculated charges from sales history (for consistency with Analytics)
+  onPrintReceipt?: (lot: Lot) => void;
   calculatedPaidCharge?: number;
   calculatedDueCharge?: number;
 }
 
-export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, calculatedPaidCharge, calculatedDueCharge }: LotCardProps) {
+export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, onPrintReceipt, calculatedPaidCharge, calculatedDueCharge }: LotCardProps) {
   // Use calculated values if provided, otherwise fall back to stored lot values
   const paidCharge = calculatedPaidCharge ?? lot.totalPaidCharge ?? 0;
   const dueCharge = calculatedDueCharge ?? lot.totalDueCharge ?? 0;
@@ -178,6 +178,18 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
             <Edit className="h-4 w-4" />
             {t("edit")}
           </Button>
+          {lot.entrySequence && onPrintReceipt && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onPrintReceipt(lot)}
+              className="gap-2"
+              data-testid={`button-print-lot-${lot.id}`}
+            >
+              <Printer className="h-4 w-4" />
+              {t("print")}
+            </Button>
+          )}
           {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onPartialSale && (
             <Button
               variant="secondary"

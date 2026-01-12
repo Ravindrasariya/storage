@@ -25,6 +25,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LotCard } from "@/components/LotCard";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
+import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { ArrowLeft, Search, Phone, Package, Filter, User } from "lucide-react";
@@ -69,6 +70,8 @@ export default function SearchEdit() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
   const [editHistory, setEditHistory] = useState<LotEditHistory[]>([]);
+  const [printReceiptDialogOpen, setPrintReceiptDialogOpen] = useState(false);
+  const [printReceiptLot, setPrintReceiptLot] = useState<Lot | null>(null);
 
   const [editForm, setEditForm] = useState<{
     chamberId: string;
@@ -470,6 +473,10 @@ export default function SearchEdit() {
                   chamberName={chamberMap[lot.chamberId] || "Unknown"}
                   onEdit={handleEditClick}
                   onToggleSale={handleToggleSale}
+                  onPrintReceipt={(lot) => {
+                    setPrintReceiptLot(lot);
+                    setPrintReceiptDialogOpen(true);
+                  }}
                   calculatedPaidCharge={lotPaidCharge}
                   calculatedDueCharge={lotDueCharge}
                 />
@@ -712,6 +719,17 @@ export default function SearchEdit() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {printReceiptLot && (
+        <PrintEntryReceiptDialog
+          lot={printReceiptLot}
+          open={printReceiptDialogOpen}
+          onOpenChange={(open) => {
+            setPrintReceiptDialogOpen(open);
+            if (!open) setPrintReceiptLot(null);
+          }}
+        />
+      )}
     </div>
   );
 }
