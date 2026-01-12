@@ -213,7 +213,7 @@ export default function CashManagement() {
     }
 
     // Combine and sort descending (latest first)
-    // Use timestamp in milliseconds for reliable sorting
+    // Use timestamp in milliseconds for reliable sorting, with ID as secondary sort key
     const getTimestamp = (dateStr: string | Date): number => {
       if (dateStr instanceof Date) return dateStr.getTime();
       const parsed = Date.parse(dateStr);
@@ -231,7 +231,13 @@ export default function CashManagement() {
         data: e, 
         timestamp: getTimestamp(e.paidAt)
       })),
-    ].sort((a, b) => b.timestamp - a.timestamp);
+    ].sort((a, b) => {
+      // Primary sort by timestamp (newest first)
+      const timeDiff = b.timestamp - a.timestamp;
+      if (timeDiff !== 0) return timeDiff;
+      // Secondary sort by ID (highest ID = most recent entry)
+      return b.data.id - a.data.id;
+    });
   }, [receipts, expensesList, filterBuyer, filterCategory, filterMonth]);
 
   const isLoading = loadingReceipts || loadingExpenses;
