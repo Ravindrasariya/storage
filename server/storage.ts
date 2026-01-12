@@ -1332,9 +1332,16 @@ export class DatabaseStorage implements IStorage {
       const buyerName = sale.buyerName || "";
       if (!buyerName) continue;
       
-      const dueAmount = sale.dueAmount || (sale.coldStorageCharge - (sale.paidAmount || 0));
-      const currentDue = buyerDues.get(buyerName) || 0;
-      buyerDues.set(buyerName, currentDue + dueAmount);
+      // Calculate total charges including all surcharges
+      const totalCharges = (sale.coldStorageCharge || 0) + 
+                          (sale.kataCharges || 0) + 
+                          (sale.extraHammali || 0) + 
+                          (sale.gradingCharges || 0);
+      const dueAmount = sale.dueAmount || (totalCharges - (sale.paidAmount || 0));
+      if (dueAmount > 0) {
+        const currentDue = buyerDues.get(buyerName) || 0;
+        buyerDues.set(buyerName, currentDue + dueAmount);
+      }
     }
 
     return Array.from(buyerDues.entries())
@@ -1369,7 +1376,12 @@ export class DatabaseStorage implements IStorage {
     for (const sale of sales) {
       if (remainingAmount <= 0) break;
 
-      const saleDueAmount = sale.dueAmount || (sale.coldStorageCharge - (sale.paidAmount || 0));
+      // Calculate total charges including all surcharges
+      const totalCharges = (sale.coldStorageCharge || 0) + 
+                          (sale.kataCharges || 0) + 
+                          (sale.extraHammali || 0) + 
+                          (sale.gradingCharges || 0);
+      const saleDueAmount = sale.dueAmount || (totalCharges - (sale.paidAmount || 0));
       
       if (saleDueAmount <= 0) continue;
 
@@ -1378,7 +1390,7 @@ export class DatabaseStorage implements IStorage {
         await db.update(salesHistory)
           .set({
             paymentStatus: "paid",
-            paidAmount: sale.coldStorageCharge,
+            paidAmount: totalCharges,
             dueAmount: 0,
             paymentMode: paymentMode,
             paidAt: data.receivedAt,
@@ -1391,7 +1403,7 @@ export class DatabaseStorage implements IStorage {
       } else {
         // Can only partially pay this sale
         const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
-        const newDueAmount = sale.coldStorageCharge - newPaidAmount;
+        const newDueAmount = totalCharges - newPaidAmount;
         
         await db.update(salesHistory)
           .set({
@@ -1504,7 +1516,12 @@ export class DatabaseStorage implements IStorage {
       for (const sale of sales) {
         if (remainingAmount <= 0) break;
 
-        const saleDueAmount = sale.dueAmount || (sale.coldStorageCharge - (sale.paidAmount || 0));
+        // Calculate total charges including all surcharges
+        const totalCharges = (sale.coldStorageCharge || 0) + 
+                            (sale.kataCharges || 0) + 
+                            (sale.extraHammali || 0) + 
+                            (sale.gradingCharges || 0);
+        const saleDueAmount = sale.dueAmount || (totalCharges - (sale.paidAmount || 0));
         
         if (saleDueAmount <= 0) continue;
 
@@ -1513,7 +1530,7 @@ export class DatabaseStorage implements IStorage {
           await db.update(salesHistory)
             .set({
               paymentStatus: "paid",
-              paidAmount: sale.coldStorageCharge,
+              paidAmount: totalCharges,
               dueAmount: 0,
               paymentMode: paymentMode,
               paidAt: activeReceipt.receivedAt,
@@ -1525,7 +1542,7 @@ export class DatabaseStorage implements IStorage {
         } else {
           // Can only partially pay this sale
           const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
-          const newDueAmount = sale.coldStorageCharge - newPaidAmount;
+          const newDueAmount = totalCharges - newPaidAmount;
           
           await db.update(salesHistory)
             .set({
