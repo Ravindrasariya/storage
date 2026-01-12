@@ -152,6 +152,8 @@ function AppContent() {
 
   const handleLoginSuccess = useCallback((user: any, coldStorage: any, token: string) => {
     login(user, coldStorage, token);
+    // Hard refresh to clear any cached state
+    window.location.href = "/";
   }, [login]);
 
   // Show loading while checking auth
