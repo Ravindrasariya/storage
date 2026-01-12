@@ -345,6 +345,26 @@ const translations: Translations = {
   reverseWarning: { en: "This will undo this transaction and all associated payment changes. This action cannot be undone.", hi: "यह इस लेनदेन और सभी संबंधित भुगतान परिवर्तनों को पूर्ववत कर देगा। यह क्रिया पूर्ववत नहीं की जा सकती।" },
   entryReversed: { en: "Entry reversed successfully", hi: "प्रविष्टि सफलतापूर्वक उलट दी गई" },
   reversalFailed: { en: "Failed to reverse entry", hi: "प्रविष्टि उलटने में विफल" },
+  
+  // Login/Authentication
+  welcome: { en: "Welcome", hi: "स्वागत है" },
+  mobileNumber: { en: "Mobile Number", hi: "मोबाइल नंबर" },
+  password: { en: "Password", hi: "पासवर्ड" },
+  login: { en: "Login", hi: "लॉग इन" },
+  logout: { en: "Logout", hi: "लॉग आउट" },
+  changePassword: { en: "Change Password", hi: "पासवर्ड बदलें" },
+  currentPassword: { en: "Current Password", hi: "वर्तमान पासवर्ड" },
+  newPassword: { en: "New Password", hi: "नया पासवर्ड" },
+  confirmPassword: { en: "Confirm Password", hi: "पासवर्ड की पुष्टि करें" },
+  loginSuccess: { en: "Login successful", hi: "लॉगिन सफल" },
+  loginFailed: { en: "Login failed", hi: "लॉगिन विफल" },
+  passwordChanged: { en: "Password changed", hi: "पासवर्ड बदला गया" },
+  passwordChangedSuccess: { en: "Your password has been updated successfully", hi: "आपका पासवर्ड सफलतापूर्वक अपडेट किया गया" },
+  enterCredentials: { en: "Enter credentials", hi: "क्रेडेंशियल दर्ज करें" },
+  enterCredentialsFirst: { en: "Please enter your mobile number and current password first", hi: "कृपया पहले अपना मोबाइल नंबर और वर्तमान पासवर्ड दर्ज करें" },
+  coldStorageDetails: { en: "Cold Storage Details", hi: "शीत भंडार विवरण" },
+  editAccess: { en: "Edit Access", hi: "संपादन पहुंच" },
+  viewOnly: { en: "View Only", hi: "केवल देखें" },
 };
 
 interface I18nContextType {

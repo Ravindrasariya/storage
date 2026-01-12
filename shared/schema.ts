@@ -36,6 +36,15 @@ export const coldStorageUsers = pgTable("cold_storage_users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// User Sessions - persistent sessions for logged in users
+export const userSessions = pgTable("user_sessions", {
+  id: varchar("id").primaryKey(), // This is the token
+  userId: varchar("user_id").notNull(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastAccessedAt: timestamp("last_accessed_at").notNull().defaultNow(),
+});
+
 // Chambers in cold storage
 export const chambers = pgTable("chambers", {
   id: varchar("id").primaryKey(),
@@ -239,6 +248,7 @@ export type ColdStorage = typeof coldStorages.$inferSelect;
 export type InsertColdStorage = z.infer<typeof insertColdStorageSchema>;
 export type ColdStorageUser = typeof coldStorageUsers.$inferSelect;
 export type InsertColdStorageUser = z.infer<typeof insertColdStorageUserSchema>;
+export type UserSession = typeof userSessions.$inferSelect;
 export type Chamber = typeof chambers.$inferSelect;
 export type InsertChamber = z.infer<typeof insertChamberSchema>;
 export type ChamberFloor = typeof chamberFloors.$inferSelect;

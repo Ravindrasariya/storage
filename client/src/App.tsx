@@ -1,12 +1,15 @@
-import { Switch, Route, Link, useLocation } from "wouter";
+import { Switch, Route, Link, useLocation, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
+import { SplashScreen } from "@/components/SplashScreen";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -19,6 +22,7 @@ import {
   Snowflake,
   History,
   Banknote,
+  Loader2,
 } from "lucide-react";
 import Dashboard from "@/pages/Dashboard";
 import LotEntry from "@/pages/LotEntry";
@@ -27,13 +31,15 @@ import Analytics from "@/pages/Analytics";
 import SalesHistory from "@/pages/SalesHistory";
 import CashManagement from "@/pages/CashManagement";
 import Admin from "@/pages/Admin";
+import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 function Navigation() {
   const { t } = useI18n();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, coldStorage, logout } = useAuth();
 
   const navItems = [
     { href: "/", label: t("dashboard"), icon: LayoutDashboard },
@@ -88,6 +94,14 @@ function Navigation() {
           <LanguageToggle />
           <ThemeToggle />
           
+          {user && coldStorage && (
+            <UserProfileDropdown
+              user={user}
+              coldStorage={coldStorage}
+              onLogout={logout}
+            />
+          )}
+          
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="md:hidden" data-testid="button-mobile-menu">
@@ -106,7 +120,7 @@ function Navigation() {
   );
 }
 
-function Router() {
+function ProtectedRoutes() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
@@ -121,16 +135,60 @@ function Router() {
   );
 }
 
-function AppContent() {
+function AuthenticatedApp() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navigation />
       <main className="flex-1">
-        <Router />
+        <ProtectedRoutes />
       </main>
       <Footer />
     </div>
   );
+}
+
+function AppContent() {
+  const { isAuthenticated, isLoading, login } = useAuth();
+  const [showSplash, setShowSplash] = useState(true);
+  const [location] = useLocation();
+
+  const handleSplashComplete = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+
+  const handleLoginSuccess = useCallback((user: any, coldStorage: any, token: string) => {
+    login(user, coldStorage, token);
+  }, [login]);
+
+  // Show splash screen on initial load
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} />;
+  }
+
+  // Show loading while checking auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-chart-1" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Allow admin page without authentication
+  if (location === "/admin") {
+    return <Admin />;
+  }
+
+  // Show login if not authenticated
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // Show authenticated app
+  return <AuthenticatedApp />;
 }
 
 function App() {
@@ -138,10 +196,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <I18nProvider>
-          <TooltipProvider>
-            <AppContent />
-            <Toaster />
-          </TooltipProvider>
+          <AuthProvider>
+            <TooltipProvider>
+              <AppContent />
+              <Toaster />
+            </TooltipProvider>
+          </AuthProvider>
         </I18nProvider>
       </ThemeProvider>
     </QueryClientProvider>

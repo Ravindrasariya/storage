@@ -1061,6 +1061,147 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== USER AUTH ROUTES ====================
+  
+  // Generate a simple random token
+  const generateUserToken = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let token = '';
+    for (let i = 0; i < 64; i++) {
+      token += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return token;
+  };
+
+  // User login
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { mobileNumber, password } = req.body;
+      
+      if (!mobileNumber || !password) {
+        return res.status(400).json({ error: "Mobile number and password are required" });
+      }
+
+      const result = await storage.authenticateUser(mobileNumber, password);
+      
+      if (!result) {
+        return res.status(401).json({ error: "Invalid mobile number or password" });
+      }
+
+      const token = generateUserToken();
+      // Store session in database for persistence across server restarts
+      await storage.createSession(token, result.user.id, result.coldStorage.id);
+
+      // Return user info (excluding password) and cold storage details
+      const { password: _, ...userWithoutPassword } = result.user;
+      res.json({ 
+        success: true, 
+        token,
+        user: userWithoutPassword,
+        coldStorage: result.coldStorage
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // Verify user session
+  app.get("/api/auth/session", async (req, res) => {
+    try {
+      const token = req.headers['x-auth-token'] as string;
+      
+      if (!token) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const session = await storage.getSession(token);
+      
+      if (!session) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const user = await storage.getUserById(session.userId);
+      const coldStorage = await storage.getColdStorage(session.coldStorageId);
+
+      if (!user || !coldStorage) {
+        await storage.deleteSession(token);
+        return res.status(401).json({ error: "Session invalid" });
+      }
+
+      // Update last accessed time
+      await storage.updateSessionLastAccess(token);
+
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ 
+        user: userWithoutPassword, 
+        coldStorage 
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to verify session" });
+    }
+  });
+
+  // User logout
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      const token = req.headers['x-auth-token'] as string;
+      if (token) {
+        await storage.deleteSession(token);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Logout failed" });
+    }
+  });
+
+  // Change password (user must be authenticated and provide current password)
+  app.post("/api/auth/change-password", async (req, res) => {
+    try {
+      const token = req.headers['x-auth-token'] as string;
+      
+      if (!token) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const session = await storage.getSession(token);
+      
+      if (!session) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { userId, currentPassword, newPassword } = req.body;
+      
+      if (!newPassword || newPassword.length < 4) {
+        return res.status(400).json({ error: "Password must be at least 4 characters" });
+      }
+      
+      // Verify user is changing their own password
+      if (session.userId !== userId) {
+        return res.status(403).json({ error: "Cannot change another user's password" });
+      }
+
+      // Get the user and verify current password
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (user.password !== currentPassword) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+
+      const success = await storage.resetUserPassword(userId, newPassword);
+      
+      if (!success) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to change password" });
+    }
+  });
+
   // ==================== ADMIN ROUTES ====================
   
   // Admin password from environment variable (default: "admin123" for development)

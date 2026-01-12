@@ -4,6 +4,7 @@ import { db } from "./db";
 import {
   coldStorages,
   coldStorageUsers,
+  userSessions,
   chambers,
   chamberFloors,
   lots,
@@ -18,6 +19,7 @@ import {
   type InsertColdStorage,
   type ColdStorageUser,
   type InsertColdStorageUser,
+  type UserSession,
   type Chamber,
   type InsertChamber,
   type ChamberFloor,
@@ -131,6 +133,14 @@ export interface IStorage {
   updateColdStorageUser(id: string, updates: Partial<ColdStorageUser>): Promise<ColdStorageUser | undefined>;
   deleteColdStorageUser(id: string): Promise<boolean>;
   resetUserPassword(userId: string, newPassword: string): Promise<boolean>;
+  // Authentication
+  authenticateUser(mobileNumber: string, password: string): Promise<{ user: ColdStorageUser; coldStorage: ColdStorage } | null>;
+  getUserById(userId: string): Promise<ColdStorageUser | undefined>;
+  // Session Management
+  createSession(token: string, userId: string, coldStorageId: string): Promise<UserSession>;
+  getSession(token: string): Promise<UserSession | undefined>;
+  deleteSession(token: string): Promise<void>;
+  updateSessionLastAccess(token: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1712,6 +1722,59 @@ export class DatabaseStorage implements IStorage {
       .where(eq(coldStorageUsers.id, userId))
       .returning();
     return !!updated;
+  }
+
+  // Authentication
+  async authenticateUser(mobileNumber: string, password: string): Promise<{ user: ColdStorageUser; coldStorage: ColdStorage } | null> {
+    const [user] = await db.select()
+      .from(coldStorageUsers)
+      .where(eq(coldStorageUsers.mobileNumber, mobileNumber));
+    
+    if (!user || user.password !== password) {
+      return null;
+    }
+
+    const [coldStorage] = await db.select()
+      .from(coldStorages)
+      .where(eq(coldStorages.id, user.coldStorageId));
+
+    if (!coldStorage) {
+      return null;
+    }
+
+    return { user, coldStorage };
+  }
+
+  async getUserById(userId: string): Promise<ColdStorageUser | undefined> {
+    const [user] = await db.select()
+      .from(coldStorageUsers)
+      .where(eq(coldStorageUsers.id, userId));
+    return user;
+  }
+
+  // Session Management
+  async createSession(token: string, userId: string, coldStorageId: string): Promise<UserSession> {
+    const [session] = await db.insert(userSessions)
+      .values({ id: token, userId, coldStorageId })
+      .returning();
+    return session;
+  }
+
+  async getSession(token: string): Promise<UserSession | undefined> {
+    const [session] = await db.select()
+      .from(userSessions)
+      .where(eq(userSessions.id, token));
+    return session;
+  }
+
+  async deleteSession(token: string): Promise<void> {
+    await db.delete(userSessions).where(eq(userSessions.id, token));
+  }
+
+  async updateSessionLastAccess(token: string): Promise<void> {
+    await db.update(userSessions)
+      .set({ lastAccessedAt: new Date() })
+      .where(eq(userSessions.id, token));
   }
 }
 
