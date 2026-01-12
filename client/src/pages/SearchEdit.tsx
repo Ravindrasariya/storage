@@ -264,7 +264,7 @@ export default function SearchEdit() {
     mutationFn: async (data: { id: string; updates: Partial<Lot>; silent?: boolean }) => {
       return apiRequest("PATCH", `/api/lots/${data.id}`, data.updates);
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       if (!variables.silent) {
@@ -272,7 +272,20 @@ export default function SearchEdit() {
           title: t("success"),
           description: "Lot updated successfully",
         });
-        setEditDialogOpen(false);
+        // Update the selected lot with new values to reflect changes in the dialog
+        if (selectedLot && editForm) {
+          setSelectedLot({ ...selectedLot, ...editForm });
+          // Refresh edit history
+          try {
+            const response = await authFetch(`/api/lots/${selectedLot.id}/history`);
+            if (response.ok) {
+              const data = await response.json();
+              setEditHistory(data);
+            }
+          } catch (error) {
+            // Ignore history fetch errors
+          }
+        }
       }
       handleSearch();
     },
