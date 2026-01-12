@@ -523,7 +523,7 @@ export function SettingsDialog() {
               <Label>{t("overallCapacity")} ({t("bags")})</Label>
               <Input
                 type="number"
-                value={settings?.totalCapacity ?? ""}
+                value={settings?.totalCapacity || ""}
                 onChange={(e) =>
                   setSettings((prev) =>
                     prev ? { ...prev, totalCapacity: e.target.value === "" ? 0 : Number(e.target.value) } : null
@@ -541,7 +541,7 @@ export function SettingsDialog() {
                 <Label>{t("coldStorageCharge")}</Label>
                 <Input
                   type="number"
-                  value={settings?.waferColdCharge ?? ""}
+                  value={settings?.waferColdCharge || ""}
                   onChange={(e) =>
                     setSettings((prev) =>
                       prev ? { ...prev, waferColdCharge: e.target.value === "" ? 0 : Number(e.target.value) } : null
@@ -554,7 +554,7 @@ export function SettingsDialog() {
                 <Label>{t("hammali")}</Label>
                 <Input
                   type="number"
-                  value={settings?.waferHammali ?? ""}
+                  value={settings?.waferHammali || ""}
                   onChange={(e) =>
                     setSettings((prev) =>
                       prev ? { ...prev, waferHammali: e.target.value === "" ? 0 : Number(e.target.value) } : null
@@ -576,7 +576,7 @@ export function SettingsDialog() {
                 <Label>{t("coldStorageCharge")}</Label>
                 <Input
                   type="number"
-                  value={settings?.seedColdCharge ?? ""}
+                  value={settings?.seedColdCharge || ""}
                   onChange={(e) =>
                     setSettings((prev) =>
                       prev ? { ...prev, seedColdCharge: e.target.value === "" ? 0 : Number(e.target.value) } : null
@@ -589,7 +589,7 @@ export function SettingsDialog() {
                 <Label>{t("hammali")}</Label>
                 <Input
                   type="number"
-                  value={settings?.seedHammali ?? ""}
+                  value={settings?.seedHammali || ""}
                   onChange={(e) =>
                     setSettings((prev) =>
                       prev ? { ...prev, seedHammali: e.target.value === "" ? 0 : Number(e.target.value) } : null
