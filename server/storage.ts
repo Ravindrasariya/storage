@@ -1211,19 +1211,17 @@ export class DatabaseStorage implements IStorage {
 
   // Exit History methods
   async createExit(data: InsertExitHistory): Promise<ExitHistory> {
-    // Atomically increment and get the bill number using UPDATE RETURNING
-    // This ensures no two exits can get the same bill number
-    const [updatedStorage] = await db.update(coldStorages)
-      .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 0) + 1` })
-      .where(eq(coldStorages.id, data.coldStorageId))
-      .returning({ billNumber: coldStorages.nextExitBillNumber });
-    
-    if (!updatedStorage) {
+    // Get the current bill number (before incrementing)
+    const coldStorage = await this.getColdStorage(data.coldStorageId);
+    if (!coldStorage) {
       throw new Error("Cold storage not found");
     }
+    const billNumber = coldStorage.nextExitBillNumber ?? 1;
     
-    // The returned billNumber is the NEW value after increment, so use it directly
-    const billNumber = updatedStorage.billNumber;
+    // Increment the counter for the next exit
+    await db.update(coldStorages)
+      .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 0) + 1` })
+      .where(eq(coldStorages.id, data.coldStorageId));
     
     // Create the exit record with the bill number
     const [record] = await db.insert(exitHistory)
@@ -1651,29 +1649,24 @@ export class DatabaseStorage implements IStorage {
       return existingBillNumber;
     }
     
-    // Atomically increment and get the bill number using UPDATE RETURNING
-    const counterColumn = billType === "coldStorage" 
-      ? coldStorages.nextColdStorageBillNumber 
-      : coldStorages.nextSalesBillNumber;
+    // Get the current bill number (before incrementing)
+    const coldStorage = await this.getColdStorage(sale.coldStorageId);
+    if (!coldStorage) {
+      throw new Error("Cold storage not found");
+    }
     
-    const [updatedStorage] = await db.update(coldStorages)
+    const billNumber = billType === "coldStorage" 
+      ? (coldStorage.nextColdStorageBillNumber ?? 1)
+      : (coldStorage.nextSalesBillNumber ?? 1);
+    
+    // Increment the counter for the next assignment
+    await db.update(coldStorages)
       .set(
         billType === "coldStorage" 
           ? { nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 0) + 1` }
           : { nextSalesBillNumber: sql`COALESCE(${coldStorages.nextSalesBillNumber}, 0) + 1` }
       )
-      .where(eq(coldStorages.id, sale.coldStorageId))
-      .returning(
-        billType === "coldStorage" 
-          ? { billNumber: coldStorages.nextColdStorageBillNumber }
-          : { billNumber: coldStorages.nextSalesBillNumber }
-      );
-    
-    if (!updatedStorage) {
-      throw new Error("Cold storage not found");
-    }
-    
-    const billNumber = updatedStorage.billNumber;
+      .where(eq(coldStorages.id, sale.coldStorageId));
     
     // Update the sale with the assigned bill number
     await db.update(salesHistory)
@@ -1702,17 +1695,17 @@ export class DatabaseStorage implements IStorage {
       return lot.entryBillNumber;
     }
     
-    // Atomically increment and get the bill number using UPDATE RETURNING
-    const [updatedStorage] = await db.update(coldStorages)
-      .set({ nextEntryBillNumber: sql`COALESCE(${coldStorages.nextEntryBillNumber}, 0) + 1` })
-      .where(eq(coldStorages.id, lot.coldStorageId))
-      .returning({ billNumber: coldStorages.nextEntryBillNumber });
-    
-    if (!updatedStorage) {
+    // Get the current bill number (before incrementing)
+    const coldStorage = await this.getColdStorage(lot.coldStorageId);
+    if (!coldStorage) {
       throw new Error("Cold storage not found");
     }
+    const billNumber = coldStorage.nextEntryBillNumber ?? 1;
     
-    const billNumber = updatedStorage.billNumber;
+    // Increment the counter for the next assignment
+    await db.update(coldStorages)
+      .set({ nextEntryBillNumber: sql`COALESCE(${coldStorages.nextEntryBillNumber}, 0) + 1` })
+      .where(eq(coldStorages.id, lot.coldStorageId));
     
     // Update the lot with the assigned bill number
     await db.update(lots)
