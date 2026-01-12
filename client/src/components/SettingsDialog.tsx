@@ -329,7 +329,8 @@ export function SettingsDialog() {
         title: t("success"),
         description: "Settings saved successfully",
       });
-      setOpen(false);
+      // Close all expanded chamber views but stay in settings
+      setExpandedChambers(new Set());
     } catch (error) {
       toast({
         title: t("error"),
