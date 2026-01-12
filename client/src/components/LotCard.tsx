@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Edit, Phone, MapPin, Package, Layers, ShoppingCart, CheckCircle, Clock } from "lucide-react";
+import { Edit, Phone, MapPin, Package, Layers, ShoppingCart, CheckCircle, Clock, Receipt } from "lucide-react";
 import type { Lot } from "@shared/schema";
 
 interface LotCardProps {
@@ -45,6 +45,14 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
 
   return (
     <Card className="p-4 hover-elevate" data-testid={`card-lot-${lot.id}`}>
+      {lot.entryBillNumber && (
+        <div className="flex justify-end mb-1">
+          <Badge variant="secondary" className="text-xs font-mono" data-testid={`badge-receipt-${lot.id}`}>
+            <Receipt className="h-3 w-3 mr-1" />
+            Receipt #{lot.entryBillNumber}
+          </Badge>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
