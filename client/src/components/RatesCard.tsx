@@ -33,33 +33,33 @@ export function RatesCard({
   };
 
   return (
-    <Card className="p-4 sm:p-6">
-      <h3 className="text-lg font-semibold mb-4">{t("perBagRates")}</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="p-4 rounded-lg bg-chart-1/10 text-center">
+    <Card className="p-3 sm:p-4">
+      <h3 className="text-base font-semibold mb-3">{t("perBagRates")}</h3>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="p-3 rounded-lg bg-chart-1/10 text-center">
           <div className="flex items-center justify-center gap-1 text-chart-1">
-            <IndianRupee className="h-5 w-5" />
-            <span className="text-2xl font-bold" data-testid="text-wafer-rate">
+            <IndianRupee className="h-4 w-4" />
+            <span className="text-xl font-bold" data-testid="text-wafer-rate">
               {formatRate(waferColdCharge, waferHammali, waferRate)}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">{t("wafer")}/{t("ration")}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("wafer")}/{t("ration")}</p>
           {hasSplitRates(waferColdCharge, waferHammali) && (
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-0.5">
               ({t("total")}: {waferRate})
             </p>
           )}
         </div>
-        <div className="p-4 rounded-lg bg-chart-2/10 text-center">
+        <div className="p-3 rounded-lg bg-chart-2/10 text-center">
           <div className="flex items-center justify-center gap-1 text-chart-2">
-            <IndianRupee className="h-5 w-5" />
-            <span className="text-2xl font-bold" data-testid="text-seed-rate">
+            <IndianRupee className="h-4 w-4" />
+            <span className="text-xl font-bold" data-testid="text-seed-rate">
               {formatRate(seedColdCharge, seedHammali, seedRate)}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">{t("seed")}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("seed")}</p>
           {hasSplitRates(seedColdCharge, seedHammali) && (
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-0.5">
               ({t("total")}: {seedRate})
             </p>
           )}
