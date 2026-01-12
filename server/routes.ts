@@ -135,6 +135,72 @@ export async function registerRoutes(
     }
   });
 
+  // Batch create lots with unified entry sequence (Lot # = Receipt # = Bill #)
+  const batchLotSchema = z.object({
+    farmer: z.object({
+      farmerName: z.string().min(1),
+      village: z.string().min(1),
+      tehsil: z.string().min(1),
+      district: z.string().min(1),
+      state: z.string().min(1),
+      contactNumber: z.string().min(1),
+    }),
+    lots: z.array(z.object({
+      size: z.number().int().positive(),
+      type: z.string().min(1),
+      bagType: z.enum(["wafer", "seed"]),
+      chamberId: z.string().min(1),
+      floor: z.number().int().positive(),
+      position: z.string().min(1),
+      quality: z.enum(["poor", "medium", "good"]),
+      potatoSize: z.enum(["large", "small"]).default("large"),
+      assayingType: z.string().min(1),
+      assayerImage: z.string().optional(),
+      reducingSugar: z.number().optional(),
+      dm: z.number().optional(),
+      remarks: z.string().optional(),
+    })).min(1),
+  });
+
+  app.post("/api/lots/batch", async (req, res) => {
+    try {
+      const { farmer, lots: lotDataArray } = batchLotSchema.parse(req.body);
+      
+      // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
+      const lotsToCreate = lotDataArray.map(lotData => ({
+        ...farmer,
+        ...lotData,
+        lotNo: "", // Will be set by createBatchLots
+        remainingSize: lotData.size,
+      }));
+      
+      const result = await storage.createBatchLots(lotsToCreate, DEFAULT_COLD_STORAGE_ID);
+      
+      res.status(201).json({
+        lots: result.lots,
+        entrySequence: result.entrySequence, // This is the unified Lot # = Receipt # = Bill #
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Validation error", details: error.errors });
+      } else {
+        console.error("Batch lot creation error:", error);
+        res.status(500).json({ error: "Failed to create lots" });
+      }
+    }
+  });
+
+  // Get next entry sequence number (for display before save)
+  app.get("/api/next-entry-sequence", async (req, res) => {
+    try {
+      const coldStorage = await storage.getColdStorage(DEFAULT_COLD_STORAGE_ID);
+      const nextSequence = coldStorage?.nextEntryBillNumber ?? 1;
+      res.json({ nextSequence });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get next entry sequence" });
+    }
+  });
+
   app.get("/api/lots/search", async (req, res) => {
     try {
       const { type, query, lotNo, size, quality, paymentDue } = req.query;

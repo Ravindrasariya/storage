@@ -72,7 +72,8 @@ export const lots = pgTable("lots", {
   district: text("district").notNull(),
   state: text("state").notNull(),
   contactNumber: text("contact_number").notNull(),
-  lotNo: text("lot_no").notNull(),
+  lotNo: text("lot_no").notNull(), // String representation of entrySequence (for backward compat)
+  entrySequence: integer("entry_sequence"), // Unified lot/receipt/bill number (auto-assigned)
   size: integer("size").notNull(), // Original lot size (bags)
   remainingSize: integer("remaining_size").notNull(), // After partial sales
   chamberId: varchar("chamber_id").notNull(),
@@ -95,7 +96,7 @@ export const lots = pgTable("lots", {
   totalDueCharge: real("total_due_charge").default(0), // Accumulated due charges from partial sales
   soldAt: timestamp("sold_at"), // When the lot was sold
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  entryBillNumber: integer("entry_bill_number"), // Bill number for lot entry receipt (assigned on first print)
+  entryBillNumber: integer("entry_bill_number"), // DEPRECATED: Use entrySequence instead
 });
 
 // Sales History - permanent record of all sales

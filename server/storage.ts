@@ -62,6 +62,8 @@ export interface IStorage {
   deleteFloorsByChamber(chamberId: string): Promise<void>;
   updateChamberFill(id: string, fill: number): Promise<void>;
   createLot(lot: InsertLot): Promise<Lot>;
+  createBatchLots(lots: InsertLot[], coldStorageId: string): Promise<{ lots: Lot[]; entrySequence: number }>;
+  getNextEntrySequence(coldStorageId: string): Promise<number>;
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
   searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]>;
@@ -289,6 +291,58 @@ export class DatabaseStorage implements IStorage {
     }
 
     return lot;
+  }
+
+  async getNextEntrySequence(coldStorageId: string): Promise<number> {
+    // Atomically increment and return the next entry sequence number
+    const [result] = await db
+      .update(coldStorages)
+      .set({ nextEntryBillNumber: sql`COALESCE(${coldStorages.nextEntryBillNumber}, 0) + 1` })
+      .where(eq(coldStorages.id, coldStorageId))
+      .returning({ entrySequence: coldStorages.nextEntryBillNumber });
+    
+    return result?.entrySequence ?? 1;
+  }
+
+  async createBatchLots(insertLots: InsertLot[], coldStorageId: string): Promise<{ lots: Lot[]; entrySequence: number }> {
+    // Get the next entry sequence atomically
+    const entrySequence = await this.getNextEntrySequence(coldStorageId);
+    
+    const createdLots: Lot[] = [];
+    
+    for (const insertLot of insertLots) {
+      const id = randomUUID();
+      const lotData = {
+        ...insertLot,
+        id,
+        coldStorageId,
+        lotNo: String(entrySequence), // Set lotNo to the entry sequence
+        entrySequence, // Set the unified entry sequence
+        remainingSize: insertLot.remainingSize ?? insertLot.size,
+        assayerImage: insertLot.assayerImage ?? null,
+        reducingSugar: insertLot.reducingSugar ?? null,
+        dm: insertLot.dm ?? null,
+        remarks: insertLot.remarks ?? null,
+        upForSale: insertLot.upForSale ?? 0,
+        saleStatus: insertLot.saleStatus ?? "available",
+        paymentStatus: insertLot.paymentStatus ?? null,
+        saleCharge: insertLot.saleCharge ?? null,
+        totalPaidCharge: insertLot.totalPaidCharge ?? null,
+        totalDueCharge: insertLot.totalDueCharge ?? null,
+        soldAt: insertLot.soldAt ?? null,
+      };
+
+      const [lot] = await db.insert(lots).values(lotData).returning();
+      createdLots.push(lot);
+
+      // Update chamber fill
+      const chamber = await this.getChamber(lot.chamberId);
+      if (chamber) {
+        await this.updateChamberFill(chamber.id, chamber.currentFill + lot.size);
+      }
+    }
+
+    return { lots: createdLots, entrySequence };
   }
 
   async getLot(id: string): Promise<Lot | undefined> {
