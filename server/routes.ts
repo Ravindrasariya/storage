@@ -1,8 +1,20 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { lotFormSchema, insertChamberFloorSchema } from "@shared/schema";
 import { z } from "zod";
+
+// Extend Express Request to include auth context
+interface AuthContext {
+  userId: string;
+  coldStorageId: string;
+  userName: string;
+  accessType: string;
+}
+
+interface AuthenticatedRequest extends Request {
+  authContext?: AuthContext;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -10,13 +22,53 @@ export async function registerRoutes(
 ): Promise<Server> {
   const DEFAULT_COLD_STORAGE_ID = "cs-default";
 
+  // Authentication middleware - extracts user's coldStorageId from session token
+  const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const token = req.headers['x-auth-token'] as string;
+      
+      if (!token) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const session = await storage.getSession(token);
+      if (!session) {
+        return res.status(401).json({ error: "Invalid or expired session" });
+      }
+
+      const user = await storage.getColdStorageUser(session.userId);
+      if (!user) {
+        return res.status(401).json({ error: "User not found" });
+      }
+
+      // Attach auth context to request
+      req.authContext = {
+        userId: user.id,
+        coldStorageId: user.coldStorageId,
+        userName: user.name,
+        accessType: user.accessType,
+      };
+
+      next();
+    } catch (error) {
+      console.error("Auth middleware error:", error);
+      res.status(500).json({ error: "Authentication failed" });
+    }
+  };
+
+  // Helper to get coldStorageId - uses auth context if available, falls back to default
+  const getColdStorageId = (req: AuthenticatedRequest): string => {
+    return req.authContext?.coldStorageId || DEFAULT_COLD_STORAGE_ID;
+  };
+
   // Initialize default data in database
   await storage.initializeDefaultData();
 
   // Dashboard stats
-  app.get("/api/dashboard/stats", async (req, res) => {
+  app.get("/api/dashboard/stats", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const stats = await storage.getDashboardStats(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const stats = await storage.getDashboardStats(coldStorageId);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch dashboard stats" });
@@ -24,9 +76,10 @@ export async function registerRoutes(
   });
 
   // Chambers
-  app.get("/api/chambers", async (req, res) => {
+  app.get("/api/chambers", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const chambers = await storage.getChambers(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const chambers = await storage.getChambers(coldStorageId);
       res.json(chambers);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch chambers" });
@@ -34,9 +87,10 @@ export async function registerRoutes(
   });
 
   // Floor-wise capacity for chambers (current fill by floor from lots data)
-  app.get("/api/chambers/floor-capacity", async (req, res) => {
+  app.get("/api/chambers/floor-capacity", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const floorData = await storage.getFloorCapacityByChamber(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const floorData = await storage.getFloorCapacityByChamber(coldStorageId);
       res.json(floorData);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch floor capacity" });
@@ -44,16 +98,17 @@ export async function registerRoutes(
   });
 
   // Chamber floors (configured capacity per floor)
-  app.get("/api/chamber-floors", async (req, res) => {
+  app.get("/api/chamber-floors", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const floors = await storage.getAllChamberFloors(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const floors = await storage.getAllChamberFloors(coldStorageId);
       res.json(floors);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch chamber floors" });
     }
   });
 
-  app.get("/api/chambers/:chamberId/floors", async (req, res) => {
+  app.get("/api/chambers/:chamberId/floors", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const floors = await storage.getChamberFloors(req.params.chamberId);
       res.json(floors);
@@ -62,7 +117,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/chamber-floors", async (req, res) => {
+  app.post("/api/chamber-floors", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const validated = insertChamberFloorSchema.parse(req.body);
       const floor = await storage.createChamberFloor(validated);
@@ -80,7 +135,7 @@ export async function registerRoutes(
     capacity: z.number().int().positive().optional(),
   });
 
-  app.patch("/api/chamber-floors/:id", async (req, res) => {
+  app.patch("/api/chamber-floors/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const validated = updateFloorSchema.parse(req.body);
       const floor = await storage.updateChamberFloor(req.params.id, validated);
@@ -96,7 +151,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/chamber-floors/:id", async (req, res) => {
+  app.delete("/api/chamber-floors/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       await storage.deleteChamberFloor(req.params.id);
       res.json({ success: true });
@@ -106,22 +161,24 @@ export async function registerRoutes(
   });
 
   // Lots
-  app.get("/api/lots", async (req, res) => {
+  app.get("/api/lots", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const lots = await storage.getAllLots(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const lots = await storage.getAllLots(coldStorageId);
       res.json(lots);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch lots" });
     }
   });
 
-  app.post("/api/lots", async (req, res) => {
+  app.post("/api/lots", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const validatedData = lotFormSchema.parse(req.body);
       
       const lot = await storage.createLot({
         ...validatedData,
-        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        coldStorageId: coldStorageId,
         remainingSize: validatedData.size,
       });
       
@@ -162,8 +219,9 @@ export async function registerRoutes(
     })).min(1),
   });
 
-  app.post("/api/lots/batch", async (req, res) => {
+  app.post("/api/lots/batch", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { farmer, lots: lotDataArray } = batchLotSchema.parse(req.body);
       
       // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
@@ -171,11 +229,11 @@ export async function registerRoutes(
         ...farmer,
         ...lotData,
         lotNo: "", // Will be set by createBatchLots
-        coldStorageId: DEFAULT_COLD_STORAGE_ID,
+        coldStorageId: coldStorageId,
         remainingSize: lotData.size,
       }));
       
-      const result = await storage.createBatchLots(lotsToCreate, DEFAULT_COLD_STORAGE_ID);
+      const result = await storage.createBatchLots(lotsToCreate, coldStorageId);
       
       res.status(201).json({
         lots: result.lots,
@@ -192,9 +250,10 @@ export async function registerRoutes(
   });
 
   // Get next entry sequence number (for display before save)
-  app.get("/api/next-entry-sequence", async (req, res) => {
+  app.get("/api/next-entry-sequence", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const coldStorage = await storage.getColdStorage(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const coldStorage = await storage.getColdStorage(coldStorageId);
       const nextSequence = coldStorage?.nextEntryBillNumber ?? 1;
       res.json({ nextSequence });
     } catch (error) {
@@ -202,8 +261,9 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/lots/search", async (req, res) => {
+  app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { type, query, lotNo, size, quality, paymentDue } = req.query;
       
       const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
@@ -214,12 +274,12 @@ export async function registerRoutes(
       let lots;
       if (type === "filter") {
         // Get all lots and apply filters
-        lots = await storage.getAllLots(DEFAULT_COLD_STORAGE_ID);
+        lots = await storage.getAllLots(coldStorageId);
       } else if (type === "lotNoSize") {
         lots = await storage.searchLotsByLotNoAndSize(
           lotNo as string || "",
           size as string || "",
-          DEFAULT_COLD_STORAGE_ID
+          coldStorageId
         );
       } else if (type === "farmerName") {
         if (!query) {
@@ -227,7 +287,7 @@ export async function registerRoutes(
         }
         lots = await storage.searchLotsByFarmerName(
           query as string,
-          DEFAULT_COLD_STORAGE_ID
+          coldStorageId
         );
       } else {
         if (!query) {
@@ -236,7 +296,7 @@ export async function registerRoutes(
         lots = await storage.searchLots(
           type as "phone",
           query as string,
-          DEFAULT_COLD_STORAGE_ID
+          coldStorageId
         );
       }
       
@@ -259,7 +319,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/lots/:id", async (req, res) => {
+  app.get("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const lot = await storage.getLot(req.params.id);
       if (!lot) {
@@ -281,7 +341,7 @@ export async function registerRoutes(
     upForSale: z.number().int().min(0).max(1).optional(),
   });
 
-  app.patch("/api/lots/:id", async (req, res) => {
+  app.patch("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const lot = await storage.getLot(req.params.id);
       if (!lot) {
@@ -325,7 +385,7 @@ export async function registerRoutes(
   });
 
   // Reverse the latest edit
-  app.post("/api/lots/:id/reverse-edit", async (req, res) => {
+  app.post("/api/lots/:id/reverse-edit", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const lot = await storage.getLot(req.params.id);
       if (!lot) {
@@ -384,7 +444,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/lots/:id/partial-sale", async (req, res) => {
+  app.post("/api/lots/:id/partial-sale", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const lot = await storage.getLot(req.params.id);
       if (!lot) {
@@ -527,7 +587,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/lots/:id/history", async (req, res) => {
+  app.get("/api/lots/:id/history", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const history = await storage.getLotHistory(req.params.id);
       res.json(history);
@@ -551,7 +611,7 @@ export async function registerRoutes(
     netWeight: z.number().optional(),
   });
 
-  app.post("/api/lots/:id/finalize-sale", async (req, res) => {
+  app.post("/api/lots/:id/finalize-sale", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = finalizeSaleSchema.parse(req.body);
       
@@ -587,42 +647,46 @@ export async function registerRoutes(
   });
 
   // Analytics
-  app.get("/api/analytics/quality", async (req, res) => {
+  app.get("/api/analytics/quality", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { year } = req.query;
       const yearNum = year ? parseInt(year as string) : undefined;
-      const stats = await storage.getQualityStats(DEFAULT_COLD_STORAGE_ID, yearNum);
+      const stats = await storage.getQualityStats(coldStorageId, yearNum);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch quality stats" });
     }
   });
 
-  app.get("/api/analytics/payments", async (req, res) => {
+  app.get("/api/analytics/payments", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { year } = req.query;
       const yearNum = year ? parseInt(year as string) : undefined;
-      const stats = await storage.getPaymentStats(DEFAULT_COLD_STORAGE_ID, yearNum);
+      const stats = await storage.getPaymentStats(coldStorageId, yearNum);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch payment stats" });
     }
   });
 
-  app.get("/api/analytics/merchants", async (req, res) => {
+  app.get("/api/analytics/merchants", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { year } = req.query;
       const yearNum = year ? parseInt(year as string) : undefined;
-      const stats = await storage.getMerchantStats(DEFAULT_COLD_STORAGE_ID, yearNum);
+      const stats = await storage.getMerchantStats(coldStorageId, yearNum);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch merchant stats" });
     }
   });
 
-  app.get("/api/analytics/years", async (req, res) => {
+  app.get("/api/analytics/years", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const years = await storage.getAnalyticsYears(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const years = await storage.getAnalyticsYears(coldStorageId);
       res.json(years);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch analytics years" });
@@ -630,18 +694,20 @@ export async function registerRoutes(
   });
 
   // Reset Season
-  app.get("/api/reset-season/check", async (req, res) => {
+  app.get("/api/reset-season/check", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const result = await storage.checkResetEligibility(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.checkResetEligibility(coldStorageId);
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to check reset eligibility" });
     }
   });
 
-  app.post("/api/reset-season", async (req, res) => {
+  app.post("/api/reset-season", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const eligibility = await storage.checkResetEligibility(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const eligibility = await storage.checkResetEligibility(coldStorageId);
       if (!eligibility.canReset) {
         return res.status(400).json({ 
           error: "Cannot reset season", 
@@ -649,7 +715,7 @@ export async function registerRoutes(
           remainingLots: eligibility.remainingLots
         });
       }
-      await storage.resetSeason(DEFAULT_COLD_STORAGE_ID);
+      await storage.resetSeason(coldStorageId);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to reset season" });
@@ -657,18 +723,20 @@ export async function registerRoutes(
   });
 
   // Cold Storage Settings
-  app.get("/api/cold-storage", async (req, res) => {
+  app.get("/api/cold-storage", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const coldStorage = await storage.getColdStorage(DEFAULT_COLD_STORAGE_ID);
+      const coldStorageId = getColdStorageId(req);
+      const coldStorage = await storage.getColdStorage(coldStorageId);
       res.json(coldStorage);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch cold storage" });
     }
   });
 
-  app.patch("/api/cold-storage", async (req, res) => {
+  app.patch("/api/cold-storage", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const updated = await storage.updateColdStorage(DEFAULT_COLD_STORAGE_ID, req.body);
+      const coldStorageId = getColdStorageId(req);
+      const updated = await storage.updateColdStorage(coldStorageId, req.body);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update cold storage" });
@@ -676,13 +744,14 @@ export async function registerRoutes(
   });
 
   // Chamber management
-  app.post("/api/chambers", async (req, res) => {
+  app.post("/api/chambers", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { name, capacity, coldStorageId } = req.body;
+      const coldStorageId = getColdStorageId(req);
+      const { name, capacity } = req.body;
       const chamber = await storage.createChamber({
         name,
         capacity,
-        coldStorageId: coldStorageId || DEFAULT_COLD_STORAGE_ID,
+        coldStorageId: coldStorageId,
       });
       res.status(201).json(chamber);
     } catch (error) {
@@ -690,7 +759,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/chambers/:id", async (req, res) => {
+  app.patch("/api/chambers/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const updated = await storage.updateChamber(req.params.id, req.body);
       res.json(updated);
@@ -699,7 +768,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/chambers/:id", async (req, res) => {
+  app.delete("/api/chambers/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const deleted = await storage.deleteChamber(req.params.id);
       if (!deleted) {
