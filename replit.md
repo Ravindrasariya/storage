@@ -48,8 +48,18 @@ Core entities:
 - **exitEntries**: Exit/Nikasi entries with unique bill numbers
 - **cashFlow**: Cash management with FIFO-based payment allocation
 
+### User Authentication System
+- KrashuVed splash screen displayed on initial app load
+- Login page with mobile number (10 digits) and password authentication
+- Database-backed sessions (userSessions table) persist across server restarts
+- Auth context with localStorage integration for client-side session persistence
+- Protected routes redirect unauthenticated users to login
+- User profile dropdown showing cold storage name, user info, access type
+- Change password functionality requires current password verification for security
+- Key files: `client/src/lib/auth.tsx`, `client/src/pages/Login.tsx`, `client/src/components/SplashScreen.tsx`
+
 ### Admin Panel
-- Hidden admin page at `/admin` (not in main navigation)
+- Hidden admin page at `/admin` (not in main navigation, accessible without user authentication)
 - Password-protected with ADMIN_PASSWORD environment variable (default: admin123)
 - Token-based session authentication for all admin API routes
 - Features:
