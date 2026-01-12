@@ -9,7 +9,6 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
-import { SplashScreen } from "@/components/SplashScreen";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -149,21 +148,11 @@ function AuthenticatedApp() {
 
 function AppContent() {
   const { isAuthenticated, isLoading, login } = useAuth();
-  const [showSplash, setShowSplash] = useState(true);
   const [location] = useLocation();
-
-  const handleSplashComplete = useCallback(() => {
-    setShowSplash(false);
-  }, []);
 
   const handleLoginSuccess = useCallback((user: any, coldStorage: any, token: string) => {
     login(user, coldStorage, token);
   }, [login]);
-
-  // Show splash screen on initial load
-  if (showSplash) {
-    return <SplashScreen onComplete={handleSplashComplete} />;
-  }
 
   // Show loading while checking auth
   if (isLoading) {
