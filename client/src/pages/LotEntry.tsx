@@ -867,13 +867,6 @@ export default function LotEntry() {
               {t("cancel")}
             </Button>
             <Button
-              type="submit"
-              disabled={createLotMutation.isPending}
-              data-testid="button-submit"
-            >
-              {createLotMutation.isPending ? t("loading") : t("save")}
-            </Button>
-            <Button
               type="button"
               onClick={handleSaveAndPrint}
               disabled={createLotMutation.isPending}
