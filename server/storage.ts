@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, like, ilike, desc, sql } from "drizzle-orm";
+import { eq, and, like, ilike, desc, sql, gte, lte } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -145,6 +145,10 @@ export interface IStorage {
   getSession(token: string): Promise<UserSession | undefined>;
   deleteSession(token: string): Promise<void>;
   updateSessionLastAccess(token: string): Promise<void>;
+  // Export
+  getLotsForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<Lot[]>;
+  getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<SalesHistory[]>;
+  getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[] }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1890,6 +1894,61 @@ export class DatabaseStorage implements IStorage {
     await db.update(userSessions)
       .set({ lastAccessedAt: new Date() })
       .where(eq(userSessions.id, token));
+  }
+
+  // Export methods
+  async getLotsForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<Lot[]> {
+    return db.select()
+      .from(lots)
+      .where(
+        and(
+          eq(lots.coldStorageId, coldStorageId),
+          gte(lots.createdAt, fromDate),
+          lte(lots.createdAt, toDate)
+        )
+      )
+      .orderBy(desc(lots.createdAt));
+  }
+
+  async getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<SalesHistory[]> {
+    return db.select()
+      .from(salesHistory)
+      .where(
+        and(
+          eq(salesHistory.coldStorageId, coldStorageId),
+          gte(salesHistory.soldAt, fromDate),
+          lte(salesHistory.soldAt, toDate)
+        )
+      )
+      .orderBy(desc(salesHistory.soldAt));
+  }
+
+  async getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[] }> {
+    const receiptsData = await db.select()
+      .from(cashReceipts)
+      .where(
+        and(
+          eq(cashReceipts.coldStorageId, coldStorageId),
+          eq(cashReceipts.isReversed, 0),
+          gte(cashReceipts.receivedAt, fromDate),
+          lte(cashReceipts.receivedAt, toDate)
+        )
+      )
+      .orderBy(desc(cashReceipts.receivedAt));
+
+    const expensesData = await db.select()
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.coldStorageId, coldStorageId),
+          eq(expenses.isReversed, 0),
+          gte(expenses.paidAt, fromDate),
+          lte(expenses.paidAt, toDate)
+        )
+      )
+      .orderBy(desc(expenses.paidAt));
+
+    return { receipts: receiptsData, expenses: expensesData };
   }
 }
 

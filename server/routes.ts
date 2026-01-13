@@ -1797,5 +1797,237 @@ export async function registerRoutes(
     }
   });
 
+  // ===== EXPORT ENDPOINTS =====
+  
+  const exportQuerySchema = z.object({
+    fromDate: z.string(),
+    toDate: z.string(),
+    language: z.enum(["en", "hi"]).optional().default("en"),
+  });
+
+  // Helper to format date for CSV
+  const formatDateForExport = (date: Date | null | undefined): string => {
+    if (!date) return "";
+    return new Date(date).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
+  // Helper to escape CSV values
+  const escapeCSV = (value: string | number | null | undefined): string => {
+    if (value === null || value === undefined) return "";
+    const str = String(value);
+    if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  // Export Lots Data
+  app.get("/api/export/lots", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { fromDate, toDate, language } = exportQuerySchema.parse(req.query);
+      
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+      to.setHours(23, 59, 59, 999);
+
+      const lots = await storage.getLotsForExport(coldStorageId, from, to);
+      const chambers = await storage.getChambers(coldStorageId);
+      const chamberMap = new Map(chambers.map(c => [c.id, c.name]));
+
+      // Column headers (English / Hindi)
+      const headers = language === "hi" 
+        ? ["तारीख", "लॉट नंबर", "किसान का नाम", "मोबाइल", "गाँव", "तहसील", "जिला", "राज्य", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "कुल बोरे", "बचे हुए बोरे", "आलू का प्रकार", "गुणवत्ता", "आलू का आकार", "टिप्पणी", "स्थिति"]
+        : ["Date", "Lot #", "Farmer Name", "Mobile", "Village", "Tehsil", "District", "State", "Chamber", "Floor", "Position", "Bag Type", "Total Bags", "Remaining Bags", "Potato Type", "Quality", "Potato Size", "Remarks", "Status"];
+
+      const csvRows = [headers.map(escapeCSV).join(",")];
+      
+      for (const lot of lots) {
+        const row = [
+          formatDateForExport(lot.createdAt),
+          lot.entrySequence || lot.lotNo,
+          lot.farmerName,
+          lot.contactNumber,
+          lot.village,
+          lot.tehsil,
+          lot.district,
+          lot.state,
+          chamberMap.get(lot.chamberId) || "",
+          lot.floor,
+          lot.position,
+          lot.bagType,
+          lot.size,
+          lot.remainingSize,
+          lot.type,
+          lot.quality,
+          lot.potatoSize,
+          lot.remarks || "",
+          lot.saleStatus,
+        ];
+        csvRows.push(row.map(escapeCSV).join(","));
+      }
+
+      const csv = csvRows.join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="lots_${fromDate}_to_${toDate}.csv"`);
+      res.send("\uFEFF" + csv); // BOM for Excel UTF-8 support
+    } catch (error) {
+      console.error("Export lots error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid date range" });
+      }
+      res.status(500).json({ error: "Failed to export lots" });
+    }
+  });
+
+  // Export Sales History
+  app.get("/api/export/sales", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { fromDate, toDate, language } = exportQuerySchema.parse(req.query);
+      
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+      to.setHours(23, 59, 59, 999);
+
+      const sales = await storage.getSalesForExport(coldStorageId, from, to);
+
+      const headers = language === "hi"
+        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "नेट वजन (Kg)", "दर/Kg"]
+        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Chamber", "Floor", "Position", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Payment Status", "Paid Amount", "Due Amount", "Net Weight (Kg)", "Rate/Kg"];
+
+      const csvRows = [headers.map(escapeCSV).join(",")];
+      
+      for (const sale of sales) {
+        const totalCharges = (sale.coldStorageCharge || 0) + (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+        const row = [
+          formatDateForExport(sale.soldAt),
+          formatDateForExport(sale.entryDate),
+          sale.lotNo,
+          sale.coldStorageBillNumber || "",
+          sale.salesBillNumber || "",
+          sale.farmerName,
+          sale.contactNumber,
+          sale.village,
+          sale.buyerName || "",
+          sale.chamberName,
+          sale.floor,
+          sale.position,
+          sale.bagType,
+          sale.originalLotSize,
+          sale.quantitySold,
+          sale.coldCharge || "",
+          sale.hammali || "",
+          sale.pricePerBag,
+          sale.coldStorageCharge,
+          sale.kataCharges || 0,
+          sale.extraHammali || 0,
+          sale.gradingCharges || 0,
+          totalCharges,
+          sale.paymentStatus,
+          sale.paidAmount || 0,
+          totalCharges - (sale.paidAmount || 0),
+          sale.netWeight || "",
+          sale.pricePerKg || "",
+        ];
+        csvRows.push(row.map(escapeCSV).join(","));
+      }
+
+      const csv = csvRows.join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="sales_${fromDate}_to_${toDate}.csv"`);
+      res.send("\uFEFF" + csv);
+    } catch (error) {
+      console.error("Export sales error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid date range" });
+      }
+      res.status(500).json({ error: "Failed to export sales" });
+    }
+  });
+
+  // Export Cash Management Data
+  app.get("/api/export/cash", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { fromDate, toDate, language } = exportQuerySchema.parse(req.query);
+      
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+      to.setHours(23, 59, 59, 999);
+
+      const { receipts, expenses } = await storage.getCashDataForExport(coldStorageId, from, to);
+
+      const headers = language === "hi"
+        ? ["तारीख", "प्रकार", "नाम/विवरण", "भुगतान मोड", "राशि", "टिप्पणी"]
+        : ["Date", "Type", "Name/Description", "Payment Mode", "Amount", "Remarks"];
+
+      // Combine and sort by date (latest first)
+      const allEntries: { date: Date; type: string; name: string; mode: string; amount: number; remarks: string }[] = [];
+      
+      for (const r of receipts) {
+        allEntries.push({
+          date: new Date(r.receivedAt),
+          type: language === "hi" ? "आवक" : "Inward",
+          name: r.buyerName,
+          mode: r.receiptType === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
+          amount: r.amount,
+          remarks: r.notes || "",
+        });
+      }
+      
+      for (const e of expenses) {
+        const expenseTypeMap: Record<string, { en: string; hi: string }> = {
+          salary: { en: "Salary", hi: "वेतन" },
+          hammali: { en: "Hammali", hi: "हम्माली" },
+          grading_charges: { en: "Grading Charges", hi: "ग्रेडिंग चार्ज" },
+          general_expenses: { en: "General Expenses", hi: "सामान्य खर्च" },
+        };
+        const expenseLabel = expenseTypeMap[e.expenseType] || { en: e.expenseType, hi: e.expenseType };
+        
+        allEntries.push({
+          date: new Date(e.paidAt),
+          type: language === "hi" ? "खर्च" : "Expense",
+          name: language === "hi" ? expenseLabel.hi : expenseLabel.en,
+          mode: e.paymentMode === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
+          amount: e.amount,
+          remarks: e.remarks || "",
+        });
+      }
+
+      // Sort by date descending (latest first)
+      allEntries.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      const csvRows = [headers.map(escapeCSV).join(",")];
+      
+      for (const entry of allEntries) {
+        const row = [
+          formatDateForExport(entry.date),
+          entry.type,
+          entry.name,
+          entry.mode,
+          entry.amount,
+          entry.remarks,
+        ];
+        csvRows.push(row.map(escapeCSV).join(","));
+      }
+
+      const csv = csvRows.join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="cash_${fromDate}_to_${toDate}.csv"`);
+      res.send("\uFEFF" + csv);
+    } catch (error) {
+      console.error("Export cash error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid date range" });
+      }
+      res.status(500).json({ error: "Failed to export cash data" });
+    }
+  });
+
   return httpServer;
 }
