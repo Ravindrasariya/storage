@@ -124,15 +124,15 @@ export default function Analytics() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <Card className="p-3 sm:p-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-              <IndianRupee className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">{t("totalColdStorageCharges")}</p>
-              <p className="text-lg font-bold" data-testid="text-total-charges">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalColdStorageCharges")}</p>
+              <p className="text-base sm:text-lg font-bold" data-testid="text-total-charges">
                 Rs. {((paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)).toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -142,14 +142,14 @@ export default function Analytics() {
           </div>
         </Card>
 
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+        <Card className="p-3 sm:p-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
-              <Wallet className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <Wallet className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">{t("totalPaid")}</p>
-              <p className="text-lg font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalPaid")}</p>
+              <p className="text-base sm:text-lg font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
                 Rs. {(paymentStats?.totalPaid || 0).toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -159,14 +159,14 @@ export default function Analytics() {
           </div>
         </Card>
         
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+        <Card className="p-3 sm:p-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 dark:text-amber-400" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">{t("totalDue")}</p>
-              <p className="text-lg font-bold text-amber-600 dark:text-amber-400" data-testid="text-total-due">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalDue")}</p>
+              <p className="text-base sm:text-lg font-bold text-amber-600 dark:text-amber-400" data-testid="text-total-due">
                 Rs. {(paymentStats?.totalDue || 0).toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -176,28 +176,28 @@ export default function Analytics() {
           </div>
         </Card>
 
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+        <Card className="p-3 sm:p-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
-              <HandCoins className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <HandCoins className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">{t("totalHammali")}</p>
-              <p className="text-lg font-bold text-purple-600 dark:text-purple-400" data-testid="text-total-hammali">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalHammali")}</p>
+              <p className="text-base sm:text-lg font-bold text-purple-600 dark:text-purple-400" data-testid="text-total-hammali">
                 Rs. {(paymentStats?.totalHammali || 0).toLocaleString()}
               </p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+        <Card className="p-3 sm:p-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/50">
-              <Ruler className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              <Ruler className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-600 dark:text-cyan-400" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground">{t("totalGradingCharges")}</p>
-              <p className="text-lg font-bold text-cyan-600 dark:text-cyan-400" data-testid="text-total-grading">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalGradingCharges")}</p>
+              <p className="text-base sm:text-lg font-bold text-cyan-600 dark:text-cyan-400" data-testid="text-total-grading">
                 Rs. {(paymentStats?.totalGradingCharges || 0).toLocaleString()}
               </p>
             </div>
@@ -226,46 +226,46 @@ export default function Analytics() {
         </div>
 
         {merchantStats?.merchantData && merchantStats.merchantData.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="p-4 bg-muted/30">
-              <div className="flex items-center gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <Card className="p-3 sm:p-4 bg-muted/30">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
-                  <Package className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  <Package className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">{t("bagsPurchased")}</p>
-                  <p className="text-xl font-bold text-purple-600 dark:text-purple-400" data-testid="text-bags-purchased">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("bagsPurchased")}</p>
+                  <p className="text-base sm:text-lg font-bold text-purple-600 dark:text-purple-400" data-testid="text-bags-purchased">
                     {(selectedMerchantData?.bagsPurchased || 0).toLocaleString()}
                   </p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-4 bg-muted/30">
-              <div className="flex items-center gap-3">
+            <Card className="p-3 sm:p-4 bg-muted/30">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/50">
-                  <IndianRupee className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                  <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600 dark:text-indigo-400" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">{t("totalValueINR")}</p>
-                  <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400" data-testid="text-total-value">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalValueINR")}</p>
+                  <p className="text-base sm:text-lg font-bold text-indigo-600 dark:text-indigo-400" data-testid="text-total-value">
                     Rs. {(selectedMerchantData?.totalValue || 0).toLocaleString()}
                   </p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-4 bg-muted/30">
-              <div className="flex items-center gap-3">
+            <Card className="p-3 sm:p-4 bg-muted/30">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
-                  <Wallet className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <Wallet className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">{t("totalChargesPaidMerchant")}</p>
-                  <p className="text-xl font-bold text-green-600 dark:text-green-400" data-testid="text-merchant-paid">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalChargesPaidMerchant")}</p>
+                  <p className="text-base sm:text-lg font-bold text-green-600 dark:text-green-400" data-testid="text-merchant-paid">
                     Rs. {(selectedMerchantData?.totalChargePaid || 0).toLocaleString()}
                   </p>
-                  <div className="flex flex-wrap gap-3 mt-2 text-xs">
+                  <div className="flex flex-wrap gap-2 sm:gap-3 mt-1 sm:mt-2 text-xs">
                     <span className="text-emerald-600 dark:text-emerald-400" data-testid="text-merchant-cash">{t("cash")}: Rs. {(selectedMerchantData?.cashPaid || 0).toLocaleString()}</span>
                     <span className="text-blue-600 dark:text-blue-400" data-testid="text-merchant-account">{t("account")}: Rs. {(selectedMerchantData?.accountPaid || 0).toLocaleString()}</span>
                   </div>
@@ -273,14 +273,14 @@ export default function Analytics() {
               </div>
             </Card>
 
-            <Card className="p-4 bg-muted/30">
-              <div className="flex items-center gap-3">
+            <Card className="p-3 sm:p-4 bg-muted/30">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/50">
-                  <Clock className="h-5 w-5 text-red-600 dark:text-red-400" />
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 dark:text-red-400" />
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground">{t("totalChargesDueMerchant")}</p>
-                  <p className="text-xl font-bold text-red-600 dark:text-red-400" data-testid="text-merchant-due">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalChargesDueMerchant")}</p>
+                  <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400" data-testid="text-merchant-due">
                     Rs. {(selectedMerchantData?.totalChargeDue || 0).toLocaleString()}
                   </p>
                 </div>
