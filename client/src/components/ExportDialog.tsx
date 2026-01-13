@@ -29,45 +29,32 @@ export function ExportDialog() {
   
   const [isExporting, setIsExporting] = useState(false);
 
-  const handleExport = async (type: "lots" | "sales" | "cash") => {
-    if (!token) return;
+  const getDownloadToken = async (): Promise<string | null> => {
+    if (!token) return null;
+    try {
+      const response = await fetch("/api/export/token", {
+        method: "POST",
+        headers: { "x-auth-token": token },
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.downloadToken;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleExport = async (type: "lots" | "sales" | "cash"): Promise<boolean> => {
+    const downloadToken = await getDownloadToken();
+    if (!downloadToken) return false;
     
     const fromStr = format(fromDate, "yyyy-MM-dd");
     const toStr = format(toDate, "yyyy-MM-dd");
     
-    const url = `/api/export/${type}?fromDate=${fromStr}&toDate=${toStr}&language=${language}`;
+    const url = `/api/export/${type}?fromDate=${fromStr}&toDate=${toStr}&language=${language}&downloadToken=${encodeURIComponent(downloadToken)}`;
     
-    try {
-      const response = await fetch(url, {
-        headers: { "x-auth-token": token },
-      });
-      
-      if (!response.ok) {
-        throw new Error("Export failed");
-      }
-      
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      
-      const typeNames = {
-        lots: language === "hi" ? "लॉट_डेटा" : "lots_data",
-        sales: language === "hi" ? "बिक्री_इतिहास" : "sales_history",
-        cash: language === "hi" ? "नकद_प्रबंधन" : "cash_management",
-      };
-      
-      a.download = `${typeNames[type]}_${fromStr}_to_${toStr}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(downloadUrl);
-      
-      return true;
-    } catch (error) {
-      console.error(`Export ${type} error:`, error);
-      return false;
-    }
+    window.open(url, "_blank");
+    return true;
   };
 
   const handleExportAll = async () => {

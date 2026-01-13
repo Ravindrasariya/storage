@@ -1803,7 +1803,81 @@ export async function registerRoutes(
     fromDate: z.string(),
     toDate: z.string(),
     language: z.enum(["en", "hi"]).optional().default("en"),
+    downloadToken: z.string().optional(),
   });
+
+  // In-memory store for short-lived download tokens (single-use, 60 second expiry)
+  const downloadTokens = new Map<string, { coldStorageId: string; userId: string; expiresAt: number }>();
+
+  // Generate a download token (valid for 60 seconds, single-use)
+  app.post("/api/export/token", requireAuth, async (req: AuthenticatedRequest, res) => {
+    const coldStorageId = getColdStorageId(req);
+    const userId = req.authContext?.userId || "";
+    const downloadToken = crypto.randomUUID();
+    
+    downloadTokens.set(downloadToken, {
+      coldStorageId,
+      userId,
+      expiresAt: Date.now() + 60000, // 60 seconds
+    });
+    
+    // Clean up expired tokens
+    const tokensToDelete: string[] = [];
+    downloadTokens.forEach((data, token) => {
+      if (data.expiresAt < Date.now()) {
+        tokensToDelete.push(token);
+      }
+    });
+    tokensToDelete.forEach(token => downloadTokens.delete(token));
+    
+    res.json({ downloadToken });
+  });
+
+  // Middleware for export that accepts download token from query param (for mobile download)
+  const requireExportAuth = async (req: Request, res: Response, next: NextFunction) => {
+    // First try header-based auth
+    const headerToken = req.headers["x-auth-token"] as string;
+    if (headerToken) {
+      const session = await storage.getSession(headerToken);
+      if (session) {
+        // Validate user still exists and is active
+        const user = await storage.getUserById(session.userId);
+        if (user) {
+          (req as AuthenticatedRequest).authContext = {
+            userId: user.id,
+            coldStorageId: user.coldStorageId,
+            userName: user.name,
+            accessType: user.accessType,
+          };
+          return next();
+        }
+      }
+    }
+    
+    // Then try download token from query param
+    const downloadToken = req.query.downloadToken as string;
+    if (downloadToken) {
+      const tokenData = downloadTokens.get(downloadToken);
+      if (tokenData && tokenData.expiresAt > Date.now()) {
+        // Single-use: delete token after use
+        downloadTokens.delete(downloadToken);
+        
+        // Validate user still exists and is active
+        const user = await storage.getUserById(tokenData.userId);
+        if (user) {
+          (req as AuthenticatedRequest).authContext = {
+            userId: user.id,
+            coldStorageId: user.coldStorageId,
+            userName: user.name,
+            accessType: user.accessType,
+          };
+          return next();
+        }
+      }
+    }
+    
+    return res.status(401).json({ error: "Authentication required" });
+  };
 
   // Helper to format date for CSV
   const formatDateForExport = (date: Date | null | undefined): string => {
@@ -1826,7 +1900,7 @@ export async function registerRoutes(
   };
 
   // Export Lots Data
-  app.get("/api/export/lots", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.get("/api/export/lots", requireExportAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const { fromDate, toDate, language } = exportQuerySchema.parse(req.query);
@@ -1885,7 +1959,7 @@ export async function registerRoutes(
   });
 
   // Export Sales History
-  app.get("/api/export/sales", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.get("/api/export/sales", requireExportAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const { fromDate, toDate, language } = exportQuerySchema.parse(req.query);
@@ -1951,7 +2025,7 @@ export async function registerRoutes(
   });
 
   // Export Cash Management Data
-  app.get("/api/export/cash", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.get("/api/export/cash", requireExportAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const { fromDate, toDate, language } = exportQuerySchema.parse(req.query);
