@@ -191,7 +191,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
               {t("print")}
             </Button>
           )}
-          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onPartialSale && (
+          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onPartialSale && canEdit && (
             <Button
               variant="secondary"
               size="sm"
