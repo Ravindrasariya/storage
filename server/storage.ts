@@ -714,6 +714,8 @@ export class DatabaseStorage implements IStorage {
     
     let totalPaid = 0;
     let totalDue = 0;
+    let totalHammali = 0;
+    let totalGradingCharges = 0;
     
     // Group sales by lotId to count unique lots, not individual partial sales
     const lotPaymentMap = new Map<string, { paidAmount: number; dueAmount: number }>();
@@ -724,6 +726,10 @@ export class DatabaseStorage implements IStorage {
                           (sale.kataCharges || 0) + 
                           (sale.extraHammali || 0) + 
                           (sale.gradingCharges || 0);
+      
+      // Sum up hammali (kata charges + extra hammali) and grading charges
+      totalHammali += (sale.kataCharges || 0) + (sale.extraHammali || 0);
+      totalGradingCharges += (sale.gradingCharges || 0);
       
       // Use paidAmount from sale, calculate due as remainder to ensure consistency
       const salePaid = sale.paidAmount || 0;
@@ -755,6 +761,8 @@ export class DatabaseStorage implements IStorage {
       totalDue,
       paidCount,
       dueCount,
+      totalHammali,
+      totalGradingCharges,
     };
   }
 

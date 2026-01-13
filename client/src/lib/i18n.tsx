@@ -186,6 +186,8 @@ const translations: Translations = {
   overallPayment: { en: "Overall Payment", hi: "कुल भुगतान" },
   totalPaid: { en: "Total Paid", hi: "कुल भुगतान" },
   totalDue: { en: "Total Due", hi: "कुल बाकी" },
+  totalHammali: { en: "Total Hammali", hi: "कुल हम्माली" },
+  totalGradingCharges: { en: "Total Grading", hi: "कुल ग्रेडिंग" },
   soldLots: { en: "sold lots", hi: "बेचे गए लॉट" },
   lots: { en: "lots", hi: "लॉट" },
   paymentSummary: { en: "Payment Summary", hi: "भुगतान सारांश" },
@@ -228,7 +230,6 @@ const translations: Translations = {
   biltyCut: { en: "Bilty Cut", hi: "बिल्टी कट" },
   gateCut: { en: "Gate Cut", hi: "गेट कट" },
   extraHammaliPerBag: { en: "Extra Hammali/bag", hi: "अतिरिक्त हमाली/बैग" },
-  totalGradingCharges: { en: "Total Grading Charges", hi: "कुल ग्रेडिंग शुल्क" },
   rateBreakdown: { en: "Rate Breakdown", hi: "दर विवरण" },
   perBag: { en: "/bag", hi: "/बैग" },
 

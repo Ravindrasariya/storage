@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QualityChart } from "@/components/QualityChart";
 import { QualitySummaryCards } from "@/components/QualitySummaryCards";
-import { ArrowLeft, BarChart3, Clock, IndianRupee, Calendar, Users, Package, Wallet } from "lucide-react";
+import { ArrowLeft, BarChart3, Clock, IndianRupee, Calendar, Users, Package, Wallet, HandCoins, Ruler } from "lucide-react";
 import type { QualityStats, PaymentStats, MerchantStats } from "@shared/schema";
 
 export default function Analytics() {
@@ -124,7 +124,7 @@ export default function Analytics() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
@@ -132,7 +132,7 @@ export default function Analytics() {
             </div>
             <div className="flex-1">
               <p className="text-sm text-muted-foreground">{t("totalColdStorageCharges")}</p>
-              <p className="text-2xl font-bold" data-testid="text-total-charges">
+              <p className="text-lg font-bold" data-testid="text-total-charges">
                 Rs. {((paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)).toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -149,7 +149,7 @@ export default function Analytics() {
             </div>
             <div className="flex-1">
               <p className="text-sm text-muted-foreground">{t("totalPaid")}</p>
-              <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
+              <p className="text-lg font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
                 Rs. {(paymentStats?.totalPaid || 0).toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -166,11 +166,39 @@ export default function Analytics() {
             </div>
             <div className="flex-1">
               <p className="text-sm text-muted-foreground">{t("totalDue")}</p>
-              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-total-due">
+              <p className="text-lg font-bold text-amber-600 dark:text-amber-400" data-testid="text-total-due">
                 Rs. {(paymentStats?.totalDue || 0).toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
                 {paymentStats?.dueCount || 0} {t("lots")}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
+              <HandCoins className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-muted-foreground">{t("totalHammali")}</p>
+              <p className="text-lg font-bold text-purple-600 dark:text-purple-400" data-testid="text-total-hammali">
+                Rs. {(paymentStats?.totalHammali || 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/50">
+              <Ruler className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-muted-foreground">{t("totalGradingCharges")}</p>
+              <p className="text-lg font-bold text-cyan-600 dark:text-cyan-400" data-testid="text-total-grading">
+                Rs. {(paymentStats?.totalGradingCharges || 0).toLocaleString()}
               </p>
             </div>
           </div>

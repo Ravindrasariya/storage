@@ -384,6 +384,8 @@ export interface PaymentStats {
   totalDue: number;
   paidCount: number;
   dueCount: number;
+  totalHammali: number;
+  totalGradingCharges: number;
 }
 
 // Merchant stats for analytics
