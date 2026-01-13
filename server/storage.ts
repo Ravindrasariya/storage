@@ -727,8 +727,8 @@ export class DatabaseStorage implements IStorage {
                           (sale.extraHammali || 0) + 
                           (sale.gradingCharges || 0);
       
-      // Sum up hammali (kata charges + extra hammali) and grading charges
-      totalHammali += (sale.kataCharges || 0) + (sale.extraHammali || 0);
+      // Sum up hammali (hammali per bag × bags sold + extra hammali) and grading charges
+      totalHammali += ((sale.hammali || 0) * (sale.quantitySold || 0)) + (sale.extraHammali || 0);
       totalGradingCharges += (sale.gradingCharges || 0);
       
       // Use paidAmount from sale, calculate due as remainder to ensure consistency
