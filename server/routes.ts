@@ -84,6 +84,14 @@ export async function registerRoutes(
     return req.authContext.coldStorageId;
   };
 
+  // Middleware to require edit access - must be used after requireAuth
+  const requireEditAccess = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (req.authContext?.accessType !== "edit") {
+      return res.status(403).json({ error: "Edit access required" });
+    }
+    next();
+  };
+
   // Initialize default data in database
   await storage.initializeDefaultData();
 
@@ -149,7 +157,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/chamber-floors", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/chamber-floors", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validated = insertChamberFloorSchema.parse(req.body);
@@ -176,7 +184,7 @@ export async function registerRoutes(
     capacity: z.number().int().positive().optional(),
   });
 
-  app.patch("/api/chamber-floors/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/chamber-floors/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validated = updateFloorSchema.parse(req.body);
@@ -202,7 +210,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/chamber-floors/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.delete("/api/chamber-floors/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       // Get floor and verify chamber ownership
@@ -232,7 +240,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/lots", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/lots", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = lotFormSchema.parse(req.body);
@@ -280,7 +288,7 @@ export async function registerRoutes(
     })).min(1),
   });
 
-  app.post("/api/lots/batch", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/lots/batch", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const { farmer, lots: lotDataArray } = batchLotSchema.parse(req.body);
@@ -423,7 +431,7 @@ export async function registerRoutes(
     upForSale: z.number().int().min(0).max(1).optional(),
   });
 
-  app.patch("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/lots/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
@@ -472,7 +480,7 @@ export async function registerRoutes(
   });
 
   // Reverse the latest edit
-  app.post("/api/lots/:id/reverse-edit", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/lots/:id/reverse-edit", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
@@ -536,7 +544,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/lots/:id/partial-sale", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/lots/:id/partial-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
@@ -719,7 +727,7 @@ export async function registerRoutes(
     netWeight: z.number().optional(),
   });
 
-  app.post("/api/lots/:id/finalize-sale", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/lots/:id/finalize-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = finalizeSaleSchema.parse(req.body);
@@ -822,7 +830,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/reset-season", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/reset-season", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const eligibility = await storage.checkResetEligibility(coldStorageId);
@@ -851,7 +859,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/cold-storage", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/cold-storage", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const updated = await storage.updateColdStorage(coldStorageId, req.body);
@@ -862,7 +870,7 @@ export async function registerRoutes(
   });
 
   // Chamber management
-  app.post("/api/chambers", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/chambers", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const { name, capacity } = req.body;
@@ -877,7 +885,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/chambers/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/chambers/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const chamber = await storage.getChamber(req.params.id);
@@ -895,7 +903,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/chambers/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.delete("/api/chambers/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const chamber = await storage.getChamber(req.params.id);
@@ -955,7 +963,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/sales-history/:id/mark-paid", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/sales-history/:id/mark-paid", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       // Verify ownership by checking if sale belongs to user's cold storage
@@ -974,7 +982,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/sales-history/:id/mark-due", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/sales-history/:id/mark-due", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       // Verify ownership
@@ -1003,7 +1011,7 @@ export async function registerRoutes(
     netWeight: z.number().nullable().optional(),
   });
 
-  app.patch("/api/sales-history/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = updateSalesHistorySchema.parse(req.body);
@@ -1066,7 +1074,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sales-history/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/sales-history/:id/reverse", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       // Verify ownership before allowing reversal
@@ -1108,7 +1116,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sales-history/:id/exits", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/sales-history/:id/exits", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const { bagsExited } = createExitSchema.parse(req.body);
@@ -1146,7 +1154,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sales-history/:id/exits/reverse-latest", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/sales-history/:id/exits/reverse-latest", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       // Verify ownership
@@ -1170,7 +1178,7 @@ export async function registerRoutes(
     billType: z.enum(["coldStorage", "sales"]),
   });
 
-  app.post("/api/sales-history/:id/assign-bill-number", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/sales-history/:id/assign-bill-number", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       // Verify ownership
@@ -1191,7 +1199,7 @@ export async function registerRoutes(
   });
 
   // Lot bill number assignment
-  app.post("/api/lots/:id/assign-bill-number", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/lots/:id/assign-bill-number", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
@@ -1232,7 +1240,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/maintenance", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/maintenance", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = createMaintenanceSchema.parse(req.body);
@@ -1251,7 +1259,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/maintenance/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/maintenance/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = updateMaintenanceSchema.parse(req.body);
@@ -1274,7 +1282,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/maintenance/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.delete("/api/maintenance/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       // Verify ownership
@@ -1322,7 +1330,7 @@ export async function registerRoutes(
     notes: z.string().optional(),
   });
 
-  app.post("/api/cash-receipts", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/cash-receipts", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = createCashReceiptSchema.parse(req.body);
@@ -1362,7 +1370,7 @@ export async function registerRoutes(
     remarks: z.string().optional(),
   });
 
-  app.post("/api/expenses", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/expenses", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = createExpenseSchema.parse(req.body);
@@ -1384,7 +1392,7 @@ export async function registerRoutes(
   });
 
   // Reverse cash receipt
-  app.post("/api/cash-receipts/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/cash-receipts/:id/reverse", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const { id } = req.params;
@@ -1405,7 +1413,7 @@ export async function registerRoutes(
   });
 
   // Reverse expense
-  app.post("/api/expenses/:id/reverse", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/expenses/:id/reverse", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const { id } = req.params;
@@ -1426,7 +1434,7 @@ export async function registerRoutes(
   });
 
   // Recalculate all sales records to fix paidAmount/dueAmount
-  app.post("/api/admin/recalculate-sales-charges", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/admin/recalculate-sales-charges", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const result = await storage.recalculateSalesCharges(coldStorageId);

@@ -27,6 +27,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  canEdit: boolean;
   login: (user: User, coldStorage: ColdStorage, token: string) => void;
   logout: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
@@ -114,6 +115,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
   };
 
+  const canEdit = user?.accessType === "edit";
+
   return (
     <AuthContext.Provider
       value={{
@@ -122,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         isLoading,
         isAuthenticated: !!user && !!token,
+        canEdit,
         login,
         logout,
         refreshSession,
