@@ -120,6 +120,7 @@ const translations: Translations = {
   // Analytics
   chamberQualityAnalysis: { en: "Chamber Quality Analysis", hi: "कक्ष गुणवत्ता विश्लेषण" },
   qualityDistribution: { en: "Quality Distribution", hi: "गुणवत्ता वितरण" },
+  qualityDistributionRemaining: { en: "Quality Distribution Of Remaining Bags", hi: "शेष बैगों का गुणवत्ता वितरण" },
   bagsByQuality: { en: "Bags by Quality", hi: "गुणवत्ता के अनुसार बैग" },
   initialDistribution: { en: "Initial distribution when storage was filled", hi: "भंडार भरने के समय प्रारंभिक वितरण" },
   
