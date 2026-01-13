@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useAuth } from "@/lib/auth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -96,6 +97,7 @@ export default function LotEntry() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { canEdit } = useAuth();
   const [lots, setLots] = useState<LotData[]>([{ ...defaultLotData }]);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
   const [showReceipt, setShowReceipt] = useState(false);
@@ -900,12 +902,17 @@ export default function LotEntry() {
             <Button
               type="button"
               onClick={handleSaveAndPrint}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !canEdit}
               data-testid="button-save-print"
             >
               <Printer className="h-4 w-4 mr-2" />
               {isSubmitting ? t("loading") : (t("saveAndPrint") || "Save & Print")}
             </Button>
+            {!canEdit && (
+              <p className="text-xs text-muted-foreground text-center col-span-full">
+                {t("viewOnlyAccess") || "You have view-only access. Contact admin for edit permissions."}
+              </p>
+            )}
           </div>
         </form>
       </Form>

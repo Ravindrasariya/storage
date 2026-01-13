@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ type TransactionItem =
 export default function CashManagement() {
   const { t } = useI18n();
   const { toast } = useToast();
+  const { canEdit } = useAuth();
   
   const [activeTab, setActiveTab] = useState<"inward" | "expense">("inward");
   
@@ -644,13 +646,18 @@ export default function CashManagement() {
 
                 <Button
                   onClick={handleInwardSubmit}
-                  disabled={!buyerName || (buyerName === "__other__" && !customBuyerName.trim()) || !inwardAmount || createReceiptMutation.isPending}
+                  disabled={!canEdit || !buyerName || (buyerName === "__other__" && !customBuyerName.trim()) || !inwardAmount || createReceiptMutation.isPending}
                   className="w-full"
                   data-testid="button-record-payment"
                 >
                   <Save className="h-4 w-4 mr-2" />
                   {createReceiptMutation.isPending ? t("saving") : t("recordPayment")}
                 </Button>
+                {!canEdit && (
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
+                  </p>
+                )}
               </>
             ) : (
               <>
@@ -731,13 +738,18 @@ export default function CashManagement() {
 
                 <Button
                   onClick={handleExpenseSubmit}
-                  disabled={!expenseType || !expenseAmount || createExpenseMutation.isPending}
+                  disabled={!canEdit || !expenseType || !expenseAmount || createExpenseMutation.isPending}
                   className="w-full"
                   data-testid="button-record-expense"
                 >
                   <Save className="h-4 w-4 mr-2" />
                   {createExpenseMutation.isPending ? t("saving") : t("recordExpense")}
                 </Button>
+                {!canEdit && (
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
+                  </p>
+                )}
               </>
             )}
           </CardContent>
@@ -791,6 +803,7 @@ export default function CashManagement() {
                                 <Badge variant={transaction.type === "inflow" ? "default" : "destructive"}>
                                   {transaction.type === "inflow" ? t("inflow") : t("outflow")}
                                 </Badge>
+                                {canEdit && (
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
                                     <Button
@@ -826,6 +839,7 @@ export default function CashManagement() {
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
+                                )}
                               </>
                             )}
                           </div>

@@ -16,9 +16,10 @@ interface LotCardProps {
   onPrintReceipt?: (lot: Lot) => void;
   calculatedPaidCharge?: number;
   calculatedDueCharge?: number;
+  canEdit?: boolean;
 }
 
-export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, onPrintReceipt, calculatedPaidCharge, calculatedDueCharge }: LotCardProps) {
+export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, onPrintReceipt, calculatedPaidCharge, calculatedDueCharge, canEdit = true }: LotCardProps) {
   // Use calculated values if provided, otherwise fall back to stored lot values
   const paidCharge = calculatedPaidCharge ?? lot.totalPaidCharge ?? 0;
   const dueCharge = calculatedDueCharge ?? lot.totalDueCharge ?? 0;
@@ -154,7 +155,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
         </div>
 
         <div className="flex sm:flex-col gap-2 shrink-0">
-          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onToggleSale && (
+          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onToggleSale && canEdit && (
             <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
               <Switch
                 id={`sale-toggle-${lot.id}`}
@@ -176,7 +177,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
             data-testid={`button-edit-lot-${lot.id}`}
           >
             <Edit className="h-4 w-4" />
-            {t("edit")}
+            {canEdit ? t("edit") : t("view") || "View"}
           </Button>
           {lot.entrySequence && onPrintReceipt && (
             <Button

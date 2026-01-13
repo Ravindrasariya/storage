@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,7 @@ export default function SearchEdit() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { canEdit } = useAuth();
 
   // Load initial state from sessionStorage if available
   const savedState = getSavedSearchState();
@@ -492,6 +494,7 @@ export default function SearchEdit() {
                   }}
                   calculatedPaidCharge={lotPaidCharge}
                   calculatedDueCharge={lotDueCharge}
+                  canEdit={canEdit}
                 />
               );
             })}
@@ -678,13 +681,15 @@ export default function SearchEdit() {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               {t("cancel")}
             </Button>
-            <Button
-              onClick={handleEditSubmit}
-              disabled={updateLotMutation.isPending || !editForm}
-              data-testid="button-save-edit"
-            >
-              {updateLotMutation.isPending ? t("loading") : t("save")}
-            </Button>
+            {canEdit && (
+              <Button
+                onClick={handleEditSubmit}
+                disabled={updateLotMutation.isPending || !editForm}
+                data-testid="button-save-edit"
+              >
+                {updateLotMutation.isPending ? t("loading") : t("save")}
+              </Button>
+            )}
           </div>
 
           <div className="border-t pt-4">
