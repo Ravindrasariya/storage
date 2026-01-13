@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Download, CalendarIcon, Loader2 } from "lucide-react";
@@ -12,8 +12,10 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+type ExportType = "lots" | "sales" | "cash";
+
 export function ExportDialog() {
-  const { t, language } = useI18n();
+  const { language } = useI18n();
   const { token } = useAuth();
   const { toast } = useToast();
   
@@ -23,10 +25,7 @@ export function ExportDialog() {
   const [fromOpen, setFromOpen] = useState(false);
   const [toOpen, setToOpen] = useState(false);
   
-  const [exportLots, setExportLots] = useState(true);
-  const [exportSales, setExportSales] = useState(true);
-  const [exportCash, setExportCash] = useState(true);
-  
+  const [selectedType, setSelectedType] = useState<ExportType>("lots");
   const [isExporting, setIsExporting] = useState(false);
 
   const getDownloadToken = async (): Promise<string | null> => {
@@ -44,54 +43,37 @@ export function ExportDialog() {
     }
   };
 
-  const handleExport = async (type: "lots" | "sales" | "cash"): Promise<boolean> => {
-    const downloadToken = await getDownloadToken();
-    if (!downloadToken) return false;
-    
-    const fromStr = format(fromDate, "yyyy-MM-dd");
-    const toStr = format(toDate, "yyyy-MM-dd");
-    
-    const url = `/api/export/${type}?fromDate=${fromStr}&toDate=${toStr}&language=${language}&downloadToken=${encodeURIComponent(downloadToken)}`;
-    
-    window.open(url, "_blank");
-    return true;
-  };
-
-  const handleExportAll = async () => {
+  const handleExport = async () => {
     setIsExporting(true);
-    let successCount = 0;
-    let failCount = 0;
     
     try {
-      if (exportLots) {
-        const success = await handleExport("lots");
-        if (success) successCount++; else failCount++;
-      }
-      if (exportSales) {
-        const success = await handleExport("sales");
-        if (success) successCount++; else failCount++;
-      }
-      if (exportCash) {
-        const success = await handleExport("cash");
-        if (success) successCount++; else failCount++;
-      }
-      
-      if (failCount === 0) {
+      const downloadToken = await getDownloadToken();
+      if (!downloadToken) {
         toast({
-          title: language === "hi" ? "डाउनलोड सफल" : "Download Successful",
-          description: language === "hi" 
-            ? `${successCount} फ़ाइलें डाउनलोड हुईं` 
-            : `${successCount} file(s) downloaded`,
-        });
-      } else {
-        toast({
-          title: language === "hi" ? "कुछ डाउनलोड विफल" : "Some Downloads Failed",
-          description: language === "hi" 
-            ? `${successCount} सफल, ${failCount} विफल` 
-            : `${successCount} succeeded, ${failCount} failed`,
+          title: language === "hi" ? "डाउनलोड विफल" : "Download Failed",
+          description: language === "hi" ? "कृपया पुनः प्रयास करें" : "Please try again",
           variant: "destructive",
         });
+        return;
       }
+      
+      const fromStr = format(fromDate, "yyyy-MM-dd");
+      const toStr = format(toDate, "yyyy-MM-dd");
+      
+      const url = `/api/export/${selectedType}?fromDate=${fromStr}&toDate=${toStr}&language=${language}&downloadToken=${encodeURIComponent(downloadToken)}`;
+      
+      window.open(url, "_blank");
+      
+      const typeNames = {
+        lots: language === "hi" ? "लॉट डेटा" : "Lots Data",
+        sales: language === "hi" ? "बिक्री इतिहास" : "Sales History",
+        cash: language === "hi" ? "नकद प्रबंधन" : "Cash Management",
+      };
+      
+      toast({
+        title: language === "hi" ? "डाउनलोड शुरू" : "Download Started",
+        description: typeNames[selectedType],
+      });
     } finally {
       setIsExporting(false);
     }
@@ -107,8 +89,6 @@ export function ExportDialog() {
     setFromDate(startOfMonth(now));
     setToDate(endOfMonth(now));
   };
-
-  const selectedCount = [exportLots, exportSales, exportCash].filter(Boolean).length;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -214,52 +194,53 @@ export function ExportDialog() {
           <div className="space-y-3">
             <Label>{language === "hi" ? "क्या डाउनलोड करें" : "What to Download"}</Label>
             
-            <div className="space-y-2">
+            <RadioGroup 
+              value={selectedType} 
+              onValueChange={(value) => setSelectedType(value as ExportType)}
+              className="space-y-2"
+            >
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="export-lots" 
-                  checked={exportLots}
-                  onCheckedChange={(checked) => setExportLots(checked === true)}
-                  data-testid="checkbox-export-lots"
+                <RadioGroupItem 
+                  value="lots" 
+                  id="export-lots"
+                  data-testid="radio-export-lots"
                 />
                 <label 
                   htmlFor="export-lots" 
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  className="text-sm font-medium leading-none cursor-pointer"
                 >
                   {language === "hi" ? "लॉट डेटा (खोजें/संपादित करें)" : "Lots Data (Search/Edit)"}
                 </label>
               </div>
               
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="export-sales" 
-                  checked={exportSales}
-                  onCheckedChange={(checked) => setExportSales(checked === true)}
-                  data-testid="checkbox-export-sales"
+                <RadioGroupItem 
+                  value="sales" 
+                  id="export-sales"
+                  data-testid="radio-export-sales"
                 />
                 <label 
                   htmlFor="export-sales" 
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  className="text-sm font-medium leading-none cursor-pointer"
                 >
                   {language === "hi" ? "बिक्री इतिहास" : "Sales History"}
                 </label>
               </div>
               
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="export-cash" 
-                  checked={exportCash}
-                  onCheckedChange={(checked) => setExportCash(checked === true)}
-                  data-testid="checkbox-export-cash"
+                <RadioGroupItem 
+                  value="cash" 
+                  id="export-cash"
+                  data-testid="radio-export-cash"
                 />
                 <label 
                   htmlFor="export-cash" 
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  className="text-sm font-medium leading-none cursor-pointer"
                 >
                   {language === "hi" ? "नकद प्रबंधन" : "Cash Management"}
                 </label>
               </div>
-            </div>
+            </RadioGroup>
           </div>
         </div>
 
@@ -268,8 +249,8 @@ export function ExportDialog() {
             {language === "hi" ? "रद्द करें" : "Cancel"}
           </Button>
           <Button 
-            onClick={handleExportAll}
-            disabled={selectedCount === 0 || isExporting}
+            onClick={handleExport}
+            disabled={isExporting}
             data-testid="button-download-export"
           >
             {isExporting ? (
@@ -280,7 +261,7 @@ export function ExportDialog() {
             ) : (
               <>
                 <Download className="mr-2 h-4 w-4" />
-                {language === "hi" ? `डाउनलोड (${selectedCount})` : `Download (${selectedCount})`}
+                {language === "hi" ? "डाउनलोड" : "Download"}
               </>
             )}
           </Button>
