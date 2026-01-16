@@ -68,7 +68,9 @@ export default function Analytics() {
         cashPaid: acc.cashPaid + m.cashPaid,
         accountPaid: acc.accountPaid + m.accountPaid,
       }), { buyerName: "All Buyers", bagsPurchased: 0, totalValue: 0, totalChargePaid: 0, totalChargeDue: 0, cashPaid: 0, accountPaid: 0 })
-    : merchantStats?.merchantData?.find(m => m.buyerName === selectedBuyer);
+    : merchantStats?.merchantData?.find(m => 
+        m.buyerName.trim().toLowerCase() === selectedBuyer.trim().toLowerCase()
+      );
 
   if (isLoading) {
     return (

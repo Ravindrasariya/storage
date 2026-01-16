@@ -184,7 +184,9 @@ export default function CashManagement() {
     });
   };
 
-  const selectedBuyerDue = buyersWithDues.find(b => b.buyerName === buyerName)?.totalDue || 0;
+  const selectedBuyerDue = buyersWithDues.find(b => 
+    b.buyerName.trim().toLowerCase() === buyerName.trim().toLowerCase()
+  )?.totalDue || 0;
 
   const getExpenseTypeLabel = (type: string) => {
     switch (type) {
@@ -325,7 +327,8 @@ export default function CashManagement() {
     let filteredExpenses = expensesList.filter(e => e.isReversed !== 1);
 
     if (filterBuyer) {
-      filteredReceipts = filteredReceipts.filter(r => r.buyerName === filterBuyer);
+      const filterKey = filterBuyer.trim().toLowerCase();
+      filteredReceipts = filteredReceipts.filter(r => r.buyerName.trim().toLowerCase() === filterKey);
     }
 
     if (filterCategory) {

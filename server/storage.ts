@@ -1404,11 +1404,12 @@ export class DatabaseStorage implements IStorage {
         sql`${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != ''`
       ));
 
-    // Group by buyer name and sum the due amounts
-    const buyerDues = new Map<string, number>();
+    // Group by buyer name (case-insensitive with trimming) and sum the due amounts
+    const buyerDues = new Map<string, { displayName: string; totalDue: number }>();
     for (const sale of sales) {
-      const buyerName = sale.buyerName || "";
-      if (!buyerName) continue;
+      const trimmedName = (sale.buyerName || "").trim();
+      if (!trimmedName) continue;
+      const normalizedKey = trimmedName.toLowerCase();
       
       // Calculate total charges including all surcharges
       // Always recalculate from totalCharges - paidAmount to ensure accuracy
@@ -1418,14 +1419,18 @@ export class DatabaseStorage implements IStorage {
                           (sale.gradingCharges || 0);
       const dueAmount = totalCharges - (sale.paidAmount || 0);
       if (dueAmount > 0) {
-        const currentDue = buyerDues.get(buyerName) || 0;
-        buyerDues.set(buyerName, currentDue + dueAmount);
+        const existing = buyerDues.get(normalizedKey);
+        if (existing) {
+          existing.totalDue += dueAmount;
+        } else {
+          buyerDues.set(normalizedKey, { displayName: trimmedName, totalDue: dueAmount });
+        }
       }
     }
 
-    return Array.from(buyerDues.entries())
-      .map(([buyerName, totalDue]) => ({ buyerName, totalDue }))
-      .sort((a, b) => a.buyerName.localeCompare(b.buyerName));
+    return Array.from(buyerDues.values())
+      .map(({ displayName, totalDue }) => ({ buyerName: displayName, totalDue }))
+      .sort((a, b) => a.buyerName.toLowerCase().localeCompare(b.buyerName.toLowerCase()));
   }
 
   async getCashReceipts(coldStorageId: string): Promise<CashReceipt[]> {
