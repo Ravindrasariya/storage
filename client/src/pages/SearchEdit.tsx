@@ -643,10 +643,14 @@ export default function SearchEdit() {
                 <div className="space-y-2">
                   <Label>{t("floor")}</Label>
                   <Input
-                    type="number"
-                    min={1}
-                    value={editForm.floor}
-                    onChange={(e) => setEditForm({ ...editForm, floor: parseInt(e.target.value) || 0 })}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={editForm.floor === 0 ? "" : editForm.floor}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "");
+                      setEditForm({ ...editForm, floor: val === "" ? 0 : parseInt(val, 10) });
+                    }}
                     data-testid="input-edit-floor"
                   />
                 </div>
