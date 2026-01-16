@@ -38,6 +38,7 @@ import {
   Key,
   Save,
   X,
+  LogOut,
 } from "lucide-react";
 import type { ColdStorage, ColdStorageUser } from "@shared/schema";
 
@@ -214,6 +215,11 @@ function AdminDashboard() {
     });
   };
 
+  const handleLogout = () => {
+    setAdminToken(null);
+    window.location.reload();
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
@@ -227,7 +233,7 @@ function AdminDashboard() {
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
             <Building2 className="h-6 w-6 text-chart-1" />
@@ -235,13 +241,14 @@ function AdminDashboard() {
           </h1>
           <p className="text-muted-foreground">Manage cold storages and users</p>
         </div>
-        <Dialog open={addStorageOpen} onOpenChange={setAddStorageOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-cold-storage">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Cold Storage
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <Dialog open={addStorageOpen} onOpenChange={setAddStorageOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-cold-storage">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Cold Storage
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Add New Cold Storage</DialogTitle>
@@ -252,7 +259,16 @@ function AdminDashboard() {
               onCancel={() => setAddStorageOpen(false)}
             />
           </DialogContent>
-        </Dialog>
+          </Dialog>
+          <Button
+            variant="outline"
+            onClick={handleLogout}
+            data-testid="button-admin-logout"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Logout
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-3">
