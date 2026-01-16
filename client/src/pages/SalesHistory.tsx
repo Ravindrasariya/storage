@@ -208,7 +208,7 @@ export default function SalesHistoryPage() {
 
       {/* Summary Section */}
       {!historyLoading && salesHistory.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card data-testid="card-summary-bags">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
