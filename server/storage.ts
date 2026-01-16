@@ -771,8 +771,9 @@ export class DatabaseStorage implements IStorage {
   async getMerchantStats(coldStorageId: string, year?: number): Promise<MerchantStats> {
     const allSales = await this.getSalesHistory(coldStorageId, year ? { year } : undefined);
     
-    // Group sales by buyer name
+    // Group sales by buyer name (case-insensitive with trimming)
     const merchantMap = new Map<string, {
+      displayName: string; // Canonical display name (first occurrence)
       bagsPurchased: number;
       totalValue: number;
       totalChargePaid: number;
@@ -782,9 +783,11 @@ export class DatabaseStorage implements IStorage {
     }>();
     
     for (const sale of allSales) {
-      const buyerName = sale.buyerName?.trim() || "Unknown";
+      const trimmedName = sale.buyerName?.trim() || "Unknown";
+      const normalizedKey = trimmedName.toLowerCase(); // Case-insensitive key
       
-      const existing = merchantMap.get(buyerName) || {
+      const existing = merchantMap.get(normalizedKey) || {
+        displayName: trimmedName, // Use first occurrence as canonical name
         bagsPurchased: 0,
         totalValue: 0,
         totalChargePaid: 0,
@@ -828,16 +831,24 @@ export class DatabaseStorage implements IStorage {
       }
       // If paymentMode is null (legacy records), we don't split it
       
-      merchantMap.set(buyerName, existing);
+      merchantMap.set(normalizedKey, existing);
     }
     
-    // Extract unique buyer names
-    const buyers = Array.from(merchantMap.keys()).sort();
+    // Extract unique buyer display names (sorted case-insensitively)
+    const merchantEntries = Array.from(merchantMap.values());
+    merchantEntries.sort((a, b) => a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase()));
+    
+    const buyers = merchantEntries.map(e => e.displayName);
     
     // Build merchant data array
-    const merchantData = buyers.map(buyerName => ({
-      buyerName,
-      ...merchantMap.get(buyerName)!,
+    const merchantData = merchantEntries.map(entry => ({
+      buyerName: entry.displayName,
+      bagsPurchased: entry.bagsPurchased,
+      totalValue: entry.totalValue,
+      totalChargePaid: entry.totalChargePaid,
+      totalChargeDue: entry.totalChargeDue,
+      cashPaid: entry.cashPaid,
+      accountPaid: entry.accountPaid,
     }));
     
     return {

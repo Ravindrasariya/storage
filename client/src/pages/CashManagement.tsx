@@ -201,7 +201,8 @@ export default function CashManagement() {
     // Apply filters to receipts
     let filteredReceipts = receipts;
     if (filterBuyer) {
-      filteredReceipts = filteredReceipts.filter(r => r.buyerName === filterBuyer);
+      const filterKey = filterBuyer.trim().toLowerCase();
+      filteredReceipts = filteredReceipts.filter(r => r.buyerName.trim().toLowerCase() === filterKey);
     }
     if (filterMonth) {
       filteredReceipts = filteredReceipts.filter(r => {
@@ -253,8 +254,18 @@ export default function CashManagement() {
   const isLoading = loadingReceipts || loadingExpenses;
 
   const uniqueBuyers = useMemo(() => {
-    const buyers = new Set(receipts.map(r => r.buyerName));
-    return Array.from(buyers).sort();
+    // Aggregate buyers case-insensitively with trimming
+    const normalizedMap = new Map<string, string>(); // lowercase -> canonical display name
+    receipts.forEach(r => {
+      const trimmed = r.buyerName.trim();
+      const key = trimmed.toLowerCase();
+      if (!normalizedMap.has(key)) {
+        normalizedMap.set(key, trimmed);
+      }
+    });
+    return Array.from(normalizedMap.values()).sort((a, b) => 
+      a.toLowerCase().localeCompare(b.toLowerCase())
+    );
   }, [receipts]);
 
   const availableMonths = useMemo(() => {
