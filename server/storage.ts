@@ -111,6 +111,7 @@ export interface IStorage {
   createExit(data: InsertExitHistory): Promise<ExitHistory>;
   getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
+  getTotalBagsExited(coldStorageId: string, year?: number): Promise<number>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
   // Cash Receipts
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
@@ -1364,6 +1365,27 @@ export class DatabaseStorage implements IStorage {
         eq(exitHistory.isReversed, 0)
       ));
     return exits.reduce((sum, exit) => sum + exit.bagsExited, 0);
+  }
+
+  async getTotalBagsExited(coldStorageId: string, year?: number): Promise<number> {
+    // Get all exit history for this cold storage
+    const exits = await db.select()
+      .from(exitHistory)
+      .where(and(
+        eq(exitHistory.coldStorageId, coldStorageId),
+        eq(exitHistory.isReversed, 0)
+      ));
+    
+    // Filter by year if provided
+    let filteredExits = exits;
+    if (year) {
+      filteredExits = exits.filter(exit => {
+        const exitYear = new Date(exit.exitDate).getFullYear();
+        return exitYear === year;
+      });
+    }
+    
+    return filteredExits.reduce((sum, exit) => sum + exit.bagsExited, 0);
   }
 
   async reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }> {

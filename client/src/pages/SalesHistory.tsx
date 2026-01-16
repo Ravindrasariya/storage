@@ -83,6 +83,17 @@ export default function SalesHistoryPage() {
 
   // Calculate summary totals from filtered data
   // Use paidAmount from sale, calculate due as remainder to ensure consistency
+  // Fetch exits summary for the year filter
+  const { data: exitsSummary } = useQuery<{ totalBagsExited: number }>({
+    queryKey: ["/api/sales-history/exits-summary", yearFilter],
+    queryFn: async () => {
+      const params = yearFilter && yearFilter !== "all" ? `?year=${yearFilter}` : "";
+      const response = await authFetch(`/api/sales-history/exits-summary${params}`);
+      if (!response.ok) throw new Error("Failed to fetch exits summary");
+      return response.json();
+    },
+  });
+
   const summary = salesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
@@ -197,7 +208,7 @@ export default function SalesHistoryPage() {
 
       {/* Summary Section */}
       {!historyLoading && salesHistory.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card data-testid="card-summary-bags">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -206,7 +217,7 @@ export default function SalesHistoryPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("totalBagsSold")}</p>
-                  <p className="text-2xl font-bold" data-testid="text-total-bags">{summary.totalBags.toLocaleString()}</p>
+                  <p className="text-lg font-bold" data-testid="text-total-bags">{summary.totalBags.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
@@ -220,7 +231,7 @@ export default function SalesHistoryPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("amountPaid")}</p>
-                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-amount-paid">
+                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-amount-paid">
                     Rs. {summary.amountPaid.toLocaleString()}
                   </p>
                 </div>
@@ -236,8 +247,24 @@ export default function SalesHistoryPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("amountDue")}</p>
-                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-amount-due">
+                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400" data-testid="text-amount-due">
                     Rs. {summary.amountDue.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-summary-bags-exit">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-violet-500/10">
+                  <LogOut className="h-5 w-5 text-violet-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">{t("bagsSold")} / {t("bagsExited")}</p>
+                  <p className="text-lg font-bold" data-testid="text-bags-sold-exited">
+                    {summary.totalBags.toLocaleString()} / {(exitsSummary?.totalBagsExited || 0).toLocaleString()}
                   </p>
                 </div>
               </div>

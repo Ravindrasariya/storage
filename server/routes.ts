@@ -974,6 +974,19 @@ export async function registerRoutes(
     }
   });
 
+  // Get total bags exited (Nikasi) for a set of sales
+  app.get("/api/sales-history/exits-summary", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { year } = req.query;
+      const yearFilter = year ? parseInt(year as string) : undefined;
+      const totalBagsExited = await storage.getTotalBagsExited(coldStorageId, yearFilter);
+      res.json({ totalBagsExited });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch exits summary" });
+    }
+  });
+
   app.patch("/api/sales-history/:id/mark-paid", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
