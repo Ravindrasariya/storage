@@ -3,12 +3,62 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { Undo2 } from "lucide-react";
+import { Undo2, ArrowRight } from "lucide-react";
 import type { LotEditHistory } from "@shared/schema";
 
 interface EditHistoryAccordionProps {
   history: LotEditHistory[];
   onReverse?: () => void;
+}
+
+const fieldLabels: Record<string, string> = {
+  remainingSize: "Remaining Bags",
+  size: "Total Bags",
+  chamberId: "Chamber",
+  chamberName: "Chamber",
+  floor: "Floor",
+  position: "Position",
+  quality: "Quality",
+  potatoSize: "Potato Size",
+  bagType: "Bag Type",
+  type: "Variety",
+  farmerName: "Farmer Name",
+  village: "Village",
+  tehsil: "Tehsil",
+  district: "District",
+  state: "State",
+  contactNumber: "Contact Number",
+  status: "Status",
+  remarks: "Remarks",
+};
+
+function getFieldLabel(field: string): string {
+  return fieldLabels[field] || field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined) return "-";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return value.toLocaleString();
+  return String(value);
+}
+
+function getChangedFields(previousData: string, newData: string): { field: string; oldValue: unknown; newValue: unknown }[] {
+  try {
+    const prev = JSON.parse(previousData);
+    const next = JSON.parse(newData);
+    const changes: { field: string; oldValue: unknown; newValue: unknown }[] = [];
+    
+    const allKeys = Array.from(new Set([...Object.keys(prev), ...Object.keys(next)]));
+    for (const key of allKeys) {
+      if (JSON.stringify(prev[key]) !== JSON.stringify(next[key])) {
+        changes.push({ field: key, oldValue: prev[key], newValue: next[key] });
+      }
+    }
+    return changes;
+  } catch {
+    return [];
+  }
 }
 
 export function EditHistoryAccordion({ history, onReverse }: EditHistoryAccordionProps) {
@@ -103,20 +153,25 @@ export function EditHistoryAccordion({ history, onReverse }: EditHistoryAccordio
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-muted-foreground mb-1">Previous Data</p>
-                  <pre className="text-xs bg-background rounded p-2 overflow-x-auto">
-                    {JSON.stringify(JSON.parse(entry.previousData), null, 2)}
-                  </pre>
-                </div>
-                <div>
-                  <p className="text-muted-foreground mb-1">New Data</p>
-                  <pre className="text-xs bg-background rounded p-2 overflow-x-auto">
-                    {JSON.stringify(JSON.parse(entry.newData), null, 2)}
-                  </pre>
-                </div>
-              </div>
+              {(() => {
+                const changes = getChangedFields(entry.previousData, entry.newData);
+                if (changes.length === 0) return null;
+                return (
+                  <div className="space-y-2">
+                    <p className="text-muted-foreground text-xs font-medium">{t("changes") || "Changes"}:</p>
+                    <div className="space-y-1.5">
+                      {changes.map(({ field, oldValue, newValue }) => (
+                        <div key={field} className="flex items-center gap-2 text-sm bg-background rounded px-3 py-2">
+                          <span className="font-medium text-muted-foreground min-w-[100px]">{getFieldLabel(field)}:</span>
+                          <span className="text-destructive line-through">{formatValue(oldValue)}</span>
+                          <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <span className="text-green-600 dark:text-green-400 font-medium">{formatValue(newValue)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </AccordionContent>
         </AccordionItem>
