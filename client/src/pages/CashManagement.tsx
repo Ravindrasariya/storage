@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import type { CashReceipt, Expense } from "@shared/schema";
 
@@ -50,6 +51,7 @@ export default function CashManagement() {
   const [filterBuyer, setFilterBuyer] = useState<string>("");
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [filterMonth, setFilterMonth] = useState<string>("");
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionItem | null>(null);
 
   const { data: buyersWithDues = [], isLoading: loadingBuyers } = useQuery<BuyerWithDue[]>({
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
@@ -766,116 +768,71 @@ export default function CashManagement() {
               <div className="text-sm text-muted-foreground text-center py-8">{t("noTransactions")}</div>
             ) : (
               <ScrollArea className="h-[450px]">
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {allTransactions.map((transaction, index) => {
                     const isReversed = transaction.data.isReversed === 1;
                     return (
                       <div
                         key={`${transaction.type}-${transaction.data.id}`}
-                        className={`p-3 rounded-lg space-y-2 ${
+                        className={`p-2 rounded-lg cursor-pointer transition-all hover-elevate ${
                           isReversed
                             ? "bg-gray-100 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 opacity-60"
                             : transaction.type === "inflow" 
                               ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900" 
                               : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"
                         }`}
+                        onClick={() => setSelectedTransaction(transaction)}
                         data-testid={`transaction-${transaction.type}-${index}`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className={`font-medium flex items-center gap-2 ${isReversed ? "line-through" : ""}`}>
+                        {/* Row 1: Name/Type + Amount + Status */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
                             {transaction.type === "inflow" ? (
-                              <>
-                                <ArrowDownLeft className={`h-4 w-4 ${isReversed ? "text-gray-400" : "text-green-600"}`} />
-                                {(transaction.data as CashReceipt).buyerName}
-                              </>
+                              <ArrowDownLeft className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-green-600"}`} />
                             ) : (
-                              <>
-                                <ArrowUpRight className={`h-4 w-4 ${isReversed ? "text-gray-400" : "text-red-600"}`} />
-                                {getExpenseTypeLabel((transaction.data as Expense).expenseType)}
-                              </>
+                              <ArrowUpRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-red-600"}`} />
                             )}
-                          </span>
-                          <div className="flex items-center gap-2">
+                            <span className={`font-medium truncate ${isReversed ? "line-through text-gray-500" : ""}`}>
+                              {transaction.type === "inflow" 
+                                ? (transaction.data as CashReceipt).buyerName
+                                : getExpenseTypeLabel((transaction.data as Expense).expenseType)
+                              }
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={`font-bold text-base ${
+                              isReversed 
+                                ? "text-gray-400" 
+                                : transaction.type === "inflow" ? "text-green-600" : "text-red-600"
+                            }`}>
+                              {transaction.type === "inflow" ? "+" : "-"}₹{transaction.data.amount.toLocaleString()}
+                            </span>
                             {isReversed ? (
-                              <Badge variant="secondary">{t("reversed")}</Badge>
+                              <Badge variant="secondary" className="text-xs">{t("reversed")}</Badge>
                             ) : (
-                              <>
-                                <Badge variant={transaction.type === "inflow" ? "default" : "destructive"}>
-                                  {transaction.type === "inflow" ? t("inflow") : t("outflow")}
-                                </Badge>
-                                {canEdit && (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-7 w-7"
-                                      data-testid={`button-reverse-${transaction.type}-${index}`}
-                                    >
-                                      <RotateCcw className="h-4 w-4" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>{t("confirmReverse")}</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        {t("reverseWarning")}
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => {
-                                          if (transaction.type === "inflow") {
-                                            reverseReceiptMutation.mutate(transaction.data.id);
-                                          } else {
-                                            reverseExpenseMutation.mutate(transaction.data.id);
-                                          }
-                                        }}
-                                        data-testid={`button-confirm-reverse-${index}`}
-                                      >
-                                        {t("reverse")}
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                                )}
-                              </>
+                              <Badge 
+                                variant={transaction.type === "inflow" ? "default" : "destructive"} 
+                                className="text-xs"
+                              >
+                                {transaction.type === "inflow" ? t("inflow") : t("outflow")}
+                              </Badge>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            {format(new Date(transaction.timestamp), "dd/MM/yyyy")}
-                          </span>
-                          <span className={`font-semibold ${
-                            isReversed 
-                              ? "text-gray-400" 
-                              : transaction.type === "inflow" ? "text-green-600" : "text-red-600"
-                          }`}>
-                            {transaction.type === "inflow" ? "+" : "-"}₹{transaction.data.amount.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          <Badge variant="outline" className="text-xs">
-                            {transaction.type === "inflow" 
-                              ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
-                              : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
-                            }
-                          </Badge>
-                          {transaction.type === "outflow" && (transaction.data as Expense).remarks && (
-                            <span className="text-muted-foreground truncate">
-                              {(transaction.data as Expense).remarks}
-                            </span>
-                          )}
-                          {transaction.type === "inflow" && (transaction.data as CashReceipt).notes && (
-                            <span className="text-muted-foreground truncate">
-                              {(transaction.data as CashReceipt).notes}
-                            </span>
-                          )}
+                        {/* Row 2: Date + Payment Mode + Applied (if inflow) */}
+                        <div className="flex items-center justify-between gap-2 mt-1 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
+                            <Badge variant="outline" className="text-xs py-0 h-5">
+                              {transaction.type === "inflow" 
+                                ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
+                                : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
+                              }
+                            </Badge>
+                          </div>
                           {transaction.type === "inflow" && !isReversed && (
-                            <span className="text-green-600">
-                              {t("appliedAmount")}: ₹{((transaction.data as CashReceipt).appliedAmount || 0).toLocaleString()}
+                            <span className="text-green-600 text-xs">
+                              {t("applied")}: ₹{((transaction.data as CashReceipt).appliedAmount || 0).toLocaleString()}
                             </span>
                           )}
                         </div>
@@ -888,6 +845,153 @@ export default function CashManagement() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Transaction Detail Dialog */}
+      <Dialog open={!!selectedTransaction} onOpenChange={(open) => !open && setSelectedTransaction(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedTransaction?.type === "inflow" ? (
+                <>
+                  <ArrowDownLeft className="h-5 w-5 text-green-600" />
+                  {t("paymentDetails")}
+                </>
+              ) : (
+                <>
+                  <ArrowUpRight className="h-5 w-5 text-red-600" />
+                  {t("expenseDetails")}
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {t("transactionDetailsDescription") || "Complete details of this transaction"}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedTransaction && (
+            <div className="space-y-4">
+              {/* Status Badge */}
+              <div className="flex justify-center">
+                {selectedTransaction.data.isReversed === 1 ? (
+                  <Badge variant="secondary" className="text-base px-4 py-1">
+                    {t("reversed")}
+                  </Badge>
+                ) : (
+                  <Badge 
+                    variant={selectedTransaction.type === "inflow" ? "default" : "destructive"}
+                    className="text-base px-4 py-1"
+                  >
+                    {t("active")}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Transaction Details */}
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                {selectedTransaction.type === "inflow" ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("buyerName")}:</span>
+                      <span className="font-medium">{(selectedTransaction.data as CashReceipt).buyerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("amount")}:</span>
+                      <span className="font-bold text-green-600">₹{selectedTransaction.data.amount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("paymentMode")}:</span>
+                      <Badge variant="outline">
+                        {(selectedTransaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account")}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("date")}:</span>
+                      <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("appliedAmount")}:</span>
+                      <span className="text-green-600">₹{((selectedTransaction.data as CashReceipt).appliedAmount || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("unappliedAmount")}:</span>
+                      <span className="text-amber-600">₹{((selectedTransaction.data as CashReceipt).unappliedAmount || 0).toLocaleString()}</span>
+                    </div>
+                    {(selectedTransaction.data as CashReceipt).notes && (
+                      <div className="pt-2 border-t">
+                        <span className="text-muted-foreground text-sm">{t("notes")}:</span>
+                        <p className="text-sm mt-1">{(selectedTransaction.data as CashReceipt).notes}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("expenseType")}:</span>
+                      <span className="font-medium">{getExpenseTypeLabel((selectedTransaction.data as Expense).expenseType)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("amount")}:</span>
+                      <span className="font-bold text-red-600">₹{selectedTransaction.data.amount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("paymentMode")}:</span>
+                      <Badge variant="outline">
+                        {(selectedTransaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account")}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("date")}:</span>
+                      <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
+                    </div>
+                    {(selectedTransaction.data as Expense).remarks && (
+                      <div className="pt-2 border-t">
+                        <span className="text-muted-foreground text-sm">{t("remarks")}:</span>
+                        <p className="text-sm mt-1">{(selectedTransaction.data as Expense).remarks}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Reverse Button */}
+              {canEdit && selectedTransaction.data.isReversed !== 1 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full" data-testid="button-reverse-from-dialog">
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      {t("reverseEntry")}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{t("confirmReverse")}</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {t("reverseWarning")}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          if (selectedTransaction.type === "inflow") {
+                            reverseReceiptMutation.mutate(selectedTransaction.data.id);
+                          } else {
+                            reverseExpenseMutation.mutate(selectedTransaction.data.id);
+                          }
+                          setSelectedTransaction(null);
+                        }}
+                        data-testid="button-confirm-reverse-dialog"
+                      >
+                        {t("reverse")}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
