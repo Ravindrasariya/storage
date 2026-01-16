@@ -39,7 +39,8 @@ interface LoginProps {
   onLoginSuccess: (user: any, coldStorage: any, token: string) => void;
 }
 
-const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "";
+// Only show CAPTCHA in production (not in development)
+const RECAPTCHA_SITE_KEY = import.meta.env.DEV ? "" : (import.meta.env.VITE_RECAPTCHA_SITE_KEY || "");
 
 export default function Login({ onLoginSuccess }: LoginProps) {
   const { t } = useI18n();
