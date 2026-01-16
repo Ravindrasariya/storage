@@ -1371,11 +1371,12 @@ export class DatabaseStorage implements IStorage {
 
   async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
     // Get all sales for this buyer with due or partial status, ordered by sale date (FIFO)
+    // Use case-insensitive matching for buyer name
     const sales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
-        eq(salesHistory.buyerName, data.buyerName),
+        sql`LOWER(${salesHistory.buyerName}) = LOWER(${data.buyerName})`,
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
       ))
       .orderBy(salesHistory.soldAt); // FIFO - oldest first
@@ -1486,6 +1487,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(cashReceipts.id, receiptId));
 
     // Reset all sales for this buyer to baseline (due status)
+    // Use case-insensitive matching for buyer name
     await db.update(salesHistory)
       .set({
         paymentStatus: "due",
@@ -1496,16 +1498,17 @@ export class DatabaseStorage implements IStorage {
       })
       .where(and(
         eq(salesHistory.coldStorageId, receipt.coldStorageId),
-        eq(salesHistory.buyerName, receipt.buyerName),
+        sql`LOWER(${salesHistory.buyerName}) = LOWER(${receipt.buyerName})`,
         sql`${salesHistory.paymentStatus} IN ('paid', 'partial')`
       ));
 
     // Replay all non-reversed receipts for this buyer in order (FIFO)
+    // Use case-insensitive matching for buyer name
     const activeReceipts = await db.select()
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, receipt.coldStorageId),
-        eq(cashReceipts.buyerName, receipt.buyerName),
+        sql`LOWER(${cashReceipts.buyerName}) = LOWER(${receipt.buyerName})`,
         eq(cashReceipts.isReversed, 0)
       ))
       .orderBy(cashReceipts.receivedAt);
@@ -1513,11 +1516,12 @@ export class DatabaseStorage implements IStorage {
     // For each active receipt, replay the FIFO allocation
     for (const activeReceipt of activeReceipts) {
       // Get all sales for this buyer ordered by sale date (FIFO)
+      // Use case-insensitive matching for buyer name
       const sales = await db.select()
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, activeReceipt.coldStorageId),
-          eq(salesHistory.buyerName, activeReceipt.buyerName),
+          sql`LOWER(${salesHistory.buyerName}) = LOWER(${activeReceipt.buyerName})`,
           sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
         ))
         .orderBy(salesHistory.soldAt);
