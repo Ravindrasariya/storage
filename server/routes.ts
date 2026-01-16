@@ -1019,6 +1019,11 @@ export async function registerRoutes(
     dueAmount: z.number().optional(),
     paymentMode: z.enum(["cash", "account"]).optional(),
     netWeight: z.number().nullable().optional(),
+    coldCharge: z.number().optional(),
+    hammali: z.number().optional(),
+    kataCharges: z.number().optional(),
+    extraHammali: z.number().optional(),
+    gradingCharges: z.number().optional(),
   });
 
   app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -1042,11 +1047,13 @@ export async function registerRoutes(
       
       // Log changes to edit history
       if (currentSale) {
-        const fieldsToTrack = ['buyerName', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight'] as const;
+        const fieldsToTrack = ['buyerName', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'coldStorageCharge'] as const;
         for (const field of fieldsToTrack) {
-          if (validatedData[field] !== undefined) {
-            const oldValue = currentSale[field];
-            const newValue = validatedData[field];
+          if (validatedData[field as keyof typeof validatedData] !== undefined || field === 'coldStorageCharge') {
+            const oldValue = currentSale[field as keyof typeof currentSale];
+            const newValue = field === 'coldStorageCharge' 
+              ? (updated as typeof currentSale)[field] 
+              : validatedData[field as keyof typeof validatedData];
             if (String(oldValue ?? '') !== String(newValue ?? '')) {
               await storage.createSaleEditHistory({
                 saleId: req.params.id,

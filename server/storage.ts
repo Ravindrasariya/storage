@@ -1085,6 +1085,11 @@ export class DatabaseStorage implements IStorage {
     dueAmount?: number;
     paymentMode?: "cash" | "account";
     netWeight?: number | null;
+    coldCharge?: number;
+    hammali?: number;
+    kataCharges?: number;
+    extraHammali?: number;
+    gradingCharges?: number;
   }): Promise<SalesHistory | undefined> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) return undefined;
@@ -1125,6 +1130,33 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.netWeight !== undefined) {
       updateData.netWeight = updates.netWeight;
+    }
+
+    // Handle charge field updates
+    if (updates.coldCharge !== undefined) {
+      updateData.coldCharge = updates.coldCharge;
+    }
+    if (updates.hammali !== undefined) {
+      updateData.hammali = updates.hammali;
+    }
+    if (updates.kataCharges !== undefined) {
+      updateData.kataCharges = updates.kataCharges;
+    }
+    if (updates.extraHammali !== undefined) {
+      updateData.extraHammali = updates.extraHammali;
+    }
+    if (updates.gradingCharges !== undefined) {
+      updateData.gradingCharges = updates.gradingCharges;
+    }
+
+    // Recompute coldStorageCharge if any rate components changed
+    if (updates.coldCharge !== undefined || updates.hammali !== undefined) {
+      const coldCharge = updates.coldCharge ?? sale.coldCharge ?? 0;
+      const hammali = updates.hammali ?? sale.hammali ?? 0;
+      const ratePerBag = coldCharge + hammali;
+      updateData.coldStorageCharge = ratePerBag * (sale.quantitySold || 0);
+      // Also update pricePerBag to reflect the new rate
+      updateData.pricePerBag = ratePerBag;
     }
 
     const [updated] = await db.update(salesHistory)

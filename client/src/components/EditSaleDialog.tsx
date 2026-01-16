@@ -8,12 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Pencil, Save, X, RotateCcw, History } from "lucide-react";
+import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
-import { calculateTotalColdCharges } from "@shared/schema";
 
 interface EditSaleDialogProps {
   sale: SalesHistory | null;
@@ -32,8 +32,32 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [customAmount, setCustomAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
   const [showReverseConfirm, setShowReverseConfirm] = useState(false);
+  const [chargesOpen, setChargesOpen] = useState(false);
+  
+  const [editColdCharge, setEditColdCharge] = useState("");
+  const [editHammali, setEditHammali] = useState("");
+  const [editKataCharges, setEditKataCharges] = useState("");
+  const [editExtraHammali, setEditExtraHammali] = useState("");
+  const [editGradingCharges, setEditGradingCharges] = useState("");
 
-  const totalCharge = sale ? calculateTotalColdCharges(sale) : 0;
+  const getEditableChargeValue = (value: string, fallback: number) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const calculateEditableTotal = () => {
+    if (!sale) return 0;
+    const coldCharge = getEditableChargeValue(editColdCharge, sale.coldCharge || 0);
+    const hammali = getEditableChargeValue(editHammali, sale.hammali || 0);
+    const kata = getEditableChargeValue(editKataCharges, sale.kataCharges || 0);
+    const extraHammali = getEditableChargeValue(editExtraHammali, sale.extraHammali || 0);
+    const grading = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
+    const ratePerBag = coldCharge + hammali;
+    const coldStorageCharge = ratePerBag * (sale.quantitySold || 0);
+    return coldStorageCharge + kata + extraHammali + grading;
+  };
+
+  const totalCharge = calculateEditableTotal();
 
   const { data: editHistory = [] } = useQuery<SaleEditHistory[]>({
     queryKey: ["/api/sales-history", sale?.id, "edit-history"],
@@ -54,6 +78,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       dueAmount: t("dueAmount"),
       paymentMode: t("paymentMode"),
       netWeight: t("netWeight"),
+      coldCharge: t("coldStorageCharge"),
+      hammali: t("hammali"),
+      kataCharges: t("kataCharges"),
+      extraHammali: t("extraHammaliPerBag"),
+      gradingCharges: t("totalGradingCharges"),
+      coldStorageCharge: t("totalColdStorageCharges"),
     };
     return labels[field] || field;
   };
@@ -66,7 +96,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     if (field === "paymentMode") {
       return value === "cash" ? t("cash") : t("account");
     }
-    if (field === "paidAmount" || field === "dueAmount" || field === "pricePerKg" || field === "netWeight") {
+    if (field === "paidAmount" || field === "dueAmount" || field === "pricePerKg" || field === "netWeight" ||
+        field === "coldCharge" || field === "hammali" || field === "kataCharges" || 
+        field === "extraHammali" || field === "gradingCharges" || field === "coldStorageCharge") {
       return `₹${parseFloat(value).toLocaleString()}`;
     }
     return value;
@@ -80,6 +112,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setNewPaymentStatus(sale.paymentStatus as "paid" | "due" | "partial");
       setCustomAmount(sale.paidAmount?.toString() || "0");
       setPaymentMode(sale.paymentMode as "cash" | "account" || "cash");
+      setEditColdCharge(sale.coldCharge?.toString() || "0");
+      setEditHammali(sale.hammali?.toString() || "0");
+      setEditKataCharges(sale.kataCharges?.toString() || "0");
+      setEditExtraHammali(sale.extraHammali?.toString() || "0");
+      setEditGradingCharges(sale.gradingCharges?.toString() || "0");
+      setChargesOpen(false);
     }
   }, [sale]);
 
@@ -92,6 +130,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       paidAmount?: number;
       dueAmount?: number;
       paymentMode?: "cash" | "account";
+      coldCharge?: number;
+      hammali?: number;
+      kataCharges?: number;
+      extraHammali?: number;
+      gradingCharges?: number;
     }) => {
       const response = await apiRequest("PATCH", `/api/sales-history/${sale!.id}`, data);
       return response.json();
@@ -181,6 +224,31 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       }
     }
 
+    const newColdCharge = getEditableChargeValue(editColdCharge, sale.coldCharge || 0);
+    if (newColdCharge !== (sale.coldCharge || 0)) {
+      updates.coldCharge = newColdCharge;
+    }
+
+    const newHammali = getEditableChargeValue(editHammali, sale.hammali || 0);
+    if (newHammali !== (sale.hammali || 0)) {
+      updates.hammali = newHammali;
+    }
+
+    const newKataCharges = getEditableChargeValue(editKataCharges, sale.kataCharges || 0);
+    if (newKataCharges !== (sale.kataCharges || 0)) {
+      updates.kataCharges = newKataCharges;
+    }
+
+    const newExtraHammali = getEditableChargeValue(editExtraHammali, sale.extraHammali || 0);
+    if (newExtraHammali !== (sale.extraHammali || 0)) {
+      updates.extraHammali = newExtraHammali;
+    }
+
+    const newGradingCharges = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
+    if (newGradingCharges !== (sale.gradingCharges || 0)) {
+      updates.gradingCharges = newGradingCharges;
+    }
+
     if (Object.keys(updates).length === 0) {
       toast({ description: t("noChanges") });
       return;
@@ -235,12 +303,113 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 <span className="text-muted-foreground">{t("quantitySold")}:</span>
                 <p className="font-medium">{sale.quantitySold} {t("bags")}</p>
               </div>
-              <div>
-                <span className="text-muted-foreground">{t("totalColdStorageCharges")}:</span>
-                <p className="font-medium">Rs. {totalCharge.toLocaleString()}</p>
-              </div>
             </div>
           </div>
+
+          <Collapsible open={chargesOpen} onOpenChange={setChargesOpen}>
+            <div className="border rounded-lg">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between p-3 h-auto hover-elevate">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{t("totalColdStorageCharges")}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold text-chart-2">Rs. {totalCharge.toLocaleString()}</span>
+                    {chargesOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </div>
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="p-3 pt-0 space-y-3 border-t">
+                  <p className="text-xs text-muted-foreground">{t("editChargesHint") || "Click to expand and edit individual charges"}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("coldStorageCharge")}/{t("bag")}</Label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editColdCharge}
+                          onChange={(e) => setEditColdCharge(e.target.value)}
+                          className="h-8"
+                          data-testid="input-edit-cold-charge"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("hammali")}/{t("bag")}</Label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editHammali}
+                          onChange={(e) => setEditHammali(e.target.value)}
+                          className="h-8"
+                          data-testid="input-edit-hammali"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("kataCharges")}</Label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editKataCharges}
+                          onChange={(e) => setEditKataCharges(e.target.value)}
+                          className="h-8"
+                          data-testid="input-edit-kata-charges"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("extraHammaliPerBag")}</Label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editExtraHammali}
+                          onChange={(e) => setEditExtraHammali(e.target.value)}
+                          className="h-8"
+                          data-testid="input-edit-extra-hammali"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">{t("totalGradingCharges")}</Label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editGradingCharges}
+                          onChange={(e) => setEditGradingCharges(e.target.value)}
+                          className="h-8"
+                          data-testid="input-edit-grading-charges"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground pt-2 border-t">
+                    <div className="flex justify-between">
+                      <span>({getEditableChargeValue(editColdCharge, sale.coldCharge || 0)} + {getEditableChargeValue(editHammali, sale.hammali || 0)}) × {sale.quantitySold} {t("bags")}</span>
+                      <span>= Rs. {((getEditableChargeValue(editColdCharge, sale.coldCharge || 0) + getEditableChargeValue(editHammali, sale.hammali || 0)) * (sale.quantitySold || 0)).toLocaleString()}</span>
+                    </div>
+                    {(getEditableChargeValue(editKataCharges, 0) > 0 || getEditableChargeValue(editExtraHammali, 0) > 0 || getEditableChargeValue(editGradingCharges, 0) > 0) && (
+                      <div className="flex justify-between">
+                        <span>+ {t("surcharges")}</span>
+                        <span>= Rs. {(getEditableChargeValue(editKataCharges, 0) + getEditableChargeValue(editExtraHammali, 0) + getEditableChargeValue(editGradingCharges, 0)).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
 
           <div className="space-y-4">
             <div className="space-y-2">
