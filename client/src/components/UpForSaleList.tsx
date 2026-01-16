@@ -25,6 +25,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SaleLotInfo } from "@shared/schema";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 interface UpForSaleListProps {
   saleLots: SaleLotInfo[];
@@ -550,7 +551,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <Input
                   type="text"
                   value={buyerName}
-                  onChange={(e) => setBuyerName(e.target.value)}
+                  onChange={(e) => setBuyerName(capitalizeFirstLetter(e.target.value))}
                   placeholder={t("buyerName")}
                   data-testid="input-buyer-name"
                 />
@@ -669,7 +670,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <Input
                   type="text"
                   value={buyerName}
-                  onChange={(e) => setBuyerName(e.target.value)}
+                  onChange={(e) => setBuyerName(capitalizeFirstLetter(e.target.value))}
                   placeholder={t("buyerName")}
                   data-testid="input-partial-buyer-name"
                 />

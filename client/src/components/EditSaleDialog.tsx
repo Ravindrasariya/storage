@@ -14,6 +14,7 @@ import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 interface EditSaleDialogProps {
   sale: SalesHistory | null;
@@ -417,7 +418,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
               <Input
                 id="buyerName"
                 value={buyerName}
-                onChange={(e) => setBuyerName(e.target.value)}
+                onChange={(e) => setBuyerName(capitalizeFirstLetter(e.target.value))}
                 placeholder={t("enterBuyerName")}
                 data-testid="input-edit-buyer-name"
               />

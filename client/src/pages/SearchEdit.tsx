@@ -33,6 +33,7 @@ import { ArrowLeft, Search, Phone, Package, Filter, User } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 // Helper to get saved search state from sessionStorage
 const getSavedSearchState = () => {
@@ -376,7 +377,7 @@ export default function SearchEdit() {
               <Input
                 placeholder={t("enterFarmerName") || "Enter farmer name..."}
                 value={farmerNameQuery}
-                onChange={(e) => setFarmerNameQuery(e.target.value)}
+                onChange={(e) => setFarmerNameQuery(capitalizeFirstLetter(e.target.value))}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 className="flex-1"
                 data-testid="input-search-farmer"

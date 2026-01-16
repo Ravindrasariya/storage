@@ -38,6 +38,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck, Printer } from "lucide-react";
 import { format } from "date-fns";
 import type { Chamber } from "@shared/schema";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 interface ColdStorageSettings {
   id: string;
@@ -522,6 +523,7 @@ export default function LotEntry() {
                     <FormControl>
                       <Input
                         {...field}
+                        onChange={(e) => field.onChange(capitalizeFirstLetter(e.target.value))}
                         placeholder="Enter farmer name"
                         data-testid="input-farmer-name"
                       />
@@ -557,6 +559,7 @@ export default function LotEntry() {
                     <FormControl>
                       <Input
                         {...field}
+                        onChange={(e) => field.onChange(capitalizeFirstLetter(e.target.value))}
                         placeholder="Enter village"
                         data-testid="input-village"
                       />
@@ -574,6 +577,7 @@ export default function LotEntry() {
                     <FormControl>
                       <Input
                         {...field}
+                        onChange={(e) => field.onChange(capitalizeFirstLetter(e.target.value))}
                         placeholder="Enter tehsil"
                         data-testid="input-tehsil"
                       />
