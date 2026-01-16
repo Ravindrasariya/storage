@@ -532,7 +532,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   </span>
                 </div>
                 <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                  <div>{selectedLot.remainingSize} {t("bags")} x Rs.{selectedLot.rate} = Rs. {calculateBaseCharge(selectedLot).toLocaleString()}</div>
+                  <div>{selectedLot.remainingSize} {t("bags")} x Rs.{getEditableRate(selectedLot)} = Rs. {calculateBaseCharge(selectedLot).toLocaleString()}</div>
                   {(parseFloat(kataCharges) || 0) > 0 && (
                     <div>+ {t("kataCharges")}: Rs. {parseFloat(kataCharges).toLocaleString()}</div>
                   )}
@@ -758,11 +758,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
                     <span className="text-2xl font-bold text-chart-2">
-                      Rs. {calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate).toLocaleString()}
+                      Rs. {calculateTotalCharge(selectedLot, partialQuantity).toLocaleString()}
                     </span>
                   </div>
                   <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                    <div>{partialQuantity} {t("bags")} x Rs.{selectedLot.rate} = Rs. {(partialQuantity * selectedLot.rate).toLocaleString()}</div>
+                    <div>{partialQuantity} {t("bags")} x Rs.{getEditableRate(selectedLot)} = Rs. {(partialQuantity * getEditableRate(selectedLot)).toLocaleString()}</div>
                     {(parseFloat(kataCharges) || 0) > 0 && (
                       <div>+ {t("kataCharges")}: Rs. {parseFloat(kataCharges).toLocaleString()}</div>
                     )}
