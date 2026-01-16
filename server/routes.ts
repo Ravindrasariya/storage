@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { randomUUID } from "crypto";
 import { storage } from "./storage";
 import { lotFormSchema, insertChamberFloorSchema } from "@shared/schema";
 import { z } from "zod";
@@ -1838,7 +1839,7 @@ export async function registerRoutes(
   app.post("/api/export/token", requireAuth, async (req: AuthenticatedRequest, res) => {
     const coldStorageId = getColdStorageId(req);
     const userId = req.authContext?.userId || "";
-    const downloadToken = crypto.randomUUID();
+    const downloadToken = randomUUID();
     
     downloadTokens.set(downloadToken, {
       coldStorageId,
