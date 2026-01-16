@@ -2061,40 +2061,62 @@ export async function registerRoutes(
 
       const { receipts, expenses } = await storage.getCashDataForExport(coldStorageId, from, to);
 
+      // Headers with all columns for both types
       const headers = language === "hi"
-        ? ["तारीख", "प्रकार", "नाम/विवरण", "भुगतान मोड", "राशि", "टिप्पणी"]
-        : ["Date", "Type", "Name/Description", "Payment Mode", "Amount", "Remarks"];
+        ? ["तारीख", "प्रकार", "खरीदार का नाम", "खर्च प्रकार", "भुगतान मोड", "राशि", "नोट्स/टिप्पणी", "स्थिति", "रद्द तारीख"]
+        : ["Date", "Type", "Buyer Name", "Expense Type", "Payment Mode", "Amount", "Notes/Remarks", "Status", "Reversal Date"];
+
+      // Expense type labels
+      const expenseTypeMap: Record<string, { en: string; hi: string }> = {
+        salary: { en: "Salary", hi: "वेतन" },
+        hammali: { en: "Hammali", hi: "हम्माली" },
+        grading_charges: { en: "Grading Charges", hi: "ग्रेडिंग चार्ज" },
+        general_expenses: { en: "General Expenses", hi: "सामान्य खर्च" },
+      };
 
       // Combine and sort by date (latest first)
-      const allEntries: { date: Date; type: string; name: string; mode: string; amount: number; remarks: string }[] = [];
+      interface CashEntry {
+        date: Date;
+        type: string;
+        buyerName: string;
+        expenseType: string;
+        mode: string;
+        amount: number;
+        notes: string;
+        status: string;
+        reversalDate: string;
+      }
+      const allEntries: CashEntry[] = [];
       
       for (const r of receipts) {
+        const isReversed = r.isReversed === 1;
         allEntries.push({
           date: new Date(r.receivedAt),
           type: language === "hi" ? "आवक" : "Inward",
-          name: r.buyerName,
+          buyerName: r.buyerName,
+          expenseType: "", // Not applicable for inward
           mode: r.receiptType === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
           amount: r.amount,
-          remarks: r.notes || "",
+          notes: r.notes || "",
+          status: isReversed ? (language === "hi" ? "रद्द" : "Reversed") : (language === "hi" ? "सक्रिय" : "Active"),
+          reversalDate: isReversed && r.reversedAt ? formatDateForExport(new Date(r.reversedAt)) : "",
         });
       }
       
       for (const e of expenses) {
-        const expenseTypeMap: Record<string, { en: string; hi: string }> = {
-          salary: { en: "Salary", hi: "वेतन" },
-          hammali: { en: "Hammali", hi: "हम्माली" },
-          grading_charges: { en: "Grading Charges", hi: "ग्रेडिंग चार्ज" },
-          general_expenses: { en: "General Expenses", hi: "सामान्य खर्च" },
-        };
+        const isReversed = e.isReversed === 1;
         const expenseLabel = expenseTypeMap[e.expenseType] || { en: e.expenseType, hi: e.expenseType };
         
         allEntries.push({
           date: new Date(e.paidAt),
           type: language === "hi" ? "खर्च" : "Expense",
-          name: language === "hi" ? expenseLabel.hi : expenseLabel.en,
+          buyerName: "", // Not applicable for expense
+          expenseType: language === "hi" ? expenseLabel.hi : expenseLabel.en,
           mode: e.paymentMode === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
           amount: e.amount,
-          remarks: e.remarks || "",
+          notes: e.remarks || "",
+          status: isReversed ? (language === "hi" ? "रद्द" : "Reversed") : (language === "hi" ? "सक्रिय" : "Active"),
+          reversalDate: isReversed && e.reversedAt ? formatDateForExport(new Date(e.reversedAt)) : "",
         });
       }
 
@@ -2107,10 +2129,13 @@ export async function registerRoutes(
         const row = [
           formatDateForExport(entry.date),
           entry.type,
-          entry.name,
+          entry.buyerName,
+          entry.expenseType,
           entry.mode,
           entry.amount,
-          entry.remarks,
+          entry.notes,
+          entry.status,
+          entry.reversalDate,
         ];
         csvRows.push(row.map(escapeCSV).join(","));
       }
