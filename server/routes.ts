@@ -1483,8 +1483,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Mobile number and password are required" });
       }
 
-      // Verify CAPTCHA if secret key is configured
-      if (process.env.RECAPTCHA_SECRET_KEY) {
+      // Verify CAPTCHA if secret key is configured (skip in development)
+      const isDevelopment = process.env.NODE_ENV === 'development';
+      if (process.env.RECAPTCHA_SECRET_KEY && !isDevelopment) {
         if (!captchaToken) {
           return res.status(400).json({ error: "CAPTCHA verification required" });
         }
