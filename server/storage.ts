@@ -122,6 +122,8 @@ export interface IStorage {
   // Reversal
   reverseCashReceipt(receiptId: string): Promise<{ success: boolean; message?: string }>;
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
+  // FIFO Recomputation
+  recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
   // Admin
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
   // Bill number assignment
@@ -1150,6 +1152,12 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Recompute coldStorageCharge if any rate components changed
+    const chargesChanged = updates.coldCharge !== undefined || 
+                           updates.hammali !== undefined || 
+                           updates.kataCharges !== undefined || 
+                           updates.extraHammali !== undefined || 
+                           updates.gradingCharges !== undefined;
+
     if (updates.coldCharge !== undefined || updates.hammali !== undefined) {
       const coldCharge = updates.coldCharge ?? sale.coldCharge ?? 0;
       const hammali = updates.hammali ?? sale.hammali ?? 0;
@@ -1163,6 +1171,15 @@ export class DatabaseStorage implements IStorage {
       .set(updateData)
       .where(eq(salesHistory.id, saleId))
       .returning();
+
+    // If charges changed and there's a buyer, trigger FIFO recomputation
+    if (chargesChanged && updated && updated.buyerName) {
+      await this.recomputeBuyerPayments(updated.buyerName, sale.coldStorageId);
+      // Re-fetch the sale to get updated payment status after FIFO recomputation
+      const [refreshed] = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId));
+      return refreshed;
+    }
+
     return updated;
   }
 
@@ -1650,6 +1667,124 @@ export class DatabaseStorage implements IStorage {
       .where(eq(expenses.id, expenseId));
 
     return { success: true, message: "Expense reversed" };
+  }
+
+  async recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }> {
+    // Step 1: Reset all sales for this buyer to "due" status with 0 paidAmount
+    // Calculate proper dueAmount using all surcharges
+    const buyerSales = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`
+      ))
+      .orderBy(salesHistory.soldAt);
+
+    // Reset each sale's payment info and recalculate dueAmount from current charges
+    for (const sale of buyerSales) {
+      const totalCharges = (sale.coldStorageCharge || 0) + 
+                          (sale.kataCharges || 0) + 
+                          (sale.extraHammali || 0) + 
+                          (sale.gradingCharges || 0);
+      await db.update(salesHistory)
+        .set({
+          paymentStatus: "due",
+          paidAmount: 0,
+          dueAmount: totalCharges,
+          paymentMode: null,
+          paidAt: null,
+        })
+        .where(eq(salesHistory.id, sale.id));
+    }
+
+    // Step 2: Get all non-reversed receipts for this buyer, ordered by receivedAt (FIFO)
+    const activeReceipts = await db.select()
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerName}))`,
+        eq(cashReceipts.isReversed, 0)
+      ))
+      .orderBy(cashReceipts.receivedAt);
+
+    let salesUpdated = 0;
+    let receiptsUpdated = 0;
+
+    // Step 3: Re-apply each receipt in FIFO order
+    for (const receipt of activeReceipts) {
+      // Get all sales for this buyer with due or partial status (FIFO order)
+      const sales = await db.select()
+        .from(salesHistory)
+        .where(and(
+          eq(salesHistory.coldStorageId, coldStorageId),
+          sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
+          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+        ))
+        .orderBy(salesHistory.soldAt);
+
+      let remainingAmount = receipt.amount;
+      let appliedAmount = 0;
+      const paymentMode = receipt.receiptType as "cash" | "account";
+
+      // Apply payment to each sale in FIFO order
+      for (const sale of sales) {
+        if (remainingAmount <= 0) break;
+
+        // Calculate total charges including all surcharges
+        const totalCharges = (sale.coldStorageCharge || 0) + 
+                            (sale.kataCharges || 0) + 
+                            (sale.extraHammali || 0) + 
+                            (sale.gradingCharges || 0);
+        const saleDueAmount = totalCharges - (sale.paidAmount || 0);
+        
+        if (saleDueAmount <= 0) continue;
+
+        if (remainingAmount >= saleDueAmount) {
+          // Can fully pay this sale
+          await db.update(salesHistory)
+            .set({
+              paymentStatus: "paid",
+              paidAmount: totalCharges,
+              dueAmount: 0,
+              paymentMode: paymentMode,
+              paidAt: receipt.receivedAt,
+            })
+            .where(eq(salesHistory.id, sale.id));
+          
+          remainingAmount -= saleDueAmount;
+          appliedAmount += saleDueAmount;
+          salesUpdated++;
+        } else {
+          // Can only partially pay this sale
+          const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
+          const newDueAmount = totalCharges - newPaidAmount;
+          
+          await db.update(salesHistory)
+            .set({
+              paymentStatus: "partial",
+              paidAmount: newPaidAmount,
+              dueAmount: newDueAmount,
+              paymentMode: paymentMode,
+            })
+            .where(eq(salesHistory.id, sale.id));
+          
+          appliedAmount += remainingAmount;
+          remainingAmount = 0;
+          salesUpdated++;
+        }
+      }
+
+      // Update the receipt's applied/unapplied amounts
+      await db.update(cashReceipts)
+        .set({
+          appliedAmount: appliedAmount,
+          unappliedAmount: remainingAmount,
+        })
+        .where(eq(cashReceipts.id, receipt.id));
+      receiptsUpdated++;
+    }
+
+    return { salesUpdated, receiptsUpdated };
   }
 
   async recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }> {
