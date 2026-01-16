@@ -819,22 +819,15 @@ export default function CashManagement() {
                             )}
                           </div>
                         </div>
-                        {/* Row 2: Date + Payment Mode + Applied (if inflow) */}
-                        <div className="flex items-center justify-between gap-2 mt-1 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-2">
-                            <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
-                            <Badge variant="outline" className="text-xs py-0 h-5">
-                              {transaction.type === "inflow" 
-                                ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
-                                : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
-                              }
-                            </Badge>
-                          </div>
-                          {transaction.type === "inflow" && !isReversed && (
-                            <span className="text-green-600 text-xs">
-                              {t("applied")}: ₹{((transaction.data as CashReceipt).appliedAmount || 0).toLocaleString()}
-                            </span>
-                          )}
+                        {/* Row 2: Date + Payment Mode */}
+                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                          <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
+                          <Badge variant="outline" className="text-xs py-0 h-5">
+                            {transaction.type === "inflow" 
+                              ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
+                              : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
+                            }
+                          </Badge>
                         </div>
                       </div>
                     );
@@ -871,11 +864,18 @@ export default function CashManagement() {
           {selectedTransaction && (
             <div className="space-y-4">
               {/* Status Badge */}
-              <div className="flex justify-center">
+              <div className="flex flex-col items-center gap-1">
                 {selectedTransaction.data.isReversed === 1 ? (
-                  <Badge variant="secondary" className="text-base px-4 py-1">
-                    {t("reversed")}
-                  </Badge>
+                  <>
+                    <Badge variant="secondary" className="text-base px-4 py-1">
+                      {t("reversed")}
+                    </Badge>
+                    {(selectedTransaction.data as CashReceipt | Expense).reversedAt && (
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date((selectedTransaction.data as CashReceipt | Expense).reversedAt!), "dd/MM/yyyy")}
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <Badge 
                     variant={selectedTransaction.type === "inflow" ? "default" : "destructive"}
@@ -905,16 +905,8 @@ export default function CashManagement() {
                       </Badge>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("date")}:</span>
+                      <span className="text-muted-foreground">Date:</span>
                       <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("appliedAmount")}:</span>
-                      <span className="text-green-600">₹{((selectedTransaction.data as CashReceipt).appliedAmount || 0).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("unappliedAmount")}:</span>
-                      <span className="text-amber-600">₹{((selectedTransaction.data as CashReceipt).unappliedAmount || 0).toLocaleString()}</span>
                     </div>
                     {(selectedTransaction.data as CashReceipt).notes && (
                       <div className="pt-2 border-t">
@@ -940,7 +932,7 @@ export default function CashManagement() {
                       </Badge>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("date")}:</span>
+                      <span className="text-muted-foreground">Date:</span>
                       <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
                     </div>
                     {(selectedTransaction.data as Expense).remarks && (
