@@ -20,7 +20,7 @@ import { calculateTotalColdCharges } from "@shared/schema";
 export default function SalesHistoryPage() {
   const { t } = useI18n();
   
-  const [yearFilter, setYearFilter] = useState<string>("");
+  const [yearFilter, setYearFilter] = useState<string>(new Date().getFullYear().toString());
   const [farmerFilter, setFarmerFilter] = useState("");
   const [mobileFilter, setMobileFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("");
