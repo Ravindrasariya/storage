@@ -82,7 +82,7 @@ export interface IStorage {
   getAnalyticsYears(coldStorageId: string): Promise<number[]>;
   checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }>;
   resetSeason(coldStorageId: string): Promise<void>;
-  finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account"): Promise<Lot | undefined>;
+  finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number, customColdCharge?: number, customHammali?: number): Promise<Lot | undefined>;
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
   updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined>;
@@ -900,7 +900,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(coldStorages.id, coldStorageId));
   }
 
-  async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number): Promise<Lot | undefined> {
+  async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number, customColdCharge?: number, customHammali?: number): Promise<Lot | undefined> {
     const lot = await this.getLot(lotId);
     if (!lot || lot.saleStatus === "sold") return undefined;
 
@@ -909,9 +909,15 @@ export class DatabaseStorage implements IStorage {
 
     // Wafer and Ration bags use wafer rates, Seed bags use seed rates
     const useWaferRates = lot.bagType === "wafer" || lot.bagType === "Ration";
-    const rate = useWaferRates ? coldStorage.waferRate : coldStorage.seedRate;
-    const hammaliRate = useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
-    const coldChargeRate = rate - hammaliRate; // Cold storage charge is rate minus hammali
+    
+    // Use custom rates if provided, otherwise use cold storage defaults
+    const defaultRate = useWaferRates ? coldStorage.waferRate : coldStorage.seedRate;
+    const defaultHammali = useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
+    const defaultColdCharge = defaultRate - defaultHammali;
+    
+    const hammaliRate = customHammali !== undefined ? customHammali : defaultHammali;
+    const coldChargeRate = customColdCharge !== undefined ? customColdCharge : defaultColdCharge;
+    const rate = coldChargeRate + hammaliRate;
     const saleCharge = rate * lot.remainingSize;
     
     // Calculate total charge including all extra charges

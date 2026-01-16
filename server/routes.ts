@@ -556,7 +556,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -582,9 +582,15 @@ export async function registerRoutes(
       // Wafer and Ration bags use wafer rates, Seed bags use seed rates
       const coldStorage = await storage.getColdStorage(lot.coldStorageId);
       const useWaferRates = lot.bagType === "wafer" || lot.bagType === "Ration";
-      const rate = coldStorage ? (useWaferRates ? coldStorage.waferRate : coldStorage.seedRate) : 0;
-      const hammaliRate = coldStorage ? (useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
-      const coldChargeRate = rate - hammaliRate; // Cold storage charge is rate minus hammali
+      
+      // Use custom rates if provided, otherwise use cold storage defaults
+      const defaultRate = coldStorage ? (useWaferRates ? coldStorage.waferRate : coldStorage.seedRate) : 0;
+      const defaultHammali = coldStorage ? (useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
+      const defaultColdCharge = defaultRate - defaultHammali;
+      
+      const hammaliRate = customHammali !== undefined ? customHammali : defaultHammali;
+      const coldChargeRate = customColdCharge !== undefined ? customColdCharge : defaultColdCharge;
+      const rate = coldChargeRate + hammaliRate;
       const storageCharge = quantitySold * rate;
       
       // Calculate total charge including all extra charges for lot tracking
@@ -725,6 +731,8 @@ export async function registerRoutes(
     extraHammali: z.number().optional(),
     gradingCharges: z.number().optional(),
     netWeight: z.number().optional(),
+    customColdCharge: z.number().optional(),
+    customHammali: z.number().optional(),
   });
 
   app.post("/api/lots/:id/finalize-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -757,7 +765,9 @@ export async function registerRoutes(
         validatedData.kataCharges,
         validatedData.extraHammali,
         validatedData.gradingCharges,
-        validatedData.netWeight
+        validatedData.netWeight,
+        validatedData.customColdCharge,
+        validatedData.customHammali
       );
       if (!lot) {
         return res.status(404).json({ error: "Lot not found or already sold" });

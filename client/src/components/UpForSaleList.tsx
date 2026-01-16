@@ -48,10 +48,12 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [totalGradingCharges, setTotalGradingCharges] = useState<string>("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
   const [netWeight, setNetWeight] = useState<string>("");
+  const [editableColdCharge, setEditableColdCharge] = useState<string>("");
+  const [editableHammali, setEditableHammali] = useState<string>("");
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight });
+    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -75,8 +77,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -114,6 +116,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setExtraHammaliPerBag("");
     setTotalGradingCharges("");
     setNetWeight("");
+    setEditableColdCharge("");
+    setEditableHammali("");
   };
 
   const openSaleDialog = (lot: SaleLotInfo, mode: "full" | "partial") => {
@@ -122,6 +126,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setPartialQuantity(0);
     setPartialPrice(lot.rate);
     setEditPosition(lot.position);
+    setEditableColdCharge(lot.coldCharge.toString());
+    setEditableHammali(lot.hammali.toString());
   };
 
   const removeFromSaleMutation = useMutation({
@@ -169,8 +175,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       
       const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
       const qty = saleMode === "partial" ? partialQuantity : selectedLot.remainingSize;
+      
+      // Parse custom rate components with NaN guard
+      const parsedColdCharge = parseFloat(editableColdCharge);
+      const parsedHammali = parseFloat(editableHammali);
+      const customColdCharge = Number.isFinite(parsedColdCharge) ? parsedColdCharge : undefined;
+      const customHammali = Number.isFinite(parsedHammali) ? parsedHammali : undefined;
+      const editableRate = (customColdCharge ?? selectedLot.coldCharge) + (customHammali ?? selectedLot.hammali);
+      
       const totalCharge = saleMode === "partial" 
-        ? calculateTotalCharge(selectedLot, partialQuantity, selectedLot.rate) 
+        ? calculateTotalCharge(selectedLot, partialQuantity) 
         : calculateTotalCharge(selectedLot);
       
       // Calculate extra charges
@@ -202,7 +216,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         partialSaleMutation.mutate({
           lotId: selectedLot.id,
           quantity: partialQuantity,
-          pricePerBag: selectedLot.rate,
+          pricePerBag: editableRate,
           paymentStatus,
           paymentMode: modeToSend,
           buyerName: buyerName || undefined,
@@ -214,6 +228,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
           gradingCharges: grading > 0 ? grading : undefined,
           netWeight: parsedNetWeight,
+          customColdCharge,
+          customHammali,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -229,19 +245,30 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
           gradingCharges: grading > 0 ? grading : undefined,
           netWeight: parsedNetWeight,
+          customColdCharge,
+          customHammali,
         });
       }
     }
   };
 
+  const getEditableRate = (lot: SaleLotInfo) => {
+    const parsedColdCharge = parseFloat(editableColdCharge);
+    const parsedHammali = parseFloat(editableHammali);
+    const coldCharge = Number.isFinite(parsedColdCharge) ? parsedColdCharge : lot.coldCharge;
+    const hammali = Number.isFinite(parsedHammali) ? parsedHammali : lot.hammali;
+    return coldCharge + hammali;
+  };
+
   const calculateBaseCharge = (lot: SaleLotInfo, quantity?: number) => {
     const qty = quantity ?? lot.remainingSize;
-    return lot.rate * qty;
+    const rate = getEditableRate(lot);
+    return rate * qty;
   };
 
   const calculateTotalCharge = (lot: SaleLotInfo, quantity?: number, customRate?: number) => {
     const qty = quantity ?? lot.remainingSize;
-    const rate = customRate ?? lot.rate;
+    const rate = customRate ?? getEditableRate(lot);
     const baseCharge = rate * qty;
     const kata = parseFloat(kataCharges) || 0;
     const extraHammali = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * qty : 0;
@@ -409,19 +436,39 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
                 <div className="text-sm font-medium">{t("rateBreakdown")} ({t("perBag")})</div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("coldStorageCharge")}:</span>
-                    <span className="font-medium">Rs. {selectedLot.coldCharge}</span>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")}</Label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">Rs.</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={editableColdCharge}
+                        onChange={(e) => setEditableColdCharge(e.target.value)}
+                        className="h-8 w-20"
+                        data-testid="input-cold-charge"
+                      />
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("hammali")}:</span>
-                    <span className="font-medium">Rs. {selectedLot.hammali}</span>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">{t("hammali")}</Label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">Rs.</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={editableHammali}
+                        onChange={(e) => setEditableHammali(e.target.value)}
+                        className="h-8 w-20"
+                        data-testid="input-hammali"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="border-t pt-2 flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold">Rs. {selectedLot.rate}{t("perBag")}</span>
+                  <span className="font-bold">Rs. {getEditableRate(selectedLot)}/{t("bag")}</span>
                 </div>
               </div>
 
@@ -563,19 +610,39 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
                 <div className="text-sm font-medium">{t("rateBreakdown")} ({t("perBag")})</div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("coldStorageCharge")}:</span>
-                    <span className="font-medium">Rs. {selectedLot.coldCharge}</span>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")}</Label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">Rs.</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={editableColdCharge}
+                        onChange={(e) => setEditableColdCharge(e.target.value)}
+                        className="h-8 w-20"
+                        data-testid="input-partial-cold-charge"
+                      />
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("hammali")}:</span>
-                    <span className="font-medium">Rs. {selectedLot.hammali}</span>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">{t("hammali")}</Label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">Rs.</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={editableHammali}
+                        onChange={(e) => setEditableHammali(e.target.value)}
+                        className="h-8 w-20"
+                        data-testid="input-partial-hammali"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="border-t pt-2 flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold">Rs. {selectedLot.rate}/{t("bag")}</span>
+                  <span className="font-bold">Rs. {getEditableRate(selectedLot)}/{t("bag")}</span>
                 </div>
               </div>
 
