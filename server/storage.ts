@@ -1376,7 +1376,7 @@ export class DatabaseStorage implements IStorage {
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
-        sql`LOWER(${salesHistory.buyerName}) = LOWER(${data.buyerName})`,
+        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
       ))
       .orderBy(salesHistory.soldAt); // FIFO - oldest first
@@ -1498,7 +1498,7 @@ export class DatabaseStorage implements IStorage {
       })
       .where(and(
         eq(salesHistory.coldStorageId, receipt.coldStorageId),
-        sql`LOWER(${salesHistory.buyerName}) = LOWER(${receipt.buyerName})`,
+        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${receipt.buyerName}))`,
         sql`${salesHistory.paymentStatus} IN ('paid', 'partial')`
       ));
 
@@ -1508,7 +1508,7 @@ export class DatabaseStorage implements IStorage {
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, receipt.coldStorageId),
-        sql`LOWER(${cashReceipts.buyerName}) = LOWER(${receipt.buyerName})`,
+        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${receipt.buyerName}))`,
         eq(cashReceipts.isReversed, 0)
       ))
       .orderBy(cashReceipts.receivedAt);
@@ -1521,7 +1521,7 @@ export class DatabaseStorage implements IStorage {
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, activeReceipt.coldStorageId),
-          sql`LOWER(${salesHistory.buyerName}) = LOWER(${activeReceipt.buyerName})`,
+          sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${activeReceipt.buyerName}))`,
           sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
         ))
         .orderBy(salesHistory.soldAt);
