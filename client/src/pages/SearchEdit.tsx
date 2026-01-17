@@ -466,54 +466,52 @@ export default function SearchEdit() {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex flex-wrap items-center gap-4 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-sm">{t("quality")}:</Label>
-                    <Select value={qualityFilter} onValueChange={setQualityFilter}>
-                      <SelectTrigger className="w-32" data-testid="select-quality-filter">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t("all")}</SelectItem>
-                        <SelectItem value="poor">{t("poor")}</SelectItem>
-                        <SelectItem value="medium">{t("medium")}</SelectItem>
-                        <SelectItem value="good">{t("good")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="payment-due-filter-main"
-                      checked={paymentDueFilter}
-                      onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
-                      data-testid="checkbox-payment-due-main"
-                    />
-                    <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer">
-                      {t("coldChargesDue")}
-                    </Label>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 sm:border-l sm:pl-3">
-                  <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
-                  <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
-                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                    <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center">
+              <div className="flex flex-wrap items-center gap-4 flex-1">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm">{t("quality")}:</Label>
+                  <Select value={qualityFilter} onValueChange={setQualityFilter}>
+                    <SelectTrigger className="w-32" data-testid="select-quality-filter">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
-                      <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
-                      <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
+                      <SelectItem value="all">{t("all")}</SelectItem>
+                      <SelectItem value="poor">{t("poor")}</SelectItem>
+                      <SelectItem value="medium">{t("medium")}</SelectItem>
+                      <SelectItem value="good">{t("good")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="payment-due-filter-main"
+                    checked={paymentDueFilter}
+                    onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
+                    data-testid="checkbox-payment-due-main"
+                  />
+                  <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer">
+                    {t("coldChargesDue")}
+                  </Label>
+                </div>
+                <Button onClick={handleSearch} disabled={isSearching || (qualityFilter === "all" && !paymentDueFilter)} data-testid="button-search-filter">
+                  <Search className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("search")}</span>
+                </Button>
               </div>
-              <Button onClick={handleSearch} disabled={isSearching || (qualityFilter === "all" && !paymentDueFilter)} data-testid="button-search-filter">
-                <Search className="h-4 w-4 mr-2" />
-                {t("search")}
-              </Button>
+              <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+                <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
+                    <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
+                    <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
         </Tabs>
