@@ -372,13 +372,13 @@ export default function SearchEdit() {
           type="single"
           value={bagTypeFilter}
           onValueChange={(value) => value && setBagTypeFilter(value as typeof bagTypeFilter)}
-          className="justify-start sm:justify-end bg-muted rounded-md p-1"
+          className="w-full sm:w-auto justify-between sm:justify-end bg-muted rounded-md p-1"
         >
           <ToggleGroupItem 
             value="all" 
             size="sm" 
             data-testid="toggle-bagtype-all"
-            className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            className="flex-1 sm:flex-none data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
             {t("all")}
           </ToggleGroupItem>
@@ -386,7 +386,7 @@ export default function SearchEdit() {
             value="wafer" 
             size="sm" 
             data-testid="toggle-bagtype-wafer"
-            className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            className="flex-1 sm:flex-none data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
             {t("wafer")}
           </ToggleGroupItem>
@@ -394,7 +394,7 @@ export default function SearchEdit() {
             value="Ration" 
             size="sm" 
             data-testid="toggle-bagtype-ration"
-            className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            className="flex-1 sm:flex-none data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
             {t("ration")}
           </ToggleGroupItem>
@@ -402,7 +402,7 @@ export default function SearchEdit() {
             value="seed" 
             size="sm" 
             data-testid="toggle-bagtype-seed"
-            className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            className="flex-1 sm:flex-none data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
             {t("seed")}
           </ToggleGroupItem>
