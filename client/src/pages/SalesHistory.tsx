@@ -44,6 +44,7 @@ export default function SalesHistoryPage() {
 
   // Autocomplete state
   const [showFarmerSuggestions, setShowFarmerSuggestions] = useState(false);
+  const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
 
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/sales-history/years"],
@@ -52,6 +53,12 @@ export default function SalesHistoryPage() {
   // Farmer records for autocomplete
   const { data: farmerRecords } = useQuery<FarmerRecord[]>({
     queryKey: ["/api/farmers/lookup"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Buyer records for autocomplete
+  const { data: buyerRecords } = useQuery<{ buyerName: string }[]>({
+    queryKey: ["/api/buyers/lookup"],
     staleTime: 5 * 60 * 1000,
   });
 
@@ -64,9 +71,23 @@ export default function SalesHistoryPage() {
       .slice(0, 8);
   }, [farmerRecords, farmerFilter]);
 
+  // Filtered suggestions for buyer name
+  const getBuyerSuggestions = useMemo(() => {
+    if (!buyerRecords || buyerRecords.length === 0 || !buyerFilter.trim()) return [];
+    const query = buyerFilter.toLowerCase().trim();
+    return buyerRecords
+      .filter(buyer => buyer.buyerName.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [buyerRecords, buyerFilter]);
+
   const selectFarmerSuggestion = (farmer: FarmerRecord) => {
     setFarmerFilter(farmer.farmerName);
     setShowFarmerSuggestions(false);
+  };
+
+  const selectBuyerSuggestion = (buyer: { buyerName: string }) => {
+    setBuyerFilter(buyer.buyerName);
+    setShowBuyerSuggestions(false);
   };
 
   const buildQueryString = () => {
@@ -224,14 +245,35 @@ export default function SalesHistoryPage() {
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">{t("filterByBuyer")}</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
                 <Input
                   value={buyerFilter}
-                  onChange={(e) => setBuyerFilter(e.target.value)}
+                  onChange={(e) => {
+                    setBuyerFilter(capitalizeFirstLetter(e.target.value));
+                    setShowBuyerSuggestions(true);
+                  }}
+                  onFocus={() => setShowBuyerSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 200)}
                   placeholder={t("buyerName")}
                   className="pl-10"
+                  autoComplete="off"
                   data-testid="input-buyer-filter"
                 />
+                {showBuyerSuggestions && getBuyerSuggestions.length > 0 && buyerFilter && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {getBuyerSuggestions.map((buyer, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className="w-full px-3 py-2 text-left hover-elevate text-sm"
+                        onClick={() => selectBuyerSuggestion(buyer)}
+                        data-testid={`suggestion-buyer-${idx}`}
+                      >
+                        {buyer.buyerName}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
