@@ -372,18 +372,38 @@ export default function SearchEdit() {
           type="single"
           value={bagTypeFilter}
           onValueChange={(value) => value && setBagTypeFilter(value as typeof bagTypeFilter)}
-          className="justify-start sm:justify-end"
+          className="justify-start sm:justify-end bg-muted rounded-md p-1"
         >
-          <ToggleGroupItem value="all" size="sm" data-testid="toggle-bagtype-all">
+          <ToggleGroupItem 
+            value="all" 
+            size="sm" 
+            data-testid="toggle-bagtype-all"
+            className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          >
             {t("all")}
           </ToggleGroupItem>
-          <ToggleGroupItem value="wafer" size="sm" data-testid="toggle-bagtype-wafer">
+          <ToggleGroupItem 
+            value="wafer" 
+            size="sm" 
+            data-testid="toggle-bagtype-wafer"
+            className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          >
             {t("wafer")}
           </ToggleGroupItem>
-          <ToggleGroupItem value="Ration" size="sm" data-testid="toggle-bagtype-ration">
+          <ToggleGroupItem 
+            value="Ration" 
+            size="sm" 
+            data-testid="toggle-bagtype-ration"
+            className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          >
             {t("ration")}
           </ToggleGroupItem>
-          <ToggleGroupItem value="seed" size="sm" data-testid="toggle-bagtype-seed">
+          <ToggleGroupItem 
+            value="seed" 
+            size="sm" 
+            data-testid="toggle-bagtype-seed"
+            className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          >
             {t("seed")}
           </ToggleGroupItem>
         </ToggleGroup>
