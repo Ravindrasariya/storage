@@ -338,6 +338,11 @@ export default function LotEntry() {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/next-entry-sequence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers/lookup"] });
     },
     onError: (error: Error) => {
       toast({

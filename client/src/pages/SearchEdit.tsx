@@ -350,6 +350,12 @@ export default function SearchEdit() {
     onSuccess: async (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers/lookup"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/up-for-sale"] });
       if (!variables.silent) {
         toast({
           title: t("success"),

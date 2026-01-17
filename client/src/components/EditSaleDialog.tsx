@@ -146,7 +146,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "edit-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/chambers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyers/lookup"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       onOpenChange(false);
     },
     onError: () => {
