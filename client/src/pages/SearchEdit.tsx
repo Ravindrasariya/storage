@@ -390,23 +390,23 @@ export default function SearchEdit() {
           ) : searchType === "lotNoSize" ? (
             <div className="flex items-center gap-2">
               <Input
-                placeholder={t("lotNumber")}
+                placeholder={`${t("lotNumber")} (${t("optional")})`}
                 value={lotNoQuery}
                 onChange={(e) => setLotNoQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 className="flex-1"
                 data-testid="input-search-lotno"
               />
-              <span className="text-lg font-semibold text-muted-foreground">x</span>
+              <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
               <Input
-                placeholder={t("size")}
+                placeholder={`${t("size")} (${t("optional")})`}
                 value={sizeQuery}
                 onChange={(e) => setSizeQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 className="flex-1"
                 data-testid="input-search-size"
               />
-              <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
+              <Button onClick={handleSearch} disabled={isSearching || (!lotNoQuery.trim() && !sizeQuery.trim())} data-testid="button-search">
                 <Search className="h-4 w-4 mr-2" />
                 {t("search")}
               </Button>

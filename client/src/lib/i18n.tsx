@@ -137,6 +137,7 @@ const translations: Translations = {
   quantity: { en: "Quantity", hi: "मात्रा" },
   filters: { en: "Filters", hi: "फ़िल्टर" },
   all: { en: "All", hi: "सभी" },
+  or: { en: "or", hi: "या" },
   coldChargesDue: { en: "Cold Charges Due", hi: "कोल्ड स्टोरेज शुल्क बाकी" },
   coldChargesPaid: { en: "Cold Charges Paid", hi: "कोल्ड स्टोरेज शुल्क भुगतान" },
   markAsPaid: { en: "Mark as Paid", hi: "भुगतान किया चिह्नित करें" },
