@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { LotCard } from "@/components/LotCard";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
@@ -66,6 +67,7 @@ export default function SearchEdit() {
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
+  const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "Ration" | "Seed">(savedState?.bagTypeFilter || "all");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -142,9 +144,10 @@ export default function SearchEdit() {
       sizeQuery,
       qualityFilter,
       paymentDueFilter,
+      bagTypeFilter,
     };
     sessionStorage.setItem("searchEditState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter]);
+  }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, bagTypeFilter]);
   
   // Re-run search when filters change (but not on initial mount)
   useEffect(() => {
@@ -341,21 +344,42 @@ export default function SearchEdit() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/")}
-          data-testid="button-back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{t("searchEdit")}</h1>
-          <p className="text-muted-foreground mt-1">
-            Find and manage lot details
-          </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/")}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">{t("searchEdit")}</h1>
+            <p className="text-muted-foreground mt-1">
+              Find and manage lot details
+            </p>
+          </div>
         </div>
+        <ToggleGroup
+          type="single"
+          value={bagTypeFilter}
+          onValueChange={(value) => value && setBagTypeFilter(value as typeof bagTypeFilter)}
+          className="justify-start sm:justify-end"
+        >
+          <ToggleGroupItem value="all" size="sm" data-testid="toggle-bagtype-all">
+            {t("all")}
+          </ToggleGroupItem>
+          <ToggleGroupItem value="wafer" size="sm" data-testid="toggle-bagtype-wafer">
+            {t("wafer")}
+          </ToggleGroupItem>
+          <ToggleGroupItem value="Ration" size="sm" data-testid="toggle-bagtype-ration">
+            {t("ration")}
+          </ToggleGroupItem>
+          <ToggleGroupItem value="Seed" size="sm" data-testid="toggle-bagtype-seed">
+            {t("seed")}
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <Card className="p-4 sm:p-6">
