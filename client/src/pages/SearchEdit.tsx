@@ -157,6 +157,22 @@ export default function SearchEdit() {
     }
   }, [qualityFilter, paymentDueFilter]);
 
+  // Reset to initial view when search inputs are cleared
+  useEffect(() => {
+    if (hasSearched) {
+      const inputEmpty = 
+        (searchType === "phone" && !searchQuery.trim()) ||
+        (searchType === "farmerName" && !farmerNameQuery.trim()) ||
+        (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) ||
+        (searchType === "filter" && qualityFilter === "all" && !paymentDueFilter);
+      
+      if (inputEmpty) {
+        setHasSearched(false);
+        setSearchResults([]);
+      }
+    }
+  }, [searchQuery, farmerNameQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, searchType, hasSearched]);
+
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
     acc[chamber.id] = chamber.name;
