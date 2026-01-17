@@ -750,7 +750,7 @@ export default function LotEntry() {
                       disabled={!lot.chamberId}
                     >
                       <SelectTrigger data-testid={`select-floor-${index}`}>
-                        <SelectValue placeholder={lot.chamberId ? t("selectFloor") || "Select floor" : t("selectChamberFirst") || "Select chamber first"} />
+                        <SelectValue placeholder={lot.chamberId ? t("selectFloor") : t("selectChamberFirst")} />
                       </SelectTrigger>
                       <SelectContent>
                         {lot.chamberId && chamberFloors?.[lot.chamberId]?.map((floor) => (

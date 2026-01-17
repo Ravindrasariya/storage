@@ -114,10 +114,9 @@ const translations: Translations = {
   editReversed: { en: "Edit reversed successfully", hi: "संपादन सफलतापूर्वक वापस किया गया" },
   coldStorageCharges: { en: "Cold Storage Charges", hi: "कोल्ड स्टोरेज शुल्क" },
   selectChamber: { en: "Select Chamber", hi: "कक्ष चुनें" },
-  selectQuality: { en: "Select Quality", hi: "गुणवत्ता चुनें" },
-  noResults: { en: "No results found", hi: "कोई परिणाम नहीं मिला" },
-  
-  // Analytics
+  selectFloor: { en: "Select Floor", hi: "मंजिल चुनें" },
+  selectChamberFirst: { en: "Select chamber first", hi: "पहले कक्ष चुनें" },
+  changes: { en: "Changes", hi: "परिवर्तन" },
   chamberQualityAnalysis: { en: "Chamber Quality Analysis", hi: "कक्ष गुणवत्ता विश्लेषण" },
   qualityDistribution: { en: "Quality Distribution", hi: "गुणवत्ता वितरण" },
   qualityDistributionRemaining: { en: "Quality Distribution Of Remaining Bags", hi: "शेष बैगों का गुणवत्ता वितरण" },
