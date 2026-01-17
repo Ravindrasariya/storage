@@ -457,7 +457,7 @@ export default function SearchEdit() {
         </div>
       ) : hasSearched ? (
         searchResults.length === 0 ? (
-          <Card className="p-8 text-center">
+          <Card className="p-8 text-center" data-testid="card-no-results">
             <p className="text-muted-foreground">{t("noResults")}</p>
           </Card>
         ) : (
