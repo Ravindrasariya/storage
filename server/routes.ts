@@ -391,9 +391,9 @@ export async function registerRoutes(
         lots = lots.filter((lot) => lot.quality === quality);
       }
       
-      // Apply payment due filter (lots that are sold with payment status "due")
+      // Apply payment due filter (lots that have cold storage charges due)
       if (paymentDue === "true") {
-        lots = lots.filter((lot) => lot.saleStatus === "sold" && lot.paymentStatus === "due");
+        lots = lots.filter((lot) => lot.totalDueCharge && lot.totalDueCharge > 0);
       }
       
       // Sort by lot number in ascending order
