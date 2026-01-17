@@ -115,6 +115,10 @@ export default function LotEntry() {
     queryKey: ["/api/cold-storage"],
   });
 
+  const { data: chamberFloors } = useQuery<Record<string, { id: string; chamberId: string; floorNumber: number; capacity: number }[]>>({
+    queryKey: ["/api/chamber-floors"],
+  });
+
   // Fetch next entry sequence for display
   const { data: nextSequenceData } = useQuery<{ nextSequence: number }>({
     queryKey: ["/api/next-entry-sequence"],
@@ -192,6 +196,9 @@ export default function LotEntry() {
     setLots(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
+      if (field === "chamberId") {
+        updated[index].floor = 0;
+      }
       return updated;
     });
   };
@@ -737,13 +744,22 @@ export default function LotEntry() {
                   </div>
                   <div>
                     <label className="text-sm font-medium">{t("floor")} *</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={lot.floor === 0 ? "" : lot.floor}
-                      onChange={(e) => updateLot(index, "floor", e.target.value === "" ? 0 : parseInt(e.target.value))}
-                      data-testid={`input-floor-${index}`}
-                    />
+                    <Select 
+                      value={lot.floor ? lot.floor.toString() : ""} 
+                      onValueChange={(v) => updateLot(index, "floor", parseInt(v))}
+                      disabled={!lot.chamberId}
+                    >
+                      <SelectTrigger data-testid={`select-floor-${index}`}>
+                        <SelectValue placeholder={lot.chamberId ? t("selectFloor") || "Select floor" : t("selectChamberFirst") || "Select chamber first"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {lot.chamberId && chamberFloors?.[lot.chamberId]?.map((floor) => (
+                          <SelectItem key={floor.id} value={floor.floorNumber.toString()}>
+                            {t("floor")} {floor.floorNumber}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="text-sm font-medium">{t("position")} *</label>
