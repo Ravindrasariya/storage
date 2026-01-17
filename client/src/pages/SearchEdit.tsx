@@ -86,6 +86,25 @@ export default function SearchEdit() {
     quality: string;
   } | null>(null);
 
+  // Autocomplete state for search fields
+  const [showPhoneSuggestions, setShowPhoneSuggestions] = useState(false);
+  const [showFarmerNameSuggestions, setShowFarmerNameSuggestions] = useState(false);
+
+  // Farmer records for autocomplete
+  type FarmerRecord = {
+    farmerName: string;
+    village: string;
+    tehsil: string;
+    district: string;
+    state: string;
+    contactNumber: string;
+  };
+
+  const { data: farmerRecords } = useQuery<FarmerRecord[]>({
+    queryKey: ["/api/farmers/lookup"],
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
   const { data: chambers } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
   });
@@ -181,6 +200,35 @@ export default function SearchEdit() {
     acc[chamber.id] = chamber.name;
     return acc;
   }, {} as Record<string, string>) || {};
+
+  // Filtered suggestions for phone number search
+  const getPhoneSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0 || !searchQuery.trim()) return [];
+    const phoneVal = searchQuery.trim();
+    return farmerRecords
+      .filter(farmer => farmer.contactNumber.includes(phoneVal))
+      .slice(0, 8);
+  }, [farmerRecords, searchQuery]);
+
+  // Filtered suggestions for farmer name search
+  const getFarmerNameSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0 || !farmerNameQuery.trim()) return [];
+    const nameVal = farmerNameQuery.toLowerCase().trim();
+    return farmerRecords
+      .filter(farmer => farmer.farmerName.toLowerCase().includes(nameVal))
+      .slice(0, 8);
+  }, [farmerRecords, farmerNameQuery]);
+
+  // Select a farmer from suggestions and populate search field
+  const selectPhoneSuggestion = (farmer: FarmerRecord) => {
+    setSearchQuery(farmer.contactNumber);
+    setShowPhoneSuggestions(false);
+  };
+
+  const selectFarmerNameSuggestion = (farmer: FarmerRecord) => {
+    setFarmerNameQuery(farmer.farmerName);
+    setShowFarmerNameSuggestions(false);
+  };
 
   // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
@@ -351,7 +399,7 @@ export default function SearchEdit() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
@@ -431,16 +479,39 @@ export default function SearchEdit() {
           </TabsList>
 
           {searchType === "phone" ? (
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
               <div className="flex gap-2 flex-1">
-                <Input
-                  placeholder="Enter phone number..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1"
-                  data-testid="input-search-phone"
-                />
+                <div className="relative flex-1">
+                  <Input
+                    placeholder="Enter phone number..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value.replace(/\D/g, ""));
+                      setShowPhoneSuggestions(true);
+                    }}
+                    onFocus={() => setShowPhoneSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowPhoneSuggestions(false), 200)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    autoComplete="off"
+                    data-testid="input-search-phone"
+                  />
+                  {showPhoneSuggestions && getPhoneSuggestions.length > 0 && searchQuery && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                      {getPhoneSuggestions.map((farmer, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                          onClick={() => selectPhoneSuggestion(farmer)}
+                          data-testid={`suggestion-phone-${idx}`}
+                        >
+                          <span className="font-medium">{farmer.contactNumber}</span>
+                          <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
                   <Search className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">{t("search")}</span>
@@ -462,16 +533,39 @@ export default function SearchEdit() {
               </div>
             </div>
           ) : searchType === "farmerName" ? (
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
               <div className="flex gap-2 flex-1">
-                <Input
-                  placeholder={t("enterFarmerName") || "Enter farmer name..."}
-                  value={farmerNameQuery}
-                  onChange={(e) => setFarmerNameQuery(capitalizeFirstLetter(e.target.value))}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1"
-                  data-testid="input-search-farmer"
-                />
+                <div className="relative flex-1">
+                  <Input
+                    placeholder={t("enterFarmerName") || "Enter farmer name..."}
+                    value={farmerNameQuery}
+                    onChange={(e) => {
+                      setFarmerNameQuery(capitalizeFirstLetter(e.target.value));
+                      setShowFarmerNameSuggestions(true);
+                    }}
+                    onFocus={() => setShowFarmerNameSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowFarmerNameSuggestions(false), 200)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    autoComplete="off"
+                    data-testid="input-search-farmer"
+                  />
+                  {showFarmerNameSuggestions && getFarmerNameSuggestions.length > 0 && farmerNameQuery && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                      {getFarmerNameSuggestions.map((farmer, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                          onClick={() => selectFarmerNameSuggestion(farmer)}
+                          data-testid={`suggestion-farmer-${idx}`}
+                        >
+                          <span className="font-medium">{farmer.farmerName}</span>
+                          <span className="text-xs text-muted-foreground">{farmer.contactNumber} • {farmer.village}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search-farmer">
                   <Search className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">{t("search")}</span>
@@ -493,8 +587,8 @@ export default function SearchEdit() {
               </div>
             </div>
           ) : searchType === "lotNoSize" ? (
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="flex items-center gap-2 flex-1">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2 flex-1">
                 <Input
                   placeholder={`${t("lotNumber")} (${t("optional")})`}
                   value={lotNoQuery}

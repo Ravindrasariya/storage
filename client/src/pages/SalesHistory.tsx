@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/queryClient";
 import { useI18n } from "@/lib/i18n";
@@ -16,6 +16,16 @@ import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { ExitDialog } from "@/components/ExitDialog";
 import type { SalesHistory } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
+import { capitalizeFirstLetter } from "@/lib/utils";
+
+type FarmerRecord = {
+  farmerName: string;
+  village: string;
+  tehsil: string;
+  district: string;
+  state: string;
+  contactNumber: string;
+};
 
 export default function SalesHistoryPage() {
   const { t } = useI18n();
@@ -32,9 +42,32 @@ export default function SalesHistoryPage() {
   const [exitingSale, setExitingSale] = useState<SalesHistory | null>(null);
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
 
+  // Autocomplete state
+  const [showFarmerSuggestions, setShowFarmerSuggestions] = useState(false);
+
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/sales-history/years"],
   });
+
+  // Farmer records for autocomplete
+  const { data: farmerRecords } = useQuery<FarmerRecord[]>({
+    queryKey: ["/api/farmers/lookup"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Filtered suggestions for farmer name
+  const getFarmerSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0 || !farmerFilter.trim()) return [];
+    const nameVal = farmerFilter.toLowerCase().trim();
+    return farmerRecords
+      .filter(farmer => farmer.farmerName.toLowerCase().includes(nameVal))
+      .slice(0, 8);
+  }, [farmerRecords, farmerFilter]);
+
+  const selectFarmerSuggestion = (farmer: FarmerRecord) => {
+    setFarmerFilter(farmer.farmerName);
+    setShowFarmerSuggestions(false);
+  };
 
   const buildQueryString = () => {
     const params = new URLSearchParams();
@@ -141,14 +174,36 @@ export default function SalesHistoryPage() {
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">{t("filterByFarmer")}</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
                 <Input
                   value={farmerFilter}
-                  onChange={(e) => setFarmerFilter(e.target.value)}
+                  onChange={(e) => {
+                    setFarmerFilter(capitalizeFirstLetter(e.target.value));
+                    setShowFarmerSuggestions(true);
+                  }}
+                  onFocus={() => setShowFarmerSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowFarmerSuggestions(false), 200)}
                   placeholder={t("farmerName")}
                   className="pl-10"
+                  autoComplete="off"
                   data-testid="input-farmer-filter"
                 />
+                {showFarmerSuggestions && getFarmerSuggestions.length > 0 && farmerFilter && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {getFarmerSuggestions.map((farmer, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                        onClick={() => selectFarmerSuggestion(farmer)}
+                        data-testid={`suggestion-farmer-${idx}`}
+                      >
+                        <span className="font-medium">{farmer.farmerName}</span>
+                        <span className="text-xs text-muted-foreground">{farmer.contactNumber} • {farmer.village}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
