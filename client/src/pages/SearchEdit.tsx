@@ -29,7 +29,7 @@ import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
@@ -69,6 +69,7 @@ export default function SearchEdit() {
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [sortBy, setSortBy] = useState<"lotNo" | "chargeDue" | "remainingBags">("lotNo");
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
@@ -454,6 +455,22 @@ export default function SearchEdit() {
         </Tabs>
       </Card>
 
+      {/* Sort Controls */}
+      <div className="flex items-center gap-2 mb-2">
+        <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+        <Label className="text-sm text-muted-foreground">{t("sortBy")}:</Label>
+        <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
+          <SelectTrigger className="w-[220px]" data-testid="select-sort-by">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
+            <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
+            <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {isSearching || isLoadingInitial ? (
         <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
@@ -463,9 +480,45 @@ export default function SearchEdit() {
       ) : (
         (() => {
           // Use search results if searched, otherwise show initial lots
-          const lotsToDisplay = hasSearched ? searchResults : (initialLots || []);
+          const baseLots = hasSearched ? searchResults : (initialLots || []);
           
-          if (lotsToDisplay.length === 0) {
+          // Pre-calculate charges for each lot for sorting and display
+          const lotsWithCharges = baseLots.map((lot) => {
+            let lotPaidCharge = 0;
+            let lotDueCharge = 0;
+            if (allSalesHistory) {
+              const lotSales = allSalesHistory.filter(s => s.lotId === lot.id);
+              for (const sale of lotSales) {
+                const totalCharges = calculateTotalColdCharges(sale);
+                if (sale.paymentStatus === "paid") {
+                  lotPaidCharge += totalCharges;
+                } else if (sale.paymentStatus === "due") {
+                  lotDueCharge += totalCharges;
+                } else if (sale.paymentStatus === "partial") {
+                  const paidAmount = sale.paidAmount || 0;
+                  lotPaidCharge += paidAmount;
+                  lotDueCharge += Math.max(0, totalCharges - paidAmount);
+                }
+              }
+            }
+            return { lot, lotPaidCharge, lotDueCharge };
+          });
+          
+          // Sort based on selected sort option
+          const sortedLots = [...lotsWithCharges].sort((a, b) => {
+            if (sortBy === "chargeDue") {
+              return b.lotDueCharge - a.lotDueCharge; // High to low
+            } else if (sortBy === "remainingBags") {
+              return b.lot.remainingSize - a.lot.remainingSize; // High to low
+            } else {
+              // Default: sort by lot number
+              const lotNoA = parseInt(a.lot.lotNo, 10) || 0;
+              const lotNoB = parseInt(b.lot.lotNo, 10) || 0;
+              return lotNoA - lotNoB;
+            }
+          });
+          
+          if (sortedLots.length === 0) {
             return hasSearched ? (
               <Card className="p-8 text-center" data-testid="card-no-results">
                 <p className="text-muted-foreground">{t("noResults")}</p>
@@ -480,27 +533,7 @@ export default function SearchEdit() {
                   {t("showingFirst50Lots")}
                 </p>
               )}
-              {lotsToDisplay.map((lot) => {
-                // Calculate charges from sales history for this lot
-                let lotPaidCharge = 0;
-                let lotDueCharge = 0;
-                if (allSalesHistory) {
-                  const lotSales = allSalesHistory.filter(s => s.lotId === lot.id);
-                  for (const sale of lotSales) {
-                    const totalCharges = calculateTotalColdCharges(sale);
-                    if (sale.paymentStatus === "paid") {
-                      lotPaidCharge += totalCharges;
-                    } else if (sale.paymentStatus === "due") {
-                      lotDueCharge += totalCharges;
-                    } else if (sale.paymentStatus === "partial") {
-                      // Use paidAmount from sale, calculate due as remainder to ensure consistency
-                      const paidAmount = sale.paidAmount || 0;
-                      lotPaidCharge += paidAmount;
-                      lotDueCharge += Math.max(0, totalCharges - paidAmount);
-                    }
-                  }
-                }
-                return (
+              {sortedLots.map(({ lot, lotPaidCharge, lotDueCharge }) => (
                   <LotCard
                     key={lot.id}
                     lot={lot}
@@ -515,8 +548,7 @@ export default function SearchEdit() {
                     calculatedDueCharge={lotDueCharge}
                     canEdit={canEdit}
                   />
-                );
-              })}
+                ))}
               
               {hasSearched && summaryTotals && (
                 <Card className="p-4 bg-muted/50">
