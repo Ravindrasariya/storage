@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SaleLotInfo } from "@shared/schema";
@@ -51,6 +51,24 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [netWeight, setNetWeight] = useState<string>("");
   const [editableColdCharge, setEditableColdCharge] = useState<string>("");
   const [editableHammali, setEditableHammali] = useState<string>("");
+  const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
+
+  const { data: buyersData } = useQuery<{ buyerName: string }[]>({
+    queryKey: ["/api/buyers/lookup"],
+  });
+
+  const buyerSuggestions = useMemo(() => {
+    if (!buyersData || !buyerName.trim()) return [];
+    const query = buyerName.toLowerCase();
+    return buyersData
+      .filter(b => b.buyerName.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [buyersData, buyerName]);
+
+  const selectBuyerSuggestion = (buyer: { buyerName: string }) => {
+    setBuyerName(buyer.buyerName);
+    setShowBuyerSuggestions(false);
+  };
 
   const finalizeSaleMutation = useMutation({
     mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number }) => {
@@ -548,13 +566,36 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="space-y-2">
                 <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
-                <Input
-                  type="text"
-                  value={buyerName}
-                  onChange={(e) => setBuyerName(capitalizeFirstLetter(e.target.value))}
-                  placeholder={t("buyerName")}
-                  data-testid="input-buyer-name"
-                />
+                <div className="relative">
+                  <Input
+                    type="text"
+                    value={buyerName}
+                    onChange={(e) => {
+                      setBuyerName(capitalizeFirstLetter(e.target.value));
+                      setShowBuyerSuggestions(true);
+                    }}
+                    onFocus={() => setShowBuyerSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 200)}
+                    placeholder={t("buyerName")}
+                    autoComplete="off"
+                    data-testid="input-buyer-name"
+                  />
+                  {showBuyerSuggestions && buyerSuggestions.length > 0 && buyerName && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                      {buyerSuggestions.map((buyer, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="w-full px-3 py-2 text-left hover-elevate text-sm"
+                          onClick={() => selectBuyerSuggestion(buyer)}
+                          data-testid={`suggestion-buyer-${idx}`}
+                        >
+                          {buyer.buyerName}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -667,13 +708,36 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="space-y-2">
                 <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
-                <Input
-                  type="text"
-                  value={buyerName}
-                  onChange={(e) => setBuyerName(capitalizeFirstLetter(e.target.value))}
-                  placeholder={t("buyerName")}
-                  data-testid="input-partial-buyer-name"
-                />
+                <div className="relative">
+                  <Input
+                    type="text"
+                    value={buyerName}
+                    onChange={(e) => {
+                      setBuyerName(capitalizeFirstLetter(e.target.value));
+                      setShowBuyerSuggestions(true);
+                    }}
+                    onFocus={() => setShowBuyerSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 200)}
+                    placeholder={t("buyerName")}
+                    autoComplete="off"
+                    data-testid="input-partial-buyer-name"
+                  />
+                  {showBuyerSuggestions && buyerSuggestions.length > 0 && buyerName && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                      {buyerSuggestions.map((buyer, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="w-full px-3 py-2 text-left hover-elevate text-sm"
+                          onClick={() => selectBuyerSuggestion(buyer)}
+                          data-testid={`suggestion-partial-buyer-${idx}`}
+                        >
+                          {buyer.buyerName}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
