@@ -138,6 +138,7 @@ const translations: Translations = {
   filters: { en: "Filters", hi: "फ़िल्टर" },
   all: { en: "All", hi: "सभी" },
   or: { en: "or", hi: "या" },
+  showingFirst50Lots: { en: "Showing first 50 lots by lot number. Use search for more.", hi: "लॉट नंबर के अनुसार पहले 50 लॉट दिखाए जा रहे हैं। अधिक के लिए खोजें।" },
   coldChargesDue: { en: "Cold Charges Due", hi: "कोल्ड स्टोरेज शुल्क बाकी" },
   coldChargesPaid: { en: "Cold Charges Paid", hi: "कोल्ड स्टोरेज शुल्क भुगतान" },
   markAsPaid: { en: "Mark as Paid", hi: "भुगतान किया चिह्नित करें" },

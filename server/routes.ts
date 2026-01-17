@@ -234,7 +234,23 @@ export async function registerRoutes(
   app.get("/api/lots", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const lots = await storage.getAllLots(coldStorageId);
+      let lots = await storage.getAllLots(coldStorageId);
+      
+      // Sort by lot number if requested
+      if (req.query.sort === "lotNo") {
+        lots = [...lots].sort((a, b) => {
+          const lotNoA = parseInt(a.lotNo, 10) || 0;
+          const lotNoB = parseInt(b.lotNo, 10) || 0;
+          return lotNoA - lotNoB;
+        });
+      }
+      
+      // Limit results if requested
+      const limit = parseInt(req.query.limit as string, 10);
+      if (!isNaN(limit) && limit > 0) {
+        lots = lots.slice(0, limit);
+      }
+      
       res.json(lots);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch lots" });

@@ -87,6 +87,16 @@ export default function SearchEdit() {
     queryKey: ["/api/chambers"],
   });
 
+  // Fetch initial 50 lots sorted by lot number for display before any search
+  const { data: initialLots, isLoading: isLoadingInitial } = useQuery<Lot[]>({
+    queryKey: ["/api/lots", { sort: "lotNo", limit: 50 }],
+    queryFn: async () => {
+      const response = await authFetch("/api/lots?sort=lotNo&limit=50");
+      if (!response.ok) throw new Error("Failed to fetch initial lots");
+      return response.json();
+    },
+  });
+
   // Fetch all sales to calculate charges from sales history (same as Analytics)
   const { data: allSalesHistory } = useQuery<SalesHistory[]>({
     queryKey: ["/api/sales-history"],
@@ -454,83 +464,97 @@ export default function SearchEdit() {
         </Tabs>
       </Card>
 
-      {isSearching ? (
+      {isSearching || isLoadingInitial ? (
         <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-40" />
           ))}
         </div>
-      ) : hasSearched ? (
-        searchResults.length === 0 ? (
-          <Card className="p-8 text-center" data-testid="card-no-results">
-            <p className="text-muted-foreground">{t("noResults")}</p>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {searchResults.map((lot) => {
-              // Calculate charges from sales history for this lot
-              let lotPaidCharge = 0;
-              let lotDueCharge = 0;
-              if (allSalesHistory) {
-                const lotSales = allSalesHistory.filter(s => s.lotId === lot.id);
-                for (const sale of lotSales) {
-                  const totalCharges = calculateTotalColdCharges(sale);
-                  if (sale.paymentStatus === "paid") {
-                    lotPaidCharge += totalCharges;
-                  } else if (sale.paymentStatus === "due") {
-                    lotDueCharge += totalCharges;
-                  } else if (sale.paymentStatus === "partial") {
-                    // Use paidAmount from sale, calculate due as remainder to ensure consistency
-                    const paidAmount = sale.paidAmount || 0;
-                    lotPaidCharge += paidAmount;
-                    lotDueCharge += Math.max(0, totalCharges - paidAmount);
+      ) : (
+        (() => {
+          // Use search results if searched, otherwise show initial lots
+          const lotsToDisplay = hasSearched ? searchResults : (initialLots || []);
+          
+          if (lotsToDisplay.length === 0) {
+            return hasSearched ? (
+              <Card className="p-8 text-center" data-testid="card-no-results">
+                <p className="text-muted-foreground">{t("noResults")}</p>
+              </Card>
+            ) : null;
+          }
+          
+          return (
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+              {!hasSearched && (
+                <p className="text-sm text-muted-foreground px-1" data-testid="text-initial-lots-info">
+                  {t("showingFirst50Lots")}
+                </p>
+              )}
+              {lotsToDisplay.map((lot) => {
+                // Calculate charges from sales history for this lot
+                let lotPaidCharge = 0;
+                let lotDueCharge = 0;
+                if (allSalesHistory) {
+                  const lotSales = allSalesHistory.filter(s => s.lotId === lot.id);
+                  for (const sale of lotSales) {
+                    const totalCharges = calculateTotalColdCharges(sale);
+                    if (sale.paymentStatus === "paid") {
+                      lotPaidCharge += totalCharges;
+                    } else if (sale.paymentStatus === "due") {
+                      lotDueCharge += totalCharges;
+                    } else if (sale.paymentStatus === "partial") {
+                      // Use paidAmount from sale, calculate due as remainder to ensure consistency
+                      const paidAmount = sale.paidAmount || 0;
+                      lotPaidCharge += paidAmount;
+                      lotDueCharge += Math.max(0, totalCharges - paidAmount);
+                    }
                   }
                 }
-              }
-              return (
-                <LotCard
-                  key={lot.id}
-                  lot={lot}
-                  chamberName={chamberMap[lot.chamberId] || "Unknown"}
-                  onEdit={handleEditClick}
-                  onToggleSale={handleToggleSale}
-                  onPrintReceipt={(lot) => {
-                    setPrintReceiptLot(lot);
-                    setPrintReceiptDialogOpen(true);
-                  }}
-                  calculatedPaidCharge={lotPaidCharge}
-                  calculatedDueCharge={lotDueCharge}
-                  canEdit={canEdit}
-                />
-              );
-            })}
-            
-            {summaryTotals && (
-              <Card className="p-4 bg-muted/50">
-                <h3 className="font-semibold mb-3">{t("searchSummary")}</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">{t("totalBags")}</p>
-                    <p className="text-lg font-bold" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString()}</p>
+                return (
+                  <LotCard
+                    key={lot.id}
+                    lot={lot}
+                    chamberName={chamberMap[lot.chamberId] || "Unknown"}
+                    onEdit={handleEditClick}
+                    onToggleSale={handleToggleSale}
+                    onPrintReceipt={(lot) => {
+                      setPrintReceiptLot(lot);
+                      setPrintReceiptDialogOpen(true);
+                    }}
+                    calculatedPaidCharge={lotPaidCharge}
+                    calculatedDueCharge={lotDueCharge}
+                    canEdit={canEdit}
+                  />
+                );
+              })}
+              
+              {hasSearched && summaryTotals && (
+                <Card className="p-4 bg-muted/50">
+                  <h3 className="font-semibold mb-3">{t("searchSummary")}</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t("totalBags")}</p>
+                      <p className="text-lg font-bold" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t("totalRemainingBags")}</p>
+                      <p className="text-lg font-bold" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t("totalChargesPaid")}</p>
+                      <p className="text-lg font-bold text-green-600" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t("totalChargesDue")}</p>
+                      <p className="text-lg font-bold text-red-600" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString()}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">{t("totalRemainingBags")}</p>
-                    <p className="text-lg font-bold" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">{t("totalChargesPaid")}</p>
-                    <p className="text-lg font-bold text-green-600" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">{t("totalChargesDue")}</p>
-                    <p className="text-lg font-bold text-red-600" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString()}</p>
-                  </div>
-                </div>
-              </Card>
-            )}
-          </div>
-        )
-      ) : null}
+                </Card>
+              )}
+            </div>
+          );
+        })()
+      )}
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
