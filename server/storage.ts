@@ -403,12 +403,12 @@ export class DatabaseStorage implements IStorage {
 
   async searchLotsByFarmerName(query: string, coldStorageId: string, village?: string, contactNumber?: string): Promise<Lot[]> {
     const allLots = await db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
-    const lowerQuery = query.toLowerCase();
+    const lowerQuery = query.toLowerCase().trim();
     return allLots.filter((lot) => {
-      const nameMatch = lot.farmerName.toLowerCase().includes(lowerQuery);
+      const nameMatch = lot.farmerName.toLowerCase().trim().includes(lowerQuery);
       if (!nameMatch) return false;
-      if (village && lot.village !== village) return false;
-      if (contactNumber && lot.contactNumber !== contactNumber) return false;
+      if (village && lot.village.trim().toLowerCase() !== village.trim().toLowerCase()) return false;
+      if (contactNumber && lot.contactNumber.trim() !== contactNumber.trim()) return false;
       return true;
     });
   }
@@ -1066,7 +1066,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(ilike(salesHistory.farmerName, `%${filters.farmerName}%`));
     }
     if (filters?.village) {
-      conditions.push(eq(salesHistory.village, filters.village));
+      conditions.push(ilike(salesHistory.village, filters.village));
     }
     if (filters?.contactNumber) {
       conditions.push(like(salesHistory.contactNumber, `%${filters.contactNumber}%`));
