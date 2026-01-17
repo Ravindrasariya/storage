@@ -45,6 +45,7 @@ export default function SalesHistoryPage() {
   // Autocomplete state
   const [showFarmerSuggestions, setShowFarmerSuggestions] = useState(false);
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
+  const [showMobileSuggestions, setShowMobileSuggestions] = useState(false);
 
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/sales-history/years"],
@@ -80,6 +81,16 @@ export default function SalesHistoryPage() {
       .slice(0, 8);
   }, [buyerRecords, buyerFilter]);
 
+  // Filtered suggestions for mobile number
+  const getMobileSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0 || !mobileFilter.trim()) return [];
+    const query = mobileFilter.replace(/\D/g, '');
+    if (!query) return [];
+    return farmerRecords
+      .filter(farmer => farmer.contactNumber.includes(query))
+      .slice(0, 8);
+  }, [farmerRecords, mobileFilter]);
+
   const selectFarmerSuggestion = (farmer: FarmerRecord) => {
     setFarmerFilter(farmer.farmerName);
     setShowFarmerSuggestions(false);
@@ -88,6 +99,11 @@ export default function SalesHistoryPage() {
   const selectBuyerSuggestion = (buyer: { buyerName: string }) => {
     setBuyerFilter(buyer.buyerName);
     setShowBuyerSuggestions(false);
+  };
+
+  const selectMobileSuggestion = (farmer: FarmerRecord) => {
+    setMobileFilter(farmer.contactNumber);
+    setShowMobileSuggestions(false);
   };
 
   const buildQueryString = () => {
@@ -231,14 +247,36 @@ export default function SalesHistoryPage() {
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">{t("filterByMobile")}</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
                 <Input
                   value={mobileFilter}
-                  onChange={(e) => setMobileFilter(e.target.value)}
+                  onChange={(e) => {
+                    setMobileFilter(e.target.value);
+                    setShowMobileSuggestions(true);
+                  }}
+                  onFocus={() => setShowMobileSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowMobileSuggestions(false), 200)}
                   placeholder={t("contactNumber")}
                   className="pl-10"
+                  autoComplete="off"
                   data-testid="input-mobile-filter"
                 />
+                {showMobileSuggestions && getMobileSuggestions.length > 0 && mobileFilter && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {getMobileSuggestions.map((farmer, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                        onClick={() => selectMobileSuggestion(farmer)}
+                        data-testid={`suggestion-mobile-${idx}`}
+                      >
+                        <span className="font-medium">{farmer.contactNumber}</span>
+                        <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
