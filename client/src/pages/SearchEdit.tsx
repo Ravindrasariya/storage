@@ -535,7 +535,7 @@ export default function SearchEdit() {
 
       {hasSearched && summaryTotals && (
         <Card className="p-3 bg-muted/50">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-y-2">
             <h3 className="font-semibold text-sm">{t("searchSummary")}:</h3>
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">{t("totalBags")}:</span>
