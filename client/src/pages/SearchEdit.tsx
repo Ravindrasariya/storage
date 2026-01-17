@@ -535,23 +535,23 @@ export default function SearchEdit() {
 
       {hasSearched && summaryTotals && (
         <Card className="p-3 bg-muted/50">
-          <div className="flex flex-col gap-2">
-            <h3 className="font-semibold text-xs md:text-sm">{t("searchSummary")}:</h3>
-            <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-6">
-              <div className="flex items-center gap-1 md:min-w-[130px]">
-                <span className="text-xs md:text-xs text-muted-foreground whitespace-nowrap">{t("totalBags")}:</span>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+            <h3 className="font-semibold text-xs md:text-sm whitespace-nowrap">{t("searchSummary")}:</h3>
+            <div className="grid grid-cols-2 gap-2 md:flex md:flex-nowrap md:items-center md:gap-6">
+              <div className="flex items-center gap-1 md:shrink-0">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalBags")}:</span>
                 <span className="font-bold text-sm md:text-base whitespace-nowrap" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex items-center gap-1 md:min-w-[160px]">
-                <span className="text-xs md:text-xs text-muted-foreground whitespace-nowrap">{t("totalRemainingBags")}:</span>
+              <div className="flex items-center gap-1 md:shrink-0">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalRemainingBags")}:</span>
                 <span className="font-bold text-sm md:text-base whitespace-nowrap" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex items-center gap-1 md:min-w-[180px]">
-                <span className="text-xs md:text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesPaid")}:</span>
+              <div className="flex items-center gap-1 md:shrink-0">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesPaid")}:</span>
                 <span className="font-bold text-sm md:text-base text-green-600 whitespace-nowrap" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex items-center gap-1 md:min-w-[180px]">
-                <span className="text-xs md:text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesDue")}:</span>
+              <div className="flex items-center gap-1 md:shrink-0">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesDue")}:</span>
                 <span className="font-bold text-sm md:text-base text-red-600 whitespace-nowrap" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString('en-IN')}</span>
               </div>
             </div>
