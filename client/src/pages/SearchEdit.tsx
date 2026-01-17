@@ -131,7 +131,7 @@ export default function SearchEdit() {
 
   const isInitialMount = useRef(true);
 
-  // Save search state to sessionStorage whenever it changes (but not search results - we re-fetch those)
+  // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
     const stateToSave = {
       searchType,
@@ -141,10 +141,9 @@ export default function SearchEdit() {
       sizeQuery,
       qualityFilter,
       paymentDueFilter,
-      hasSearched,
     };
     sessionStorage.setItem("searchEditState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, hasSearched]);
+  }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter]);
   
   // Re-run search when filters change (but not on initial mount)
   useEffect(() => {
@@ -157,15 +156,6 @@ export default function SearchEdit() {
     }
   }, [qualityFilter, paymentDueFilter]);
 
-  // Re-run search on initial mount if we have saved search state
-  const hasRestoredSearch = useRef(false);
-  useEffect(() => {
-    if (!hasRestoredSearch.current && savedState?.hasSearched) {
-      hasRestoredSearch.current = true;
-      // Small delay to ensure handleSearch is available
-      setTimeout(() => handleSearch(), 0);
-    }
-  }, []);
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
     acc[chamber.id] = chamber.name;
