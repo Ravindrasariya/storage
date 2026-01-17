@@ -1063,13 +1063,16 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(salesHistory.saleYear, filters.year));
     }
     if (filters?.farmerName) {
-      conditions.push(ilike(salesHistory.farmerName, `%${filters.farmerName}%`));
+      const normalizedName = filters.farmerName.trim().toLowerCase();
+      conditions.push(sql`lower(trim(${salesHistory.farmerName})) LIKE ${`%${normalizedName}%`}`);
     }
     if (filters?.village) {
-      conditions.push(ilike(salesHistory.village, filters.village));
+      const normalizedVillage = filters.village.trim().toLowerCase();
+      conditions.push(sql`lower(trim(${salesHistory.village})) = ${normalizedVillage}`);
     }
     if (filters?.contactNumber) {
-      conditions.push(like(salesHistory.contactNumber, `%${filters.contactNumber}%`));
+      const normalizedContact = filters.contactNumber.trim();
+      conditions.push(sql`trim(${salesHistory.contactNumber}) LIKE ${`%${normalizedContact}%`}`);
     }
     if (filters?.paymentStatus) {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
