@@ -534,24 +534,24 @@ export default function SearchEdit() {
       </Card>
 
       {hasSearched && summaryTotals && (
-        <Card className="p-4 bg-muted/50">
-          <h3 className="font-semibold mb-3">{t("searchSummary")}</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground">{t("totalBags")}</p>
-              <p className="text-lg font-bold" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString()}</p>
+        <Card className="p-3 bg-muted/50 w-fit">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <h3 className="font-semibold text-sm">{t("searchSummary")}:</h3>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t("totalBags")}:</span>
+              <span className="font-bold" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString()}</span>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">{t("totalRemainingBags")}</p>
-              <p className="text-lg font-bold" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString()}</p>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t("totalRemainingBags")}:</span>
+              <span className="font-bold" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString()}</span>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">{t("totalChargesPaid")}</p>
-              <p className="text-lg font-bold text-green-600" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString()}</p>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t("totalChargesPaid")}:</span>
+              <span className="font-bold text-green-600" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString()}</span>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">{t("totalChargesDue")}</p>
-              <p className="text-lg font-bold text-red-600" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString()}</p>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">{t("totalChargesDue")}:</span>
+              <span className="font-bold text-red-600" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString()}</span>
             </div>
           </div>
         </Card>
