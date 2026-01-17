@@ -347,6 +347,19 @@ export async function registerRoutes(
     }
   });
 
+  // Get farmer records for auto-complete in lot entry
+  app.get("/api/farmers/lookup", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const year = req.query.year ? parseInt(req.query.year as string, 10) : undefined;
+      const farmers = await storage.getFarmerRecords(coldStorageId, year);
+      res.json(farmers);
+    } catch (error) {
+      console.error("Farmer lookup error:", error);
+      res.status(500).json({ error: "Failed to fetch farmer records" });
+    }
+  });
+
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

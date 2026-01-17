@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -39,6 +39,16 @@ import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck,
 import { format } from "date-fns";
 import type { Chamber } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
+
+// Type for farmer records returned from lookup API
+interface FarmerRecord {
+  farmerName: string;
+  village: string;
+  tehsil: string;
+  district: string;
+  state: string;
+  contactNumber: string;
+}
 
 interface ColdStorageSettings {
   id: string;
@@ -124,6 +134,17 @@ export default function LotEntry() {
     queryKey: ["/api/next-entry-sequence"],
   });
 
+  // Fetch farmer records for autocomplete
+  const { data: farmerRecords } = useQuery<FarmerRecord[]>({
+    queryKey: ["/api/farmers/lookup"],
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // State for autocomplete suggestions
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+  const [showVillageSuggestions, setShowVillageSuggestions] = useState(false);
+  const [showMobileSuggestions, setShowMobileSuggestions] = useState(false);
+
   const form = useForm<FarmerData>({
     resolver: zodResolver(farmerSchema),
     defaultValues: {
@@ -135,6 +156,11 @@ export default function LotEntry() {
       contactNumber: "",
     },
   });
+
+  // Watch form values for reactive autocomplete filtering (must be after form initialization)
+  const watchedFarmerName = form.watch("farmerName") || "";
+  const watchedVillage = form.watch("village") || "";
+  const watchedContactNumber = form.watch("contactNumber") || "";
 
   // Load saved form data from localStorage on mount
   useEffect(() => {
@@ -171,6 +197,124 @@ export default function LotEntry() {
 
   const clearSavedData = () => {
     localStorage.removeItem(STORAGE_KEY);
+  };
+
+  // Get filtered suggestions based on current form values (reactive)
+  const getNameSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0) return [];
+    
+    const nameVal = watchedFarmerName.toLowerCase().trim();
+    const villageVal = watchedVillage.toLowerCase().trim();
+    const mobileVal = watchedContactNumber.trim();
+
+    const filtered = farmerRecords.filter(farmer => {
+      let matches = true;
+      // Filter by name (current field)
+      if (nameVal) {
+        matches = matches && farmer.farmerName.toLowerCase().includes(nameVal);
+      }
+      // Also narrow by other fields if they have values
+      if (villageVal) {
+        matches = matches && farmer.village.toLowerCase().includes(villageVal);
+      }
+      if (mobileVal) {
+        matches = matches && farmer.contactNumber.includes(mobileVal);
+      }
+      return matches;
+    });
+
+    // Deduplicate by name
+    const names = new Map<string, FarmerRecord>();
+    filtered.forEach(f => {
+      const key = f.farmerName.toLowerCase();
+      if (!names.has(key)) names.set(key, f);
+    });
+    return Array.from(names.values());
+  }, [farmerRecords, watchedFarmerName, watchedVillage, watchedContactNumber]);
+
+  const getVillageSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0) return [];
+    
+    const nameVal = watchedFarmerName.toLowerCase().trim();
+    const villageVal = watchedVillage.toLowerCase().trim();
+    const mobileVal = watchedContactNumber.trim();
+
+    const filtered = farmerRecords.filter(farmer => {
+      let matches = true;
+      // Filter by village (current field)
+      if (villageVal) {
+        matches = matches && farmer.village.toLowerCase().includes(villageVal);
+      }
+      // Also narrow by other fields if they have values
+      if (nameVal) {
+        matches = matches && farmer.farmerName.toLowerCase().includes(nameVal);
+      }
+      if (mobileVal) {
+        matches = matches && farmer.contactNumber.includes(mobileVal);
+      }
+      return matches;
+    });
+
+    // Deduplicate by village
+    const villages = new Map<string, FarmerRecord>();
+    filtered.forEach(f => {
+      const key = f.village.toLowerCase();
+      if (!villages.has(key)) villages.set(key, f);
+    });
+    return Array.from(villages.values());
+  }, [farmerRecords, watchedFarmerName, watchedVillage, watchedContactNumber]);
+
+  const getMobileSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0) return [];
+    
+    const nameVal = watchedFarmerName.toLowerCase().trim();
+    const villageVal = watchedVillage.toLowerCase().trim();
+    const mobileVal = watchedContactNumber.trim();
+
+    const filtered = farmerRecords.filter(farmer => {
+      let matches = true;
+      // Filter by mobile (current field)
+      if (mobileVal) {
+        matches = matches && farmer.contactNumber.includes(mobileVal);
+      }
+      // Also narrow by other fields if they have values
+      if (nameVal) {
+        matches = matches && farmer.farmerName.toLowerCase().includes(nameVal);
+      }
+      if (villageVal) {
+        matches = matches && farmer.village.toLowerCase().includes(villageVal);
+      }
+      return matches;
+    });
+
+    // Deduplicate by mobile
+    const mobiles = new Map<string, FarmerRecord>();
+    filtered.forEach(f => {
+      if (!mobiles.has(f.contactNumber)) mobiles.set(f.contactNumber, f);
+    });
+    return Array.from(mobiles.values());
+  }, [farmerRecords, watchedFarmerName, watchedVillage, watchedContactNumber]);
+
+  // Auto-fill all fields from a selected farmer record
+  const selectFarmerRecord = (farmer: FarmerRecord) => {
+    form.setValue("farmerName", farmer.farmerName);
+    form.setValue("village", farmer.village);
+    form.setValue("tehsil", farmer.tehsil);
+    form.setValue("district", farmer.district);
+    form.setValue("state", farmer.state);
+    form.setValue("contactNumber", farmer.contactNumber);
+    setShowNameSuggestions(false);
+    setShowVillageSuggestions(false);
+    setShowMobileSuggestions(false);
+  };
+
+  // Check for exact mobile match and auto-fill
+  const checkExactMobileMatch = (mobile: string) => {
+    if (!farmerRecords || mobile.length !== 10) return;
+    const exactMatches = farmerRecords.filter(f => f.contactNumber === mobile);
+    if (exactMatches.length === 1) {
+      selectFarmerRecord(exactMatches[0]);
+    }
   };
 
   const createBatchLotsMutation = useMutation({
@@ -525,16 +669,38 @@ export default function LotEntry() {
                 control={form.control}
                 name="farmerName"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="relative">
                     <FormLabel>{t("farmerName")} *</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
-                        onChange={(e) => field.onChange(capitalizeFirstLetter(e.target.value))}
+                        onChange={(e) => {
+                          field.onChange(capitalizeFirstLetter(e.target.value));
+                          setShowNameSuggestions(true);
+                        }}
+                        onFocus={() => setShowNameSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
                         placeholder="Enter farmer name"
+                        autoComplete="off"
                         data-testid="input-farmer-name"
                       />
                     </FormControl>
+                    {showNameSuggestions && getNameSuggestions.length > 0 && field.value && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                        {getNameSuggestions.slice(0, 8).map((farmer, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                            onClick={() => selectFarmerRecord(farmer)}
+                            data-testid={`suggestion-name-${idx}`}
+                          >
+                            <span className="font-medium">{farmer.farmerName}</span>
+                            <span className="text-xs text-muted-foreground">{farmer.village} • {farmer.contactNumber}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -543,16 +709,43 @@ export default function LotEntry() {
                 control={form.control}
                 name="contactNumber"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="relative">
                     <FormLabel>{t("contactNumber")} *</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, "");
+                          field.onChange(val);
+                          setShowMobileSuggestions(true);
+                          if (val.length === 10) {
+                            checkExactMobileMatch(val);
+                          }
+                        }}
+                        onFocus={() => setShowMobileSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowMobileSuggestions(false), 200)}
                         placeholder="Enter 10-digit number"
                         maxLength={10}
+                        autoComplete="off"
                         data-testid="input-contact"
                       />
                     </FormControl>
+                    {showMobileSuggestions && getMobileSuggestions.length > 0 && field.value && field.value.length < 10 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                        {getMobileSuggestions.slice(0, 8).map((farmer, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                            onClick={() => selectFarmerRecord(farmer)}
+                            data-testid={`suggestion-mobile-${idx}`}
+                          >
+                            <span className="font-medium">{farmer.contactNumber}</span>
+                            <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -561,16 +754,38 @@ export default function LotEntry() {
                 control={form.control}
                 name="village"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="relative">
                     <FormLabel>{t("village")} *</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
-                        onChange={(e) => field.onChange(capitalizeFirstLetter(e.target.value))}
+                        onChange={(e) => {
+                          field.onChange(capitalizeFirstLetter(e.target.value));
+                          setShowVillageSuggestions(true);
+                        }}
+                        onFocus={() => setShowVillageSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowVillageSuggestions(false), 200)}
                         placeholder="Enter village"
+                        autoComplete="off"
                         data-testid="input-village"
                       />
                     </FormControl>
+                    {showVillageSuggestions && getVillageSuggestions.length > 0 && field.value && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                        {getVillageSuggestions.slice(0, 8).map((farmer, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                            onClick={() => selectFarmerRecord(farmer)}
+                            data-testid={`suggestion-village-${idx}`}
+                          >
+                            <span className="font-medium">{farmer.village}</span>
+                            <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.contactNumber}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

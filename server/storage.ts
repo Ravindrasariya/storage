@@ -152,6 +152,8 @@ export interface IStorage {
   getLotsForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<Lot[]>;
   getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<SalesHistory[]>;
   getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[] }>;
+  // Farmer lookup for auto-complete
+  getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2172,6 +2174,47 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(expenses.paidAt));
 
     return { receipts: receiptsData, expenses: expensesData };
+  }
+
+  async getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]> {
+    const currentYear = year || new Date().getFullYear();
+    const startOfYear = new Date(currentYear, 0, 1);
+    const endOfYear = new Date(currentYear + 1, 0, 1);
+
+    const allLots = await db.select({
+      farmerName: lots.farmerName,
+      village: lots.village,
+      tehsil: lots.tehsil,
+      district: lots.district,
+      state: lots.state,
+      contactNumber: lots.contactNumber,
+    })
+      .from(lots)
+      .where(
+        and(
+          eq(lots.coldStorageId, coldStorageId),
+          gte(lots.createdAt, startOfYear),
+          sql`${lots.createdAt} < ${endOfYear}`
+        )
+      );
+
+    // Deduplicate by normalized key (lowercase trimmed contactNumber + farmerName + village)
+    const seen = new Map<string, { farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }>();
+    for (const lot of allLots) {
+      const key = `${lot.contactNumber.trim().toLowerCase()}|${lot.farmerName.trim().toLowerCase()}|${lot.village.trim().toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.set(key, {
+          farmerName: lot.farmerName.trim(),
+          village: lot.village.trim(),
+          tehsil: lot.tehsil.trim(),
+          district: lot.district.trim(),
+          state: lot.state.trim(),
+          contactNumber: lot.contactNumber.trim(),
+        });
+      }
+    }
+
+    return Array.from(seen.values());
   }
 }
 
