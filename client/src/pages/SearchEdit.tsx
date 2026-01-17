@@ -66,8 +66,8 @@ export default function SearchEdit() {
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
-  const [searchResults, setSearchResults] = useState<Lot[]>(savedState?.searchResults || []);
-  const [hasSearched, setHasSearched] = useState(savedState?.hasSearched || false);
+  const [searchResults, setSearchResults] = useState<Lot[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);

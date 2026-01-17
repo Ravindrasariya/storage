@@ -87,6 +87,7 @@ const translations: Translations = {
   phoneNumber: { en: "Phone Number", hi: "फोन नंबर" },
   lotNumber: { en: "Lot Number", hi: "लॉट नंबर" },
   search: { en: "Search", hi: "खोजें" },
+  noResults: { en: "No results found", hi: "कोई परिणाम नहीं मिला" },
   edit: { en: "Edit", hi: "संपादित करें" },
   print: { en: "Print", hi: "प्रिंट" },
   printBill: { en: "Print Bill", hi: "बिल प्रिंट करें" },
