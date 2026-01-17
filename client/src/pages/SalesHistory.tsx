@@ -32,6 +32,8 @@ export default function SalesHistoryPage() {
   
   const [yearFilter, setYearFilter] = useState<string>(new Date().getFullYear().toString());
   const [farmerFilter, setFarmerFilter] = useState("");
+  const [selectedFarmerVillage, setSelectedFarmerVillage] = useState("");
+  const [selectedFarmerMobile, setSelectedFarmerMobile] = useState("");
   const [mobileFilter, setMobileFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("");
   const [buyerFilter, setBuyerFilter] = useState("");
@@ -93,6 +95,8 @@ export default function SalesHistoryPage() {
 
   const selectFarmerSuggestion = (farmer: FarmerRecord) => {
     setFarmerFilter(farmer.farmerName);
+    setSelectedFarmerVillage(farmer.village);
+    setSelectedFarmerMobile(farmer.contactNumber);
     setShowFarmerSuggestions(false);
   };
 
@@ -110,14 +114,16 @@ export default function SalesHistoryPage() {
     const params = new URLSearchParams();
     if (yearFilter) params.append("year", yearFilter);
     if (farmerFilter) params.append("farmerName", farmerFilter);
-    if (mobileFilter) params.append("contactNumber", mobileFilter);
+    if (selectedFarmerVillage) params.append("village", selectedFarmerVillage);
+    if (selectedFarmerMobile) params.append("contactNumber", selectedFarmerMobile);
+    else if (mobileFilter) params.append("contactNumber", mobileFilter);
     if (paymentFilter) params.append("paymentStatus", paymentFilter);
     if (buyerFilter) params.append("buyerName", buyerFilter);
     return params.toString();
   };
 
   const { data: salesHistory = [], isLoading: historyLoading } = useQuery<SalesHistory[]>({
-    queryKey: ["/api/sales-history", yearFilter, farmerFilter, mobileFilter, paymentFilter, buyerFilter],
+    queryKey: ["/api/sales-history", yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter],
     queryFn: async () => {
       const queryString = buildQueryString();
       const response = await authFetch(`/api/sales-history${queryString ? `?${queryString}` : ""}`);
@@ -144,12 +150,14 @@ export default function SalesHistoryPage() {
   const clearFilters = () => {
     setYearFilter("");
     setFarmerFilter("");
+    setSelectedFarmerVillage("");
+    setSelectedFarmerMobile("");
     setMobileFilter("");
     setPaymentFilter("");
     setBuyerFilter("");
   };
 
-  const hasActiveFilters = yearFilter || farmerFilter || mobileFilter || paymentFilter || buyerFilter;
+  const hasActiveFilters = yearFilter || farmerFilter || selectedFarmerVillage || mobileFilter || paymentFilter || buyerFilter;
 
   // Calculate summary totals from filtered data
   // Use paidAmount from sale, calculate due as remainder to ensure consistency
@@ -216,6 +224,8 @@ export default function SalesHistoryPage() {
                   value={farmerFilter}
                   onChange={(e) => {
                     setFarmerFilter(capitalizeFirstLetter(e.target.value));
+                    setSelectedFarmerVillage("");
+                    setSelectedFarmerMobile("");
                     setShowFarmerSuggestions(true);
                   }}
                   onFocus={() => setShowFarmerSuggestions(true)}
@@ -239,6 +249,24 @@ export default function SalesHistoryPage() {
                         <span className="text-xs text-muted-foreground">{farmer.contactNumber} • {farmer.village}</span>
                       </button>
                     ))}
+                  </div>
+                )}
+                {selectedFarmerVillage && selectedFarmerMobile && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedFarmerVillage} • {selectedFarmerMobile}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedFarmerVillage("");
+                        setSelectedFarmerMobile("");
+                      }}
+                      data-testid="button-clear-specific-farmer-sales"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
                   </div>
                 )}
               </div>

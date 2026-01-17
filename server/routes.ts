@@ -983,11 +983,12 @@ export async function registerRoutes(
   app.get("/api/sales-history", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, farmerName, contactNumber, paymentStatus, buyerName } = req.query;
+      const { year, farmerName, village, contactNumber, paymentStatus, buyerName } = req.query;
       
       const filters: {
         year?: number;
         farmerName?: string;
+        village?: string;
         contactNumber?: string;
         paymentStatus?: "paid" | "due";
         buyerName?: string;
@@ -995,6 +996,7 @@ export async function registerRoutes(
       
       if (year) filters.year = parseInt(year as string);
       if (farmerName) filters.farmerName = farmerName as string;
+      if (village) filters.village = village as string;
       if (contactNumber) filters.contactNumber = contactNumber as string;
       if (paymentStatus === "paid" || paymentStatus === "due") {
         filters.paymentStatus = paymentStatus;

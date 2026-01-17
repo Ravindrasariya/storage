@@ -92,6 +92,7 @@ export interface IStorage {
   getSalesHistory(coldStorageId: string, filters?: {
     year?: number;
     farmerName?: string;
+    village?: string;
     contactNumber?: string;
     paymentStatus?: "paid" | "due";
     buyerName?: string;
@@ -1051,6 +1052,7 @@ export class DatabaseStorage implements IStorage {
   async getSalesHistory(coldStorageId: string, filters?: {
     year?: number;
     farmerName?: string;
+    village?: string;
     contactNumber?: string;
     paymentStatus?: "paid" | "due";
     buyerName?: string;
@@ -1062,6 +1064,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.farmerName) {
       conditions.push(ilike(salesHistory.farmerName, `%${filters.farmerName}%`));
+    }
+    if (filters?.village) {
+      conditions.push(eq(salesHistory.village, filters.village));
     }
     if (filters?.contactNumber) {
       conditions.push(like(salesHistory.contactNumber, `%${filters.contactNumber}%`));
