@@ -535,23 +535,25 @@ export default function SearchEdit() {
 
       {hasSearched && summaryTotals && (
         <Card className="p-3 bg-muted/50">
-          <div className="flex items-center gap-4">
-            <h3 className="font-semibold text-sm whitespace-nowrap">{t("searchSummary")}:</h3>
-            <div className="flex items-center gap-1 min-w-[130px]">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalBags")}:</span>
-              <span className="font-bold whitespace-nowrap" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString('en-IN')}</span>
-            </div>
-            <div className="flex items-center gap-1 min-w-[160px]">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalRemainingBags")}:</span>
-              <span className="font-bold whitespace-nowrap" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
-            </div>
-            <div className="flex items-center gap-1 min-w-[180px]">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesPaid")}:</span>
-              <span className="font-bold text-green-600 whitespace-nowrap" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString('en-IN')}</span>
-            </div>
-            <div className="flex items-center gap-1 min-w-[180px]">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesDue")}:</span>
-              <span className="font-bold text-red-600 whitespace-nowrap" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString('en-IN')}</span>
+          <div className="flex flex-col gap-2">
+            <h3 className="font-semibold text-sm">{t("searchSummary")}:</h3>
+            <div className="grid grid-cols-2 gap-2 lg:flex lg:items-center lg:gap-6">
+              <div className="flex items-center gap-1 lg:min-w-[130px]">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalBags")}:</span>
+                <span className="font-bold whitespace-nowrap" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex items-center gap-1 lg:min-w-[160px]">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalRemainingBags")}:</span>
+                <span className="font-bold whitespace-nowrap" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex items-center gap-1 lg:min-w-[180px]">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesPaid")}:</span>
+                <span className="font-bold text-green-600 whitespace-nowrap" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex items-center gap-1 lg:min-w-[180px]">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesDue")}:</span>
+                <span className="font-bold text-red-600 whitespace-nowrap" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString('en-IN')}</span>
+              </div>
             </div>
           </div>
         </Card>
