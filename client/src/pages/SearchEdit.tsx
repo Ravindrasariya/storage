@@ -30,7 +30,8 @@ import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
@@ -62,6 +63,8 @@ export default function SearchEdit() {
     savedState?.searchType || "phone"
   );
   const [farmerNameQuery, setFarmerNameQuery] = useState(savedState?.farmerNameQuery || "");
+  const [selectedFarmerVillage, setSelectedFarmerVillage] = useState("");
+  const [selectedFarmerMobile, setSelectedFarmerMobile] = useState("");
   const [searchQuery, setSearchQuery] = useState(savedState?.searchQuery || "");
   const [lotNoQuery, setLotNoQuery] = useState(savedState?.lotNoQuery || "");
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
@@ -227,6 +230,8 @@ export default function SearchEdit() {
 
   const selectFarmerNameSuggestion = (farmer: FarmerRecord) => {
     setFarmerNameQuery(farmer.farmerName);
+    setSelectedFarmerVillage(farmer.village);
+    setSelectedFarmerMobile(farmer.contactNumber);
     setShowFarmerNameSuggestions(false);
   };
 
@@ -291,6 +296,12 @@ export default function SearchEdit() {
         url = `/api/lots/search?type=lotNoSize&lotNo=${encodeURIComponent(lotNoQuery)}&size=${encodeURIComponent(sizeQuery)}`;
       } else if (searchType === "farmerName") {
         url = `/api/lots/search?type=farmerName&query=${encodeURIComponent(farmerNameQuery)}`;
+        if (selectedFarmerVillage) {
+          url += `&village=${encodeURIComponent(selectedFarmerVillage)}`;
+        }
+        if (selectedFarmerMobile) {
+          url += `&contactNumber=${encodeURIComponent(selectedFarmerMobile)}`;
+        }
       } else {
         url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}`;
       }
@@ -547,6 +558,8 @@ export default function SearchEdit() {
                     value={farmerNameQuery}
                     onChange={(e) => {
                       setFarmerNameQuery(capitalizeFirstLetter(e.target.value));
+                      setSelectedFarmerVillage("");
+                      setSelectedFarmerMobile("");
                       setShowFarmerNameSuggestions(true);
                     }}
                     onFocus={() => setShowFarmerNameSuggestions(true)}
@@ -577,6 +590,24 @@ export default function SearchEdit() {
                   <span className="hidden sm:inline">{t("search")}</span>
                 </Button>
               </div>
+              {selectedFarmerVillage && selectedFarmerMobile && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="text-xs">
+                    {selectedFarmerVillage} • {selectedFarmerMobile}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedFarmerVillage("");
+                      setSelectedFarmerMobile("");
+                    }}
+                    data-testid="button-clear-specific-farmer"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
               <div className="flex items-center gap-2 sm:border-l sm:pl-3">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>

@@ -69,7 +69,7 @@ export interface IStorage {
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
   searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]>;
   searchLotsByLotNoAndSize(lotNo: string, size: string, coldStorageId: string): Promise<Lot[]>;
-  searchLotsByFarmerName(query: string, coldStorageId: string): Promise<Lot[]>;
+  searchLotsByFarmerName(query: string, coldStorageId: string, village?: string, contactNumber?: string): Promise<Lot[]>;
   getAllLots(coldStorageId: string): Promise<Lot[]>;
   getLotsByEntrySequence(entrySequence: number, coldStorageId: string): Promise<Lot[]>;
   createEditHistory(history: InsertLotEditHistory): Promise<LotEditHistory>;
@@ -400,10 +400,16 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async searchLotsByFarmerName(query: string, coldStorageId: string): Promise<Lot[]> {
+  async searchLotsByFarmerName(query: string, coldStorageId: string, village?: string, contactNumber?: string): Promise<Lot[]> {
     const allLots = await db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
     const lowerQuery = query.toLowerCase();
-    return allLots.filter((lot) => lot.farmerName.toLowerCase().includes(lowerQuery));
+    return allLots.filter((lot) => {
+      const nameMatch = lot.farmerName.toLowerCase().includes(lowerQuery);
+      if (!nameMatch) return false;
+      if (village && lot.village !== village) return false;
+      if (contactNumber && lot.contactNumber !== contactNumber) return false;
+      return true;
+    });
   }
 
   async getAllLots(coldStorageId: string): Promise<Lot[]> {

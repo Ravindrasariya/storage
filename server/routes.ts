@@ -395,9 +395,13 @@ export async function registerRoutes(
         if (!query) {
           return res.status(400).json({ error: "Missing query parameter" });
         }
+        const village = req.query.village as string | undefined;
+        const contactNumber = req.query.contactNumber as string | undefined;
         lots = await storage.searchLotsByFarmerName(
           query as string,
-          coldStorageId
+          coldStorageId,
+          village,
+          contactNumber
         );
       } else {
         if (!query) {
