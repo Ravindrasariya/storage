@@ -154,6 +154,8 @@ export interface IStorage {
   getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[] }>;
   // Farmer lookup for auto-complete
   getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]>;
+  // Buyer lookup for auto-complete (last 2 years)
+  getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2215,6 +2217,36 @@ export class DatabaseStorage implements IStorage {
     }
 
     return Array.from(seen.values());
+  }
+
+  async getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string }[]> {
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+
+    const allSales = await db.select({
+      buyerName: salesHistory.buyerName,
+    })
+      .from(salesHistory)
+      .where(
+        and(
+          eq(salesHistory.coldStorageId, coldStorageId),
+          gte(salesHistory.soldAt, twoYearsAgo),
+          sql`${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != ''`
+        )
+      );
+
+    // Deduplicate by normalized buyer name
+    const seen = new Map<string, { buyerName: string }>();
+    for (const sale of allSales) {
+      if (sale.buyerName) {
+        const key = sale.buyerName.trim().toLowerCase();
+        if (!seen.has(key)) {
+          seen.set(key, { buyerName: sale.buyerName.trim() });
+        }
+      }
+    }
+
+    return Array.from(seen.values()).sort((a, b) => a.buyerName.localeCompare(b.buyerName));
   }
 }
 

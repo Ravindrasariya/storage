@@ -360,6 +360,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/buyers/lookup", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const buyers = await storage.getBuyerRecords(coldStorageId);
+      res.json(buyers);
+    } catch (error) {
+      console.error("Buyer lookup error:", error);
+      res.status(500).json({ error: "Failed to fetch buyer records" });
+    }
+  });
+
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
