@@ -364,86 +364,150 @@ export default function SearchEdit() {
           </TabsList>
 
           {searchType === "phone" ? (
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter phone number..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="flex-1"
-                data-testid="input-search-phone"
-              />
-              <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
-                <Search className="h-4 w-4 mr-2" />
-                {t("search")}
-              </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex gap-2 flex-1">
+                <Input
+                  placeholder="Enter phone number..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="flex-1"
+                  data-testid="input-search-phone"
+                />
+                <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
+                  <Search className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("search")}</span>
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+                <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
+                    <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
+                    <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           ) : searchType === "farmerName" ? (
-            <div className="flex gap-2">
-              <Input
-                placeholder={t("enterFarmerName") || "Enter farmer name..."}
-                value={farmerNameQuery}
-                onChange={(e) => setFarmerNameQuery(capitalizeFirstLetter(e.target.value))}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="flex-1"
-                data-testid="input-search-farmer"
-              />
-              <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search-farmer">
-                <Search className="h-4 w-4 mr-2" />
-                {t("search")}
-              </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex gap-2 flex-1">
+                <Input
+                  placeholder={t("enterFarmerName") || "Enter farmer name..."}
+                  value={farmerNameQuery}
+                  onChange={(e) => setFarmerNameQuery(capitalizeFirstLetter(e.target.value))}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="flex-1"
+                  data-testid="input-search-farmer"
+                />
+                <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search-farmer">
+                  <Search className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("search")}</span>
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+                <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
+                    <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
+                    <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           ) : searchType === "lotNoSize" ? (
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder={`${t("lotNumber")} (${t("optional")})`}
-                value={lotNoQuery}
-                onChange={(e) => setLotNoQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="flex-1"
-                data-testid="input-search-lotno"
-              />
-              <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
-              <Input
-                placeholder={`${t("size")} (${t("optional")})`}
-                value={sizeQuery}
-                onChange={(e) => setSizeQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="flex-1"
-                data-testid="input-search-size"
-              />
-              <Button onClick={handleSearch} disabled={isSearching || (!lotNoQuery.trim() && !sizeQuery.trim())} data-testid="button-search">
-                <Search className="h-4 w-4 mr-2" />
-                {t("search")}
-              </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex items-center gap-2 flex-1">
+                <Input
+                  placeholder={`${t("lotNumber")} (${t("optional")})`}
+                  value={lotNoQuery}
+                  onChange={(e) => setLotNoQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="flex-1"
+                  data-testid="input-search-lotno"
+                />
+                <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
+                <Input
+                  placeholder={`${t("size")} (${t("optional")})`}
+                  value={sizeQuery}
+                  onChange={(e) => setSizeQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="flex-1"
+                  data-testid="input-search-size"
+                />
+                <Button onClick={handleSearch} disabled={isSearching || (!lotNoQuery.trim() && !sizeQuery.trim())} data-testid="button-search">
+                  <Search className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t("search")}</span>
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+                <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
+                    <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
+                    <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Label className="text-sm">{t("quality")}:</Label>
-                  <Select value={qualityFilter} onValueChange={setQualityFilter}>
-                    <SelectTrigger className="w-32" data-testid="select-quality-filter">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex flex-wrap items-center gap-4 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm">{t("quality")}:</Label>
+                    <Select value={qualityFilter} onValueChange={setQualityFilter}>
+                      <SelectTrigger className="w-32" data-testid="select-quality-filter">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("all")}</SelectItem>
+                        <SelectItem value="poor">{t("poor")}</SelectItem>
+                        <SelectItem value="medium">{t("medium")}</SelectItem>
+                        <SelectItem value="good">{t("good")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="payment-due-filter-main"
+                      checked={paymentDueFilter}
+                      onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
+                      data-testid="checkbox-payment-due-main"
+                    />
+                    <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer">
+                      {t("coldChargesDue")}
+                    </Label>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+                  <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
+                  <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
+                  <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
+                    <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{t("all")}</SelectItem>
-                      <SelectItem value="poor">{t("poor")}</SelectItem>
-                      <SelectItem value="medium">{t("medium")}</SelectItem>
-                      <SelectItem value="good">{t("good")}</SelectItem>
+                      <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
+                      <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
+                      <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="payment-due-filter-main"
-                    checked={paymentDueFilter}
-                    onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
-                    data-testid="checkbox-payment-due-main"
-                  />
-                  <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer">
-                    {t("coldChargesDue")}
-                  </Label>
                 </div>
               </div>
               <Button onClick={handleSearch} disabled={isSearching || (qualityFilter === "all" && !paymentDueFilter)} data-testid="button-search-filter">
@@ -454,22 +518,6 @@ export default function SearchEdit() {
           )}
         </Tabs>
       </Card>
-
-      {/* Sort Controls */}
-      <div className="flex items-center gap-2 mb-2">
-        <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-        <Label className="text-sm text-muted-foreground">{t("sortBy")}:</Label>
-        <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-          <SelectTrigger className="w-[220px]" data-testid="select-sort-by">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
-            <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
-            <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
 
       {isSearching || isLoadingInitial ? (
         <div className="space-y-4">
