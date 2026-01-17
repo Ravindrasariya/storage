@@ -67,7 +67,7 @@ export default function SearchEdit() {
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
-  const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "Ration" | "Seed">(savedState?.bagTypeFilter || "all");
+  const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "Ration" | "seed">(savedState?.bagTypeFilter || "all");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -186,7 +186,14 @@ export default function SearchEdit() {
   const summaryTotals = useMemo(() => {
     if (searchResults.length === 0) return null;
     
-    const lotIds = new Set(searchResults.map(lot => lot.id));
+    // Apply bag type filter to search results for summary calculation
+    const filteredResults = bagTypeFilter === "all" 
+      ? searchResults 
+      : searchResults.filter(lot => lot.bagType === bagTypeFilter);
+    
+    if (filteredResults.length === 0) return null;
+    
+    const lotIds = new Set(filteredResults.map(lot => lot.id));
     
     let chargesPaid = 0;
     let chargesDue = 0;
@@ -212,12 +219,12 @@ export default function SearchEdit() {
     }
     
     return {
-      totalBags: searchResults.reduce((sum, lot) => sum + lot.size, 0),
-      remainingBags: searchResults.reduce((sum, lot) => sum + lot.remainingSize, 0),
+      totalBags: filteredResults.reduce((sum, lot) => sum + lot.size, 0),
+      remainingBags: filteredResults.reduce((sum, lot) => sum + lot.remainingSize, 0),
       chargesPaid,
       chargesDue,
     };
-  }, [searchResults, allSalesHistory]);
+  }, [searchResults, allSalesHistory, bagTypeFilter]);
 
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
@@ -376,7 +383,7 @@ export default function SearchEdit() {
           <ToggleGroupItem value="Ration" size="sm" data-testid="toggle-bagtype-ration">
             {t("ration")}
           </ToggleGroupItem>
-          <ToggleGroupItem value="Seed" size="sm" data-testid="toggle-bagtype-seed">
+          <ToggleGroupItem value="seed" size="sm" data-testid="toggle-bagtype-seed">
             {t("seed")}
           </ToggleGroupItem>
         </ToggleGroup>
@@ -592,7 +599,12 @@ export default function SearchEdit() {
       ) : (
         (() => {
           // Use search results if searched, otherwise show initial lots
-          const baseLots = hasSearched ? searchResults : (initialLots || []);
+          const rawLots = hasSearched ? searchResults : (initialLots || []);
+          
+          // Apply bag type filter
+          const baseLots = bagTypeFilter === "all" 
+            ? rawLots 
+            : rawLots.filter(lot => lot.bagType === bagTypeFilter);
           
           // Pre-calculate charges for each lot for sorting and display
           const lotsWithCharges = baseLots.map((lot) => {
