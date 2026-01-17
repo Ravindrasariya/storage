@@ -533,6 +533,30 @@ export default function SearchEdit() {
         </Tabs>
       </Card>
 
+      {hasSearched && summaryTotals && (
+        <Card className="p-4 bg-muted/50">
+          <h3 className="font-semibold mb-3">{t("searchSummary")}</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">{t("totalBags")}</p>
+              <p className="text-lg font-bold" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{t("totalRemainingBags")}</p>
+              <p className="text-lg font-bold" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{t("totalChargesPaid")}</p>
+              <p className="text-lg font-bold text-green-600" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{t("totalChargesDue")}</p>
+              <p className="text-lg font-bold text-red-600" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString()}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {isSearching || isLoadingInitial ? (
         <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
@@ -611,30 +635,6 @@ export default function SearchEdit() {
                     canEdit={canEdit}
                   />
                 ))}
-              
-              {hasSearched && summaryTotals && (
-                <Card className="p-4 bg-muted/50">
-                  <h3 className="font-semibold mb-3">{t("searchSummary")}</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t("totalBags")}</p>
-                      <p className="text-lg font-bold" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t("totalRemainingBags")}</p>
-                      <p className="text-lg font-bold" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t("totalChargesPaid")}</p>
-                      <p className="text-lg font-bold text-green-600" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t("totalChargesDue")}</p>
-                      <p className="text-lg font-bold text-red-600" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
             </div>
           );
         })()
