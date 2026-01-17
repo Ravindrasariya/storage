@@ -230,7 +230,12 @@ export default function SearchEdit() {
       const response = await authFetch(url);
       if (response.ok) {
         const data = await response.json();
-        setSearchResults(data);
+        const sortedData = [...data].sort((a: Lot, b: Lot) => {
+          const lotNoA = parseInt(a.lotNo, 10) || 0;
+          const lotNoB = parseInt(b.lotNo, 10) || 0;
+          return lotNoA - lotNoB;
+        });
+        setSearchResults(sortedData);
       } else {
         setSearchResults([]);
       }
