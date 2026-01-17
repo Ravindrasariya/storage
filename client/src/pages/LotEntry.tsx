@@ -144,6 +144,9 @@ export default function LotEntry() {
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [showVillageSuggestions, setShowVillageSuggestions] = useState(false);
   const [showMobileSuggestions, setShowMobileSuggestions] = useState(false);
+  
+  // State for tracking auto-filled fields (for visual highlight)
+  const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set());
 
   const form = useForm<FarmerData>({
     resolver: zodResolver(farmerSchema),
@@ -306,6 +309,15 @@ export default function LotEntry() {
     setShowNameSuggestions(false);
     setShowVillageSuggestions(false);
     setShowMobileSuggestions(false);
+    
+    // Highlight all auto-filled fields
+    const filledFields = new Set(["farmerName", "village", "tehsil", "district", "state", "contactNumber"]);
+    setAutoFilledFields(filledFields);
+    
+    // Clear highlight after 3 seconds
+    setTimeout(() => {
+      setAutoFilledFields(new Set());
+    }, 3000);
   };
 
   // Check for exact mobile match and auto-fill
@@ -682,6 +694,7 @@ export default function LotEntry() {
                         onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
                         placeholder="Enter farmer name"
                         autoComplete="off"
+                        className={autoFilledFields.has("farmerName") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
                         data-testid="input-farmer-name"
                       />
                     </FormControl>
@@ -727,6 +740,7 @@ export default function LotEntry() {
                         placeholder="Enter 10-digit number"
                         maxLength={10}
                         autoComplete="off"
+                        className={autoFilledFields.has("contactNumber") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
                         data-testid="input-contact"
                       />
                     </FormControl>
@@ -767,6 +781,7 @@ export default function LotEntry() {
                         onBlur={() => setTimeout(() => setShowVillageSuggestions(false), 200)}
                         placeholder="Enter village"
                         autoComplete="off"
+                        className={autoFilledFields.has("village") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
                         data-testid="input-village"
                       />
                     </FormControl>
@@ -801,6 +816,7 @@ export default function LotEntry() {
                         {...field}
                         onChange={(e) => field.onChange(capitalizeFirstLetter(e.target.value))}
                         placeholder="Enter tehsil"
+                        className={autoFilledFields.has("tehsil") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
                         data-testid="input-tehsil"
                       />
                     </FormControl>
@@ -816,7 +832,10 @@ export default function LotEntry() {
                     <FormLabel>{t("district")} *</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-district">
+                        <SelectTrigger 
+                          className={autoFilledFields.has("district") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
+                          data-testid="select-district"
+                        >
                           <SelectValue placeholder="Select district" />
                         </SelectTrigger>
                       </FormControl>
@@ -842,7 +861,10 @@ export default function LotEntry() {
                     <FormLabel>{t("state")} *</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-state">
+                        <SelectTrigger 
+                          className={autoFilledFields.has("state") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
+                          data-testid="select-state"
+                        >
                           <SelectValue placeholder="Select state" />
                         </SelectTrigger>
                       </FormControl>
