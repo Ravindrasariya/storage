@@ -91,7 +91,7 @@ const defaultLotData: LotData = {
   type: "",
   bagType: "wafer",
   chamberId: "",
-  floor: 1,
+  floor: 0,
   position: "",
   quality: "medium",
   potatoSize: "large",
@@ -421,14 +421,6 @@ export default function LotEntry() {
       }
       if (!lot.type) {
         toast({ title: t("error"), description: `Lot ${i + 1}: Type is required`, variant: "destructive" });
-        return false;
-      }
-      if (!lot.chamberId) {
-        toast({ title: t("error"), description: `Lot ${i + 1}: Chamber is required`, variant: "destructive" });
-        return false;
-      }
-      if (!lot.position) {
-        toast({ title: t("error"), description: `Lot ${i + 1}: Position is required`, variant: "destructive" });
         return false;
       }
     }
