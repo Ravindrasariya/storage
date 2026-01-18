@@ -335,13 +335,18 @@ export default function StockRegister() {
       }
     }
     
-    // Calculate expected cold charges = sum of (lot.size × rate per bag)
+    // Calculate expected cold charges based on charge unit mode
     const expectedColdCharges = filteredResults.reduce((sum, lot) => {
       const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
       const rate = useWaferRate 
         ? (coldStorage?.waferRate || 0) 
         : (coldStorage?.seedRate || 0);
-      return sum + (lot.size * rate);
+      // For quintal mode: use netWeight (if not set, contribute 0)
+      // For bag mode: use lot.size × rate
+      const lotCharge = coldStorage?.chargeUnit === "quintal"
+        ? (lot.netWeight ? lot.netWeight * rate : 0)
+        : lot.size * rate;
+      return sum + lotCharge;
     }, 0);
     
     return {
@@ -985,12 +990,16 @@ export default function StockRegister() {
                 }
               }
             }
-            // Calculate expected cold charge = original bags × rate (Ration uses wafer rates)
+            // Calculate expected cold charge based on charge unit mode
             const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
             const rate = useWaferRate 
               ? (coldStorage?.waferRate || 0) 
               : (coldStorage?.seedRate || 0);
-            const expectedColdCharge = lot.size * rate;
+            // For quintal mode: use netWeight (if not set, expectedColdCharge is 0)
+            // For bag mode: use lot.size × rate
+            const expectedColdCharge = coldStorage?.chargeUnit === "quintal"
+              ? (lot.netWeight ? lot.netWeight * rate : 0)
+              : lot.size * rate;
             return { lot, lotPaidCharge, lotDueCharge, expectedColdCharge };
           });
           
