@@ -204,7 +204,8 @@ export const exitHistory = pgTable("exit_history", {
 export const cashReceipts = pgTable("cash_receipts", {
   id: varchar("id").primaryKey(),
   coldStorageId: varchar("cold_storage_id").notNull(),
-  buyerName: text("buyer_name").notNull(),
+  payerType: text("payer_type").notNull().default("cold_merchant"), // 'cold_merchant', 'sales_goods', 'kata', 'others'
+  buyerName: text("buyer_name"), // Required for cold_merchant, sales_goods, others; null for kata
   receiptType: text("receipt_type").notNull(), // 'cash' or 'account'
   accountType: text("account_type"), // 'limit' or 'current' - only when receiptType is 'account'
   amount: real("amount").notNull(),
