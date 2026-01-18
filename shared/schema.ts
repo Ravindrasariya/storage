@@ -387,6 +387,8 @@ export interface SaleLotInfo {
   rate: number;
   coldCharge: number; // Cold storage charge per bag
   hammali: number; // Hammali charge per bag
+  netWeight: number | null; // Net weight in quintals (for quintal-based charging)
+  chargeUnit: string; // "bag" or "quintal"
 }
 
 // Dashboard stats type

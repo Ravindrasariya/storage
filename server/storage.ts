@@ -603,6 +603,8 @@ export class DatabaseStorage implements IStorage {
           rate,
           coldCharge,
           hammali,
+          netWeight: lot.netWeight,
+          chargeUnit: coldStorage?.chargeUnit || "bag",
         };
       })
       .sort((a, b) => parseInt(a.lotNo, 10) - parseInt(b.lotNo, 10));

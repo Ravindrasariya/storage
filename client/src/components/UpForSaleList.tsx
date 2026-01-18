@@ -297,13 +297,28 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const calculateBaseCharge = (lot: SaleLotInfo, quantity?: number) => {
     const qty = quantity ?? lot.remainingSize;
     const rate = getEditableRate(lot);
+    
+    // For quintal mode: (Initial Net Weight × Remaining Bags × Rate) / Original Bags
+    // For bag mode: Remaining Bags × Rate
+    if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
+      return (lot.netWeight * qty * rate) / lot.originalSize;
+    }
     return rate * qty;
   };
 
   const calculateTotalCharge = (lot: SaleLotInfo, quantity?: number, customRate?: number) => {
     const qty = quantity ?? lot.remainingSize;
     const rate = customRate ?? getEditableRate(lot);
-    const baseCharge = rate * qty;
+    
+    // For quintal mode: (Initial Net Weight × Qty × Rate) / Original Bags
+    // For bag mode: Qty × Rate
+    let baseCharge: number;
+    if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
+      baseCharge = (lot.netWeight * qty * rate) / lot.originalSize;
+    } else {
+      baseCharge = rate * qty;
+    }
+    
     const kata = parseFloat(kataCharges) || 0;
     const extraHammali = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * qty : 0;
     const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
@@ -392,12 +407,22 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 
                 <div className="text-sm">
                   <span className="text-muted-foreground">{t("storageCharge")}: </span>
-                  <span className="font-medium text-chart-2">
-                    <Currency amount={calculateBaseCharge(lot)} />
-                  </span>
-                  <span className="text-muted-foreground text-xs ml-1">
-                    ({lot.remainingSize} x <Currency amount={lot.rate} />)
-                  </span>
+                  {lot.chargeUnit === "quintal" && !lot.netWeight ? (
+                    <span className="text-muted-foreground">-</span>
+                  ) : (
+                    <>
+                      <span className="font-medium text-chart-2">
+                        <Currency amount={calculateBaseCharge(lot)} />
+                      </span>
+                      <span className="text-muted-foreground text-xs ml-1">
+                        {lot.chargeUnit === "quintal" && lot.netWeight ? (
+                          <>({lot.netWeight} Qtl × {lot.remainingSize} × <Currency amount={lot.rate} />) / {lot.originalSize}</>
+                        ) : (
+                          <>({lot.remainingSize} x <Currency amount={lot.rate} />)</>
+                        )}
+                      </span>
+                    </>
+                  )}
                 </div>
                 
                 <div className="flex gap-2 flex-wrap">
