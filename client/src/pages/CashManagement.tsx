@@ -51,8 +51,13 @@ export default function CashManagement() {
   const [expenseDate, setExpenseDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [expenseRemarks, setExpenseRemarks] = useState("");
 
+  const [filterTransactionType, setFilterTransactionType] = useState<"all" | "inward" | "expense">("all");
+  const [filterPaymentMode, setFilterPaymentMode] = useState<string>("");
+  const [filterPayerType, setFilterPayerType] = useState<string>("");
   const [filterBuyer, setFilterBuyer] = useState<string>("");
-  const [filterCategory, setFilterCategory] = useState<string>("");
+  const [filterBuyerSearch, setFilterBuyerSearch] = useState<string>("");
+  const [filterExpenseType, setFilterExpenseType] = useState<string>("");
+  const [filterRemarks, setFilterRemarks] = useState<string>("");
   const [filterMonth, setFilterMonth] = useState<string>("");
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionItem | null>(null);
 
