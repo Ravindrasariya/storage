@@ -89,6 +89,7 @@ export default function StockRegister() {
     floor: number;
     position: string;
     quality: string;
+    netWeight?: number;
   } | null>(null);
 
   // Autocomplete state for search fields
@@ -118,6 +119,11 @@ export default function StockRegister() {
   type ColdStorageSettings = {
     waferRate: number;
     seedRate: number;
+    waferColdCharge: number;
+    waferHammali: number;
+    seedColdCharge: number;
+    seedHammali: number;
+    chargeUnit: "bag" | "quintal";
   };
   const { data: coldStorage } = useQuery<ColdStorageSettings>({
     queryKey: ["/api/cold-storage"],
@@ -497,6 +503,7 @@ export default function StockRegister() {
       floor: lot.floor,
       position: lot.position || "",
       quality: lot.quality,
+      netWeight: lot.netWeight || undefined,
     });
 
     try {
@@ -1189,7 +1196,45 @@ export default function StockRegister() {
                     </SelectContent>
                   </Select>
                 </div>
+                {coldStorage?.chargeUnit === "quintal" && (
+                  <div className="space-y-2">
+                    <Label>{t("netWeightQtl")}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      placeholder="0.00"
+                      value={editForm.netWeight === undefined || editForm.netWeight === 0 ? "" : editForm.netWeight}
+                      onChange={(e) => setEditForm({ ...editForm, netWeight: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
+                      data-testid="input-edit-net-weight"
+                    />
+                  </div>
+                )}
               </div>
+              {coldStorage?.chargeUnit === "quintal" && editForm.netWeight && editForm.netWeight > 0 && selectedLot && (
+                <div className="mt-4 p-3 bg-muted rounded-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{t("expectedCharge")}:</span>
+                    <span className="font-semibold">
+                      <Currency 
+                        amount={
+                          (editForm.netWeight * (
+                            selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration"
+                              ? (coldStorage.waferColdCharge + coldStorage.waferHammali)
+                              : (coldStorage.seedColdCharge + coldStorage.seedHammali)
+                          )) / 100
+                        } 
+                      />
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ({editForm.netWeight} × {selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
+                      ? (coldStorage.waferColdCharge + coldStorage.waferHammali) 
+                      : (coldStorage.seedColdCharge + coldStorage.seedHammali)
+                    }) ÷ 100
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1232,6 +1277,7 @@ export default function StockRegister() {
                         floor: updatedLot.floor,
                         position: updatedLot.position || "",
                         quality: updatedLot.quality,
+                        netWeight: updatedLot.netWeight || undefined,
                       });
                     }
                     const historyResponse = await authFetch(`/api/lots/${selectedLot.id}/history`);

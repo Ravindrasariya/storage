@@ -50,6 +50,7 @@ interface ColdStorageSettings {
   waferHammali: number;
   seedColdCharge: number;
   seedHammali: number;
+  chargeUnit: "bag" | "quintal";
 }
 
 const farmerSchema = z.object({
@@ -65,6 +66,7 @@ type FarmerData = z.infer<typeof farmerSchema>;
 
 interface LotData {
   size: number;
+  netWeight?: number;
   type: string;
   bagType: "wafer" | "seed" | "Ration";
   chamberId: string;
@@ -81,6 +83,7 @@ interface LotData {
 
 const defaultLotData: LotData = {
   size: 1,
+  netWeight: undefined,
   type: "",
   bagType: "wafer",
   chamberId: "",
@@ -753,7 +756,7 @@ export default function LotEntry() {
                   <Package className="h-4 w-4 text-chart-2" />
                   <h3 className="font-semibold">{t("lotInformation")}</h3>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className={`grid grid-cols-1 gap-4 ${coldStorage?.chargeUnit === "quintal" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                   <div>
                     <label className="text-sm font-medium">{t("lotNo")}</label>
                     <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center text-muted-foreground">
@@ -770,6 +773,20 @@ export default function LotEntry() {
                       data-testid={`input-size-${index}`}
                     />
                   </div>
+                  {coldStorage?.chargeUnit === "quintal" && (
+                    <div>
+                      <label className="text-sm font-medium">{t("netWeightQtl")}</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="0.00"
+                        value={lot.netWeight === undefined || lot.netWeight === 0 ? "" : lot.netWeight}
+                        onChange={(e) => updateLot(index, "netWeight", e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                        data-testid={`input-net-weight-${index}`}
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="text-sm font-medium">{t("type")} *</label>
                     <Select value={lot.type} onValueChange={(v) => updateLot(index, "type", v)}>

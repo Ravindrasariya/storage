@@ -80,6 +80,7 @@ export const lots = pgTable("lots", {
   lotNo: text("lot_no").notNull(), // String representation of entrySequence (for backward compat)
   entrySequence: integer("entry_sequence"), // Unified lot/receipt/bill number (auto-assigned)
   size: integer("size").notNull(), // Original lot size (bags)
+  netWeight: real("net_weight"), // Net weight in quintals (for quintal-based charging)
   remainingSize: integer("remaining_size").notNull(), // After partial sales
   chamberId: varchar("chamber_id").notNull(),
   floor: integer("floor").notNull(),

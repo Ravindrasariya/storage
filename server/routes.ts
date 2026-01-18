@@ -290,6 +290,7 @@ export async function registerRoutes(
     }),
     lots: z.array(z.object({
       size: z.number().int().positive(),
+      netWeight: z.number().optional(),
       type: z.string().min(1),
       bagType: z.enum(["wafer", "seed", "Ration"]),
       chamberId: z.string().optional().default(""),
@@ -489,6 +490,8 @@ export async function registerRoutes(
     quality: z.enum(["poor", "medium", "good"]).optional(),
     // Allow upForSale for toggle functionality
     upForSale: z.number().int().min(0).max(1).optional(),
+    // Net weight for quintal-based charging
+    netWeight: z.number().optional(),
   });
 
   app.patch("/api/lots/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
