@@ -159,7 +159,7 @@ const translations: Translations = {
   coldChargesDue: { en: "Cold Charges Due", hi: "कोल्ड स्टोरेज शुल्क बाकी" },
   coldChargesPaid: { en: "Cold Charges Paid", hi: "कोल्ड स्टोरेज शुल्क भुगतान" },
   expectedColdCharges: { en: "Expected Cold Charges", hi: "अपेक्षित कोल्ड स्टोरेज शुल्क" },
-  baseColdChargesPaid: { en: "Base Cold Charges Paid", hi: "आधार कोल्ड शुल्क भुगतान हो गया" },
+  baseColdChargesBilled: { en: "Base Cold Charges Billed", hi: "आधार कोल्ड शुल्क बिल हो गया" },
   totalExpectedColdCharges: { en: "Total Expected Cold Charges", hi: "कुल अपेक्षित कोल्ड स्टोरेज शुल्क" },
   markAsPaid: { en: "Mark as Paid", hi: "भुगतान किया चिह्नित करें" },
   markAsDue: { en: "Mark as Due", hi: "बकाया चिह्नित करें" },

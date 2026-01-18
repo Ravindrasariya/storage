@@ -397,7 +397,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       </Badge>
                       {lot.baseColdChargesPaid === 1 && (
                         <Badge variant="outline" className="text-xs bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-400" data-testid={`sale-base-charges-paid-${lot.id}`}>
-                          {t("baseColdChargesPaid")}
+                          {t("baseColdChargesBilled")}
                         </Badge>
                       )}
                     </div>
@@ -634,7 +634,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
                 <div className="text-sm text-muted-foreground mt-1 space-y-1">
                   {selectedLot.baseColdChargesPaid === 1 ? (
-                    <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesPaid")} - <Currency amount={0} /></div>
+                    <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
                   ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
                     <div>
                       ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableRate(selectedLot)} />) / ({selectedLot.originalSize} × 100) = <Currency amount={calculateBaseCharge(selectedLot)} />
@@ -960,7 +960,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   </div>
                   <div className="text-sm text-muted-foreground mt-1 space-y-1">
                     {selectedLot.baseColdChargesPaid === 1 ? (
-                      <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesPaid")} - <Currency amount={0} /></div>
+                      <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
                     ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
                       <div>
                         ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, partialQuantity)} × <Currency amount={getEditableRate(selectedLot)} />) / ({selectedLot.originalSize} × 100) = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} />

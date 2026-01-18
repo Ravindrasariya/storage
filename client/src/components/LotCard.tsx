@@ -102,7 +102,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
                 data-testid={`badge-base-charges-paid-${lot.id}`}
               >
                 <CheckCircle className="h-3 w-3 mr-1" />
-                {t("baseColdChargesPaid")}
+                {t("baseColdChargesBilled")}
               </Badge>
             )}
           </div>
