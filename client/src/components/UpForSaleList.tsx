@@ -225,9 +225,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         ? calculateTotalCharge(selectedLot, partialQuantity) 
         : calculateTotalCharge(selectedLot);
       
-      // Calculate extra charges using charge basis quantity
+      // Extra hammali and grading always use actual bags being sold (not charge basis)
       const kata = parseFloat(kataCharges) || 0;
-      const extraHammaliTotal = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * chargeQty : 0;
+      const extraHammaliTotal = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
       const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
       
       let paidAmount: number | undefined;
@@ -334,7 +334,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     }
     
     const kata = parseFloat(kataCharges) || 0;
-    const extraHammali = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * chargeQty : 0;
+    // Extra hammali and grading always use actual bags being sold (not charge basis)
+    const extraHammali = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
     const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
     return baseCharge + kata + extraHammali + grading;
   };
@@ -632,7 +633,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
                   )}
                   {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                    <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * getChargeQuantity(selectedLot, selectedLot.remainingSize)} /> ({getChargeQuantity(selectedLot, selectedLot.remainingSize)} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
+                    <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /> ({selectedLot.remainingSize} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
                   )}
                   {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
                     <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
@@ -956,7 +957,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
                     )}
                     {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                      <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * getChargeQuantity(selectedLot, partialQuantity)} /> ({getChargeQuantity(selectedLot, partialQuantity)} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
+                      <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /> ({partialQuantity} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
                     )}
                     {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
                       <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
