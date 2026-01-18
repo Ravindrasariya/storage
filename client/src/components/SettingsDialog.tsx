@@ -655,7 +655,7 @@ export function SettingsDialog() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>{t("Ration")}/{t("seed")} {t("lotNumber") || "Lot #"}</Label>
+                <Label>{t("ration")}/{t("seed")} {t("lotNumber") || "Lot #"}</Label>
                 <Input
                   type="number"
                   min={1}
