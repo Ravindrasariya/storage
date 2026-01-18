@@ -23,6 +23,8 @@ export const coldStorages = pgTable("cold_storages", {
   nextColdStorageBillNumber: integer("next_cold_storage_bill_number").notNull().default(1), // Counter for cold storage deduction bills
   nextSalesBillNumber: integer("next_sales_bill_number").notNull().default(1), // Counter for sales bills
   nextEntryBillNumber: integer("next_entry_bill_number").notNull().default(1), // Counter for lot entry receipts
+  nextWaferLotNumber: integer("next_wafer_lot_number").notNull().default(1), // Counter for wafer lot numbers
+  nextRationSeedLotNumber: integer("next_ration_seed_lot_number").notNull().default(1), // Counter for ration/seed lot numbers
 });
 
 // Cold Storage Users - users who can access a cold storage
