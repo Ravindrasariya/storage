@@ -1218,20 +1218,20 @@ export default function StockRegister() {
                     <span className="font-semibold">
                       <Currency 
                         amount={
-                          (editForm.netWeight * (
+                          editForm.netWeight * (
                             selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration"
                               ? (coldStorage.waferColdCharge + coldStorage.waferHammali)
                               : (coldStorage.seedColdCharge + coldStorage.seedHammali)
-                          )) / 100
+                          )
                         } 
                       />
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    ({editForm.netWeight} × {selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
+                    {editForm.netWeight} × {selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
                       ? (coldStorage.waferColdCharge + coldStorage.waferHammali) 
                       : (coldStorage.seedColdCharge + coldStorage.seedHammali)
-                    }) ÷ 100
+                    }
                   </p>
                 </div>
               )}
