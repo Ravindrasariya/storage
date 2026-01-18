@@ -117,6 +117,7 @@ export interface IStorage {
   // Cash Receipts
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
   getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
+  getSalesGoodsBuyers(coldStorageId: string): Promise<string[]>;
   createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
   // Expenses
   getExpenses(coldStorageId: string): Promise<Expense[]>;
@@ -1505,6 +1506,32 @@ export class DatabaseStorage implements IStorage {
       .from(cashReceipts)
       .where(eq(cashReceipts.coldStorageId, coldStorageId))
       .orderBy(desc(cashReceipts.receivedAt));
+  }
+
+  async getSalesGoodsBuyers(coldStorageId: string): Promise<string[]> {
+    // Get distinct buyer names from cash receipts where payerType is 'sales_goods'
+    const receipts = await db.select({ buyerName: cashReceipts.buyerName })
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.payerType, "sales_goods"),
+        sql`${cashReceipts.buyerName} IS NOT NULL`
+      ));
+    
+    // Get unique buyer names (case-insensitive)
+    const uniqueNames = new Map<string, string>();
+    for (const r of receipts) {
+      if (r.buyerName) {
+        const trimmed = r.buyerName.trim();
+        if (trimmed && !uniqueNames.has(trimmed.toLowerCase())) {
+          uniqueNames.set(trimmed.toLowerCase(), trimmed);
+        }
+      }
+    }
+    
+    return Array.from(uniqueNames.values()).sort((a, b) => 
+      a.toLowerCase().localeCompare(b.toLowerCase())
+    );
   }
 
   async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {

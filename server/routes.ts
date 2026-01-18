@@ -1404,8 +1404,20 @@ export async function registerRoutes(
     }
   });
 
+  // Get distinct buyer names for Sales of Goods payer type (for autocomplete)
+  app.get("/api/cash-receipts/sales-goods-buyers", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const buyers = await storage.getSalesGoodsBuyers(coldStorageId);
+      res.json(buyers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sales of goods buyers" });
+    }
+  });
+
   const createCashReceiptSchema = z.object({
-    buyerName: z.string().min(1),
+    payerType: z.enum(["cold_merchant", "sales_goods", "kata", "others"]),
+    buyerName: z.string().optional(),
     receiptType: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
     amount: z.number().positive(),
@@ -1414,6 +1426,9 @@ export async function registerRoutes(
   }).refine(
     (data) => data.receiptType !== "account" || data.accountType !== undefined,
     { message: "Account type is required when receipt type is account", path: ["accountType"] }
+  ).refine(
+    (data) => data.payerType === "kata" || (data.buyerName && data.buyerName.trim().length > 0),
+    { message: "Buyer name is required for this payer type", path: ["buyerName"] }
   );
 
   app.post("/api/cash-receipts", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -1422,7 +1437,8 @@ export async function registerRoutes(
       const validatedData = createCashReceiptSchema.parse(req.body);
       const result = await storage.createCashReceiptWithFIFO({
         coldStorageId: coldStorageId,
-        buyerName: validatedData.buyerName,
+        payerType: validatedData.payerType,
+        buyerName: validatedData.payerType === "kata" ? null : (validatedData.buyerName || null),
         receiptType: validatedData.receiptType,
         accountType: validatedData.accountType || null,
         amount: validatedData.amount,
