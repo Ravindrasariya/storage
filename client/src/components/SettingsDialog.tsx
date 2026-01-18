@@ -310,6 +310,8 @@ export function SettingsDialog() {
     if (!settings) return;
 
     try {
+      // When starting lot numbers are changed, also update the current lot counters
+      // so the preview shows the new starting numbers immediately
       await updateSettingsMutation.mutateAsync({
         totalCapacity: settings.totalCapacity,
         waferRate: (settings.waferColdCharge || 0) + (settings.waferHammali || 0),
@@ -320,7 +322,11 @@ export function SettingsDialog() {
         seedHammali: settings.seedHammali,
         startingWaferLotNumber: settings.startingWaferLotNumber || 1,
         startingRationSeedLotNumber: settings.startingRationSeedLotNumber || 1,
+        nextWaferLotNumber: settings.startingWaferLotNumber || 1,
+        nextRationSeedLotNumber: settings.startingRationSeedLotNumber || 1,
       });
+      // Invalidate lot entry sequence preview
+      queryClient.invalidateQueries({ queryKey: ["/api/next-entry-sequence"] });
 
       for (const chamber of chamberEdits) {
         const original = chambers?.find((c) => c.id === chamber.id);
