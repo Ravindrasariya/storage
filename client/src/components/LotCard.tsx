@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Edit, Phone, MapPin, Package, Layers, ShoppingCart, CheckCircle, Clock, Receipt, Printer } from "lucide-react";
 import type { Lot } from "@shared/schema";
+import { Currency } from "@/components/Currency";
 
 interface LotCardProps {
   lot: Lot;
@@ -136,13 +137,13 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
             <div>
               <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
               <span className="font-bold text-green-600 dark:text-green-400">
-                Rs. {paidCharge.toLocaleString()}
+                <Currency amount={paidCharge} />
               </span>
             </div>
             <div>
               <span className="text-muted-foreground">{t("coldChargesDue")}: </span>
               <span className="font-bold text-amber-600 dark:text-amber-400">
-                Rs. {dueCharge.toLocaleString()}
+                <Currency amount={dueCharge} />
               </span>
             </div>
           </div>

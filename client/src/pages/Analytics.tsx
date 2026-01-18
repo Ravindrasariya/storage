@@ -11,6 +11,7 @@ import { QualityChart } from "@/components/QualityChart";
 import { QualitySummaryCards } from "@/components/QualitySummaryCards";
 import { ArrowLeft, BarChart3, Clock, IndianRupee, Calendar, Users, Package, Wallet, HandCoins, Ruler } from "lucide-react";
 import type { QualityStats, PaymentStats, MerchantStats } from "@shared/schema";
+import { Currency } from "@/components/Currency";
 
 export default function Analytics() {
   const { t } = useI18n();
@@ -135,7 +136,7 @@ export default function Analytics() {
             <div className="flex-1 min-w-0">
               <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalColdStorageCharges")}</p>
               <p className="text-base sm:text-lg font-bold" data-testid="text-total-charges">
-                Rs. {((paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)).toLocaleString()}
+                <Currency amount={(paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)} />
               </p>
               <p className="text-xs text-muted-foreground">
                 {(paymentStats?.paidCount || 0) + (paymentStats?.dueCount || 0)} {t("soldLots")}
@@ -152,7 +153,7 @@ export default function Analytics() {
             <div className="flex-1 min-w-0">
               <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalPaid")}</p>
               <p className="text-base sm:text-lg font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
-                Rs. {(paymentStats?.totalPaid || 0).toLocaleString()}
+                <Currency amount={paymentStats?.totalPaid || 0} />
               </p>
               <p className="text-xs text-muted-foreground">
                 {paymentStats?.paidCount || 0} {t("lots")}
@@ -169,7 +170,7 @@ export default function Analytics() {
             <div className="flex-1 min-w-0">
               <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalDue")}</p>
               <p className="text-base sm:text-lg font-bold text-amber-600 dark:text-amber-400" data-testid="text-total-due">
-                Rs. {(paymentStats?.totalDue || 0).toLocaleString()}
+                <Currency amount={paymentStats?.totalDue || 0} />
               </p>
               <p className="text-xs text-muted-foreground">
                 {paymentStats?.dueCount || 0} {t("lots")}
@@ -186,7 +187,7 @@ export default function Analytics() {
             <div className="flex-1 min-w-0">
               <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalHammali")}</p>
               <p className="text-base sm:text-lg font-bold text-purple-600 dark:text-purple-400" data-testid="text-total-hammali">
-                Rs. {(paymentStats?.totalHammali || 0).toLocaleString()}
+                <Currency amount={paymentStats?.totalHammali || 0} />
               </p>
             </div>
           </div>
@@ -200,7 +201,7 @@ export default function Analytics() {
             <div className="flex-1 min-w-0">
               <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalGradingCharges")}</p>
               <p className="text-base sm:text-lg font-bold text-cyan-600 dark:text-cyan-400" data-testid="text-total-grading">
-                Rs. {(paymentStats?.totalGradingCharges || 0).toLocaleString()}
+                <Currency amount={paymentStats?.totalGradingCharges || 0} />
               </p>
             </div>
           </div>
@@ -251,7 +252,7 @@ export default function Analytics() {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalValueINR")}</p>
                   <p className="text-base sm:text-lg font-bold text-indigo-600 dark:text-indigo-400" data-testid="text-total-value">
-                    Rs. {(selectedMerchantData?.totalValue || 0).toLocaleString()}
+                    <Currency amount={selectedMerchantData?.totalValue || 0} />
                   </p>
                 </div>
               </div>
@@ -265,11 +266,11 @@ export default function Analytics() {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalChargesPaidMerchant")}</p>
                   <p className="text-base sm:text-lg font-bold text-green-600 dark:text-green-400" data-testid="text-merchant-paid">
-                    Rs. {(selectedMerchantData?.totalChargePaid || 0).toLocaleString()}
+                    <Currency amount={selectedMerchantData?.totalChargePaid || 0} />
                   </p>
                   <div className="flex flex-wrap gap-2 sm:gap-3 mt-1 sm:mt-2 text-xs">
-                    <span className="text-emerald-600 dark:text-emerald-400" data-testid="text-merchant-cash">{t("cash")}: Rs. {(selectedMerchantData?.cashPaid || 0).toLocaleString()}</span>
-                    <span className="text-blue-600 dark:text-blue-400" data-testid="text-merchant-account">{t("account")}: Rs. {(selectedMerchantData?.accountPaid || 0).toLocaleString()}</span>
+                    <span className="text-emerald-600 dark:text-emerald-400" data-testid="text-merchant-cash">{t("cash")}: <Currency amount={selectedMerchantData?.cashPaid || 0} /></span>
+                    <span className="text-blue-600 dark:text-blue-400" data-testid="text-merchant-account">{t("account")}: <Currency amount={selectedMerchantData?.accountPaid || 0} /></span>
                   </div>
                 </div>
               </div>
@@ -283,7 +284,7 @@ export default function Analytics() {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalChargesDueMerchant")}</p>
                   <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400" data-testid="text-merchant-due">
-                    Rs. {(selectedMerchantData?.totalChargeDue || 0).toLocaleString()}
+                    <Currency amount={selectedMerchantData?.totalChargeDue || 0} />
                   </p>
                 </div>
               </div>

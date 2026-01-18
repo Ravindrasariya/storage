@@ -2,6 +2,7 @@ import { useI18n } from "@/lib/i18n";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Currency } from "@/components/Currency";
 import { format } from "date-fns";
 import { Undo2, ArrowRight } from "lucide-react";
 import type { LotEditHistory } from "@shared/schema";
@@ -119,16 +120,16 @@ export function EditHistoryAccordion({ history, onReverse }: EditHistoryAccordio
                     </div>
                     <div>
                       <p className="text-muted-foreground">{t("pricePerBag")}</p>
-                      <p className="font-medium">Rs. {entry.pricePerBag}</p>
+                      <p className="font-medium"><Currency amount={entry.pricePerBag || 0} /></p>
                       {entry.coldCharge != null && entry.hammali != null && (
                         <p className="text-xs text-muted-foreground">
-                          Rs.{entry.coldCharge} ({t("coldStorageCharge")}) + Rs.{entry.hammali} ({t("hammali")})
+                          <Currency amount={entry.coldCharge} /> ({t("coldStorageCharge")}) + <Currency amount={entry.hammali} /> ({t("hammali")})
                         </p>
                       )}
                     </div>
                     <div>
                       <p className="text-muted-foreground">{t("totalPrice")}</p>
-                      <p className="font-medium text-chart-3">Rs. {entry.totalPrice?.toLocaleString()}</p>
+                      <p className="font-medium text-chart-3"><Currency amount={entry.totalPrice || 0} /></p>
                     </div>
                     {entry.buyerName && (
                       <div>
@@ -139,7 +140,7 @@ export function EditHistoryAccordion({ history, onReverse }: EditHistoryAccordio
                     {entry.pricePerKg && (
                       <div>
                         <p className="text-muted-foreground">{t("pricePerKg")}</p>
-                        <p className="font-medium">Rs. {entry.pricePerKg}/kg</p>
+                        <p className="font-medium"><Currency amount={entry.pricePerKg} />/kg</p>
                       </div>
                     )}
                     {entry.salePaymentStatus && (

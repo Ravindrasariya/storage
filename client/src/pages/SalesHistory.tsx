@@ -17,6 +17,7 @@ import { ExitDialog } from "@/components/ExitDialog";
 import type { SalesHistory } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
+import { Currency } from "@/components/Currency";
 
 type FarmerRecord = {
   farmerName: string;
@@ -395,7 +396,7 @@ export default function SalesHistoryPage() {
                 <div className="min-w-0">
                   <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("amountPaid")}</p>
                   <p className="text-base lg:text-lg font-bold text-emerald-600 dark:text-emerald-400 truncate" data-testid="text-amount-paid">
-                    ₹{summary.amountPaid.toLocaleString()}
+                    <Currency amount={summary.amountPaid} />
                   </p>
                 </div>
               </div>
@@ -411,7 +412,7 @@ export default function SalesHistoryPage() {
                 <div className="min-w-0">
                   <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("amountDue")}</p>
                   <p className="text-base lg:text-lg font-bold text-amber-600 dark:text-amber-400 truncate" data-testid="text-amount-due">
-                    ₹{summary.amountDue.toLocaleString()}
+                    <Currency amount={summary.amountDue} />
                   </p>
                 </div>
               </div>
@@ -490,11 +491,11 @@ export default function SalesHistoryPage() {
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
                       <TableCell className="text-right font-medium">
-                        Rs. {calculateTotalColdCharges(sale).toLocaleString()}
+                        <Currency amount={calculateTotalColdCharges(sale)} />
                       </TableCell>
                       <TableCell>{sale.buyerName || "-"}</TableCell>
                       <TableCell className="text-right">
-                        {sale.pricePerKg ? `Rs. ${sale.pricePerKg}/kg` : "-"}
+                        {sale.pricePerKg ? <><Currency amount={sale.pricePerKg} />/kg</> : "-"}
                       </TableCell>
                       <TableCell>
                         <Badge 
@@ -505,7 +506,7 @@ export default function SalesHistoryPage() {
                         </Badge>
                         {sale.paymentStatus === "partial" && (
                           <div className="text-xs text-muted-foreground mt-1">
-                            {t("paid")}: Rs. {(sale.paidAmount || 0).toLocaleString()}
+                            {t("paid")}: <Currency amount={sale.paidAmount || 0} />
                           </div>
                         )}
                         {sale.paidAt && (

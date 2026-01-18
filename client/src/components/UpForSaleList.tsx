@@ -26,6 +26,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SaleLotInfo } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
+import { Currency } from "@/components/Currency";
 
 interface UpForSaleListProps {
   saleLots: SaleLotInfo[];
@@ -389,10 +390,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <div className="text-sm">
                   <span className="text-muted-foreground">{t("storageCharge")}: </span>
                   <span className="font-medium text-chart-2">
-                    Rs. {calculateBaseCharge(lot).toLocaleString()}
+                    <Currency amount={calculateBaseCharge(lot)} />
                   </span>
                   <span className="text-muted-foreground text-xs ml-1">
-                    ({lot.remainingSize} x Rs.{lot.rate})
+                    ({lot.remainingSize} x <Currency amount={lot.rate} />)
                   </span>
                 </div>
                 
@@ -470,7 +471,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")}</Label>
                     <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">Rs.</span>
+                      <Currency amount="" showIcon={true} className="text-muted-foreground" />
                       <Input
                         type="number"
                         min={0}
@@ -484,7 +485,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">{t("hammali")}</Label>
                     <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">Rs.</span>
+                      <Currency amount="" showIcon={true} className="text-muted-foreground" />
                       <Input
                         type="number"
                         min={0}
@@ -498,7 +499,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
                 <div className="border-t pt-2 flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold">Rs. {getEditableRate(selectedLot)}/{t("bag")}</span>
+                  <span className="font-bold"><Currency amount={getEditableRate(selectedLot)} />/{t("bag")}</span>
                 </div>
               </div>
 
@@ -558,19 +559,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
                   <span className="text-2xl font-bold text-chart-2">
-                    Rs. {calculateCharge(selectedLot).toLocaleString()}
+                    <Currency amount={calculateCharge(selectedLot)} />
                   </span>
                 </div>
                 <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                  <div>{selectedLot.remainingSize} {t("bags")} x Rs.{getEditableRate(selectedLot)} = Rs. {calculateBaseCharge(selectedLot).toLocaleString()}</div>
+                  <div>{selectedLot.remainingSize} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
                   {(parseFloat(kataCharges) || 0) > 0 && (
-                    <div>+ {t("kataCharges")}: Rs. {parseFloat(kataCharges).toLocaleString()}</div>
+                    <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
                   )}
                   {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                    <div>+ {t("extraHammaliPerBag")}: Rs. {((parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize).toLocaleString()} ({selectedLot.remainingSize} x Rs.{extraHammaliPerBag})</div>
+                    <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /> ({selectedLot.remainingSize} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
                   )}
                   {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                    <div>+ {t("totalGradingCharges")}: Rs. {parseFloat(totalGradingCharges).toLocaleString()}</div>
+                    <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
                   )}
                 </div>
               </div>
@@ -667,7 +668,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")}</Label>
                     <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">Rs.</span>
+                      <Currency amount="" showIcon={true} className="text-muted-foreground" />
                       <Input
                         type="number"
                         min={0}
@@ -681,7 +682,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">{t("hammali")}</Label>
                     <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">Rs.</span>
+                      <Currency amount="" showIcon={true} className="text-muted-foreground" />
                       <Input
                         type="number"
                         min={0}
@@ -695,7 +696,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
                 <div className="border-t pt-2 flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold">Rs. {getEditableRate(selectedLot)}/{t("bag")}</span>
+                  <span className="font-bold"><Currency amount={getEditableRate(selectedLot)} />/{t("bag")}</span>
                 </div>
               </div>
 
@@ -834,19 +835,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
                     <span className="text-2xl font-bold text-chart-2">
-                      Rs. {calculateTotalCharge(selectedLot, partialQuantity).toLocaleString()}
+                      <Currency amount={calculateTotalCharge(selectedLot, partialQuantity)} />
                     </span>
                   </div>
                   <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                    <div>{partialQuantity} {t("bags")} x Rs.{getEditableRate(selectedLot)} = Rs. {(partialQuantity * getEditableRate(selectedLot)).toLocaleString()}</div>
+                    <div>{partialQuantity} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={partialQuantity * getEditableRate(selectedLot)} /></div>
                     {(parseFloat(kataCharges) || 0) > 0 && (
-                      <div>+ {t("kataCharges")}: Rs. {parseFloat(kataCharges).toLocaleString()}</div>
+                      <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
                     )}
                     {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                      <div>+ {t("extraHammaliPerBag")}: Rs. {((parseFloat(extraHammaliPerBag) || 0) * partialQuantity).toLocaleString()} ({partialQuantity} x Rs.{extraHammaliPerBag})</div>
+                      <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /> ({partialQuantity} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
                     )}
                     {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                      <div>+ {t("totalGradingCharges")}: Rs. {parseFloat(totalGradingCharges).toLocaleString()}</div>
+                      <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
                     )}
                   </div>
                 </div>

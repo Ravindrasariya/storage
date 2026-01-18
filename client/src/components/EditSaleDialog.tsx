@@ -15,6 +15,7 @@ import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "luc
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
+import { Currency } from "@/components/Currency";
 
 interface EditSaleDialogProps {
   sale: SalesHistory | null;
@@ -319,7 +320,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     <span className="text-sm font-medium">{t("totalColdStorageCharges")}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold text-chart-2">Rs. {totalCharge.toLocaleString()}</span>
+                    <span className="text-lg font-bold text-chart-2"><Currency amount={totalCharge} /></span>
                     {chargesOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </div>
                 </Button>
@@ -331,7 +332,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     <div className="space-y-1">
                       <Label className="text-xs">{t("coldStorageCharge")}/{t("bag")}</Label>
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input
                           type="number"
                           min={0}
@@ -345,7 +346,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     <div className="space-y-1">
                       <Label className="text-xs">{t("hammali")}/{t("bag")}</Label>
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input
                           type="number"
                           min={0}
@@ -359,7 +360,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     <div className="space-y-1">
                       <Label className="text-xs">{t("kataCharges")}</Label>
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input
                           type="number"
                           min={0}
@@ -373,7 +374,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     <div className="space-y-1">
                       <Label className="text-xs">{t("extraHammaliPerBag")}</Label>
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input
                           type="number"
                           min={0}
@@ -387,7 +388,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     <div className="space-y-1 col-span-2">
                       <Label className="text-xs">{t("totalGradingCharges")}</Label>
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">Rs.</span>
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input
                           type="number"
                           min={0}
@@ -402,12 +403,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                   <div className="text-xs text-muted-foreground pt-2 border-t">
                     <div className="flex justify-between">
                       <span>({getEditableChargeValue(editColdCharge, sale.coldCharge || 0)} + {getEditableChargeValue(editHammali, sale.hammali || 0)}) × {sale.quantitySold} {t("bags")}</span>
-                      <span>= Rs. {((getEditableChargeValue(editColdCharge, sale.coldCharge || 0) + getEditableChargeValue(editHammali, sale.hammali || 0)) * (sale.quantitySold || 0)).toLocaleString()}</span>
+                      <span>= <Currency amount={(getEditableChargeValue(editColdCharge, sale.coldCharge || 0) + getEditableChargeValue(editHammali, sale.hammali || 0)) * (sale.quantitySold || 0)} /></span>
                     </div>
                     {(getEditableChargeValue(editKataCharges, 0) > 0 || getEditableChargeValue(editExtraHammali, 0) > 0 || getEditableChargeValue(editGradingCharges, 0) > 0) && (
                       <div className="flex justify-between">
                         <span>+ {t("surcharges")}</span>
-                        <span>= Rs. {(getEditableChargeValue(editKataCharges, 0) + getEditableChargeValue(editExtraHammali, 0) + getEditableChargeValue(editGradingCharges, 0)).toLocaleString()}</span>
+                        <span>= <Currency amount={getEditableChargeValue(editKataCharges, 0) + getEditableChargeValue(editExtraHammali, 0) + getEditableChargeValue(editGradingCharges, 0)} /></span>
                       </div>
                     )}
                   </div>
@@ -470,11 +471,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 <div className="text-sm space-y-1">
                   <div className="flex justify-between">
                     <span className="text-green-600">{t("paid")}:</span>
-                    <span className="font-medium">Rs. {(sale.paidAmount || 0).toLocaleString()}</span>
+                    <span className="font-medium"><Currency amount={sale.paidAmount || 0} /></span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-amber-600">{t("remaining")}:</span>
-                    <span className="font-medium">Rs. {(sale.dueAmount || 0).toLocaleString()}</span>
+                    <span className="font-medium"><Currency amount={sale.dueAmount || 0} /></span>
                   </div>
                 </div>
               )}
@@ -482,7 +483,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 <div className="text-sm">
                   <div className="flex justify-between">
                     <span className="text-amber-600">{t("totalDue")}:</span>
-                    <span className="font-medium">Rs. {totalCharge.toLocaleString()}</span>
+                    <span className="font-medium"><Currency amount={totalCharge} /></span>
                   </div>
                 </div>
               )}
@@ -490,7 +491,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 <div className="text-sm">
                   <div className="flex justify-between">
                     <span className="text-green-600">{t("totalPaid")}:</span>
-                    <span className="font-medium">Rs. {totalCharge.toLocaleString()}</span>
+                    <span className="font-medium"><Currency amount={totalCharge} /></span>
                   </div>
                 </div>
               )}
