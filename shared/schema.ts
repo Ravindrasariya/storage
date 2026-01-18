@@ -247,6 +247,42 @@ export const cashTransfers = pgTable("cash_transfers", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Opening Balances - start of year cash balances
+export const cashOpeningBalances = pgTable("cash_opening_balances", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  year: integer("year").notNull(),
+  cashInHand: real("cash_in_hand").notNull().default(0),
+  limitBalance: real("limit_balance").notNull().default(0),
+  currentBalance: real("current_balance").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Opening Receivables - outstanding receivables at start of year
+export const openingReceivables = pgTable("opening_receivables", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  year: integer("year").notNull(),
+  payerType: text("payer_type").notNull(), // 'cold_merchant', 'sales_goods', 'kata', 'others'
+  buyerName: text("buyer_name"),
+  dueAmount: real("due_amount").notNull(),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Opening Payables - outstanding payables at start of year
+export const openingPayables = pgTable("opening_payables", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  year: integer("year").notNull(),
+  expenseType: text("expense_type").notNull(), // 'salary', 'hammali', 'grading_charges', 'general_expenses'
+  receiverName: text("receiver_name"),
+  dueAmount: real("due_amount").notNull(),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
@@ -261,6 +297,9 @@ export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id
 export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, createdAt: true, appliedAmount: true, unappliedAmount: true, isReversed: true, reversedAt: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashTransferSchema = createInsertSchema(cashTransfers).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true });
+export const insertCashOpeningBalanceSchema = createInsertSchema(cashOpeningBalances).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOpeningReceivableSchema = createInsertSchema(openingReceivables).omit({ id: true, createdAt: true });
+export const insertOpeningPayableSchema = createInsertSchema(openingPayables).omit({ id: true, createdAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -290,6 +329,12 @@ export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 export type CashTransfer = typeof cashTransfers.$inferSelect;
 export type InsertCashTransfer = z.infer<typeof insertCashTransferSchema>;
+export type CashOpeningBalance = typeof cashOpeningBalances.$inferSelect;
+export type InsertCashOpeningBalance = z.infer<typeof insertCashOpeningBalanceSchema>;
+export type OpeningReceivable = typeof openingReceivables.$inferSelect;
+export type InsertOpeningReceivable = z.infer<typeof insertOpeningReceivableSchema>;
+export type OpeningPayable = typeof openingPayables.$inferSelect;
+export type InsertOpeningPayable = z.infer<typeof insertOpeningPayableSchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({

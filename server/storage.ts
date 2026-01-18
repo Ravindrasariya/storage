@@ -16,6 +16,9 @@ import {
   cashReceipts,
   expenses,
   cashTransfers,
+  cashOpeningBalances,
+  openingReceivables,
+  openingPayables,
   type ColdStorage,
   type InsertColdStorage,
   type ColdStorageUser,
@@ -43,6 +46,12 @@ import {
   type InsertExpense,
   type CashTransfer,
   type InsertCashTransfer,
+  type CashOpeningBalance,
+  type InsertCashOpeningBalance,
+  type OpeningReceivable,
+  type InsertOpeningReceivable,
+  type OpeningPayable,
+  type InsertOpeningPayable,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -165,6 +174,17 @@ export interface IStorage {
   getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]>;
   // Buyer lookup for auto-complete (last 2 years)
   getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string }[]>;
+  // Opening Balances
+  getOpeningBalance(coldStorageId: string, year: number): Promise<CashOpeningBalance | undefined>;
+  upsertOpeningBalance(data: InsertCashOpeningBalance): Promise<CashOpeningBalance>;
+  // Opening Receivables
+  getOpeningReceivables(coldStorageId: string, year: number): Promise<OpeningReceivable[]>;
+  createOpeningReceivable(data: InsertOpeningReceivable): Promise<OpeningReceivable>;
+  deleteOpeningReceivable(id: string): Promise<boolean>;
+  // Opening Payables
+  getOpeningPayables(coldStorageId: string, year: number): Promise<OpeningPayable[]>;
+  createOpeningPayable(data: InsertOpeningPayable): Promise<OpeningPayable>;
+  deleteOpeningPayable(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2455,6 +2475,104 @@ export class DatabaseStorage implements IStorage {
     }
 
     return Array.from(seen.values()).sort((a, b) => a.buyerName.localeCompare(b.buyerName));
+  }
+
+  // Opening Balances
+  async getOpeningBalance(coldStorageId: string, year: number): Promise<CashOpeningBalance | undefined> {
+    const [balance] = await db.select()
+      .from(cashOpeningBalances)
+      .where(
+        and(
+          eq(cashOpeningBalances.coldStorageId, coldStorageId),
+          eq(cashOpeningBalances.year, year)
+        )
+      );
+    return balance;
+  }
+
+  async upsertOpeningBalance(data: InsertCashOpeningBalance): Promise<CashOpeningBalance> {
+    // Check if exists
+    const existing = await this.getOpeningBalance(data.coldStorageId, data.year);
+    if (existing) {
+      // Update
+      const [updated] = await db.update(cashOpeningBalances)
+        .set({
+          cashInHand: data.cashInHand,
+          limitBalance: data.limitBalance,
+          currentBalance: data.currentBalance,
+          updatedAt: new Date(),
+        })
+        .where(eq(cashOpeningBalances.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      // Insert
+      const [created] = await db.insert(cashOpeningBalances)
+        .values({
+          id: randomUUID(),
+          ...data,
+        })
+        .returning();
+      return created;
+    }
+  }
+
+  // Opening Receivables
+  async getOpeningReceivables(coldStorageId: string, year: number): Promise<OpeningReceivable[]> {
+    return db.select()
+      .from(openingReceivables)
+      .where(
+        and(
+          eq(openingReceivables.coldStorageId, coldStorageId),
+          eq(openingReceivables.year, year)
+        )
+      )
+      .orderBy(desc(openingReceivables.createdAt));
+  }
+
+  async createOpeningReceivable(data: InsertOpeningReceivable): Promise<OpeningReceivable> {
+    const [receivable] = await db.insert(openingReceivables)
+      .values({
+        id: randomUUID(),
+        ...data,
+      })
+      .returning();
+    return receivable;
+  }
+
+  async deleteOpeningReceivable(id: string): Promise<boolean> {
+    const result = await db.delete(openingReceivables)
+      .where(eq(openingReceivables.id, id));
+    return true;
+  }
+
+  // Opening Payables
+  async getOpeningPayables(coldStorageId: string, year: number): Promise<OpeningPayable[]> {
+    return db.select()
+      .from(openingPayables)
+      .where(
+        and(
+          eq(openingPayables.coldStorageId, coldStorageId),
+          eq(openingPayables.year, year)
+        )
+      )
+      .orderBy(desc(openingPayables.createdAt));
+  }
+
+  async createOpeningPayable(data: InsertOpeningPayable): Promise<OpeningPayable> {
+    const [payable] = await db.insert(openingPayables)
+      .values({
+        id: randomUUID(),
+        ...data,
+      })
+      .returning();
+    return payable;
+  }
+
+  async deleteOpeningPayable(id: string): Promise<boolean> {
+    const result = await db.delete(openingPayables)
+      .where(eq(openingPayables.id, id));
+    return true;
   }
 }
 
