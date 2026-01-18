@@ -237,12 +237,14 @@ export default function StockRegister() {
 
   // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
-    if (searchResults.length === 0) return null;
+    // Use search results if searched, otherwise use initial lots
+    const baseLots = hasSearched ? searchResults : (initialLots || []);
+    if (baseLots.length === 0) return null;
     
-    // Apply bag type filter to search results for summary calculation
+    // Apply bag type filter for summary calculation
     const filteredResults = bagTypeFilter === "all" 
-      ? searchResults 
-      : searchResults.filter(lot => lot.bagType === bagTypeFilter);
+      ? baseLots 
+      : baseLots.filter(lot => lot.bagType === bagTypeFilter);
     
     if (filteredResults.length === 0) return null;
     
@@ -277,7 +279,7 @@ export default function StockRegister() {
       chargesPaid,
       chargesDue,
     };
-  }, [searchResults, allSalesHistory, bagTypeFilter]);
+  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter]);
 
   // Detect if any filter/search is active
   const isFilterActive = useMemo(() => {
@@ -846,7 +848,7 @@ export default function StockRegister() {
         </Tabs>
       </Card>
 
-      {hasSearched && summaryTotals && (
+      {summaryTotals && (
         <Card className="p-3 bg-muted/50">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
             <h3 className="font-semibold text-xs md:text-sm whitespace-nowrap">{t("searchSummary")}:</h3>
