@@ -34,7 +34,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck, Printer } from "lucide-react";
 import { format } from "date-fns";
 import type { Chamber } from "@shared/schema";
@@ -134,9 +134,7 @@ export default function LotEntry() {
   const { data: nextSequenceData } = useQuery<{ nextSequence: number }>({
     queryKey: ["/api/next-entry-sequence", bagTypeCategory],
     queryFn: async () => {
-      const response = await fetch(`/api/next-entry-sequence?bagTypeCategory=${bagTypeCategory}`, {
-        credentials: 'include'
-      });
+      const response = await authFetch(`/api/next-entry-sequence?bagTypeCategory=${bagTypeCategory}`);
       if (!response.ok) throw new Error('Failed to fetch sequence');
       return response.json();
     },
