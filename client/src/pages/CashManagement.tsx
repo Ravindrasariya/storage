@@ -830,13 +830,13 @@ export default function CashManagement() {
                       <SelectContent>
                       <SelectItem value="limit">
                         <span className="flex items-center gap-2">
-                          <ArrowDownLeft className="h-4 w-4" />
+                          <Building2 className="h-4 w-4" />
                           {t("limitAccount")}
                         </span>
                       </SelectItem>
                       <SelectItem value="current">
                         <span className="flex items-center gap-2">
-                          <ArrowUpRight className="h-4 w-4" />
+                          <Wallet className="h-4 w-4" />
                           {t("currentAccount")}
                         </span>
                       </SelectItem>
