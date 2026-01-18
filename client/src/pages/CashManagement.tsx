@@ -1653,7 +1653,7 @@ export default function CashManagement() {
                             ) : (
                               <ArrowLeftRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-blue-600"}`} />
                             )}
-                            <span className={`font-medium truncate ${isReversed ? "line-through text-gray-500" : ""}`}>
+                            <span className={`text-sm font-medium truncate ${isReversed ? "line-through text-gray-500" : ""}`}>
                               {transaction.type === "inflow" 
                                 ? ((transaction.data as CashReceipt).buyerName || getPayerTypeLabel((transaction.data as CashReceipt).payerType))
                                 : transaction.type === "outflow"
@@ -1663,7 +1663,7 @@ export default function CashManagement() {
                             </span>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className={`font-bold text-base ${
+                            <span className={`font-semibold text-sm ${
                               isReversed 
                                 ? "text-gray-400" 
                                 : transaction.type === "inflow" ? "text-green-600" : transaction.type === "outflow" ? "text-red-600" : "text-blue-600"
