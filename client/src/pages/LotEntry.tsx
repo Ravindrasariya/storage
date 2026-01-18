@@ -443,7 +443,8 @@ export default function LotEntry() {
       setLots([{ ...defaultLotData }]);
       setImagePreviews({});
       
-      navigate("/");
+      // Scroll to top of page
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       // Error handled by mutation onError
     } finally {
@@ -998,7 +999,19 @@ export default function LotEntry() {
               variant="outline"
               onClick={() => {
                 clearSavedData();
-                navigate("/");
+                // Reset form state
+                form.reset({
+                  farmerName: "",
+                  village: "",
+                  tehsil: "",
+                  district: "",
+                  state: "",
+                  contactNumber: "",
+                });
+                setLots([{ ...defaultLotData }]);
+                setImagePreviews({});
+                // Scroll to top of page
+                window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               data-testid="button-cancel"
             >
