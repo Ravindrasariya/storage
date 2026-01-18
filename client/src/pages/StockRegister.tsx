@@ -519,7 +519,7 @@ export default function StockRegister() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -600,7 +600,7 @@ export default function StockRegister() {
           </TabsList>
 
           {searchType === "phone" ? (
-            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3">
               <div className="flex gap-2 flex-1">
                 <div className="relative flex-1">
                   <Input
@@ -638,11 +638,11 @@ export default function StockRegister() {
                   <span className="hidden sm:inline">{t("search")}</span>
                 </Button>
               </div>
-              <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                  <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+                  <SelectTrigger className="w-36" data-testid="select-sort-by">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -665,7 +665,7 @@ export default function StockRegister() {
               </div>
             </div>
           ) : searchType === "farmerName" ? (
-            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3">
               <div className="flex gap-2 flex-1">
                 <div className="relative flex-1">
                   <Input
@@ -723,11 +723,11 @@ export default function StockRegister() {
                   </Button>
                 </div>
               )}
-              <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                  <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+                  <SelectTrigger className="w-36" data-testid="select-sort-by">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -750,7 +750,7 @@ export default function StockRegister() {
               </div>
             </div>
           ) : searchType === "lotNoSize" ? (
-            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3">
               <div className="flex flex-wrap items-center gap-2 flex-1">
                 <Input
                   placeholder={`${t("lotNumber")} (${t("optional")})`}
@@ -774,11 +774,11 @@ export default function StockRegister() {
                   <span className="hidden sm:inline">{t("search")}</span>
                 </Button>
               </div>
-              <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                  <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+                  <SelectTrigger className="w-36" data-testid="select-sort-by">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -801,12 +801,12 @@ export default function StockRegister() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center">
-              <div className="flex flex-wrap items-center gap-4 flex-1">
-                <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3 sm:items-center">
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 flex-1">
+                <div className="flex items-center gap-1">
                   <Label className="text-sm">{t("quality")}:</Label>
                   <Select value={qualityFilter} onValueChange={setQualityFilter}>
-                    <SelectTrigger className="w-32" data-testid="select-quality-filter">
+                    <SelectTrigger className="w-28" data-testid="select-quality-filter">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -817,10 +817,10 @@ export default function StockRegister() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <Label className="text-sm">{t("type")}:</Label>
                   <Select value={potatoTypeFilter} onValueChange={setPotatoTypeFilter}>
-                    <SelectTrigger className="w-32" data-testid="select-potato-type-filter">
+                    <SelectTrigger className="w-28" data-testid="select-potato-type-filter">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -831,27 +831,27 @@ export default function StockRegister() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <Checkbox
                     id="payment-due-filter-main"
                     checked={paymentDueFilter}
                     onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
                     data-testid="checkbox-payment-due-main"
                   />
-                  <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer">
+                  <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer whitespace-nowrap">
                     {t("coldChargesDue")}
                   </Label>
                 </div>
                 <Button onClick={handleSearch} disabled={isSearching || (qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter)} data-testid="button-search-filter">
-                  <Search className="h-4 w-4 sm:mr-2" />
+                  <Search className="h-4 w-4 sm:mr-1" />
                   <span className="hidden sm:inline">{t("search")}</span>
                 </Button>
               </div>
-              <div className="flex items-center gap-2 sm:border-l sm:pl-3">
+              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                  <SelectTrigger className="w-[180px]" data-testid="select-sort-by">
+                  <SelectTrigger className="w-36" data-testid="select-sort-by">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
