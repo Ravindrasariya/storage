@@ -1468,10 +1468,17 @@ export async function registerRoutes(
   const createExpenseSchema = z.object({
     expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses"]),
     paymentMode: z.enum(["cash", "account"]),
+    accountType: z.enum(["limit", "current"]).optional(),
     amount: z.number().positive(),
     paidAt: z.string().transform((val) => new Date(val)),
     remarks: z.string().optional(),
-  });
+  }).refine((data) => {
+    // accountType is required when paymentMode is 'account'
+    if (data.paymentMode === "account" && !data.accountType) {
+      return false;
+    }
+    return true;
+  }, { message: "accountType is required when paymentMode is 'account'" });
 
   app.post("/api/expenses", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
@@ -1481,6 +1488,7 @@ export async function registerRoutes(
         coldStorageId: coldStorageId,
         expenseType: validatedData.expenseType,
         paymentMode: validatedData.paymentMode,
+        accountType: validatedData.paymentMode === "account" ? validatedData.accountType : null,
         amount: validatedData.amount,
         paidAt: validatedData.paidAt,
         remarks: validatedData.remarks || null,
@@ -2242,7 +2250,7 @@ export async function registerRoutes(
         allEntries.push({
           date: new Date(r.receivedAt),
           type: language === "hi" ? "आवक" : "Inward",
-          buyerName: r.buyerName,
+          buyerName: r.buyerName || "",
           expenseType: "", // Not applicable for inward
           mode: r.receiptType === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
           amount: r.amount,

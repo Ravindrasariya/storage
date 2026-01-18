@@ -121,7 +121,7 @@ export default function CashManagement() {
   });
 
   const createExpenseMutation = useMutation({
-    mutationFn: async (data: { expenseType: string; paymentMode: string; amount: number; paidAt: string; remarks?: string }) => {
+    mutationFn: async (data: { expenseType: string; paymentMode: string; accountType?: string; amount: number; paidAt: string; remarks?: string }) => {
       const response = await apiRequest("POST", "/api/expenses", data);
       return response.json();
     },
@@ -271,6 +271,7 @@ export default function CashManagement() {
     createExpenseMutation.mutate({
       expenseType,
       paymentMode: expensePaymentMode,
+      accountType: expensePaymentMode === "account" ? expenseAccountType : undefined,
       amount: parseFloat(expenseAmount),
       paidAt: new Date(expenseDate).toISOString(),
       remarks: expenseRemarks || undefined,
@@ -366,7 +367,7 @@ export default function CashManagement() {
       if (filterPaymentMode === "cash") {
         filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "cash");
       } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
-        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account");
+        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account" && e.accountType === filterPaymentMode);
       }
     }
     
@@ -520,6 +521,14 @@ export default function CashManagement() {
       .filter(e => e.paymentMode === "account")
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     
+    const totalLimitExpenses = activeExpenses
+      .filter(e => e.paymentMode === "account" && e.accountType === "limit")
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    
+    const totalCurrentExpenses = activeExpenses
+      .filter(e => e.paymentMode === "account" && e.accountType === "current")
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    
     // Calculate net transfer impact on each account type
     // Transfers TO an account add, transfers FROM an account subtract
     const cashTransferIn = activeTransfers
@@ -547,8 +556,8 @@ export default function CashManagement() {
     const netCurrentTransfer = currentTransferIn - currentTransferOut;
     
     const cashInHand = totalCashReceived - totalCashExpenses + netCashTransfer;
-    const limitBalance = totalLimitReceived - totalAccountExpenses + netLimitTransfer;
-    const currentBalance = totalCurrentReceived + netCurrentTransfer;
+    const limitBalance = totalLimitReceived - totalLimitExpenses + netLimitTransfer;
+    const currentBalance = totalCurrentReceived - totalCurrentExpenses + netCurrentTransfer;
 
     return {
       totalCashReceived,
@@ -577,7 +586,7 @@ export default function CashManagement() {
         filteredTransfers = filteredTransfers.filter(t => t.fromAccountType === "cash" || t.toAccountType === "cash");
       } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
         filteredReceipts = filteredReceipts.filter(r => r.receiptType === "account" && r.accountType === filterPaymentMode);
-        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account");
+        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account" && e.accountType === filterPaymentMode);
         filteredTransfers = filteredTransfers.filter(t => t.fromAccountType === filterPaymentMode || t.toAccountType === filterPaymentMode);
       }
     }
@@ -1496,8 +1505,12 @@ export default function CashManagement() {
                           {transaction.type !== "transfer" && (
                             <Badge variant="outline" className="text-xs py-0 h-5">
                               {transaction.type === "inflow" 
-                                ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
-                                : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
+                                ? ((transaction.data as CashReceipt).receiptType === "cash" 
+                                    ? t("cash") 
+                                    : `${t("account")} (${(transaction.data as CashReceipt).accountType === "limit" ? t("limitAccount") : t("currentAccount")})`)
+                                : ((transaction.data as Expense).paymentMode === "cash" 
+                                    ? t("cash") 
+                                    : `${t("account")} (${(transaction.data as Expense).accountType === "limit" ? t("limitAccount") : t("currentAccount")})`)
                               }
                             </Badge>
                           )}
@@ -1607,7 +1620,9 @@ export default function CashManagement() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("paymentMode")}:</span>
                       <Badge variant="outline">
-                        {(selectedTransaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account")}
+                        {(selectedTransaction.data as Expense).paymentMode === "cash" 
+                          ? t("cash") 
+                          : `${t("account")} (${(selectedTransaction.data as Expense).accountType === "limit" ? t("limitAccount") : t("currentAccount")})`}
                       </Badge>
                     </div>
                     <div className="flex justify-between">

@@ -224,6 +224,7 @@ export const expenses = pgTable("expenses", {
   coldStorageId: varchar("cold_storage_id").notNull(),
   expenseType: text("expense_type").notNull(), // 'salary', 'hammali', 'grading_charges', 'general_expenses'
   paymentMode: text("payment_mode").notNull(), // 'cash' or 'account'
+  accountType: text("account_type"), // 'limit' or 'current' - only used when paymentMode is 'account'
   amount: real("amount").notNull(),
   paidAt: timestamp("paid_at").notNull(),
   remarks: text("remarks"),
