@@ -198,6 +198,7 @@ const translations: Translations = {
   allExpenseTypes: { en: "All Expense Types", hi: "सभी खर्च प्रकार" },
   searchRemarks: { en: "Search remarks...", hi: "टिप्पणी खोजें..." },
   searchBuyerName: { en: "Search buyer...", hi: "खरीदार खोजें..." },
+  entries: { en: "entries", hi: "प्रविष्टियाँ" },
   cash: { en: "Cash", hi: "नकद" },
   account: { en: "Account Transfer", hi: "खाता ट्रांसफर" },
   amountPaid: { en: "Amount Paid", hi: "भुगतान राशि" },

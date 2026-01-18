@@ -243,31 +243,77 @@ export default function CashManagement() {
   const allTransactions: TransactionItem[] = useMemo(() => {
     // Apply filters to receipts
     let filteredReceipts = receipts;
+    
+    // Payment mode filter for receipts
+    if (filterPaymentMode) {
+      if (filterPaymentMode === "cash") {
+        filteredReceipts = filteredReceipts.filter(r => r.receiptType === "cash");
+      } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
+        filteredReceipts = filteredReceipts.filter(r => r.receiptType === "account" && r.accountType === filterPaymentMode);
+      }
+    }
+    
+    // Payer type filter
+    if (filterPayerType) {
+      filteredReceipts = filteredReceipts.filter(r => r.payerType === filterPayerType);
+    }
+    
+    // Buyer name filter
     if (filterBuyer) {
       const filterKey = filterBuyer.trim().toLowerCase();
       filteredReceipts = filteredReceipts.filter(r => r.buyerName && r.buyerName.trim().toLowerCase() === filterKey);
     }
+    
+    // Month filter for receipts
     if (filterMonth) {
       filteredReceipts = filteredReceipts.filter(r => {
         const date = new Date(r.receivedAt);
         return format(date, "yyyy-MM") === filterMonth;
       });
     }
+    
+    // Remarks filter for receipts
+    if (filterRemarks) {
+      const searchKey = filterRemarks.trim().toLowerCase();
+      filteredReceipts = filteredReceipts.filter(r => r.notes && r.notes.toLowerCase().includes(searchKey));
+    }
 
     // Apply filters to expenses
     let filteredExpenses = expensesList;
-    if (filterCategory) {
-      filteredExpenses = filteredExpenses.filter(e => e.expenseType === filterCategory);
+    
+    // Payment mode filter for expenses
+    if (filterPaymentMode) {
+      if (filterPaymentMode === "cash") {
+        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "cash");
+      } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
+        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account");
+      }
     }
+    
+    // Expense type filter
+    if (filterExpenseType) {
+      filteredExpenses = filteredExpenses.filter(e => e.expenseType === filterExpenseType);
+    }
+    
+    // Month filter for expenses
     if (filterMonth) {
       filteredExpenses = filteredExpenses.filter(e => {
         const date = new Date(e.paidAt);
         return format(date, "yyyy-MM") === filterMonth;
       });
     }
+    
+    // Remarks filter for expenses
+    if (filterRemarks) {
+      const searchKey = filterRemarks.trim().toLowerCase();
+      filteredExpenses = filteredExpenses.filter(e => e.remarks && e.remarks.toLowerCase().includes(searchKey));
+    }
+
+    // Apply transaction type filter
+    const includeInward = filterTransactionType === "all" || filterTransactionType === "inward";
+    const includeExpense = filterTransactionType === "all" || filterTransactionType === "expense";
 
     // Combine and sort descending (latest first)
-    // Use timestamp in milliseconds for reliable sorting, with ID as secondary sort key
     const getTimestamp = (dateStr: string | Date): number => {
       if (dateStr instanceof Date) return dateStr.getTime();
       const parsed = Date.parse(dateStr);
@@ -275,24 +321,22 @@ export default function CashManagement() {
     };
 
     return [
-      ...filteredReceipts.map(r => ({ 
+      ...(includeInward ? filteredReceipts.map(r => ({ 
         type: "inflow" as const, 
         data: r, 
         timestamp: getTimestamp(r.receivedAt)
-      })),
-      ...filteredExpenses.map(e => ({ 
+      })) : []),
+      ...(includeExpense ? filteredExpenses.map(e => ({ 
         type: "outflow" as const, 
         data: e, 
         timestamp: getTimestamp(e.paidAt)
-      })),
+      })) : []),
     ].sort((a, b) => {
-      // Primary sort by timestamp (newest first)
       const timeDiff = b.timestamp - a.timestamp;
       if (timeDiff !== 0) return timeDiff;
-      // Secondary sort by ID (string comparison for UUIDs)
       return String(b.data.id).localeCompare(String(a.data.id));
     });
-  }, [receipts, expensesList, filterBuyer, filterCategory, filterMonth]);
+  }, [receipts, expensesList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
 
   const isLoading = loadingReceipts || loadingExpenses;
 
@@ -325,13 +369,24 @@ export default function CashManagement() {
     return Array.from(months).sort().reverse();
   }, [receipts, expensesList]);
 
-  const hasActiveFilters = filterBuyer || filterCategory || filterMonth;
+  const hasActiveFilters = filterTransactionType !== "all" || filterPaymentMode || filterPayerType || filterBuyer || filterExpenseType || filterRemarks || filterMonth;
 
   const clearFilters = () => {
+    setFilterTransactionType("all");
+    setFilterPaymentMode("");
+    setFilterPayerType("");
     setFilterBuyer("");
-    setFilterCategory("");
+    setFilterBuyerSearch("");
+    setFilterExpenseType("");
+    setFilterRemarks("");
     setFilterMonth("");
   };
+
+  const filteredBuyerOptions = useMemo(() => {
+    if (!filterBuyerSearch) return uniqueBuyers;
+    const search = filterBuyerSearch.toLowerCase();
+    return uniqueBuyers.filter(b => b.toLowerCase().includes(search));
+  }, [uniqueBuyers, filterBuyerSearch]);
 
   const summary = useMemo(() => {
     const activeReceipts = receipts.filter(r => r.isReversed !== 1);
@@ -368,13 +423,28 @@ export default function CashManagement() {
     let filteredReceipts = receipts.filter(r => r.isReversed !== 1);
     let filteredExpenses = expensesList.filter(e => e.isReversed !== 1);
 
+    // Apply same filters as allTransactions
+    if (filterPaymentMode) {
+      if (filterPaymentMode === "cash") {
+        filteredReceipts = filteredReceipts.filter(r => r.receiptType === "cash");
+        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "cash");
+      } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
+        filteredReceipts = filteredReceipts.filter(r => r.receiptType === "account" && r.accountType === filterPaymentMode);
+        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account");
+      }
+    }
+
+    if (filterPayerType) {
+      filteredReceipts = filteredReceipts.filter(r => r.payerType === filterPayerType);
+    }
+
     if (filterBuyer) {
       const filterKey = filterBuyer.trim().toLowerCase();
       filteredReceipts = filteredReceipts.filter(r => r.buyerName && r.buyerName.trim().toLowerCase() === filterKey);
     }
 
-    if (filterCategory) {
-      filteredExpenses = filteredExpenses.filter(e => e.expenseType === filterCategory);
+    if (filterExpenseType) {
+      filteredExpenses = filteredExpenses.filter(e => e.expenseType === filterExpenseType);
     }
 
     if (filterMonth) {
@@ -388,23 +458,24 @@ export default function CashManagement() {
       });
     }
 
-    const buyerCashReceived = filteredReceipts
-      .filter(r => r.receiptType === "cash")
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-    
-    const buyerAccountReceived = filteredReceipts
-      .filter(r => r.receiptType === "account")
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    if (filterRemarks) {
+      const searchKey = filterRemarks.trim().toLowerCase();
+      filteredReceipts = filteredReceipts.filter(r => r.notes && r.notes.toLowerCase().includes(searchKey));
+      filteredExpenses = filteredExpenses.filter(e => e.remarks && e.remarks.toLowerCase().includes(searchKey));
+    }
 
-    const categoryExpenses = filteredExpenses
-      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    // Apply transaction type filter
+    const includeInward = filterTransactionType === "all" || filterTransactionType === "inward";
+    const includeExpense = filterTransactionType === "all" || filterTransactionType === "expense";
+
+    const totalInward = includeInward ? filteredReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0) : 0;
+    const totalExpense = includeExpense ? filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0) : 0;
 
     return {
-      buyerCashReceived,
-      buyerAccountReceived,
-      categoryExpenses,
+      totalInward,
+      totalExpense,
     };
-  }, [receipts, expensesList, filterBuyer, filterCategory, filterMonth]);
+  }, [receipts, expensesList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -498,35 +569,34 @@ export default function CashManagement() {
             )}
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="space-y-3">
+          {/* Row 1: Transaction Type, Payment Mode, Month */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">{t("filterByBuyer")}</Label>
-              <Select value={filterBuyer || "all"} onValueChange={(v) => setFilterBuyer(v === "all" ? "" : v)}>
-                <SelectTrigger data-testid="select-filter-buyer">
-                  <SelectValue placeholder={t("allBuyers")} />
+              <Label className="text-xs">{t("transactionType")}</Label>
+              <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense")}>
+                <SelectTrigger data-testid="select-filter-transaction-type" className="h-8 text-sm">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("allBuyers")}</SelectItem>
-                  {uniqueBuyers.map((buyer) => (
-                    <SelectItem key={buyer} value={buyer}>{buyer}</SelectItem>
-                  ))}
+                  <SelectItem value="all">{t("allTransactions")}</SelectItem>
+                  <SelectItem value="inward">{t("inwardCash")}</SelectItem>
+                  <SelectItem value="expense">{t("expense")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">{t("filterByCategory")}</Label>
-              <Select value={filterCategory || "all"} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
-                <SelectTrigger data-testid="select-filter-category">
-                  <SelectValue placeholder={t("allCategories")} />
+              <Label className="text-xs">{t("filterByPaymentMode")}</Label>
+              <Select value={filterPaymentMode || "all"} onValueChange={(v) => setFilterPaymentMode(v === "all" ? "" : v)}>
+                <SelectTrigger data-testid="select-filter-payment-mode" className="h-8 text-sm">
+                  <SelectValue placeholder={t("allPaymentModes")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("allCategories")}</SelectItem>
-                  <SelectItem value="salary">{t("salary")}</SelectItem>
-                  <SelectItem value="hammali">{t("hammali")}</SelectItem>
-                  <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
-                  <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
+                  <SelectItem value="all">{t("allPaymentModes")}</SelectItem>
+                  <SelectItem value="cash">{t("cash")}</SelectItem>
+                  <SelectItem value="limit">{t("limitAccount")}</SelectItem>
+                  <SelectItem value="current">{t("currentAccount")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -534,14 +604,14 @@ export default function CashManagement() {
             <div className="space-y-1">
               <Label className="text-xs">{t("filterByMonth")}</Label>
               <Select value={filterMonth || "all"} onValueChange={(v) => setFilterMonth(v === "all" ? "" : v)}>
-                <SelectTrigger data-testid="select-filter-month">
+                <SelectTrigger data-testid="select-filter-month" className="h-8 text-sm">
                   <SelectValue placeholder={t("allMonths")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t("allMonths")}</SelectItem>
                   {availableMonths.map((month) => (
                     <SelectItem key={month} value={month}>
-                      {format(new Date(month + "-01"), "MMMM yyyy")}
+                      {format(new Date(month + "-01"), "MMM yyyy")}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -549,28 +619,125 @@ export default function CashManagement() {
             </div>
           </div>
 
-          {hasActiveFilters && (
-            <div className="mt-4 p-3 bg-muted rounded-lg">
-              <p className="text-sm font-medium mb-2">{t("filteredResults")}:</p>
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                {filterBuyer && (
-                  <>
-                    <div>
-                      <span className="text-muted-foreground">{t("cash")}:</span>
-                      <span className="ml-1 font-semibold text-green-600">₹{filteredSummary.buyerCashReceived.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">{t("account")}:</span>
-                      <span className="ml-1 font-semibold text-green-600">₹{filteredSummary.buyerAccountReceived.toLocaleString()}</span>
-                    </div>
-                  </>
-                )}
-                {(filterCategory || filterMonth) && (
-                  <div>
-                    <span className="text-muted-foreground">{t("expense")}:</span>
-                    <span className="ml-1 font-semibold text-red-600">₹{filteredSummary.categoryExpenses.toLocaleString()}</span>
+          {/* Row 2: Payer Type (inward only), Buyer Name (cold_merchant only), Expense Type (expense only) */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {(filterTransactionType === "all" || filterTransactionType === "inward") && (
+              <div className="space-y-1">
+                <Label className="text-xs">{t("filterByPayerType")}</Label>
+                <Select value={filterPayerType || "all"} onValueChange={(v) => {
+                  setFilterPayerType(v === "all" ? "" : v);
+                  if (v !== "cold_merchant") {
+                    setFilterBuyer("");
+                    setFilterBuyerSearch("");
+                  }
+                }}>
+                  <SelectTrigger data-testid="select-filter-payer-type" className="h-8 text-sm">
+                    <SelectValue placeholder={t("allPayerTypes")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("allPayerTypes")}</SelectItem>
+                    <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
+                    <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
+                    <SelectItem value="kata">{t("kata")}</SelectItem>
+                    <SelectItem value="others">{t("others")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {filterPayerType === "cold_merchant" && (
+              <div className="space-y-1">
+                <Label className="text-xs">{t("filterByBuyer")}</Label>
+                <div className="relative">
+                  <Input
+                    value={filterBuyerSearch}
+                    onChange={(e) => {
+                      setFilterBuyerSearch(e.target.value);
+                      if (!e.target.value) setFilterBuyer("");
+                    }}
+                    placeholder={t("searchBuyerName")}
+                    className="h-8 text-sm"
+                    data-testid="input-filter-buyer-search"
+                    list="buyer-suggestions"
+                  />
+                  <datalist id="buyer-suggestions">
+                    {filteredBuyerOptions.map((buyer) => (
+                      <option key={buyer} value={buyer} />
+                    ))}
+                  </datalist>
+                </div>
+                {filterBuyerSearch && filteredBuyerOptions.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {filteredBuyerOptions.slice(0, 3).map((buyer) => (
+                      <Badge
+                        key={buyer}
+                        variant={filterBuyer === buyer ? "default" : "outline"}
+                        className="text-xs cursor-pointer"
+                        onClick={() => {
+                          setFilterBuyer(buyer);
+                          setFilterBuyerSearch(buyer);
+                        }}
+                      >
+                        {buyer}
+                      </Badge>
+                    ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {(filterTransactionType === "all" || filterTransactionType === "expense") && (
+              <div className="space-y-1">
+                <Label className="text-xs">{t("filterByExpenseType")}</Label>
+                <Select value={filterExpenseType || "all"} onValueChange={(v) => setFilterExpenseType(v === "all" ? "" : v)}>
+                  <SelectTrigger data-testid="select-filter-expense-type" className="h-8 text-sm">
+                    <SelectValue placeholder={t("allExpenseTypes")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("allExpenseTypes")}</SelectItem>
+                    <SelectItem value="salary">{t("salary")}</SelectItem>
+                    <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                    <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
+                    <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
+                    <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
+                    <SelectItem value="tds">{t("tds")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-1 col-span-2 md:col-span-1">
+              <Label className="text-xs">{t("filterByRemarks")}</Label>
+              <Input
+                value={filterRemarks}
+                onChange={(e) => setFilterRemarks(e.target.value)}
+                placeholder={t("searchRemarks")}
+                className="h-8 text-sm"
+                data-testid="input-filter-remarks"
+              />
+            </div>
+          </div>
+
+          {hasActiveFilters && (
+            <div className="p-2 bg-muted rounded-lg">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex gap-4">
+                  {(filterTransactionType === "all" || filterTransactionType === "inward") && (
+                    <span>
+                      <span className="text-muted-foreground">{t("inwardCash")}:</span>
+                      <span className="ml-1 font-semibold text-green-600">₹{filteredSummary.totalInward.toLocaleString()}</span>
+                    </span>
+                  )}
+                  {(filterTransactionType === "all" || filterTransactionType === "expense") && (
+                    <span>
+                      <span className="text-muted-foreground">{t("expense")}:</span>
+                      <span className="ml-1 font-semibold text-red-600">₹{filteredSummary.totalExpense.toLocaleString()}</span>
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {allTransactions.length} {t("entries")}
+                </span>
               </div>
             </div>
           )}
