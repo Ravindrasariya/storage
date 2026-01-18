@@ -355,6 +355,20 @@ const translations: Translations = {
   outflow: { en: "Outflow", hi: "जावक" },
   selectExpenseType: { en: "Select expense type", hi: "व्यय प्रकार चुनें" },
   
+  // Self Transfer
+  self: { en: "Self", hi: "स्वयं" },
+  selfTransfers: { en: "Self Transfers", hi: "स्वयं स्थानांतरण" },
+  transfer: { en: "Transfer", hi: "स्थानांतरण" },
+  transferDetails: { en: "Transfer Details", hi: "स्थानांतरण विवरण" },
+  transactionDetailsDescription: { en: "Complete details of this transaction", hi: "इस लेनदेन का पूर्ण विवरण" },
+  fromAccount: { en: "From Account", hi: "किस खाते से" },
+  toAccount: { en: "To Account", hi: "किस खाते में" },
+  cashInHand: { en: "Cash in Hand", hi: "हाथ में नकद" },
+  transferDate: { en: "Transfer Date", hi: "स्थानांतरण तिथि" },
+  recordTransfer: { en: "Record Transfer", hi: "स्थानांतरण दर्ज करें" },
+  transferRecorded: { en: "Transfer recorded successfully", hi: "स्थानांतरण सफलतापूर्वक दर्ज किया गया" },
+  sameAccountError: { en: "From and To accounts cannot be the same", hi: "किस खाते से और किस खाते में समान नहीं हो सकते" },
+  
   // Cash Summary
   totalCashReceived: { en: "Total Cash Received", hi: "कुल नकद प्राप्त" },
   cashExpense: { en: "Cash Expense", hi: "नकद खर्च" },

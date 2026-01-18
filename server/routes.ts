@@ -1536,6 +1536,68 @@ export async function registerRoutes(
     }
   });
 
+  // Cash Transfers (Self)
+  app.get("/api/cash-transfers", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const transfers = await storage.getCashTransfers(coldStorageId);
+      res.json(transfers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch cash transfers" });
+    }
+  });
+
+  const createCashTransferSchema = z.object({
+    fromAccountType: z.enum(["cash", "limit", "current"]),
+    toAccountType: z.enum(["cash", "limit", "current"]),
+    amount: z.number().positive(),
+    transferredAt: z.string().transform((val) => new Date(val)),
+    remarks: z.string().optional(),
+  });
+
+  app.post("/api/cash-transfers", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const validatedData = createCashTransferSchema.parse(req.body);
+      
+      if (validatedData.fromAccountType === validatedData.toAccountType) {
+        return res.status(400).json({ error: "Source and destination accounts must be different" });
+      }
+      
+      const transfer = await storage.createCashTransfer({
+        coldStorageId,
+        ...validatedData,
+      });
+      res.json(transfer);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid transfer data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create cash transfer" });
+    }
+  });
+
+  // Reverse cash transfer
+  app.post("/api/cash-transfers/:id/reverse", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { id } = req.params;
+      // Verify ownership
+      const transfers = await storage.getCashTransfers(coldStorageId);
+      const transfer = transfers.find(t => t.id === id);
+      if (!transfer) {
+        return res.status(404).json({ error: "Cash transfer not found" });
+      }
+      const result = await storage.reverseCashTransfer(id);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reverse cash transfer" });
+    }
+  });
+
   // Recalculate all sales records to fix paidAmount/dueAmount
   app.post("/api/admin/recalculate-sales-charges", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {

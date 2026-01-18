@@ -12,11 +12,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { format } from "date-fns";
-import type { CashReceipt, Expense } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer } from "@shared/schema";
 
 interface BuyerWithDue {
   buyerName: string;
@@ -25,14 +25,15 @@ interface BuyerWithDue {
 
 type TransactionItem = 
   | { type: "inflow"; data: CashReceipt; timestamp: number }
-  | { type: "outflow"; data: Expense; timestamp: number };
+  | { type: "outflow"; data: Expense; timestamp: number }
+  | { type: "transfer"; data: CashTransfer; timestamp: number };
 
 export default function CashManagement() {
   const { t } = useI18n();
   const { toast } = useToast();
   const { canEdit } = useAuth();
   
-  const [activeTab, setActiveTab] = useState<"inward" | "expense">("inward");
+  const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">("inward");
   
   const [payerType, setPayerType] = useState<"cold_merchant" | "sales_goods" | "kata" | "others">("cold_merchant");
   const [buyerName, setBuyerName] = useState("");
@@ -51,7 +52,13 @@ export default function CashManagement() {
   const [expenseDate, setExpenseDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [expenseRemarks, setExpenseRemarks] = useState("");
 
-  const [filterTransactionType, setFilterTransactionType] = useState<"all" | "inward" | "expense">("all");
+  const [transferFromAccount, setTransferFromAccount] = useState<"cash" | "limit" | "current">("cash");
+  const [transferToAccount, setTransferToAccount] = useState<"cash" | "limit" | "current">("limit");
+  const [transferAmount, setTransferAmount] = useState("");
+  const [transferDate, setTransferDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [transferRemarks, setTransferRemarks] = useState("");
+
+  const [filterTransactionType, setFilterTransactionType] = useState<"all" | "inward" | "expense" | "self">("all");
   const [filterPaymentMode, setFilterPaymentMode] = useState<string>("");
   const [filterPayerType, setFilterPayerType] = useState<string>("");
   const [filterBuyer, setFilterBuyer] = useState<string>("");
@@ -75,6 +82,10 @@ export default function CashManagement() {
 
   const { data: salesGoodsBuyers = [] } = useQuery<string[]>({
     queryKey: ["/api/cash-receipts/sales-goods-buyers"],
+  });
+
+  const { data: transfers = [], isLoading: loadingTransfers } = useQuery<CashTransfer[]>({
+    queryKey: ["/api/cash-transfers"],
   });
 
   const createReceiptMutation = useMutation({
@@ -176,6 +187,47 @@ export default function CashManagement() {
     },
   });
 
+  const createTransferMutation = useMutation({
+    mutationFn: async (data: { fromAccountType: string; toAccountType: string; amount: number; transferredAt: string; remarks?: string }) => {
+      const response = await apiRequest("POST", "/api/cash-transfers", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: t("transferRecorded"),
+      });
+      setTransferFromAccount("cash");
+      setTransferToAccount("limit");
+      setTransferAmount("");
+      setTransferDate(format(new Date(), "yyyy-MM-dd"));
+      setTransferRemarks("");
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: "Failed to record transfer", variant: "destructive" });
+    },
+  });
+
+  const reverseTransferMutation = useMutation({
+    mutationFn: async (transferId: number) => {
+      const response = await apiRequest("POST", `/api/cash-transfers/${transferId}/reverse`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: t("entryReversed"),
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
+    },
+  });
+
   const handleInwardSubmit = () => {
     // Determine buyer name based on payer type
     let finalBuyerName: string | undefined;
@@ -223,6 +275,34 @@ export default function CashManagement() {
       paidAt: new Date(expenseDate).toISOString(),
       remarks: expenseRemarks || undefined,
     });
+  };
+
+  const handleTransferSubmit = () => {
+    if (transferFromAccount === transferToAccount) {
+      toast({ title: t("error"), description: t("sameAccountError"), variant: "destructive" });
+      return;
+    }
+    if (!transferAmount || parseFloat(transferAmount) <= 0) {
+      toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+
+    createTransferMutation.mutate({
+      fromAccountType: transferFromAccount,
+      toAccountType: transferToAccount,
+      amount: parseFloat(transferAmount),
+      transferredAt: new Date(transferDate).toISOString(),
+      remarks: transferRemarks || undefined,
+    });
+  };
+
+  const getAccountLabel = (account: string) => {
+    switch (account) {
+      case "cash": return t("cashInHand");
+      case "limit": return t("limitAccount");
+      case "current": return t("currentAccount");
+      default: return account;
+    }
   };
 
   const selectedBuyerDue = buyersWithDues.find(b => 
@@ -309,9 +389,27 @@ export default function CashManagement() {
       filteredExpenses = filteredExpenses.filter(e => e.remarks && e.remarks.toLowerCase().includes(searchKey));
     }
 
+    // Apply filters to transfers
+    let filteredTransfers = transfers;
+    
+    // Month filter for transfers
+    if (filterMonth) {
+      filteredTransfers = filteredTransfers.filter(t => {
+        const date = new Date(t.transferredAt);
+        return format(date, "yyyy-MM") === filterMonth;
+      });
+    }
+    
+    // Remarks filter for transfers
+    if (filterRemarks) {
+      const searchKey = filterRemarks.trim().toLowerCase();
+      filteredTransfers = filteredTransfers.filter(t => t.remarks && t.remarks.toLowerCase().includes(searchKey));
+    }
+
     // Apply transaction type filter
     const includeInward = filterTransactionType === "all" || filterTransactionType === "inward";
     const includeExpense = filterTransactionType === "all" || filterTransactionType === "expense";
+    const includeTransfer = filterTransactionType === "all" || filterTransactionType === "self";
 
     // Combine and sort descending (latest first)
     const getTimestamp = (dateStr: string | Date): number => {
@@ -331,14 +429,19 @@ export default function CashManagement() {
         data: e, 
         timestamp: getTimestamp(e.paidAt)
       })) : []),
+      ...(includeTransfer ? filteredTransfers.map(t => ({ 
+        type: "transfer" as const, 
+        data: t, 
+        timestamp: getTimestamp(t.transferredAt)
+      })) : []),
     ].sort((a, b) => {
       const timeDiff = b.timestamp - a.timestamp;
       if (timeDiff !== 0) return timeDiff;
       return String(b.data.id).localeCompare(String(a.data.id));
     });
-  }, [receipts, expensesList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
+  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
 
-  const isLoading = loadingReceipts || loadingExpenses;
+  const isLoading = loadingReceipts || loadingExpenses || loadingTransfers;
 
   const uniqueBuyers = useMemo(() => {
     // Aggregate buyers case-insensitively with trimming
@@ -391,6 +494,7 @@ export default function CashManagement() {
   const summary = useMemo(() => {
     const activeReceipts = receipts.filter(r => r.isReversed !== 1);
     const activeExpenses = expensesList.filter(e => e.isReversed !== 1);
+    const activeTransfers = transfers.filter(t => t.isReversed !== 1);
 
     const totalCashReceived = activeReceipts
       .filter(r => r.receiptType === "cash")
@@ -398,6 +502,14 @@ export default function CashManagement() {
     
     const totalAccountReceived = activeReceipts
       .filter(r => r.receiptType === "account")
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    
+    const totalLimitReceived = activeReceipts
+      .filter(r => r.receiptType === "account" && r.accountType === "limit")
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    
+    const totalCurrentReceived = activeReceipts
+      .filter(r => r.receiptType === "account" && r.accountType === "current")
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     
     const totalCashExpenses = activeExpenses
@@ -408,7 +520,35 @@ export default function CashManagement() {
       .filter(e => e.paymentMode === "account")
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     
-    const cashInHand = totalCashReceived - totalCashExpenses;
+    // Calculate net transfer impact on each account type
+    // Transfers TO an account add, transfers FROM an account subtract
+    const cashTransferIn = activeTransfers
+      .filter(t => t.toAccountType === "cash")
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const cashTransferOut = activeTransfers
+      .filter(t => t.fromAccountType === "cash")
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const netCashTransfer = cashTransferIn - cashTransferOut;
+    
+    const limitTransferIn = activeTransfers
+      .filter(t => t.toAccountType === "limit")
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const limitTransferOut = activeTransfers
+      .filter(t => t.fromAccountType === "limit")
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const netLimitTransfer = limitTransferIn - limitTransferOut;
+    
+    const currentTransferIn = activeTransfers
+      .filter(t => t.toAccountType === "current")
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const currentTransferOut = activeTransfers
+      .filter(t => t.fromAccountType === "current")
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const netCurrentTransfer = currentTransferIn - currentTransferOut;
+    
+    const cashInHand = totalCashReceived - totalCashExpenses + netCashTransfer;
+    const limitBalance = totalLimitReceived - totalAccountExpenses + netLimitTransfer;
+    const currentBalance = totalCurrentReceived + netCurrentTransfer;
 
     return {
       totalCashReceived,
@@ -416,21 +556,29 @@ export default function CashManagement() {
       cashInHand,
       totalAccountExpenses,
       totalCashExpenses,
+      limitBalance,
+      currentBalance,
+      netCashTransfer,
+      netLimitTransfer,
+      netCurrentTransfer,
     };
-  }, [receipts, expensesList]);
+  }, [receipts, expensesList, transfers]);
 
   const filteredSummary = useMemo(() => {
     let filteredReceipts = receipts.filter(r => r.isReversed !== 1);
     let filteredExpenses = expensesList.filter(e => e.isReversed !== 1);
+    let filteredTransfers = transfers.filter(t => t.isReversed !== 1);
 
     // Apply same filters as allTransactions
     if (filterPaymentMode) {
       if (filterPaymentMode === "cash") {
         filteredReceipts = filteredReceipts.filter(r => r.receiptType === "cash");
         filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "cash");
+        filteredTransfers = filteredTransfers.filter(t => t.fromAccountType === "cash" || t.toAccountType === "cash");
       } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
         filteredReceipts = filteredReceipts.filter(r => r.receiptType === "account" && r.accountType === filterPaymentMode);
         filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account");
+        filteredTransfers = filteredTransfers.filter(t => t.fromAccountType === filterPaymentMode || t.toAccountType === filterPaymentMode);
       }
     }
 
@@ -456,26 +604,34 @@ export default function CashManagement() {
         const date = new Date(e.paidAt);
         return format(date, "yyyy-MM") === filterMonth;
       });
+      filteredTransfers = filteredTransfers.filter(t => {
+        const date = new Date(t.transferredAt);
+        return format(date, "yyyy-MM") === filterMonth;
+      });
     }
 
     if (filterRemarks) {
       const searchKey = filterRemarks.trim().toLowerCase();
       filteredReceipts = filteredReceipts.filter(r => r.notes && r.notes.toLowerCase().includes(searchKey));
       filteredExpenses = filteredExpenses.filter(e => e.remarks && e.remarks.toLowerCase().includes(searchKey));
+      filteredTransfers = filteredTransfers.filter(t => t.remarks && t.remarks.toLowerCase().includes(searchKey));
     }
 
     // Apply transaction type filter
     const includeInward = filterTransactionType === "all" || filterTransactionType === "inward";
     const includeExpense = filterTransactionType === "all" || filterTransactionType === "expense";
+    const includeTransfer = filterTransactionType === "all" || filterTransactionType === "self";
 
     const totalInward = includeInward ? filteredReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0) : 0;
     const totalExpense = includeExpense ? filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0) : 0;
+    const totalTransfer = includeTransfer ? filteredTransfers.reduce((sum, t) => sum + (Number(t.amount) || 0), 0) : 0;
 
     return {
       totalInward,
       totalExpense,
+      totalTransfer,
     };
-  }, [receipts, expensesList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
+  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -574,7 +730,7 @@ export default function CashManagement() {
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("transactionType")}</Label>
-              <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense")}>
+              <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense" | "self")}>
                 <SelectTrigger data-testid="select-filter-transaction-type" className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
@@ -582,6 +738,7 @@ export default function CashManagement() {
                   <SelectItem value="all">{t("allTransactions")}</SelectItem>
                   <SelectItem value="inward">{t("inwardCash")}</SelectItem>
                   <SelectItem value="expense">{t("expense")}</SelectItem>
+                  <SelectItem value="self">{t("selfTransfers")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -773,8 +930,8 @@ export default function CashManagement() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-3">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "inward" | "expense")}>
-              <TabsList className="grid w-full grid-cols-2">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "inward" | "expense" | "self")}>
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="inward" data-testid="tab-inward">
                   <ArrowDownLeft className="h-4 w-4 mr-1" />
                   {t("inwardCash")}
@@ -782,6 +939,14 @@ export default function CashManagement() {
                 <TabsTrigger value="expense" data-testid="tab-expense">
                   <ArrowUpRight className="h-4 w-4 mr-1" />
                   {t("expense")}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="self" 
+                  data-testid="tab-self"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=inactive]:bg-gray-200 data-[state=inactive]:text-gray-700 dark:data-[state=inactive]:bg-gray-700 dark:data-[state=inactive]:text-gray-300"
+                >
+                  <ArrowLeftRight className="h-4 w-4 mr-1" />
+                  {t("self")}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -993,7 +1158,7 @@ export default function CashManagement() {
                   </p>
                 )}
               </>
-            ) : (
+            ) : activeTab === "expense" ? (
               <>
                 <div className="space-y-2">
                   <Label>{t("paymentMode")} *</Label>
@@ -1110,7 +1275,121 @@ export default function CashManagement() {
                   </p>
                 )}
               </>
-            )}
+            ) : activeTab === "self" ? (
+              <>
+                <div className="space-y-2">
+                  <Label>{t("fromAccount")} *</Label>
+                  <Select value={transferFromAccount} onValueChange={(v) => setTransferFromAccount(v as "cash" | "limit" | "current")}>
+                    <SelectTrigger data-testid="select-transfer-from">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">
+                        <span className="flex items-center gap-2">
+                          <Banknote className="h-4 w-4" />
+                          {t("cashInHand")}
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="limit">
+                        <span className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4" />
+                          {t("limitAccount")}
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="current">
+                        <span className="flex items-center gap-2">
+                          <Wallet className="h-4 w-4" />
+                          {t("currentAccount")}
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t("toAccount")} *</Label>
+                  <Select value={transferToAccount} onValueChange={(v) => setTransferToAccount(v as "cash" | "limit" | "current")}>
+                    <SelectTrigger data-testid="select-transfer-to">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">
+                        <span className="flex items-center gap-2">
+                          <Banknote className="h-4 w-4" />
+                          {t("cashInHand")}
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="limit">
+                        <span className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4" />
+                          {t("limitAccount")}
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="current">
+                        <span className="flex items-center gap-2">
+                          <Wallet className="h-4 w-4" />
+                          {t("currentAccount")}
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {transferFromAccount === transferToAccount && (
+                  <p className="text-xs text-red-500">{t("sameAccountError")}</p>
+                )}
+
+                <div className="space-y-2">
+                  <Label>{t("amount")} (₹) *</Label>
+                  <Input
+                    type="number"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(e.target.value)}
+                    placeholder="0"
+                    min={1}
+                    data-testid="input-transfer-amount"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4" />
+                    {t("transferDate")}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={transferDate}
+                    onChange={(e) => setTransferDate(e.target.value)}
+                    data-testid="input-transfer-date"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t("remarks")}</Label>
+                  <Input
+                    value={transferRemarks}
+                    onChange={(e) => setTransferRemarks(e.target.value)}
+                    placeholder={t("remarks")}
+                    data-testid="input-transfer-remarks"
+                  />
+                </div>
+
+                <Button
+                  onClick={handleTransferSubmit}
+                  disabled={!canEdit || !transferAmount || transferFromAccount === transferToAccount || createTransferMutation.isPending}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                  data-testid="button-record-transfer"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {createTransferMutation.isPending ? t("saving") : t("recordTransfer")}
+                </Button>
+                {!canEdit && (
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
+                  </p>
+                )}
+              </>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -1136,7 +1415,9 @@ export default function CashManagement() {
                             ? "bg-gray-100 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 opacity-60"
                             : transaction.type === "inflow" 
                               ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900" 
-                              : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"
+                              : transaction.type === "outflow"
+                                ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"
+                                : "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900"
                         }`}
                         onClick={() => setSelectedTransaction(transaction)}
                         data-testid={`transaction-${transaction.type}-${index}`}
@@ -1146,13 +1427,17 @@ export default function CashManagement() {
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             {transaction.type === "inflow" ? (
                               <ArrowDownLeft className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-green-600"}`} />
-                            ) : (
+                            ) : transaction.type === "outflow" ? (
                               <ArrowUpRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-red-600"}`} />
+                            ) : (
+                              <ArrowLeftRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-blue-600"}`} />
                             )}
                             <span className={`font-medium truncate ${isReversed ? "line-through text-gray-500" : ""}`}>
                               {transaction.type === "inflow" 
                                 ? (transaction.data as CashReceipt).buyerName
-                                : getExpenseTypeLabel((transaction.data as Expense).expenseType)
+                                : transaction.type === "outflow"
+                                  ? getExpenseTypeLabel((transaction.data as Expense).expenseType)
+                                  : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`
                               }
                             </span>
                           </div>
@@ -1160,18 +1445,18 @@ export default function CashManagement() {
                             <span className={`font-bold text-base ${
                               isReversed 
                                 ? "text-gray-400" 
-                                : transaction.type === "inflow" ? "text-green-600" : "text-red-600"
+                                : transaction.type === "inflow" ? "text-green-600" : transaction.type === "outflow" ? "text-red-600" : "text-blue-600"
                             }`}>
-                              {transaction.type === "inflow" ? "+" : "-"}₹{transaction.data.amount.toLocaleString()}
+                              {transaction.type === "inflow" ? "+" : transaction.type === "outflow" ? "-" : ""}₹{transaction.data.amount.toLocaleString()}
                             </span>
                             {isReversed ? (
                               <Badge variant="secondary" className="text-xs">{t("reversed")}</Badge>
                             ) : (
                               <Badge 
-                                variant={transaction.type === "inflow" ? "default" : "destructive"} 
-                                className="text-xs"
+                                variant={transaction.type === "inflow" ? "default" : transaction.type === "outflow" ? "destructive" : "outline"} 
+                                className={`text-xs ${transaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : ""}`}
                               >
-                                {transaction.type === "inflow" ? t("inflow") : t("outflow")}
+                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : t("transfer")}
                               </Badge>
                             )}
                           </div>
@@ -1179,12 +1464,14 @@ export default function CashManagement() {
                         {/* Row 2: Date + Payment Mode */}
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
-                          <Badge variant="outline" className="text-xs py-0 h-5">
-                            {transaction.type === "inflow" 
-                              ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
-                              : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
-                            }
-                          </Badge>
+                          {transaction.type !== "transfer" && (
+                            <Badge variant="outline" className="text-xs py-0 h-5">
+                              {transaction.type === "inflow" 
+                                ? ((transaction.data as CashReceipt).receiptType === "cash" ? t("cash") : t("account"))
+                                : ((transaction.data as Expense).paymentMode === "cash" ? t("cash") : t("account"))
+                              }
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     );
@@ -1206,15 +1493,20 @@ export default function CashManagement() {
                   <ArrowDownLeft className="h-5 w-5 text-green-600" />
                   {t("paymentDetails")}
                 </>
-              ) : (
+              ) : selectedTransaction?.type === "outflow" ? (
                 <>
                   <ArrowUpRight className="h-5 w-5 text-red-600" />
                   {t("expenseDetails")}
                 </>
+              ) : (
+                <>
+                  <ArrowLeftRight className="h-5 w-5 text-blue-600" />
+                  {t("transferDetails")}
+                </>
               )}
             </DialogTitle>
             <DialogDescription>
-              {t("transactionDetailsDescription") || "Complete details of this transaction"}
+              {t("transactionDetailsDescription")}
             </DialogDescription>
           </DialogHeader>
           
@@ -1235,8 +1527,8 @@ export default function CashManagement() {
                   </>
                 ) : (
                   <Badge 
-                    variant={selectedTransaction.type === "inflow" ? "default" : "destructive"}
-                    className="text-base px-4 py-1"
+                    variant={selectedTransaction.type === "inflow" ? "default" : selectedTransaction.type === "outflow" ? "destructive" : "outline"}
+                    className={`text-base px-4 py-1 ${selectedTransaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : ""}`}
                   >
                     {t("active")}
                   </Badge>
@@ -1272,7 +1564,7 @@ export default function CashManagement() {
                       </div>
                     )}
                   </>
-                ) : (
+                ) : selectedTransaction.type === "outflow" ? (
                   <>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("expenseType")}:</span>
@@ -1296,6 +1588,35 @@ export default function CashManagement() {
                       <div className="pt-2 border-t">
                         <span className="text-muted-foreground text-sm">{t("remarks")}:</span>
                         <p className="text-sm mt-1">{(selectedTransaction.data as Expense).remarks}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("fromAccount")}:</span>
+                      <Badge variant="outline">
+                        {getAccountLabel((selectedTransaction.data as CashTransfer).fromAccountType)}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("toAccount")}:</span>
+                      <Badge variant="outline">
+                        {getAccountLabel((selectedTransaction.data as CashTransfer).toAccountType)}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("amount")}:</span>
+                      <span className="font-bold text-blue-600">₹{selectedTransaction.data.amount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date:</span>
+                      <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
+                    </div>
+                    {(selectedTransaction.data as CashTransfer).remarks && (
+                      <div className="pt-2 border-t">
+                        <span className="text-muted-foreground text-sm">{t("remarks")}:</span>
+                        <p className="text-sm mt-1">{(selectedTransaction.data as CashTransfer).remarks}</p>
                       </div>
                     )}
                   </>
@@ -1324,8 +1645,10 @@ export default function CashManagement() {
                         onClick={() => {
                           if (selectedTransaction.type === "inflow") {
                             reverseReceiptMutation.mutate(selectedTransaction.data.id);
-                          } else {
+                          } else if (selectedTransaction.type === "outflow") {
                             reverseExpenseMutation.mutate(selectedTransaction.data.id);
+                          } else {
+                            reverseTransferMutation.mutate(selectedTransaction.data.id as number);
                           }
                           setSelectedTransaction(null);
                         }}

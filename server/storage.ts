@@ -15,6 +15,7 @@ import {
   exitHistory,
   cashReceipts,
   expenses,
+  cashTransfers,
   type ColdStorage,
   type InsertColdStorage,
   type ColdStorageUser,
@@ -40,6 +41,8 @@ import {
   type InsertCashReceipt,
   type Expense,
   type InsertExpense,
+  type CashTransfer,
+  type InsertCashTransfer,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -122,6 +125,10 @@ export interface IStorage {
   // Expenses
   getExpenses(coldStorageId: string): Promise<Expense[]>;
   createExpense(data: InsertExpense): Promise<Expense>;
+  // Cash Transfers (Self)
+  getCashTransfers(coldStorageId: string): Promise<CashTransfer[]>;
+  createCashTransfer(data: InsertCashTransfer): Promise<CashTransfer>;
+  reverseCashTransfer(transferId: string): Promise<{ success: boolean; message?: string }>;
   // Reversal
   reverseCashReceipt(receiptId: string): Promise<{ success: boolean; message?: string }>;
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
@@ -1680,6 +1687,51 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return expense;
+  }
+
+  async getCashTransfers(coldStorageId: string): Promise<CashTransfer[]> {
+    return db.select().from(cashTransfers)
+      .where(eq(cashTransfers.coldStorageId, coldStorageId))
+      .orderBy(desc(cashTransfers.transferredAt));
+  }
+
+  async createCashTransfer(data: InsertCashTransfer): Promise<CashTransfer> {
+    if (data.fromAccountType === data.toAccountType) {
+      throw new Error("Source and destination accounts must be different");
+    }
+    if (data.amount <= 0) {
+      throw new Error("Transfer amount must be greater than 0");
+    }
+    const [transfer] = await db.insert(cashTransfers)
+      .values({
+        id: randomUUID(),
+        ...data,
+      })
+      .returning();
+    return transfer;
+  }
+
+  async reverseCashTransfer(transferId: string): Promise<{ success: boolean; message?: string }> {
+    const [transfer] = await db.select()
+      .from(cashTransfers)
+      .where(eq(cashTransfers.id, transferId));
+
+    if (!transfer) {
+      return { success: false, message: "Transfer not found" };
+    }
+
+    if (transfer.isReversed === 1) {
+      return { success: false, message: "Transfer is already reversed" };
+    }
+
+    await db.update(cashTransfers)
+      .set({
+        isReversed: 1,
+        reversedAt: new Date(),
+      })
+      .where(eq(cashTransfers.id, transferId));
+
+    return { success: true };
   }
 
   async reverseCashReceipt(receiptId: string): Promise<{ success: boolean; message?: string }> {

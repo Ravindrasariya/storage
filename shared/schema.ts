@@ -232,6 +232,20 @@ export const expenses = pgTable("expenses", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Cash Transfers - internal fund movements between account types (self transfers)
+export const cashTransfers = pgTable("cash_transfers", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  fromAccountType: text("from_account_type").notNull(), // 'cash', 'limit', 'current'
+  toAccountType: text("to_account_type").notNull(), // 'cash', 'limit', 'current'
+  amount: real("amount").notNull(),
+  transferredAt: timestamp("transferred_at").notNull(),
+  remarks: text("remarks"),
+  isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
+  reversedAt: timestamp("reversed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
@@ -245,6 +259,7 @@ export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecor
 export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, billNumber: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, createdAt: true, appliedAmount: true, unappliedAmount: true, isReversed: true, reversedAt: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true });
+export const insertCashTransferSchema = createInsertSchema(cashTransfers).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -272,6 +287,8 @@ export type CashReceipt = typeof cashReceipts.$inferSelect;
 export type InsertCashReceipt = z.infer<typeof insertCashReceiptSchema>;
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+export type CashTransfer = typeof cashTransfers.$inferSelect;
+export type InsertCashTransfer = z.infer<typeof insertCashTransferSchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({
