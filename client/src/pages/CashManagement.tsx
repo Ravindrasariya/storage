@@ -211,7 +211,7 @@ export default function CashManagement() {
   });
 
   const reverseTransferMutation = useMutation({
-    mutationFn: async (transferId: number) => {
+    mutationFn: async (transferId: string) => {
       const response = await apiRequest("POST", `/api/cash-transfers/${transferId}/reverse`, {});
       return response.json();
     },
@@ -640,62 +640,90 @@ export default function CashManagement() {
         {t("cashManagement")}
       </h1>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-        <Card data-testid="stat-total-cash-received">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Banknote className="h-4 w-4" />
-              {t("totalCashReceived")}
+      {/* Balance Cards - Row 1: Account Balances */}
+      <div className="grid grid-cols-3 gap-2 mb-2">
+        <Card data-testid="stat-cash-in-hand">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <Wallet className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("cashInHand")}</span>
             </div>
-            <div className="text-base font-bold text-green-600">
+            <div className={`text-sm font-bold ${summary.cashInHand >= 0 ? "text-blue-600" : "text-red-600"}`}>
+              {isLoading ? "..." : `₹${summary.cashInHand.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-limit-balance">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <Building2 className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("limitAccount")}</span>
+            </div>
+            <div className={`text-sm font-bold ${summary.limitBalance >= 0 ? "text-blue-600" : "text-red-600"}`}>
+              {isLoading ? "..." : `₹${summary.limitBalance.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-current-balance">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <CreditCard className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("currentAccount")}</span>
+            </div>
+            <div className={`text-sm font-bold ${summary.currentBalance >= 0 ? "text-blue-600" : "text-red-600"}`}>
+              {isLoading ? "..." : `₹${summary.currentBalance.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Summary Cards - Row 2: Received & Expenses */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+        <Card data-testid="stat-total-cash-received">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <Banknote className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("totalCashReceived")}</span>
+            </div>
+            <div className="text-sm font-bold text-green-600">
               {isLoading ? "..." : `₹${summary.totalCashReceived.toLocaleString()}`}
             </div>
           </CardContent>
         </Card>
 
         <Card data-testid="stat-cash-expense">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <ArrowUpRight className="h-4 w-4" />
-              {t("cashExpense")}
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <ArrowUpRight className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("cashExpense")}</span>
             </div>
-            <div className="text-base font-bold text-red-600">
+            <div className="text-sm font-bold text-red-600">
               {isLoading ? "..." : `₹${summary.totalCashExpenses.toLocaleString()}`}
             </div>
           </CardContent>
         </Card>
 
-        <Card data-testid="stat-cash-in-hand">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Wallet className="h-4 w-4" />
-              {t("totalCashInHand")}
-            </div>
-            <div className={`text-base font-bold ${summary.cashInHand >= 0 ? "text-blue-600" : "text-red-600"}`}>
-              {isLoading ? "..." : `₹${summary.cashInHand.toLocaleString()}`}
-            </div>
-          </CardContent>
-        </Card>
-
         <Card data-testid="stat-total-account-received">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Building2 className="h-4 w-4" />
-              {t("totalAccountReceived")}
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <Building2 className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("totalAccountReceived")}</span>
             </div>
-            <div className="text-base font-bold text-green-600">
+            <div className="text-sm font-bold text-green-600">
               {isLoading ? "..." : `₹${summary.totalAccountReceived.toLocaleString()}`}
             </div>
           </CardContent>
         </Card>
 
         <Card data-testid="stat-expense-from-account">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <CreditCard className="h-4 w-4" />
-              {t("totalExpenseFromAccount")}
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <CreditCard className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("totalExpenseFromAccount")}</span>
             </div>
-            <div className="text-base font-bold text-red-600">
+            <div className="text-sm font-bold text-red-600">
               {isLoading ? "..." : `₹${summary.totalAccountExpenses.toLocaleString()}`}
             </div>
           </CardContent>
@@ -1397,14 +1425,15 @@ export default function CashManagement() {
           <CardHeader>
             <CardTitle className="text-lg">{t("cashFlowHistory")}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             {isLoading ? (
-              <div className="text-sm text-muted-foreground">{t("loading")}</div>
+              <div className="text-sm text-muted-foreground p-4">{t("loading")}</div>
             ) : allTransactions.length === 0 ? (
-              <div className="text-sm text-muted-foreground text-center py-8">{t("noTransactions")}</div>
+              <div className="text-sm text-muted-foreground text-center py-8 px-4">{t("noTransactions")}</div>
             ) : (
-              <ScrollArea className="h-[450px]">
-                <div className="space-y-2">
+              <div className="overflow-x-auto">
+                <ScrollArea className="h-[450px]">
+                  <div className="space-y-2 px-4 py-2 min-w-[480px]">
                   {allTransactions.map((transaction, index) => {
                     const isReversed = transaction.data.isReversed === 1;
                     return (
@@ -1477,7 +1506,8 @@ export default function CashManagement() {
                     );
                   })}
                 </div>
-              </ScrollArea>
+                </ScrollArea>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -1648,7 +1678,7 @@ export default function CashManagement() {
                           } else if (selectedTransaction.type === "outflow") {
                             reverseExpenseMutation.mutate(selectedTransaction.data.id);
                           } else {
-                            reverseTransferMutation.mutate(selectedTransaction.data.id as number);
+                            reverseTransferMutation.mutate(selectedTransaction.data.id);
                           }
                           setSelectedTransaction(null);
                         }}
