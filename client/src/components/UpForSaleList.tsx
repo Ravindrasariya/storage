@@ -794,9 +794,17 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
               </div>
 
-              <div className="p-4 rounded-lg bg-muted text-sm">
-                <span className="text-muted-foreground">{t("remaining")}: </span>
-                <span className="font-bold">{selectedLot.remainingSize} {t("bags")}</span>
+              <div className="p-4 rounded-lg bg-muted text-sm space-y-1">
+                <div>
+                  <span className="text-muted-foreground">{t("remaining")}: </span>
+                  <span className="font-bold">{selectedLot.remainingSize} {t("bags")}</span>
+                </div>
+                {selectedLot.netWeight && (
+                  <div>
+                    <span className="text-muted-foreground">{t("initialNetWeight")}: </span>
+                    <span className="font-bold">{selectedLot.netWeight} {t("kg")}</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
