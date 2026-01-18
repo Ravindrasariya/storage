@@ -147,6 +147,8 @@ const translations: Translations = {
   sortByRemainingBags: { en: "Remaining Bags (High to Low)", hi: "शेष बोरी (अधिक से कम)" },
   coldChargesDue: { en: "Cold Charges Due", hi: "कोल्ड स्टोरेज शुल्क बाकी" },
   coldChargesPaid: { en: "Cold Charges Paid", hi: "कोल्ड स्टोरेज शुल्क भुगतान" },
+  expectedColdCharges: { en: "Expected Cold Charges", hi: "अपेक्षित कोल्ड स्टोरेज शुल्क" },
+  totalExpectedColdCharges: { en: "Total Expected Cold Charges", hi: "कुल अपेक्षित कोल्ड स्टोरेज शुल्क" },
   markAsPaid: { en: "Mark as Paid", hi: "भुगतान किया चिह्नित करें" },
   markAsDue: { en: "Mark as Due", hi: "बकाया चिह्नित करें" },
   markedAsDue: { en: "Marked as due", hi: "बकाया के रूप में चिह्नित" },
