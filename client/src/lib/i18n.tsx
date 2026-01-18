@@ -167,6 +167,8 @@ const translations: Translations = {
   salary: { en: "Salary", hi: "वेतन" },
   gradingCharges: { en: "Grading Charge", hi: "ग्रेडिंग शुल्क" },
   generalExpenses: { en: "General Expense", hi: "सामान्य खर्च" },
+  costOfGoodsSold: { en: "Cost of Goods Sold", hi: "सामान की लागत" },
+  tds: { en: "TDS", hi: "टीडीएस" },
   total: { en: "Total", hi: "कुल" },
   
   // Up for Sale

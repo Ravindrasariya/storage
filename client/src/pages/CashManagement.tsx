@@ -46,6 +46,7 @@ export default function CashManagement() {
 
   const [expenseType, setExpenseType] = useState<string>("");
   const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account">("cash");
+  const [expenseAccountType, setExpenseAccountType] = useState<"limit" | "current">("limit");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseDate, setExpenseDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [expenseRemarks, setExpenseRemarks] = useState("");
@@ -797,21 +798,6 @@ export default function CashManagement() {
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label>{t("expenseType")} *</Label>
-                  <Select value={expenseType} onValueChange={setExpenseType}>
-                    <SelectTrigger data-testid="select-expense-type">
-                      <SelectValue placeholder={t("selectExpenseType")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="salary">{t("salary")}</SelectItem>
-                      <SelectItem value="hammali">{t("hammali")}</SelectItem>
-                      <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
-                      <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
                   <Label>{t("paymentMode")} *</Label>
                   <Select value={expensePaymentMode} onValueChange={(v) => setExpensePaymentMode(v as "cash" | "account")}>
                     <SelectTrigger data-testid="select-expense-payment-mode">
@@ -830,6 +816,38 @@ export default function CashManagement() {
                           {t("account")}
                         </span>
                       </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {expensePaymentMode === "account" && (
+                  <div className="space-y-2">
+                    <Label>{t("accountType")} *</Label>
+                    <Select value={expenseAccountType} onValueChange={(v) => setExpenseAccountType(v as "limit" | "current")}>
+                      <SelectTrigger data-testid="select-expense-account-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="limit">{t("limitAccount")}</SelectItem>
+                        <SelectItem value="current">{t("currentAccount")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>{t("expenseType")} *</Label>
+                  <Select value={expenseType} onValueChange={setExpenseType}>
+                    <SelectTrigger data-testid="select-expense-type">
+                      <SelectValue placeholder={t("selectExpenseType")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="salary">{t("salary")}</SelectItem>
+                      <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                      <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
+                      <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
+                      <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
+                      <SelectItem value="tds">{t("tds")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
