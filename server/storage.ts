@@ -75,7 +75,7 @@ export interface IStorage {
   deleteFloorsByChamber(chamberId: string): Promise<void>;
   updateChamberFill(id: string, fill: number): Promise<void>;
   createLot(lot: InsertLot): Promise<Lot>;
-  createBatchLots(lots: InsertLot[], coldStorageId: string): Promise<{ lots: Lot[]; entrySequence: number }>;
+  createBatchLots(lots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed"): Promise<{ lots: Lot[]; entrySequence: number }>;
   getNextEntrySequence(coldStorageId: string): Promise<number>;
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
@@ -351,16 +351,29 @@ export class DatabaseStorage implements IStorage {
     return result?.entrySequence ?? 1;
   }
 
-  async createBatchLots(insertLots: InsertLot[], coldStorageId: string): Promise<{ lots: Lot[]; entrySequence: number }> {
-    // Get the current entry sequence (before incrementing)
+  async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed"): Promise<{ lots: Lot[]; entrySequence: number }> {
+    // Get the current cold storage
     const coldStorage = await this.getColdStorage(coldStorageId);
-    const entrySequence = coldStorage?.nextEntryBillNumber ?? 1;
     
-    // Increment the counter for the next batch (done atomically)
-    await db
-      .update(coldStorages)
-      .set({ nextEntryBillNumber: sql`COALESCE(${coldStorages.nextEntryBillNumber}, 0) + 1` })
-      .where(eq(coldStorages.id, coldStorageId));
+    // Determine which lot number counter to use based on bag type category
+    // Wafer uses nextWaferLotNumber, Ration/Seed uses nextRationSeedLotNumber
+    const isWaferCategory = bagTypeCategory === "wafer";
+    const entrySequence = isWaferCategory 
+      ? (coldStorage?.nextWaferLotNumber ?? 1)
+      : (coldStorage?.nextRationSeedLotNumber ?? 1);
+    
+    // Increment the appropriate counter atomically
+    if (isWaferCategory) {
+      await db
+        .update(coldStorages)
+        .set({ nextWaferLotNumber: sql`COALESCE(${coldStorages.nextWaferLotNumber}, 0) + 1` })
+        .where(eq(coldStorages.id, coldStorageId));
+    } else {
+      await db
+        .update(coldStorages)
+        .set({ nextRationSeedLotNumber: sql`COALESCE(${coldStorages.nextRationSeedLotNumber}, 0) + 1` })
+        .where(eq(coldStorages.id, coldStorageId));
+    }
     
     const createdLots: Lot[] = [];
     

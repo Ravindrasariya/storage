@@ -303,12 +303,13 @@ export async function registerRoutes(
       dm: z.number().optional(),
       remarks: z.string().optional(),
     })).min(1),
+    bagTypeCategory: z.enum(["wafer", "rationSeed"]).optional(), // Category for lot number counter
   });
 
   app.post("/api/lots/batch", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { farmer, lots: lotDataArray } = batchLotSchema.parse(req.body);
+      const { farmer, lots: lotDataArray, bagTypeCategory } = batchLotSchema.parse(req.body);
       
       // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
       const lotsToCreate = lotDataArray.map(lotData => ({
@@ -319,7 +320,7 @@ export async function registerRoutes(
         remainingSize: lotData.size,
       }));
       
-      const result = await storage.createBatchLots(lotsToCreate, coldStorageId);
+      const result = await storage.createBatchLots(lotsToCreate, coldStorageId, bagTypeCategory);
       
       res.status(201).json({
         lots: result.lots,

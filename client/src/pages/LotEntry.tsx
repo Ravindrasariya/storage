@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -109,6 +110,7 @@ export default function LotEntry() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { canEdit } = useAuth();
+  const [bagTypeCategory, setBagTypeCategory] = useState<"wafer" | "rationSeed">("wafer");
   const [lots, setLots] = useState<LotData[]>([{ ...defaultLotData }]);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
   const [showReceipt, setShowReceipt] = useState(false);
@@ -170,7 +172,7 @@ export default function LotEntry() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const { farmer, lots: savedLots, imagePreviews: savedPreviews } = JSON.parse(saved);
+        const { farmer, lots: savedLots, imagePreviews: savedPreviews, bagTypeCategory: savedCategory } = JSON.parse(saved);
         if (farmer) {
           form.reset(farmer);
         }
@@ -179,6 +181,9 @@ export default function LotEntry() {
         }
         if (savedPreviews) {
           setImagePreviews(savedPreviews);
+        }
+        if (savedCategory) {
+          setBagTypeCategory(savedCategory);
         }
       }
     } catch (e) {
@@ -192,11 +197,21 @@ export default function LotEntry() {
     if (!isInitialized) return;
     try {
       const farmer = form.getValues();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ farmer, lots, imagePreviews }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ farmer, lots, imagePreviews, bagTypeCategory }));
     } catch (e) {
       console.error("Failed to save form data", e);
     }
-  }, [lots, imagePreviews, isInitialized, form.watch()]);
+  }, [lots, imagePreviews, isInitialized, bagTypeCategory, form.watch()]);
+
+  // Update all lots when bag type category changes
+  useEffect(() => {
+    if (!isInitialized) return;
+    const newBagType = bagTypeCategory === "wafer" ? "wafer" : "seed";
+    setLots(prevLots => prevLots.map(lot => ({
+      ...lot,
+      bagType: newBagType as "wafer" | "seed" | "Ration",
+    })));
+  }, [bagTypeCategory, isInitialized]);
 
   const clearSavedData = () => {
     localStorage.removeItem(STORAGE_KEY);
@@ -330,7 +345,7 @@ export default function LotEntry() {
   };
 
   const createBatchLotsMutation = useMutation({
-    mutationFn: async (data: { farmer: FarmerData; lots: LotData[] }) => {
+    mutationFn: async (data: { farmer: FarmerData; lots: LotData[]; bagTypeCategory: "wafer" | "rationSeed" }) => {
       const response = await apiRequest("POST", "/api/lots/batch", data);
       return response.json();
     },
@@ -378,7 +393,8 @@ export default function LotEntry() {
   };
 
   const addLot = () => {
-    setLots(prev => [...prev, { ...defaultLotData }]);
+    const newBagType = bagTypeCategory === "wafer" ? "wafer" : "seed";
+    setLots(prev => [...prev, { ...defaultLotData, bagType: newBagType as "wafer" | "seed" | "Ration" }]);
   };
 
   const removeLot = (index: number) => {
@@ -420,7 +436,7 @@ export default function LotEntry() {
 
     setIsSubmitting(true);
     try {
-      const result = await createBatchLotsMutation.mutateAsync({ farmer: farmerData, lots });
+      const result = await createBatchLotsMutation.mutateAsync({ farmer: farmerData, lots, bagTypeCategory });
       
       toast({
         title: t("success"),
@@ -657,20 +673,41 @@ export default function LotEntry() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/")}
-          data-testid="button-back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{t("newLot")}</h1>
-          <p className="text-muted-foreground mt-1">
-            Enter details for the incoming lot(s)
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex items-center gap-4 flex-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/")}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">{t("newLot")}</h1>
+            <p className="text-muted-foreground mt-1">
+              Enter details for the incoming lot(s)
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 pl-12 sm:pl-0">
+          <span className="text-sm font-medium text-muted-foreground">{t("bagType")}:</span>
+          <ToggleGroup
+            type="single"
+            value={bagTypeCategory}
+            onValueChange={(value) => {
+              if (value) setBagTypeCategory(value as "wafer" | "rationSeed");
+            }}
+            className="border rounded-lg"
+            data-testid="toggle-bag-category"
+          >
+            <ToggleGroupItem value="wafer" className="px-4" data-testid="toggle-wafer">
+              {t("wafer")}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="rationSeed" className="px-4" data-testid="toggle-ration-seed">
+              {t("Ration")}/{t("seed")}
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       </div>
 
@@ -949,16 +986,21 @@ export default function LotEntry() {
                   </div>
                   <div>
                     <label className="text-sm font-medium">{t("bagType")} *</label>
-                    <Select value={lot.bagType} onValueChange={(v) => updateLot(index, "bagType", v as "wafer" | "seed" | "Ration")}>
-                      <SelectTrigger data-testid={`select-bag-type-${index}`}>
-                        <SelectValue placeholder="Select bag type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="wafer">{t("wafer")}</SelectItem>
-                        <SelectItem value="seed">{t("seed")}</SelectItem>
-                        <SelectItem value="Ration">{t("ration") || "Ration"}</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {bagTypeCategory === "wafer" ? (
+                      <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center" data-testid={`display-bag-type-${index}`}>
+                        {t("wafer")}
+                      </div>
+                    ) : (
+                      <Select value={lot.bagType} onValueChange={(v) => updateLot(index, "bagType", v as "wafer" | "seed" | "Ration")}>
+                        <SelectTrigger data-testid={`select-bag-type-${index}`}>
+                          <SelectValue placeholder="Select bag type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="seed">{t("seed")}</SelectItem>
+                          <SelectItem value="Ration">{t("ration") || "Ration"}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
               </div>
