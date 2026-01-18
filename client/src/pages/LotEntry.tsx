@@ -32,14 +32,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck, Printer } from "lucide-react";
 import { format } from "date-fns";
 import type { Chamber } from "@shared/schema";
-import { capitalizeFirstLetter } from "@/lib/utils";
+import { capitalizeFirstLetter, cn } from "@/lib/utils";
 
 // Type for farmer records returned from lookup API
 interface FarmerRecord {
@@ -692,22 +691,34 @@ export default function LotEntry() {
         </div>
         <div className="flex items-center gap-2 pl-12 sm:pl-0">
           <span className="text-sm font-medium text-muted-foreground">{t("bagType")}:</span>
-          <ToggleGroup
-            type="single"
-            value={bagTypeCategory}
-            onValueChange={(value) => {
-              if (value) setBagTypeCategory(value as "wafer" | "rationSeed");
-            }}
-            className="border rounded-lg"
-            data-testid="toggle-bag-category"
-          >
-            <ToggleGroupItem value="wafer" className="px-4" data-testid="toggle-wafer">
+          <div className="flex rounded-lg bg-muted p-1" data-testid="toggle-bag-category">
+            <button
+              type="button"
+              onClick={() => setBagTypeCategory("wafer")}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
+                bagTypeCategory === "wafer"
+                  ? "bg-chart-1 text-white"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              data-testid="toggle-wafer"
+            >
               {t("wafer")}
-            </ToggleGroupItem>
-            <ToggleGroupItem value="rationSeed" className="px-4" data-testid="toggle-ration-seed">
+            </button>
+            <button
+              type="button"
+              onClick={() => setBagTypeCategory("rationSeed")}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
+                bagTypeCategory === "rationSeed"
+                  ? "bg-chart-1 text-white"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              data-testid="toggle-ration-seed"
+            >
               {t("Ration")}/{t("seed")}
-            </ToggleGroupItem>
-          </ToggleGroup>
+            </button>
+          </div>
         </div>
       </div>
 
