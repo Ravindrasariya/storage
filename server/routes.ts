@@ -1665,18 +1665,19 @@ export async function registerRoutes(
   app.post("/api/opening-receivables", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, buyerName, amount, description } = req.body;
+      const { year, payerType, buyerName, dueAmount, remarks } = req.body;
       
-      if (!year || !buyerName || !amount) {
-        return res.status(400).json({ error: "Year, buyer name, and amount are required" });
+      if (!year || !payerType || !dueAmount) {
+        return res.status(400).json({ error: "Year, payer type, and amount are required" });
       }
 
       const receivable = await storage.createOpeningReceivable({
         coldStorageId,
         year,
-        buyerName,
-        amount,
-        description: description || null,
+        payerType,
+        buyerName: buyerName || null,
+        dueAmount,
+        remarks: remarks || null,
       });
       res.json(receivable);
     } catch (error) {
@@ -1714,18 +1715,19 @@ export async function registerRoutes(
   app.post("/api/opening-payables", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, vendorName, amount, description } = req.body;
+      const { year, expenseType, receiverName, dueAmount, remarks } = req.body;
       
-      if (!year || !vendorName || !amount) {
-        return res.status(400).json({ error: "Year, vendor name, and amount are required" });
+      if (!year || !expenseType || !dueAmount) {
+        return res.status(400).json({ error: "Year, expense type, and amount are required" });
       }
 
       const payable = await storage.createOpeningPayable({
         coldStorageId,
         year,
-        vendorName,
-        amount,
-        description: description || null,
+        expenseType,
+        receiverName: receiverName || null,
+        dueAmount,
+        remarks: remarks || null,
       });
       res.json(payable);
     } catch (error) {
