@@ -36,6 +36,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
+import { Currency } from "@/components/Currency";
 
 // Helper to get saved search state from sessionStorage
 const getSavedSearchState = () => {
@@ -892,11 +893,11 @@ export default function StockRegister() {
               </div>
               <div className="flex items-center gap-1 md:flex-1">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesPaid")}:</span>
-                <span className="font-bold text-sm md:text-base text-green-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-paid">₹{summaryTotals.chargesPaid.toLocaleString('en-IN')}</span>
+                <span className="font-bold text-sm md:text-base text-green-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-paid"><Currency amount={summaryTotals.chargesPaid} /></span>
               </div>
               <div className="flex items-center gap-1 md:flex-1">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesDue")}:</span>
-                <span className="font-bold text-sm md:text-base text-red-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-due">₹{summaryTotals.chargesDue.toLocaleString('en-IN')}</span>
+                <span className="font-bold text-sm md:text-base text-red-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-due"><Currency amount={summaryTotals.chargesDue} /></span>
               </div>
             </div>
           </div>
@@ -1057,7 +1058,7 @@ export default function StockRegister() {
               <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 mb-3">
                 <p className="text-xs text-muted-foreground">{t("total")}</p>
                 <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                  Rs. {(selectedLotCharges.totalPaid + selectedLotCharges.totalDue).toLocaleString()}
+                  <Currency amount={selectedLotCharges.totalPaid + selectedLotCharges.totalDue} />
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1065,7 +1066,7 @@ export default function StockRegister() {
                   <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                     <p className="text-xs text-muted-foreground">{t("coldChargesPaid")}</p>
                     <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                      Rs. {selectedLotCharges.totalPaid.toLocaleString()}
+                      <Currency amount={selectedLotCharges.totalPaid} />
                     </p>
                   </div>
                 )}
@@ -1073,7 +1074,7 @@ export default function StockRegister() {
                   <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                     <p className="text-xs text-muted-foreground">{t("coldChargesDue")}</p>
                     <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                      Rs. {selectedLotCharges.totalDue.toLocaleString()}
+                      <Currency amount={selectedLotCharges.totalDue} />
                     </p>
                   </div>
                 )}
