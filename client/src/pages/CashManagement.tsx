@@ -35,8 +35,10 @@ export default function CashManagement() {
   
   const [activeTab, setActiveTab] = useState<"inward" | "expense">("inward");
   
+  const [payerType, setPayerType] = useState<"cold_merchant" | "sales_goods" | "kata" | "others">("cold_merchant");
   const [buyerName, setBuyerName] = useState("");
   const [customBuyerName, setCustomBuyerName] = useState("");
+  const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState("");
   const [receiptType, setReceiptType] = useState<"cash" | "account">("cash");
   const [accountType, setAccountType] = useState<"limit" | "current">("limit");
   const [inwardAmount, setInwardAmount] = useState("");
@@ -66,8 +68,12 @@ export default function CashManagement() {
     queryKey: ["/api/expenses"],
   });
 
+  const { data: salesGoodsBuyers = [] } = useQuery<string[]>({
+    queryKey: ["/api/cash-receipts/sales-goods-buyers"],
+  });
+
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { buyerName: string; receiptType: string; accountType?: string; amount: number; receivedAt: string; notes?: string }) => {
+    mutationFn: async (data: { payerType: string; buyerName?: string; receiptType: string; accountType?: string; amount: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -76,8 +82,10 @@ export default function CashManagement() {
         title: t("success"),
         description: `${t("paymentRecorded")} - ${result.salesUpdated} ${t("salesAdjusted")}`,
       });
+      setPayerType("cold_merchant");
       setBuyerName("");
       setCustomBuyerName("");
+      setSalesGoodsBuyerName("");
       setReceiptType("cash");
       setAccountType("limit");
       setInwardAmount("");
@@ -85,6 +93,7 @@ export default function CashManagement() {
       setInwardRemarks("");
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/sales-goods-buyers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
@@ -163,14 +172,30 @@ export default function CashManagement() {
   });
 
   const handleInwardSubmit = () => {
-    const finalBuyerName = buyerName === "__other__" ? customBuyerName.trim() : buyerName;
+    // Determine buyer name based on payer type
+    let finalBuyerName: string | undefined;
+    if (payerType === "cold_merchant") {
+      finalBuyerName = buyerName === "__other__" ? customBuyerName.trim() : buyerName;
+    } else if (payerType === "sales_goods") {
+      finalBuyerName = salesGoodsBuyerName.trim();
+    } else if (payerType === "others") {
+      finalBuyerName = customBuyerName.trim();
+    }
+    // For kata, no buyer name needed
     
-    if (!finalBuyerName || !inwardAmount || parseFloat(inwardAmount) <= 0) {
+    // Validate required fields based on payer type
+    if (payerType !== "kata" && !finalBuyerName) {
+      toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+    
+    if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
 
     createReceiptMutation.mutate({
+      payerType,
       buyerName: finalBuyerName,
       receiptType,
       accountType: receiptType === "account" ? accountType : undefined,
@@ -215,7 +240,7 @@ export default function CashManagement() {
     let filteredReceipts = receipts;
     if (filterBuyer) {
       const filterKey = filterBuyer.trim().toLowerCase();
-      filteredReceipts = filteredReceipts.filter(r => r.buyerName.trim().toLowerCase() === filterKey);
+      filteredReceipts = filteredReceipts.filter(r => r.buyerName && r.buyerName.trim().toLowerCase() === filterKey);
     }
     if (filterMonth) {
       filteredReceipts = filteredReceipts.filter(r => {
@@ -270,6 +295,7 @@ export default function CashManagement() {
     // Aggregate buyers case-insensitively with trimming
     const normalizedMap = new Map<string, string>(); // lowercase -> canonical display name
     receipts.forEach(r => {
+      if (!r.buyerName) return;
       const trimmed = r.buyerName.trim();
       const key = trimmed.toLowerCase();
       if (!normalizedMap.has(key)) {
@@ -339,7 +365,7 @@ export default function CashManagement() {
 
     if (filterBuyer) {
       const filterKey = filterBuyer.trim().toLowerCase();
-      filteredReceipts = filteredReceipts.filter(r => r.buyerName.trim().toLowerCase() === filterKey);
+      filteredReceipts = filteredReceipts.filter(r => r.buyerName && r.buyerName.trim().toLowerCase() === filterKey);
     }
 
     if (filterCategory) {
@@ -614,50 +640,103 @@ export default function CashManagement() {
                 )}
 
                 <div className="space-y-2">
-                  <Label>{t("buyerName")} *</Label>
-                  {loadingBuyers ? (
-                    <div className="text-sm text-muted-foreground">{t("loading")}</div>
-                  ) : (
-                    <Select value={buyerName} onValueChange={(value) => {
-                      setBuyerName(value);
-                      if (value !== "__other__") {
-                        setCustomBuyerName("");
-                      }
-                    }}>
-                      <SelectTrigger data-testid="select-buyer">
-                        <SelectValue placeholder={t("selectBuyer")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {buyersWithDues.map((buyer) => (
-                          <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
-                            <span className="flex items-center justify-between gap-4 w-full">
-                              <span>{buyer.buyerName}</span>
-                              <Badge variant="outline" className="text-xs">
-                                ₹{buyer.totalDue.toLocaleString()}
-                              </Badge>
-                            </span>
+                  <Label>{t("payerType")} *</Label>
+                  <Select value={payerType} onValueChange={(v) => {
+                    setPayerType(v as "cold_merchant" | "sales_goods" | "kata" | "others");
+                    // Reset buyer name fields when changing payer type
+                    setBuyerName("");
+                    setCustomBuyerName("");
+                    setSalesGoodsBuyerName("");
+                  }}>
+                    <SelectTrigger data-testid="select-payer-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
+                      <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
+                      <SelectItem value="kata">{t("kata")}</SelectItem>
+                      <SelectItem value="others">{t("others")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {payerType === "cold_merchant" && (
+                  <div className="space-y-2">
+                    <Label>{t("buyerName")} *</Label>
+                    {loadingBuyers ? (
+                      <div className="text-sm text-muted-foreground">{t("loading")}</div>
+                    ) : (
+                      <Select value={buyerName} onValueChange={(value) => {
+                        setBuyerName(value);
+                        if (value !== "__other__") {
+                          setCustomBuyerName("");
+                        }
+                      }}>
+                        <SelectTrigger data-testid="select-buyer">
+                          <SelectValue placeholder={t("selectBuyer")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {buyersWithDues.map((buyer) => (
+                            <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
+                              <span className="flex items-center justify-between gap-4 w-full">
+                                <span>{buyer.buyerName}</span>
+                                <Badge variant="outline" className="text-xs">
+                                  ₹{buyer.totalDue.toLocaleString()}
+                                </Badge>
+                              </span>
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__other__">
+                            <span className="text-muted-foreground italic">{t("other") || "Other"}</span>
                           </SelectItem>
-                        ))}
-                        <SelectItem value="__other__">
-                          <span className="text-muted-foreground italic">{t("other") || "Other"}</span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {buyerName === "__other__" && (
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {buyerName === "__other__" && (
+                      <Input
+                        value={customBuyerName}
+                        onChange={(e) => setCustomBuyerName(e.target.value)}
+                        placeholder={t("enterBuyerName") || "Enter buyer name"}
+                        data-testid="input-custom-buyer-name"
+                      />
+                    )}
+                    {buyerName && buyerName !== "__other__" && selectedBuyerDue > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("totalDue")}: ₹{selectedBuyerDue.toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {payerType === "sales_goods" && (
+                  <div className="space-y-2">
+                    <Label>{t("buyerName")} *</Label>
+                    <Input
+                      value={salesGoodsBuyerName}
+                      onChange={(e) => setSalesGoodsBuyerName(e.target.value)}
+                      placeholder={t("enterBuyerName") || "Enter buyer name"}
+                      list="sales-goods-buyers-list"
+                      data-testid="input-sales-goods-buyer"
+                    />
+                    <datalist id="sales-goods-buyers-list">
+                      {salesGoodsBuyers.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
+                )}
+
+                {payerType === "others" && (
+                  <div className="space-y-2">
+                    <Label>{t("buyerName")} *</Label>
                     <Input
                       value={customBuyerName}
                       onChange={(e) => setCustomBuyerName(e.target.value)}
                       placeholder={t("enterBuyerName") || "Enter buyer name"}
-                      data-testid="input-custom-buyer-name"
+                      data-testid="input-others-buyer"
                     />
-                  )}
-                  {buyerName && buyerName !== "__other__" && selectedBuyerDue > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {t("totalDue")}: ₹{selectedBuyerDue.toLocaleString()}
-                    </p>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>{t("amount")} (₹) *</Label>
@@ -698,7 +777,14 @@ export default function CashManagement() {
 
                 <Button
                   onClick={handleInwardSubmit}
-                  disabled={!canEdit || !buyerName || (buyerName === "__other__" && !customBuyerName.trim()) || !inwardAmount || createReceiptMutation.isPending}
+                  disabled={
+                    !canEdit || 
+                    !inwardAmount || 
+                    createReceiptMutation.isPending ||
+                    (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim()))) ||
+                    (payerType === "sales_goods" && !salesGoodsBuyerName.trim()) ||
+                    (payerType === "others" && !customBuyerName.trim())
+                  }
                   className="w-full"
                   data-testid="button-record-payment"
                 >

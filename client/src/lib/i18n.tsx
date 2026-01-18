@@ -310,6 +310,7 @@ const translations: Translations = {
   payerType: { en: "Payer Type", hi: "भुगतानकर्ता प्रकार" },
   coldMerchant: { en: "Cold Merchant", hi: "कोल्ड व्यापारी" },
   salesOfGoods: { en: "Sales of Goods", hi: "माल की बिक्री" },
+  salesGoods: { en: "Sales of Goods", hi: "माल की बिक्री" },
   kata: { en: "Kata", hi: "काटा" },
   others: { en: "Others", hi: "अन्य" },
   receiptType: { en: "Receipt Type", hi: "रसीद प्रकार" },
