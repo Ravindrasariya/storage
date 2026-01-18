@@ -377,6 +377,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined> {
+    // Auto-update paymentStatus based on totalDueCharge and totalPaidCharge
+    // Only compute if not explicitly setting paymentStatus
+    if (!updates.paymentStatus && (updates.totalDueCharge !== undefined || updates.totalPaidCharge !== undefined)) {
+      const lot = await this.getLot(id);
+      if (lot) {
+        const dueAmount = updates.totalDueCharge ?? lot.totalDueCharge ?? 0;
+        const paidAmount = updates.totalPaidCharge ?? lot.totalPaidCharge ?? 0;
+        
+        // Ensure non-negative
+        if (updates.totalDueCharge !== undefined && updates.totalDueCharge !== null && updates.totalDueCharge < 0) {
+          updates.totalDueCharge = 0;
+        }
+        
+        // Calculate correct paymentStatus based on both amounts
+        // If no dues, mark as paid (even if paidAmount is 0 - means zero-charge lot)
+        if (dueAmount <= 0) {
+          updates.paymentStatus = "paid";
+        } else if (paidAmount > 0) {
+          updates.paymentStatus = "partial";
+        } else {
+          updates.paymentStatus = "due";
+        }
+      }
+    }
+    
     const [result] = await db.update(lots).set(updates).where(eq(lots.id, id)).returning();
     return result;
   }
@@ -1556,7 +1581,58 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
 
+    // Update lot totals for all affected lots
+    const affectedLotIds = Array.from(new Set(sales.map(s => s.lotId)));
+    for (const lotId of affectedLotIds) {
+      await this.recalculateLotTotals(lotId);
+    }
+
     return { receipt, salesUpdated };
+  }
+
+  private async recalculateLotTotals(lotId: string): Promise<void> {
+    // Get all sales for this lot
+    const lotSales = await db.select()
+      .from(salesHistory)
+      .where(eq(salesHistory.lotId, lotId));
+
+    let totalPaidCharge = 0;
+    let totalDueCharge = 0;
+
+    for (const sale of lotSales) {
+      const charges = (sale.coldStorageCharge || 0) + 
+                     (sale.kataCharges || 0) + 
+                     (sale.extraHammali || 0) + 
+                     (sale.gradingCharges || 0);
+      
+      if (sale.paymentStatus === "paid") {
+        totalPaidCharge += charges;
+      } else if (sale.paymentStatus === "due") {
+        totalDueCharge += charges;
+      } else if (sale.paymentStatus === "partial") {
+        totalPaidCharge += sale.paidAmount || 0;
+        totalDueCharge += sale.dueAmount || 0;
+      }
+    }
+
+    // Calculate correct paymentStatus based on totals
+    // If no dues, mark as paid (even if paidAmount is 0 - means zero-charge lot)
+    let newPaymentStatus: string | null = null;
+    if (totalDueCharge <= 0) {
+      newPaymentStatus = "paid";
+    } else if (totalPaidCharge > 0) {
+      newPaymentStatus = "partial";
+    } else {
+      newPaymentStatus = "due";
+    }
+
+    await db.update(lots)
+      .set({
+        totalPaidCharge,
+        totalDueCharge,
+        paymentStatus: newPaymentStatus,
+      })
+      .where(eq(lots.id, lotId));
   }
 
   async getExpenses(coldStorageId: string): Promise<Expense[]> {
@@ -1695,6 +1771,18 @@ export class DatabaseStorage implements IStorage {
           unappliedAmount: remainingAmount,
         })
         .where(eq(cashReceipts.id, activeReceipt.id));
+    }
+
+    // Update lot totals for all affected lots (all sales for this buyer)
+    const affectedSales = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, receipt.coldStorageId),
+        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${receipt.buyerName}))`
+      ));
+    const affectedLotIds = Array.from(new Set(affectedSales.map(s => s.lotId)));
+    for (const lotId of affectedLotIds) {
+      await this.recalculateLotTotals(lotId);
     }
 
     return { success: true, message: "Receipt reversed and payments recalculated" };
@@ -1840,6 +1928,12 @@ export class DatabaseStorage implements IStorage {
       receiptsUpdated++;
     }
 
+    // Update lot totals for all affected lots
+    const affectedLotIds = Array.from(new Set(buyerSales.map(s => s.lotId)));
+    for (const lotId of affectedLotIds) {
+      await this.recalculateLotTotals(lotId);
+    }
+
     return { salesUpdated, receiptsUpdated };
   }
 
@@ -1919,12 +2013,27 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Update lot if needed
-      if (lot.totalPaidCharge !== totalPaidCharge || lot.totalDueCharge !== totalDueCharge) {
+      // Calculate correct paymentStatus based on totals
+      // If no dues, mark as paid (even if paidAmount is 0 - means zero-charge lot)
+      let newPaymentStatus: string | null = null;
+      if (totalDueCharge <= 0) {
+        newPaymentStatus = "paid";
+      } else if (totalPaidCharge > 0) {
+        newPaymentStatus = "partial";
+      } else {
+        newPaymentStatus = "due";
+      }
+      
+      // Update lot if totals OR paymentStatus differs
+      const statusDiffers = newPaymentStatus !== lot.paymentStatus;
+      const totalsDiffer = lot.totalPaidCharge !== totalPaidCharge || lot.totalDueCharge !== totalDueCharge;
+      
+      if (totalsDiffer || statusDiffers) {
         await db.update(lots)
           .set({
             totalPaidCharge,
             totalDueCharge,
+            paymentStatus: newPaymentStatus,
           })
           .where(eq(lots.id, lot.id));
       }
