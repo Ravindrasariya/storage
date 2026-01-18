@@ -74,6 +74,16 @@ Core entities:
 - All counters reset to 1 during season reset
 - Lot entry bill numbers stored in lots.entryBillNumber, assigned when Print is clicked in receipt dialog
 
+### Start-of-Year Settings
+- Settings button in Cash Management header (edit access only)
+- Three tabs: Opening Balances, Receivables, Payables
+- Year selector allows configuring for current or previous 2 years
+- Opening balances (cash in hand, limit account, current account) affect displayed balance calculations
+- Receivables track outstanding amounts due from buyers with payer type categories
+- Payables track outstanding amounts owed to vendors/employees with expense type categories
+- Buyer name autocomplete from database for receivables (manual entry for sales_goods type)
+- Database tables: cashOpeningBalances, openingReceivables, openingPayables (all year-scoped)
+
 ### Build and Deployment
 - Development: Vite dev server with HMR, Express API on same port
 - Production: Client built to `dist/public`, server bundled to `dist/index.cjs`
