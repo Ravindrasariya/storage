@@ -18,6 +18,7 @@ export const coldStorages = pgTable("cold_storages", {
   waferHammali: real("wafer_hammali"), // Hammali charge for wafer
   seedColdCharge: real("seed_cold_charge"), // Cold storage charge for seed
   seedHammali: real("seed_hammali"), // Hammali charge for seed
+  chargeUnit: text("charge_unit").notNull().default("bag"), // 'bag' or 'quintal'
   linkedPhones: text("linked_phones").array().notNull(), // Mobile numbers with access
   nextExitBillNumber: integer("next_exit_bill_number").notNull().default(1), // Auto-increment counter for exit bills
   nextColdStorageBillNumber: integer("next_cold_storage_bill_number").notNull().default(1), // Counter for cold storage deduction bills

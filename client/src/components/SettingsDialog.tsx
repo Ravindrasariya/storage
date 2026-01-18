@@ -39,8 +39,11 @@ interface ColdStorageSettings {
   waferHammali: number;
   seedColdCharge: number;
   seedHammali: number;
+  chargeUnit: "bag" | "quintal";
   startingWaferLotNumber: number;
   startingRationSeedLotNumber: number;
+  nextWaferLotNumber?: number;
+  nextRationSeedLotNumber?: number;
 }
 
 type ChamberFloorsData = Record<string, ChamberFloor[]>;
@@ -320,6 +323,7 @@ export function SettingsDialog() {
         waferHammali: settings.waferHammali,
         seedColdCharge: settings.seedColdCharge,
         seedHammali: settings.seedHammali,
+        chargeUnit: settings.chargeUnit || "bag",
         startingWaferLotNumber: settings.startingWaferLotNumber || 1,
         startingRationSeedLotNumber: settings.startingRationSeedLotNumber || 1,
         nextWaferLotNumber: settings.startingWaferLotNumber || 1,
@@ -572,73 +576,110 @@ export function SettingsDialog() {
           </Card>
 
           <Card className="p-4 space-y-4">
-            <h4 className="font-semibold">{t("wafer")}/{t("ration")} {t("rate")} (Rs)</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>{t("coldStorageCharge")}</Label>
-                <Input
-                  type="number"
-                  value={settings?.waferColdCharge || ""}
-                  onChange={(e) =>
-                    setSettings((prev) =>
-                      prev ? { ...prev, waferColdCharge: e.target.value === "" ? 0 : Number(e.target.value) } : null
-                    )
-                  }
-                  data-testid="input-wafer-cold-charge"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("hammali")}</Label>
-                <Input
-                  type="number"
-                  value={settings?.waferHammali || ""}
-                  onChange={(e) =>
-                    setSettings((prev) =>
-                      prev ? { ...prev, waferHammali: e.target.value === "" ? 0 : Number(e.target.value) } : null
-                    )
-                  }
-                  data-testid="input-wafer-hammali"
-                />
+            <div className="flex items-center justify-between gap-4">
+              <h4 className="font-semibold">{t("storageRates")} (Rs)</h4>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{t("chargeUnit")}:</span>
+                <div className="flex border rounded-md overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setSettings((prev) => prev ? { ...prev, chargeUnit: "bag" } : null)}
+                    className={`px-3 py-1 text-sm transition-colors ${
+                      settings?.chargeUnit === "bag" 
+                        ? "bg-primary text-primary-foreground" 
+                        : "bg-muted hover:bg-muted/80"
+                    }`}
+                    data-testid="btn-charge-unit-bag"
+                  >
+                    {t("perBag")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettings((prev) => prev ? { ...prev, chargeUnit: "quintal" } : null)}
+                    className={`px-3 py-1 text-sm transition-colors ${
+                      settings?.chargeUnit === "quintal" 
+                        ? "bg-primary text-primary-foreground" 
+                        : "bg-muted hover:bg-muted/80"
+                    }`}
+                    data-testid="btn-charge-unit-quintal"
+                  >
+                    {t("perQuintal")}
+                  </button>
+                </div>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {t("total")}: Rs {(settings?.waferColdCharge || 0) + (settings?.waferHammali || 0)}
-            </p>
-          </Card>
 
-          <Card className="p-4 space-y-4">
-            <h4 className="font-semibold">{t("seed")} {t("rate")} (Rs)</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>{t("coldStorageCharge")}</Label>
-                <Input
-                  type="number"
-                  value={settings?.seedColdCharge || ""}
-                  onChange={(e) =>
-                    setSettings((prev) =>
-                      prev ? { ...prev, seedColdCharge: e.target.value === "" ? 0 : Number(e.target.value) } : null
-                    )
-                  }
-                  data-testid="input-seed-cold-charge"
-                />
+            <div className="space-y-4">
+              <div>
+                <h5 className="text-sm font-medium mb-2">{t("wafer")}/{t("ration")} {t("rate")}</h5>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{t("coldStorageCharge")}</Label>
+                    <Input
+                      type="number"
+                      value={settings?.waferColdCharge || ""}
+                      onChange={(e) =>
+                        setSettings((prev) =>
+                          prev ? { ...prev, waferColdCharge: e.target.value === "" ? 0 : Number(e.target.value) } : null
+                        )
+                      }
+                      data-testid="input-wafer-cold-charge"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("hammali")}</Label>
+                    <Input
+                      type="number"
+                      value={settings?.waferHammali || ""}
+                      onChange={(e) =>
+                        setSettings((prev) =>
+                          prev ? { ...prev, waferHammali: e.target.value === "" ? 0 : Number(e.target.value) } : null
+                        )
+                      }
+                      data-testid="input-wafer-hammali"
+                    />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t("total")}: Rs {(settings?.waferColdCharge || 0) + (settings?.waferHammali || 0)} / {settings?.chargeUnit === "quintal" ? t("quintal") : t("bag")}
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label>{t("hammali")}</Label>
-                <Input
-                  type="number"
-                  value={settings?.seedHammali || ""}
-                  onChange={(e) =>
-                    setSettings((prev) =>
-                      prev ? { ...prev, seedHammali: e.target.value === "" ? 0 : Number(e.target.value) } : null
-                    )
-                  }
-                  data-testid="input-seed-hammali"
-                />
+
+              <div className="border-t pt-4">
+                <h5 className="text-sm font-medium mb-2">{t("seed")} {t("rate")}</h5>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{t("coldStorageCharge")}</Label>
+                    <Input
+                      type="number"
+                      value={settings?.seedColdCharge || ""}
+                      onChange={(e) =>
+                        setSettings((prev) =>
+                          prev ? { ...prev, seedColdCharge: e.target.value === "" ? 0 : Number(e.target.value) } : null
+                        )
+                      }
+                      data-testid="input-seed-cold-charge"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("hammali")}</Label>
+                    <Input
+                      type="number"
+                      value={settings?.seedHammali || ""}
+                      onChange={(e) =>
+                        setSettings((prev) =>
+                          prev ? { ...prev, seedHammali: e.target.value === "" ? 0 : Number(e.target.value) } : null
+                        )
+                      }
+                      data-testid="input-seed-hammali"
+                    />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t("total")}: Rs {(settings?.seedColdCharge || 0) + (settings?.seedHammali || 0)} / {settings?.chargeUnit === "quintal" ? t("quintal") : t("bag")}
+                </p>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {t("total")}: Rs {(settings?.seedColdCharge || 0) + (settings?.seedHammali || 0)}
-            </p>
           </Card>
 
           <Card className="p-4 space-y-4">
