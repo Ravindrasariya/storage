@@ -768,7 +768,6 @@ export default function CashManagement() {
                     value={inwardRemarks}
                     onChange={(e) => setInwardRemarks(e.target.value)}
                     placeholder={t("remarks")}
-                    className="max-w-[180px]"
                     data-testid="input-inward-remarks"
                   />
                 </div>
@@ -866,7 +865,6 @@ export default function CashManagement() {
                     value={expenseRemarks}
                     onChange={(e) => setExpenseRemarks(e.target.value)}
                     placeholder={t("remarks")}
-                    className="max-w-[180px]"
                     data-testid="input-expense-remarks"
                   />
                 </div>
