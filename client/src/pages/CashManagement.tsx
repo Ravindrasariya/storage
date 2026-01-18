@@ -47,6 +47,8 @@ export default function CashManagement() {
   const [inwardRemarks, setInwardRemarks] = useState("");
 
   const [expenseType, setExpenseType] = useState<string>("");
+  const [expenseReceiverName, setExpenseReceiverName] = useState("");
+  const [showReceiverSuggestions, setShowReceiverSuggestions] = useState(false);
   const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account">("cash");
   const [expenseAccountType, setExpenseAccountType] = useState<"limit" | "current">("limit");
   const [expenseAmount, setExpenseAmount] = useState("");
@@ -102,6 +104,10 @@ export default function CashManagement() {
 
   const { data: salesGoodsBuyers = [] } = useQuery<string[]>({
     queryKey: ["/api/cash-receipts/sales-goods-buyers"],
+  });
+
+  const { data: receiverNames = [] } = useQuery<string[]>({
+    queryKey: ["/api/expenses/receiver-names"],
   });
 
   const { data: transfers = [], isLoading: loadingTransfers } = useQuery<CashTransfer[]>({
@@ -160,7 +166,7 @@ export default function CashManagement() {
   });
 
   const createExpenseMutation = useMutation({
-    mutationFn: async (data: { expenseType: string; paymentMode: string; accountType?: string; amount: number; paidAt: string; remarks?: string }) => {
+    mutationFn: async (data: { expenseType: string; receiverName?: string; paymentMode: string; accountType?: string; amount: number; paidAt: string; remarks?: string }) => {
       const response = await apiRequest("POST", "/api/expenses", data);
       return response.json();
     },
@@ -171,10 +177,12 @@ export default function CashManagement() {
         variant: "success",
       });
       setExpenseType("");
+      setExpenseReceiverName("");
       setExpenseAmount("");
       setExpenseDate(format(new Date(), "yyyy-MM-dd"));
       setExpenseRemarks("");
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses/receiver-names"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -364,6 +372,7 @@ export default function CashManagement() {
 
     createExpenseMutation.mutate({
       expenseType,
+      receiverName: expenseReceiverName || undefined,
       paymentMode: expensePaymentMode,
       accountType: expensePaymentMode === "account" ? expenseAccountType : undefined,
       amount: parseFloat(expenseAmount),
@@ -410,6 +419,16 @@ export default function CashManagement() {
       case "hammali": return t("hammali");
       case "grading_charges": return t("gradingCharges");
       case "general_expenses": return t("generalExpenses");
+      default: return type;
+    }
+  };
+
+  const getPayerTypeLabel = (type: string) => {
+    switch (type) {
+      case "cold_merchant": return t("coldMerchant");
+      case "sales_goods": return t("salesGoods");
+      case "kata": return t("kata");
+      case "others": return t("others");
       default: return type;
     }
   };
@@ -1368,7 +1387,10 @@ export default function CashManagement() {
 
                 <div className="space-y-2">
                   <Label>{t("expenseType")} *</Label>
-                  <Select value={expenseType} onValueChange={setExpenseType}>
+                  <Select value={expenseType} onValueChange={(v) => {
+                    setExpenseType(v);
+                    setExpenseReceiverName("");
+                  }}>
                     <SelectTrigger data-testid="select-expense-type">
                       <SelectValue placeholder={t("selectExpenseType")} />
                     </SelectTrigger>
@@ -1382,6 +1404,47 @@ export default function CashManagement() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {expenseType && (
+                  <div className="space-y-2 relative">
+                    <Label>{t("receiverName")}</Label>
+                    <Input
+                      value={expenseReceiverName}
+                      onChange={(e) => setExpenseReceiverName(e.target.value)}
+                      onFocus={() => setShowReceiverSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowReceiverSuggestions(false), 150)}
+                      placeholder={t("enterReceiverName") || "Enter receiver name"}
+                      data-testid="input-expense-receiver"
+                    />
+                    {showReceiverSuggestions && receiverNames.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
+                        <ScrollArea className="max-h-[150px]">
+                          {receiverNames
+                            .filter(name => 
+                              !expenseReceiverName || 
+                              name.toLowerCase().includes(expenseReceiverName.toLowerCase())
+                            )
+                            .map((name) => (
+                              <Button
+                                key={name}
+                                variant="ghost"
+                                size="sm"
+                                className="w-full justify-start"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setExpenseReceiverName(name);
+                                  setShowReceiverSuggestions(false);
+                                }}
+                                data-testid={`suggestion-receiver-${name}`}
+                              >
+                                {name}
+                              </Button>
+                            ))}
+                        </ScrollArea>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>{t("amount")} (₹) *</Label>
@@ -1592,7 +1655,7 @@ export default function CashManagement() {
                             )}
                             <span className={`font-medium truncate ${isReversed ? "line-through text-gray-500" : ""}`}>
                               {transaction.type === "inflow" 
-                                ? (transaction.data as CashReceipt).buyerName
+                                ? ((transaction.data as CashReceipt).buyerName || getPayerTypeLabel((transaction.data as CashReceipt).payerType))
                                 : transaction.type === "outflow"
                                   ? getExpenseTypeLabel((transaction.data as Expense).expenseType)
                                   : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`

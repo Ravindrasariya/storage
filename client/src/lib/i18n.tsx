@@ -408,6 +408,7 @@ const translations: Translations = {
   noReceivables: { en: "No receivables added for this year", hi: "इस वर्ष के लिए कोई प्राप्य नहीं जोड़ा गया" },
   noPayables: { en: "No payables added for this year", hi: "इस वर्ष के लिए कोई देय नहीं जोड़ा गया" },
   receiverName: { en: "Receiver Name", hi: "प्राप्तकर्ता का नाम" },
+  enterReceiverName: { en: "Enter receiver name", hi: "प्राप्तकर्ता का नाम दर्ज करें" },
   selectOrEnter: { en: "Select or enter name", hi: "नाम चुनें या दर्ज करें" },
   enterManually: { en: "Enter manually", hi: "मैन्युअल रूप से दर्ज करें" },
   amountRequired: { en: "Amount is required", hi: "राशि आवश्यक है" },

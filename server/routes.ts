@@ -1500,8 +1500,28 @@ export async function registerRoutes(
     }
   });
 
+  // Get unique receiver names from previous expenses for autocomplete
+  app.get("/api/expenses/receiver-names", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const expenseList = await storage.getExpenses(coldStorageId);
+      // Extract unique receiver names
+      const namesSet = new Set<string>();
+      expenseList.forEach(e => {
+        if (e.receiverName && e.receiverName.trim()) {
+          namesSet.add(e.receiverName.trim());
+        }
+      });
+      const receiverNames = Array.from(namesSet).sort();
+      res.json(receiverNames);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch receiver names" });
+    }
+  });
+
   const createExpenseSchema = z.object({
-    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses"]),
+    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds"]),
+    receiverName: z.string().optional(),
     paymentMode: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
     amount: z.number().positive(),
@@ -1522,6 +1542,7 @@ export async function registerRoutes(
       const expense = await storage.createExpense({
         coldStorageId: coldStorageId,
         expenseType: validatedData.expenseType,
+        receiverName: validatedData.receiverName?.trim() || null,
         paymentMode: validatedData.paymentMode,
         accountType: validatedData.paymentMode === "account" ? validatedData.accountType : null,
         amount: validatedData.amount,
