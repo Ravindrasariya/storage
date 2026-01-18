@@ -654,7 +654,19 @@ export async function registerRoutes(
       const hammaliRate = customHammali !== undefined ? customHammali : defaultHammali;
       const coldChargeRate = customColdCharge !== undefined ? customColdCharge : defaultColdCharge;
       const rate = coldChargeRate + hammaliRate;
-      const storageCharge = quantitySold * rate;
+      
+      // When chargeBasis is "totalRemaining", charge for all remaining bags (before this sale)
+      const chargeQuantity = chargeBasis === "totalRemaining" ? lot.remainingSize : quantitySold;
+      
+      // Calculate storage charge based on charge unit mode
+      let storageCharge: number;
+      if (coldStorage?.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
+        // Quintal mode: (netWeight (Kg) × chargeQuantity × rate per quintal) / (originalSize × 100)
+        storageCharge = (lot.netWeight * chargeQuantity * rate) / (lot.size * 100);
+      } else {
+        // Bag mode: chargeQuantity × rate
+        storageCharge = chargeQuantity * rate;
+      }
       
       // Calculate total charge including all extra charges for lot tracking
       const kata = kataCharges || 0;
