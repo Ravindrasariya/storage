@@ -1952,34 +1952,28 @@ export default function CashManagement() {
                     </div>
                     <div className="relative">
                       <Label className="text-xs">{t("buyerName")}</Label>
-                      <Popover 
-                        open={showBuyerSuggestions && newReceivablePayerType !== "sales_goods"} 
-                        onOpenChange={(open) => {
+                      <Input
+                        value={newReceivableBuyerName}
+                        onChange={(e) => setNewReceivableBuyerName(e.target.value)}
+                        onFocus={() => {
                           if (newReceivablePayerType !== "sales_goods") {
-                            setShowBuyerSuggestions(open);
+                            setShowBuyerSuggestions(true);
                           }
                         }}
-                      >
-                        <PopoverTrigger asChild>
-                          <Input
-                            value={newReceivableBuyerName}
-                            onChange={(e) => setNewReceivableBuyerName(e.target.value)}
-                            onFocus={() => {
-                              if (newReceivablePayerType !== "sales_goods") {
-                                setShowBuyerSuggestions(true);
-                              }
-                            }}
-                            placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
-                            data-testid="input-receivable-buyer"
-                          />
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[250px] p-1" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+                        onBlur={() => {
+                          setTimeout(() => setShowBuyerSuggestions(false), 150);
+                        }}
+                        placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
+                        data-testid="input-receivable-buyer"
+                      />
+                      {showBuyerSuggestions && newReceivablePayerType !== "sales_goods" && (
+                        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
                           <ScrollArea className="max-h-[200px]">
                             {buyerRecords.filter(b => 
                               !newReceivableBuyerName || 
                               b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
                             ).length === 0 ? (
-                              <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults") || "No results"}</p>
+                              <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
                             ) : (
                               buyerRecords
                                 .filter(b => 
@@ -1992,7 +1986,8 @@ export default function CashManagement() {
                                     variant="ghost"
                                     size="sm"
                                     className="w-full justify-start"
-                                    onClick={() => {
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
                                       setNewReceivableBuyerName(b.buyerName);
                                       setShowBuyerSuggestions(false);
                                     }}
@@ -2003,8 +1998,8 @@ export default function CashManagement() {
                                 ))
                             )}
                           </ScrollArea>
-                        </PopoverContent>
-                      </Popover>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
