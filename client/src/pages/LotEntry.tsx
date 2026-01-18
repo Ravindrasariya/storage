@@ -427,6 +427,7 @@ export default function LotEntry() {
       toast({
         title: t("success"),
         description: `${lots.length} lot(s) created successfully with Lot # ${result.entrySequence}`,
+        variant: "success",
       });
       
       clearSavedData();
