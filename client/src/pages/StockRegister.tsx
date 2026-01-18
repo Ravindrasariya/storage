@@ -114,6 +114,15 @@ export default function StockRegister() {
     queryKey: ["/api/chambers"],
   });
 
+  // Fetch cold storage settings to get rates
+  type ColdStorageSettings = {
+    waferRate: number;
+    seedRate: number;
+  };
+  const { data: coldStorage } = useQuery<ColdStorageSettings>({
+    queryKey: ["/api/cold-storage"],
+  });
+
   // Fetch initial 50 lots sorted by lot number for display before any search
   const { data: initialLots, isLoading: isLoadingInitial } = useQuery<Lot[]>({
     queryKey: ["/api/lots", { sort: "lotNo", limit: 50 }],
@@ -248,6 +257,13 @@ export default function StockRegister() {
     setShowFarmerNameSuggestions(false);
   };
 
+  // Helper to get rate for a lot based on bag type (Ration uses wafer rates)
+  const getRateForLot = (lot: Lot) => {
+    if (!coldStorage) return 0;
+    const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
+    return useWaferRate ? coldStorage.waferRate : coldStorage.seedRate;
+  };
+
   // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
     // Use search results if searched, otherwise use initial lots
@@ -286,13 +302,23 @@ export default function StockRegister() {
       }
     }
     
+    // Calculate expected cold charges = sum of (lot.size × rate per bag)
+    const expectedColdCharges = filteredResults.reduce((sum, lot) => {
+      const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
+      const rate = useWaferRate 
+        ? (coldStorage?.waferRate || 0) 
+        : (coldStorage?.seedRate || 0);
+      return sum + (lot.size * rate);
+    }, 0);
+    
     return {
       totalBags: filteredResults.reduce((sum, lot) => sum + lot.size, 0),
       remainingBags: filteredResults.reduce((sum, lot) => sum + lot.remainingSize, 0),
       chargesPaid,
       chargesDue,
+      expectedColdCharges,
     };
-  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter]);
+  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, coldStorage]);
 
   // Detect if any filter/search is active
   const isFilterActive = useMemo(() => {
@@ -892,6 +918,10 @@ export default function StockRegister() {
                 <span className="font-bold text-sm md:text-base whitespace-nowrap md:min-w-[8ch]" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex items-center gap-1 md:flex-1">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalExpectedColdCharges")}:</span>
+                <span className="font-bold text-sm md:text-base text-blue-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-expected"><Currency amount={summaryTotals.expectedColdCharges} /></span>
+              </div>
+              <div className="flex items-center gap-1 md:flex-1">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesPaid")}:</span>
                 <span className="font-bold text-sm md:text-base text-green-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-paid"><Currency amount={summaryTotals.chargesPaid} /></span>
               </div>
@@ -939,7 +969,13 @@ export default function StockRegister() {
                 }
               }
             }
-            return { lot, lotPaidCharge, lotDueCharge };
+            // Calculate expected cold charge = original bags × rate (Ration uses wafer rates)
+            const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
+            const rate = useWaferRate 
+              ? (coldStorage?.waferRate || 0) 
+              : (coldStorage?.seedRate || 0);
+            const expectedColdCharge = lot.size * rate;
+            return { lot, lotPaidCharge, lotDueCharge, expectedColdCharge };
           });
           
           // Sort based on selected sort option
@@ -971,7 +1007,7 @@ export default function StockRegister() {
                   {t("showingFirst50Lots")}
                 </p>
               )}
-              {sortedLots.map(({ lot, lotPaidCharge, lotDueCharge }) => (
+              {sortedLots.map(({ lot, lotPaidCharge, lotDueCharge, expectedColdCharge }) => (
                   <LotCard
                     key={lot.id}
                     lot={lot}
@@ -984,6 +1020,7 @@ export default function StockRegister() {
                     }}
                     calculatedPaidCharge={lotPaidCharge}
                     calculatedDueCharge={lotDueCharge}
+                    expectedColdCharge={expectedColdCharge}
                     canEdit={canEdit}
                   />
                 ))}

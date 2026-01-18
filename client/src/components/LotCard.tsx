@@ -17,10 +17,11 @@ interface LotCardProps {
   onPrintReceipt?: (lot: Lot) => void;
   calculatedPaidCharge?: number;
   calculatedDueCharge?: number;
+  expectedColdCharge?: number;
   canEdit?: boolean;
 }
 
-export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, onPrintReceipt, calculatedPaidCharge, calculatedDueCharge, canEdit = true }: LotCardProps) {
+export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, onPrintReceipt, calculatedPaidCharge, calculatedDueCharge, expectedColdCharge, canEdit = true }: LotCardProps) {
   // Use calculated values if provided, otherwise fall back to stored lot values
   const paidCharge = calculatedPaidCharge ?? lot.totalPaidCharge ?? 0;
   const dueCharge = calculatedDueCharge ?? lot.totalDueCharge ?? 0;
@@ -134,6 +135,14 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
               <span className="text-muted-foreground">{t("remaining")}: </span>
               <span className="font-bold text-chart-1">{lot.remainingSize} {t("bags")}</span>
             </div>
+            {expectedColdCharge !== undefined && expectedColdCharge > 0 && (
+              <div>
+                <span className="text-muted-foreground">{t("expectedColdCharges")}: </span>
+                <span className="font-bold text-blue-600 dark:text-blue-400">
+                  <Currency amount={expectedColdCharge} />
+                </span>
+              </div>
+            )}
             <div>
               <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
               <span className="font-bold text-green-600 dark:text-green-400">
