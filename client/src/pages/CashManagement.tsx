@@ -125,10 +125,6 @@ export default function CashManagement() {
   });
 
 
-  const { data: buyerRecords = [] } = useQuery<{ buyerName: string }[]>({
-    queryKey: ["/api/buyers"],
-    enabled: showSettings && (settingsTab === "receivables"),
-  });
 
   const createReceiptMutation = useMutation({
     mutationFn: async (data: { payerType: string; buyerName?: string; receiptType: string; accountType?: string; amount: number; receivedAt: string; notes?: string }) => {
@@ -1969,13 +1965,13 @@ export default function CashManagement() {
                       {showBuyerSuggestions && newReceivablePayerType !== "sales_goods" && (
                         <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
                           <ScrollArea className="max-h-[200px]">
-                            {buyerRecords.filter(b => 
+                            {buyersWithDues.filter(b => 
                               !newReceivableBuyerName || 
                               b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
                             ).length === 0 ? (
                               <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
                             ) : (
-                              buyerRecords
+                              buyersWithDues
                                 .filter(b => 
                                   !newReceivableBuyerName || 
                                   b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
