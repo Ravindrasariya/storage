@@ -102,6 +102,7 @@ const translations: Translations = {
   salesBill: { en: "Sales Bill", hi: "बिक्री बिल" },
   incomeAndDeductions: { en: "Shows income and deductions", hi: "आय और कटौती दिखाता है" },
   save: { en: "Save", hi: "सहेजें" },
+  add: { en: "Add", hi: "जोड़ें" },
   partialSale: { en: "Partial Sale", hi: "आंशिक बिक्री" },
   quantitySold: { en: "Quantity Sold", hi: "बेची गई मात्रा" },
   originalBags: { en: "Original # Bags", hi: "मूल # बैग" },

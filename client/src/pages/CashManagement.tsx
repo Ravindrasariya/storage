@@ -111,7 +111,12 @@ export default function CashManagement() {
     queryKey: ["/api/cash-transfers"],
   });
 
-  // Opening settings queries
+  // Current year opening balance for summary calculation (always enabled)
+  const { data: currentYearOpeningBalance } = useQuery<CashOpeningBalance | null>({
+    queryKey: ["/api/opening-balances", currentYear],
+  });
+
+  // Opening settings queries (for dialog)
   const { data: openingBalance } = useQuery<CashOpeningBalance | null>({
     queryKey: ["/api/opening-balances", settingsYear],
     enabled: showSettings,
@@ -278,9 +283,13 @@ export default function CashManagement() {
       const response = await apiRequest("POST", "/api/opening-balances", data);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       toast({ title: t("success"), description: t("openingBalancesSaved") });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-balances", settingsYear] });
+      // Also invalidate currentYear query to update the summary display
+      if (variables.year === currentYear) {
+        queryClient.invalidateQueries({ queryKey: ["/api/opening-balances", currentYear] });
+      }
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -618,6 +627,11 @@ export default function CashManagement() {
     const activeExpenses = expensesList.filter(e => e.isReversed !== 1);
     const activeTransfers = transfers.filter(t => t.isReversed !== 1);
 
+    // Opening balances from start of year settings
+    const openingCash = Number(currentYearOpeningBalance?.cashInHand) || 0;
+    const openingLimit = Number(currentYearOpeningBalance?.limitBalance) || 0;
+    const openingCurrent = Number(currentYearOpeningBalance?.currentBalance) || 0;
+
     const totalCashReceived = activeReceipts
       .filter(r => r.receiptType === "cash")
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
@@ -676,9 +690,10 @@ export default function CashManagement() {
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const netCurrentTransfer = currentTransferIn - currentTransferOut;
     
-    const cashInHand = totalCashReceived - totalCashExpenses + netCashTransfer;
-    const limitBalance = totalLimitReceived - totalLimitExpenses + netLimitTransfer;
-    const currentBalance = totalCurrentReceived - totalCurrentExpenses + netCurrentTransfer;
+    // Include opening balances in final calculations
+    const cashInHand = openingCash + totalCashReceived - totalCashExpenses + netCashTransfer;
+    const limitBalance = openingLimit + totalLimitReceived - totalLimitExpenses + netLimitTransfer;
+    const currentBalance = openingCurrent + totalCurrentReceived - totalCurrentExpenses + netCurrentTransfer;
 
     return {
       totalCashReceived,
@@ -692,7 +707,7 @@ export default function CashManagement() {
       netLimitTransfer,
       netCurrentTransfer,
     };
-  }, [receipts, expensesList, transfers]);
+  }, [receipts, expensesList, transfers, currentYearOpeningBalance]);
 
   const filteredSummary = useMemo(() => {
     let filteredReceipts = receipts.filter(r => r.isReversed !== 1);
