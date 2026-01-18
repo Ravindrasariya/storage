@@ -430,7 +430,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       </span>
                       <span className="text-muted-foreground text-xs ml-1">
                         {lot.chargeUnit === "quintal" && lot.netWeight ? (
-                          <>({lot.netWeight} Qtl × {lot.remainingSize} × <Currency amount={lot.rate} />) / {lot.originalSize}</>
+                          <>({lot.netWeight} {t("kg")} × {lot.remainingSize} × <Currency amount={lot.rate} />) / ({lot.originalSize} × 100)</>
                         ) : (
                           <>({lot.remainingSize} x <Currency amount={lot.rate} />)</>
                         )}
@@ -687,8 +687,21 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 />
               </div>
 
+              {selectedLot.chargeUnit === "quintal" && selectedLot.netWeight && (
+                <div className="space-y-2">
+                  <Label>{t("initialNetWeightFromRegister")}</Label>
+                  <Input
+                    type="number"
+                    value={selectedLot.netWeight}
+                    disabled
+                    className="bg-muted"
+                    data-testid="input-initial-net-weight-readonly"
+                  />
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label>{t("netWeight")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Label>{t("finalNetWeight")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
                 <Input
                   type="number"
                   min={0}
@@ -829,8 +842,21 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 />
               </div>
 
+              {selectedLot.chargeUnit === "quintal" && selectedLot.netWeight && (
+                <div className="space-y-2">
+                  <Label>{t("initialNetWeightFromRegister")}</Label>
+                  <Input
+                    type="number"
+                    value={selectedLot.netWeight}
+                    disabled
+                    className="bg-muted"
+                    data-testid="input-partial-initial-net-weight-readonly"
+                  />
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label>{t("netWeight")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+                <Label>{t("finalNetWeight")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
                 <Input
                   type="number"
                   min={0}

@@ -229,8 +229,10 @@ const translations: Translations = {
   available: { en: "Available", hi: "उपलब्ध" },
   buyerName: { en: "Buyer Name", hi: "खरीदार का नाम" },
   pricePerKg: { en: "Price/kg (Selling Price)", hi: "मूल्य/किग्रा (बिक्री मूल्य)" },
-  netWeight: { en: "Initial Net Weight", hi: "प्रारंभिक शुद्ध वजन" },
-  netWeightKg: { en: "Initial Net Weight (Kg)", hi: "प्रारंभिक शुद्ध वजन (किग्रा)" },
+  netWeight: { en: "Final Net Weight", hi: "अंतिम शुद्ध वजन" },
+  netWeightKg: { en: "Final Net Weight (Kg)", hi: "अंतिम शुद्ध वजन (किग्रा)" },
+  finalNetWeight: { en: "Final Net Weight", hi: "अंतिम शुद्ध वजन" },
+  initialNetWeightFromRegister: { en: "Initial Net Weight (from Stock Register)", hi: "प्रारंभिक शुद्ध वजन (स्टॉक रजिस्टर से)" },
   optional: { en: "Optional", hi: "वैकल्पिक" },
   
   // Sales History
