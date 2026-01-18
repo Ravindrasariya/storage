@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -10,12 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -35,8 +29,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck, Printer } from "lucide-react";
-import { format } from "date-fns";
+import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck } from "lucide-react";
 import type { Chamber } from "@shared/schema";
 import { capitalizeFirstLetter, cn } from "@/lib/utils";
 
@@ -112,11 +105,8 @@ export default function LotEntry() {
   const [bagTypeCategory, setBagTypeCategory] = useState<"wafer" | "rationSeed">("wafer");
   const [lots, setLots] = useState<LotData[]>([{ ...defaultLotData }]);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
-  const [showReceipt, setShowReceipt] = useState(false);
-  const [savedData, setSavedData] = useState<{ farmer: FarmerData; lots: LotData[]; entryDate: Date; entrySequence: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
@@ -427,7 +417,7 @@ export default function LotEntry() {
     return true;
   };
 
-  const onSubmit = async (farmerData: FarmerData, printAfterSave: boolean = false) => {
+  const onSubmit = async (farmerData: FarmerData) => {
     if (!validateLots()) return;
 
     setIsSubmitting(true);
@@ -441,14 +431,6 @@ export default function LotEntry() {
       
       clearSavedData();
       
-      // Store data for receipt before resetting form
-      const receiptData = { 
-        farmer: farmerData, 
-        lots: [...lots], 
-        entryDate: new Date(), 
-        entrySequence: result.entrySequence 
-      };
-      
       // Reset form state
       form.reset({
         farmerName: "",
@@ -461,201 +443,12 @@ export default function LotEntry() {
       setLots([{ ...defaultLotData }]);
       setImagePreviews({});
       
-      if (printAfterSave) {
-        setSavedData(receiptData);
-        setShowReceipt(true);
-      } else {
-        navigate("/");
-      }
+      navigate("/");
     } catch (error) {
       // Error handled by mutation onError
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleSaveAndPrint = () => {
-    form.handleSubmit((data) => onSubmit(data, true))();
-  };
-
-  const handlePrint = () => {
-    if (!printRef.current || !savedData) return;
-    
-    // Entry sequence is already assigned when lots are created
-    doPrint(savedData.entrySequence);
-  };
-
-  const doPrint = (billNumber: number) => {
-    if (!printRef.current || !savedData) return;
-    
-    const printContent = printRef.current.innerHTML;
-    const printStyles = `
-      @page { size: A4; margin: 8mm; }
-      body { 
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-        font-size: 13px; 
-        line-height: 1.3;
-        color: #333;
-        margin: 0;
-        padding: 0;
-      }
-      .copies-container {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-      }
-      .copy {
-        flex: 1;
-        padding: 10px 15px;
-        border-bottom: 2px dashed #000;
-        page-break-inside: avoid;
-        overflow: hidden;
-      }
-      .copy:last-child {
-        border-bottom: none;
-      }
-      .copy-label {
-        text-align: right;
-        font-size: 11px;
-        font-weight: bold;
-        color: #666;
-        margin-bottom: 5px;
-      }
-      .receipt-header {
-        text-align: center;
-        border-bottom: 2px solid #333;
-        padding-bottom: 8px;
-        margin-bottom: 10px;
-      }
-      .receipt-header h1 {
-        font-size: 18px;
-        margin: 0 0 3px 0;
-      }
-      .receipt-header h2 {
-        font-size: 14px;
-        margin: 0;
-        color: #555;
-      }
-      .section {
-        margin-bottom: 10px;
-      }
-      .section-title {
-        font-size: 12px;
-        font-weight: bold;
-        background: #f0f0f0;
-        padding: 4px 8px;
-        margin-bottom: 6px;
-        border-left: 3px solid #333;
-      }
-      .info-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 3px 15px;
-      }
-      .info-row {
-        display: flex;
-        gap: 5px;
-      }
-      .info-label {
-        font-weight: 600;
-        min-width: 80px;
-      }
-      .lots-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 11px;
-      }
-      .lots-table th, .lots-table td {
-        border: 1px solid #ccc;
-        padding: 4px 6px;
-        text-align: left;
-      }
-      .lots-table th {
-        background: #f5f5f5;
-        font-weight: 600;
-      }
-      .entry-date {
-        text-align: right;
-        font-size: 10px;
-        color: #666;
-        margin-top: 8px;
-      }
-      .footer-note {
-        text-align: center;
-        font-size: 9px;
-        color: #666;
-        margin-top: 10px;
-        padding-top: 6px;
-        border-top: 1px solid #ccc;
-      }
-    `;
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Lot Entry Receipt</title>
-        <style>${printStyles}</style>
-      </head>
-      <body>
-        <div class="copies-container">
-          <div class="copy">
-            <div class="copy-label">OFFICE COPY / कार्यालय प्रति</div>
-            ${printContent}
-          </div>
-          <div class="copy">
-            <div class="copy-label">CUSTOMER COPY / ग्राहक प्रति</div>
-            ${printContent}
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    // Try window.open first (works on desktop)
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      printWindow.print();
-    } else {
-      // Fallback for mobile: use hidden iframe
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
-      iframe.style.left = '-9999px';
-      document.body.appendChild(iframe);
-      
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (iframeDoc) {
-        iframeDoc.open();
-        iframeDoc.write(htmlContent);
-        iframeDoc.close();
-        
-        setTimeout(() => {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-          }, 1000);
-        }, 250);
-      }
-    }
-  };
-
-  const getChamberName = (chamberId: string) => {
-    return chambers?.find(c => c.id === chamberId)?.name || chamberId;
-  };
-
-  const getRate = (bagType: "wafer" | "seed" | "Ration") => {
-    if (!coldStorage) return 0;
-    if (bagType === "wafer") {
-      return (coldStorage.waferColdCharge || 0) + (coldStorage.waferHammali || 0);
-    }
-    // For seed and ration, use seed rates
-    return (coldStorage.seedColdCharge || 0) + (coldStorage.seedHammali || 0);
   };
 
   if (chambersLoading) {
@@ -720,7 +513,7 @@ export default function LotEntry() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit((data) => onSubmit(data, false))} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <Card className="p-4 sm:p-6">
             <div className="flex items-center gap-2 mb-4">
               <User className="h-5 w-5 text-chart-1" />
@@ -1212,13 +1005,11 @@ export default function LotEntry() {
               {t("cancel")}
             </Button>
             <Button
-              type="button"
-              onClick={handleSaveAndPrint}
+              type="submit"
               disabled={isSubmitting || !canEdit}
-              data-testid="button-save-print"
+              data-testid="button-save"
             >
-              <Printer className="h-4 w-4 mr-2" />
-              {isSubmitting ? t("loading") : (t("saveAndPrint") || "Save & Print")}
+              {isSubmitting ? t("loading") : t("save")}
             </Button>
             {!canEdit && (
               <p className="text-xs text-muted-foreground text-center col-span-full">
@@ -1228,122 +1019,6 @@ export default function LotEntry() {
           </div>
         </form>
       </Form>
-
-      <Dialog open={showReceipt} onOpenChange={(open) => {
-        if (!open) {
-          setShowReceipt(false);
-          navigate("/");
-        }
-      }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Printer className="h-5 w-5" />
-              {t("lotEntryReceipt") || "Lot Entry Receipt"}
-            </DialogTitle>
-          </DialogHeader>
-
-          {savedData && (
-            <>
-              <div ref={printRef}>
-                <div className="receipt-header">
-                  <h1>{coldStorage?.name || "Cold Storage"}</h1>
-                  <h2>{t("lotEntryReceipt") || "Lot Entry Receipt"}</h2>
-                  <div style={{ marginTop: "8px", fontSize: "14px" }}>
-                    <>लॉट / बिल नंबर / Lot / Bill No: <strong>{savedData.entrySequence}</strong></>
-                  </div>
-                </div>
-
-                <div className="section">
-                  <div className="section-title">{t("farmerDetails")}</div>
-                  <div className="info-grid">
-                    <div className="info-row">
-                      <span className="info-label">{t("farmerName")}:</span>
-                      <span>{savedData.farmer.farmerName}</span>
-                    </div>
-                    <div className="info-row">
-                      <span className="info-label">{t("contactNumber")}:</span>
-                      <span>{savedData.farmer.contactNumber}</span>
-                    </div>
-                    <div className="info-row">
-                      <span className="info-label">{t("village")}:</span>
-                      <span>{savedData.farmer.village}</span>
-                    </div>
-                    <div className="info-row">
-                      <span className="info-label">{t("tehsil")}:</span>
-                      <span>{savedData.farmer.tehsil}</span>
-                    </div>
-                    <div className="info-row">
-                      <span className="info-label">{t("district")}:</span>
-                      <span>{savedData.farmer.district}</span>
-                    </div>
-                    <div className="info-row">
-                      <span className="info-label">{t("state")}:</span>
-                      <span>{savedData.farmer.state}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="section">
-                  <div className="section-title">{t("lotDetails") || "Lot Details"}</div>
-                  <table className="lots-table">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>{t("lotNo")}</th>
-                        <th>{t("type")}</th>
-                        <th>{t("bags")}</th>
-                        <th>{t("bagType")}</th>
-                        <th>{t("chamber")}</th>
-                        <th>{t("floor")}</th>
-                        <th>{t("position")}</th>
-                        <th>{t("quality")}</th>
-                        <th>{t("potatoSize")}</th>
-                        <th>{t("rate")} (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {savedData.lots.map((lot, index) => (
-                        <tr key={index}>
-                          <td>{index + 1}</td>
-                          <td>{savedData.entrySequence}</td>
-                          <td>{lot.type}</td>
-                          <td>{lot.size}</td>
-                          <td>{lot.bagType === "wafer" ? t("wafer") : lot.bagType === "seed" ? t("seed") : "Ration"}</td>
-                          <td>{getChamberName(lot.chamberId)}</td>
-                          <td>{lot.floor}</td>
-                          <td>{lot.position}</td>
-                          <td>{lot.quality === "good" ? t("good") : lot.quality === "medium" ? t("medium") : t("poor")}</td>
-                          <td>{lot.potatoSize === "large" ? t("large") : t("small")}</td>
-                          <td>{getRate(lot.bagType)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="entry-date">
-                  {t("entryDate") || "Entry Date"}: {format(savedData.entryDate, "dd/MM/yyyy HH:mm")}
-                </div>
-
-                <div className="footer-note">
-                  {t("receiptFooterNote") || "This is a computer generated receipt."}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => { setShowReceipt(false); navigate("/"); }}>
-                  {t("close")}
-                </Button>
-                <Button onClick={handlePrint}>
-                  <Printer className="h-4 w-4 mr-2" />
-                  {t("print")}
-                </Button>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
