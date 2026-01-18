@@ -30,7 +30,7 @@ import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
@@ -278,6 +278,93 @@ export default function StockRegister() {
       chargesDue,
     };
   }, [searchResults, allSalesHistory, bagTypeFilter]);
+
+  // Detect if any filter/search is active
+  const isFilterActive = useMemo(() => {
+    if (hasSearched) return true;
+    if (bagTypeFilter !== "all") return true;
+    return false;
+  }, [hasSearched, bagTypeFilter]);
+
+  // Get the currently displayed lots for export
+  const getDisplayedLots = useMemo(() => {
+    const rawLots = hasSearched ? searchResults : (initialLots || []);
+    return bagTypeFilter === "all" 
+      ? rawLots 
+      : rawLots.filter(lot => lot.bagType === bagTypeFilter);
+  }, [hasSearched, searchResults, initialLots, bagTypeFilter]);
+
+  // Export filtered results to CSV
+  const handleExportCSV = () => {
+    const lots = getDisplayedLots;
+    if (lots.length === 0) {
+      toast({
+        title: t("noResults"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Build CSV content
+    const headers = [
+      "Lot No",
+      "Farmer Name",
+      "Contact Number",
+      "Village",
+      "Tehsil",
+      "District",
+      "Chamber",
+      "Floor",
+      "Position",
+      "Bag Type",
+      "Type",
+      "Quality",
+      "Potato Size",
+      "Original Size",
+      "Remaining Size",
+      "Sale Status",
+    ];
+
+    const rows = lots.map(lot => [
+      lot.lotNo,
+      lot.farmerName,
+      lot.contactNumber,
+      lot.village,
+      lot.tehsil,
+      lot.district,
+      chamberMap[lot.chamberId] || lot.chamberId,
+      lot.floor,
+      lot.position,
+      lot.bagType,
+      lot.type,
+      lot.quality,
+      lot.potatoSize,
+      lot.size,
+      lot.remainingSize,
+      lot.saleStatus || "stored",
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    // Trigger download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `stock_register_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: t("downloadSuccess") || "Download successful",
+      description: `${lots.length} ${t("lots")} exported`,
+    });
+  };
 
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
@@ -547,6 +634,17 @@ export default function StockRegister() {
                     <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
+                {isFilterActive && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleExportCSV}
+                    title={t("download") || "Download CSV"}
+                    data-testid="button-export-csv"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           ) : searchType === "farmerName" ? (
@@ -621,6 +719,17 @@ export default function StockRegister() {
                     <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
+                {isFilterActive && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleExportCSV}
+                    title={t("download") || "Download CSV"}
+                    data-testid="button-export-csv"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           ) : searchType === "lotNoSize" ? (
@@ -661,6 +770,17 @@ export default function StockRegister() {
                     <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
+                {isFilterActive && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleExportCSV}
+                    title={t("download") || "Download CSV"}
+                    data-testid="button-export-csv"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
@@ -709,6 +829,17 @@ export default function StockRegister() {
                     <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
+                {isFilterActive && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleExportCSV}
+                    title={t("download") || "Download CSV"}
+                    data-testid="button-export-csv"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           )}
