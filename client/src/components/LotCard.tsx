@@ -95,7 +95,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
                 )}
               </Badge>
             )}
-            {lot.baseColdChargesPaid === 1 && (
+            {lot.baseColdChargesBilled === 1 && (
               <Badge 
                 variant="outline" 
                 className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-400"

@@ -666,14 +666,14 @@ export async function registerRoutes(
         remainingSize: number; 
         totalPaidCharge?: number; 
         totalDueCharge?: number;
-        baseColdChargesPaid?: number;
+        baseColdChargesBilled?: number;
       } = {
         remainingSize: newRemainingSize,
       };
       
-      // Set baseColdChargesPaid flag when using totalRemaining charge basis
+      // Set baseColdChargesBilled flag when using totalRemaining charge basis
       if (chargeBasis === "totalRemaining") {
-        updateData.baseColdChargesPaid = 1;
+        updateData.baseColdChargesBilled = 1;
       }
       
       // Track paid and due charges separately (include all surcharges)

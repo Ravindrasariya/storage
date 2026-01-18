@@ -103,7 +103,7 @@ export const lots = pgTable("lots", {
   soldAt: timestamp("sold_at"), // When the lot was sold
   createdAt: timestamp("created_at").notNull().defaultNow(),
   entryBillNumber: integer("entry_bill_number"), // DEPRECATED: Use entrySequence instead
-  baseColdChargesPaid: integer("base_cold_charges_paid").notNull().default(0), // 0 = not paid, 1 = paid (set when partial sale uses totalRemaining charge basis)
+  baseColdChargesBilled: integer("base_cold_charges_billed").notNull().default(0), // 0 = not billed, 1 = billed (set when partial sale uses totalRemaining charge basis)
 });
 
 // Sales History - permanent record of all sales
@@ -390,7 +390,7 @@ export interface SaleLotInfo {
   hammali: number; // Hammali charge per bag
   netWeight: number | null; // Net weight in quintals (for quintal-based charging)
   chargeUnit: string; // "bag" or "quintal"
-  baseColdChargesPaid: number; // 0 = not paid, 1 = paid (base cold charges already billed)
+  baseColdChargesBilled: number; // 0 = not billed, 1 = billed (base cold charges already billed)
 }
 
 // Dashboard stats type

@@ -309,7 +309,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
   const calculateBaseCharge = (lot: SaleLotInfo, quantity?: number, useChargeBasis: boolean = true) => {
     // Skip base charge if already paid
-    if (lot.baseColdChargesPaid === 1) {
+    if (lot.baseColdChargesBilled === 1) {
       return 0;
     }
     
@@ -332,7 +332,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     
     // Skip base charge if already paid (only extras apply)
     let baseCharge: number = 0;
-    if (lot.baseColdChargesPaid !== 1) {
+    if (lot.baseColdChargesBilled !== 1) {
       // For quintal mode: (Initial Net Weight (Kg) × Charge Qty × Rate per quintal) / (Original Bags × 100)
       // For bag mode: Charge Qty × Rate
       if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
@@ -395,7 +395,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       <Badge variant="secondary" className="text-xs capitalize">
                         {lot.bagType} | {lot.type} | {lot.quality} | {lot.potatoSize}
                       </Badge>
-                      {lot.baseColdChargesPaid === 1 && (
+                      {lot.baseColdChargesBilled === 1 && (
                         <Badge variant="outline" className="text-xs bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-400" data-testid={`sale-base-charges-paid-${lot.id}`}>
                           {t("baseColdChargesBilled")}
                         </Badge>
@@ -633,7 +633,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   </span>
                 </div>
                 <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                  {selectedLot.baseColdChargesPaid === 1 ? (
+                  {selectedLot.baseColdChargesBilled === 1 ? (
                     <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
                   ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
                     <div>
@@ -642,7 +642,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   ) : (
                     <div>{getChargeQuantity(selectedLot, selectedLot.remainingSize)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
                   )}
-                  {chargeBasis === "totalRemaining" && selectedLot.baseColdChargesPaid !== 1 && (
+                  {chargeBasis === "totalRemaining" && selectedLot.baseColdChargesBilled !== 1 && (
                     <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")})</div>
                   )}
                   {(parseFloat(kataCharges) || 0) > 0 && (
@@ -959,7 +959,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     </span>
                   </div>
                   <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                    {selectedLot.baseColdChargesPaid === 1 ? (
+                    {selectedLot.baseColdChargesBilled === 1 ? (
                       <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
                     ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
                       <div>
@@ -968,7 +968,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     ) : (
                       <div>{getChargeQuantity(selectedLot, partialQuantity)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} /></div>
                     )}
-                    {chargeBasis === "totalRemaining" && selectedLot.baseColdChargesPaid !== 1 && (
+                    {chargeBasis === "totalRemaining" && selectedLot.baseColdChargesBilled !== 1 && (
                       <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")} - {selectedLot.remainingSize} {t("bags")})</div>
                     )}
                     {(parseFloat(kataCharges) || 0) > 0 && (
