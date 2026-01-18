@@ -491,7 +491,7 @@ export default function CashManagement() {
               <Banknote className="h-4 w-4" />
               {t("totalCashReceived")}
             </div>
-            <div className="text-xl font-bold text-green-600">
+            <div className="text-base font-bold text-green-600">
               {isLoading ? "..." : `₹${summary.totalCashReceived.toLocaleString()}`}
             </div>
           </CardContent>
@@ -503,7 +503,7 @@ export default function CashManagement() {
               <ArrowUpRight className="h-4 w-4" />
               {t("cashExpense")}
             </div>
-            <div className="text-xl font-bold text-red-600">
+            <div className="text-base font-bold text-red-600">
               {isLoading ? "..." : `₹${summary.totalCashExpenses.toLocaleString()}`}
             </div>
           </CardContent>
@@ -515,7 +515,7 @@ export default function CashManagement() {
               <Wallet className="h-4 w-4" />
               {t("totalCashInHand")}
             </div>
-            <div className={`text-xl font-bold ${summary.cashInHand >= 0 ? "text-blue-600" : "text-red-600"}`}>
+            <div className={`text-base font-bold ${summary.cashInHand >= 0 ? "text-blue-600" : "text-red-600"}`}>
               {isLoading ? "..." : `₹${summary.cashInHand.toLocaleString()}`}
             </div>
           </CardContent>
@@ -527,7 +527,7 @@ export default function CashManagement() {
               <Building2 className="h-4 w-4" />
               {t("totalAccountReceived")}
             </div>
-            <div className="text-xl font-bold text-green-600">
+            <div className="text-base font-bold text-green-600">
               {isLoading ? "..." : `₹${summary.totalAccountReceived.toLocaleString()}`}
             </div>
           </CardContent>
@@ -539,7 +539,7 @@ export default function CashManagement() {
               <CreditCard className="h-4 w-4" />
               {t("totalExpenseFromAccount")}
             </div>
-            <div className="text-xl font-bold text-red-600">
+            <div className="text-base font-bold text-red-600">
               {isLoading ? "..." : `₹${summary.totalAccountExpenses.toLocaleString()}`}
             </div>
           </CardContent>
