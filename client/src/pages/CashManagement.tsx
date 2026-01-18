@@ -12,11 +12,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, OpeningPayable } from "@shared/schema";
 
 interface BuyerWithDue {
   buyerName: string;
@@ -68,6 +68,29 @@ export default function CashManagement() {
   const [filterMonth, setFilterMonth] = useState<string>("");
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionItem | null>(null);
 
+  // Settings dialog state
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"balances" | "receivables" | "payables">("balances");
+  const currentYear = new Date().getFullYear();
+  const [settingsYear, setSettingsYear] = useState(currentYear);
+  
+  // Opening balance form state
+  const [openingCashInHand, setOpeningCashInHand] = useState("");
+  const [openingLimitBalance, setOpeningLimitBalance] = useState("");
+  const [openingCurrentBalance, setOpeningCurrentBalance] = useState("");
+  
+  // Receivable form state
+  const [newReceivablePayerType, setNewReceivablePayerType] = useState<string>("cold_merchant");
+  const [newReceivableBuyerName, setNewReceivableBuyerName] = useState("");
+  const [newReceivableAmount, setNewReceivableAmount] = useState("");
+  const [newReceivableRemarks, setNewReceivableRemarks] = useState("");
+  
+  // Payable form state
+  const [newPayableExpenseType, setNewPayableExpenseType] = useState<string>("salary");
+  const [newPayableReceiverName, setNewPayableReceiverName] = useState("");
+  const [newPayableAmount, setNewPayableAmount] = useState("");
+  const [newPayableRemarks, setNewPayableRemarks] = useState("");
+
   const { data: buyersWithDues = [], isLoading: loadingBuyers } = useQuery<BuyerWithDue[]>({
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
   });
@@ -86,6 +109,27 @@ export default function CashManagement() {
 
   const { data: transfers = [], isLoading: loadingTransfers } = useQuery<CashTransfer[]>({
     queryKey: ["/api/cash-transfers"],
+  });
+
+  // Opening settings queries
+  const { data: openingBalance } = useQuery<CashOpeningBalance | null>({
+    queryKey: ["/api/opening-balances", settingsYear],
+    enabled: showSettings,
+  });
+
+  const { data: openingReceivables = [] } = useQuery<OpeningReceivable[]>({
+    queryKey: ["/api/opening-receivables", settingsYear],
+    enabled: showSettings,
+  });
+
+  const { data: openingPayables = [] } = useQuery<OpeningPayable[]>({
+    queryKey: ["/api/opening-payables", settingsYear],
+    enabled: showSettings,
+  });
+
+  const { data: buyerRecords = [] } = useQuery<{ buyerName: string }[]>({
+    queryKey: ["/api/buyers"],
+    enabled: showSettings && (settingsTab === "receivables"),
   });
 
   const createReceiptMutation = useMutation({
@@ -225,6 +269,83 @@ export default function CashManagement() {
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
+    },
+  });
+
+  // Opening settings mutations
+  const saveOpeningBalanceMutation = useMutation({
+    mutationFn: async (data: { year: number; cashInHand: number; limitBalance: number; currentBalance: number }) => {
+      const response = await apiRequest("POST", "/api/opening-balances", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("openingBalancesSaved") });
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-balances", settingsYear] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const createReceivableMutation = useMutation({
+    mutationFn: async (data: { year: number; payerType: string; buyerName?: string; dueAmount: number; remarks?: string }) => {
+      const response = await apiRequest("POST", "/api/opening-receivables", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableAdded") });
+      setNewReceivableBuyerName("");
+      setNewReceivableAmount("");
+      setNewReceivableRemarks("");
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const deleteReceivableMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("DELETE", `/api/opening-receivables/${id}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableDeleted") });
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
+    },
+  });
+
+  const createPayableMutation = useMutation({
+    mutationFn: async (data: { year: number; expenseType: string; receiverName?: string; dueAmount: number; remarks?: string }) => {
+      const response = await apiRequest("POST", "/api/opening-payables", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("payableAdded") });
+      setNewPayableReceiverName("");
+      setNewPayableAmount("");
+      setNewPayableRemarks("");
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-payables", settingsYear] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const deletePayableMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("DELETE", `/api/opening-payables/${id}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("payableDeleted") });
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-payables", settingsYear] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
     },
   });
 
@@ -644,10 +765,23 @@ export default function CashManagement() {
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
-      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-        <Banknote className="h-6 w-6" />
-        {t("cashManagement")}
-      </h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Banknote className="h-6 w-6" />
+          {t("cashManagement")}
+        </h1>
+        {canEdit && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSettings(true)}
+            data-testid="button-settings"
+          >
+            <Settings className="h-4 w-4 mr-1" />
+            {t("settings")}
+          </Button>
+        )}
+      </div>
 
       {/* Balance Cards - Row 1: Account Balances */}
       <div className="grid grid-cols-3 gap-2 mb-2">
@@ -1711,6 +1845,343 @@ export default function CashManagement() {
                   </AlertDialogContent>
                 </AlertDialog>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Settings Dialog */}
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              {t("startOfYearSettings")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("configureOpeningBalances")}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Year Selector */}
+          <div className="flex items-center gap-2 mb-4">
+            <Label>{t("year")}:</Label>
+            <Select value={settingsYear.toString()} onValueChange={(v) => setSettingsYear(parseInt(v))}>
+              <SelectTrigger className="w-32" data-testid="select-settings-year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[currentYear, currentYear - 1, currentYear - 2].map((y) => (
+                  <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Settings Tabs */}
+          <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as "balances" | "receivables" | "payables")} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 bg-blue-50 dark:bg-blue-900/20">
+              <TabsTrigger value="balances" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-opening-balances">
+                {t("openingBalances")}
+              </TabsTrigger>
+              <TabsTrigger value="receivables" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-receivables">
+                {t("receivables")}
+              </TabsTrigger>
+              <TabsTrigger value="payables" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-payables">
+                {t("payables")}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {/* Opening Balances Tab Content */}
+          {settingsTab === "balances" && (
+            <div className="space-y-4 mt-4">
+              <div className="grid gap-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label>{t("cashInHand")}</Label>
+                    <Input
+                      type="number"
+                      value={openingCashInHand || (openingBalance?.cashInHand?.toString() ?? "")}
+                      onChange={(e) => setOpeningCashInHand(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-opening-cash"
+                    />
+                  </div>
+                  <div>
+                    <Label>{t("limitAccount")}</Label>
+                    <Input
+                      type="number"
+                      value={openingLimitBalance || (openingBalance?.limitBalance?.toString() ?? "")}
+                      onChange={(e) => setOpeningLimitBalance(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-opening-limit"
+                    />
+                  </div>
+                  <div>
+                    <Label>{t("currentAccount")}</Label>
+                    <Input
+                      type="number"
+                      value={openingCurrentBalance || (openingBalance?.currentBalance?.toString() ?? "")}
+                      onChange={(e) => setOpeningCurrentBalance(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-opening-current"
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={() => {
+                    saveOpeningBalanceMutation.mutate({
+                      year: settingsYear,
+                      cashInHand: parseFloat(openingCashInHand || openingBalance?.cashInHand?.toString() || "0") || 0,
+                      limitBalance: parseFloat(openingLimitBalance || openingBalance?.limitBalance?.toString() || "0") || 0,
+                      currentBalance: parseFloat(openingCurrentBalance || openingBalance?.currentBalance?.toString() || "0") || 0,
+                    });
+                  }}
+                  disabled={saveOpeningBalanceMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  data-testid="button-save-opening-balances"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saveOpeningBalanceMutation.isPending ? t("saving") : t("saveOpeningBalances")}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Receivables Tab Content */}
+          {settingsTab === "receivables" && (
+            <div className="space-y-4 mt-4">
+              {/* Add new receivable form */}
+              <Card>
+                <CardHeader className="py-2">
+                  <CardTitle className="text-sm">{t("addReceivable")}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">{t("payerType")}</Label>
+                      <Select value={newReceivablePayerType} onValueChange={setNewReceivablePayerType}>
+                        <SelectTrigger data-testid="select-receivable-payer-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
+                          <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
+                          <SelectItem value="kata">{t("kata")}</SelectItem>
+                          <SelectItem value="others">{t("others")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">{t("buyerName")}</Label>
+                      <Input
+                        value={newReceivableBuyerName}
+                        onChange={(e) => setNewReceivableBuyerName(e.target.value)}
+                        placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
+                        list={newReceivablePayerType !== "sales_goods" ? "buyer-options" : undefined}
+                        data-testid="input-receivable-buyer"
+                      />
+                      {newReceivablePayerType !== "sales_goods" && (
+                        <datalist id="buyer-options">
+                          {buyerRecords.map((b) => (
+                            <option key={b.buyerName} value={b.buyerName} />
+                          ))}
+                        </datalist>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">{t("amount")}</Label>
+                      <Input
+                        type="number"
+                        value={newReceivableAmount}
+                        onChange={(e) => setNewReceivableAmount(e.target.value)}
+                        placeholder="0"
+                        data-testid="input-receivable-amount"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">{t("remarks")}</Label>
+                      <Input
+                        value={newReceivableRemarks}
+                        onChange={(e) => setNewReceivableRemarks(e.target.value)}
+                        placeholder={t("optional")}
+                        data-testid="input-receivable-remarks"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (!newReceivableAmount || parseFloat(newReceivableAmount) <= 0) {
+                        toast({ title: t("error"), description: t("amountRequired"), variant: "destructive" });
+                        return;
+                      }
+                      createReceivableMutation.mutate({
+                        year: settingsYear,
+                        payerType: newReceivablePayerType,
+                        buyerName: newReceivableBuyerName || undefined,
+                        dueAmount: parseFloat(newReceivableAmount),
+                        remarks: newReceivableRemarks || undefined,
+                      });
+                    }}
+                    disabled={createReceivableMutation.isPending}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    data-testid="button-add-receivable"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {createReceivableMutation.isPending ? t("adding") : t("add")}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* List of receivables */}
+              <ScrollArea className="h-48">
+                {openingReceivables.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">{t("noReceivables")}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {openingReceivables.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">{t(r.payerType)}</Badge>
+                            {r.buyerName && <span className="text-sm font-medium">{r.buyerName}</span>}
+                          </div>
+                          {r.remarks && <p className="text-xs text-muted-foreground">{r.remarks}</p>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-green-600">₹{r.dueAmount.toLocaleString()}</span>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deleteReceivableMutation.mutate(r.id)}
+                            data-testid={`button-delete-receivable-${r.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* Payables Tab Content */}
+          {settingsTab === "payables" && (
+            <div className="space-y-4 mt-4">
+              {/* Add new payable form */}
+              <Card>
+                <CardHeader className="py-2">
+                  <CardTitle className="text-sm">{t("addPayable")}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">{t("expenseType")}</Label>
+                      <Select value={newPayableExpenseType} onValueChange={setNewPayableExpenseType}>
+                        <SelectTrigger data-testid="select-payable-expense-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="salary">{t("salary")}</SelectItem>
+                          <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                          <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
+                          <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">{t("receiverName")}</Label>
+                      <Input
+                        value={newPayableReceiverName}
+                        onChange={(e) => setNewPayableReceiverName(e.target.value)}
+                        placeholder={t("optional")}
+                        data-testid="input-payable-receiver"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">{t("amount")}</Label>
+                      <Input
+                        type="number"
+                        value={newPayableAmount}
+                        onChange={(e) => setNewPayableAmount(e.target.value)}
+                        placeholder="0"
+                        data-testid="input-payable-amount"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">{t("remarks")}</Label>
+                      <Input
+                        value={newPayableRemarks}
+                        onChange={(e) => setNewPayableRemarks(e.target.value)}
+                        placeholder={t("optional")}
+                        data-testid="input-payable-remarks"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (!newPayableAmount || parseFloat(newPayableAmount) <= 0) {
+                        toast({ title: t("error"), description: t("amountRequired"), variant: "destructive" });
+                        return;
+                      }
+                      createPayableMutation.mutate({
+                        year: settingsYear,
+                        expenseType: newPayableExpenseType,
+                        receiverName: newPayableReceiverName || undefined,
+                        dueAmount: parseFloat(newPayableAmount),
+                        remarks: newPayableRemarks || undefined,
+                      });
+                    }}
+                    disabled={createPayableMutation.isPending}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    data-testid="button-add-payable"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    {createPayableMutation.isPending ? t("adding") : t("add")}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* List of payables */}
+              <ScrollArea className="h-48">
+                {openingPayables.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">{t("noPayables")}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {openingPayables.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">{t(p.expenseType)}</Badge>
+                            {p.receiverName && <span className="text-sm font-medium">{p.receiverName}</span>}
+                          </div>
+                          {p.remarks && <p className="text-xs text-muted-foreground">{p.remarks}</p>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-red-600">₹{p.dueAmount.toLocaleString()}</span>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deletePayableMutation.mutate(p.id)}
+                            data-testid={`button-delete-payable-${p.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
             </div>
           )}
         </DialogContent>
