@@ -59,7 +59,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       return response.json();
     },
     onSuccess: (data: ExitHistory) => {
-      toast({ title: t("success"), description: t("exitCreated") });
+      toast({ title: t("success"), description: t("exitCreated"), variant: "success" });
       setLastExit(data);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "exits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });

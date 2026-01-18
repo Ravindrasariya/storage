@@ -89,6 +89,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       toast({
         title: t("success"),
         description: "Lot marked as sold successfully",
+        variant: "success",
       });
       resetDialog();
     },
@@ -119,6 +120,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       toast({
         title: t("success"),
         description: "Partial sale recorded successfully",
+        variant: "success",
       });
       resetDialog();
     },
@@ -171,6 +173,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       toast({
         title: t("success"),
         description: t("removedFromSale"),
+        variant: "success",
       });
     },
     onError: () => {

@@ -142,7 +142,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: t("success"), description: t("saleUpdated") });
+      toast({ title: t("success"), description: t("saleUpdated"), variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "edit-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
@@ -165,7 +165,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: t("success"), description: t("saleReversed") });
+      toast({ title: t("success"), description: t("saleReversed"), variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/search"] });

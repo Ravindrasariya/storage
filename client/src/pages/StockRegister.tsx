@@ -529,6 +529,7 @@ export default function StockRegister() {
         toast({
           title: t("success"),
           description: "Lot updated successfully",
+          variant: "success",
         });
         // Update the selected lot with new values to reflect changes in the dialog
         if (selectedLot && editForm) {
@@ -1218,6 +1219,7 @@ export default function StockRegister() {
                   toast({
                     title: t("success"),
                     description: t("editReversed"),
+                    variant: "success",
                   });
                   // Refresh the lot and history
                   if (selectedLot) {

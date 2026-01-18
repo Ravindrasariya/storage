@@ -135,6 +135,7 @@ export default function CashManagement() {
       toast({
         title: t("success"),
         description: `${t("paymentRecorded")} - ${result.salesUpdated} ${t("salesAdjusted")}`,
+        variant: "success",
       });
       setPayerType("cold_merchant");
       setBuyerName("");
@@ -167,6 +168,7 @@ export default function CashManagement() {
       toast({
         title: t("success"),
         description: t("expenseRecorded"),
+        variant: "success",
       });
       setExpenseType("");
       setExpenseAmount("");
@@ -191,6 +193,7 @@ export default function CashManagement() {
       toast({
         title: t("success"),
         description: t("entryReversed"),
+        variant: "success",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
@@ -214,6 +217,7 @@ export default function CashManagement() {
       toast({
         title: t("success"),
         description: t("entryReversed"),
+        variant: "success",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
@@ -234,6 +238,7 @@ export default function CashManagement() {
       toast({
         title: t("success"),
         description: t("transferRecorded"),
+        variant: "success",
       });
       setTransferFromAccount("cash");
       setTransferToAccount("limit");
@@ -257,6 +262,7 @@ export default function CashManagement() {
       toast({
         title: t("success"),
         description: t("entryReversed"),
+        variant: "success",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
@@ -273,7 +279,7 @@ export default function CashManagement() {
       return response.json();
     },
     onSuccess: (_result, variables) => {
-      toast({ title: t("success"), description: t("openingBalancesSaved") });
+      toast({ title: t("success"), description: t("openingBalancesSaved"), variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-balances", settingsYear] });
       // Also invalidate currentYear query to update the summary display
       if (variables.year === currentYear) {
@@ -291,7 +297,7 @@ export default function CashManagement() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: t("success"), description: t("receivableAdded") });
+      toast({ title: t("success"), description: t("receivableAdded"), variant: "success" });
       setNewReceivableBuyerName("");
       setNewReceivableAmount("");
       setNewReceivableRemarks("");
@@ -308,7 +314,7 @@ export default function CashManagement() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: t("success"), description: t("receivableDeleted") });
+      toast({ title: t("success"), description: t("receivableDeleted"), variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
     },
     onError: () => {

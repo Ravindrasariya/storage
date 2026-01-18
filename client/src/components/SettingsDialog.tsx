@@ -242,6 +242,7 @@ export function SettingsDialog() {
       toast({
         title: t("success"),
         description: t("resetSuccess"),
+        variant: "success",
       });
       setOpen(false);
     },
@@ -331,6 +332,7 @@ export function SettingsDialog() {
       toast({
         title: t("success"),
         description: "Settings saved successfully",
+        variant: "success",
       });
       // Close all expanded chamber views but stay in settings
       setExpandedChambers(new Set());
@@ -505,6 +507,7 @@ export function SettingsDialog() {
       toast({
         title: t("success"),
         description: "Maintenance records saved successfully",
+        variant: "success",
       });
     } catch (error) {
       toast({
