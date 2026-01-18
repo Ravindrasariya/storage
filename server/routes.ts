@@ -1606,6 +1606,144 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== OPENING SETTINGS ROUTES ====================
+
+  // Get opening balance for a specific year
+  app.get("/api/opening-balances/:year", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const year = parseInt(req.params.year);
+      if (isNaN(year)) {
+        return res.status(400).json({ error: "Invalid year" });
+      }
+      const balance = await storage.getOpeningBalance(coldStorageId, year);
+      res.json(balance || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get opening balance" });
+    }
+  });
+
+  // Upsert opening balance
+  app.post("/api/opening-balances", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { year, cashInHand, limitBalance, currentBalance } = req.body;
+      
+      if (!year || typeof year !== 'number') {
+        return res.status(400).json({ error: "Year is required" });
+      }
+
+      const balance = await storage.upsertOpeningBalance({
+        coldStorageId,
+        year,
+        cashInHand: cashInHand || 0,
+        limitBalance: limitBalance || 0,
+        currentBalance: currentBalance || 0,
+      });
+      res.json(balance);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save opening balance" });
+    }
+  });
+
+  // Get opening receivables for a specific year
+  app.get("/api/opening-receivables/:year", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const year = parseInt(req.params.year);
+      if (isNaN(year)) {
+        return res.status(400).json({ error: "Invalid year" });
+      }
+      const receivables = await storage.getOpeningReceivables(coldStorageId, year);
+      res.json(receivables);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get opening receivables" });
+    }
+  });
+
+  // Create opening receivable
+  app.post("/api/opening-receivables", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { year, buyerName, amount, description } = req.body;
+      
+      if (!year || !buyerName || !amount) {
+        return res.status(400).json({ error: "Year, buyer name, and amount are required" });
+      }
+
+      const receivable = await storage.createOpeningReceivable({
+        coldStorageId,
+        year,
+        buyerName,
+        amount,
+        description: description || null,
+      });
+      res.json(receivable);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create opening receivable" });
+    }
+  });
+
+  // Delete opening receivable
+  app.delete("/api/opening-receivables/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteOpeningReceivable(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete opening receivable" });
+    }
+  });
+
+  // Get opening payables for a specific year
+  app.get("/api/opening-payables/:year", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const year = parseInt(req.params.year);
+      if (isNaN(year)) {
+        return res.status(400).json({ error: "Invalid year" });
+      }
+      const payables = await storage.getOpeningPayables(coldStorageId, year);
+      res.json(payables);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get opening payables" });
+    }
+  });
+
+  // Create opening payable
+  app.post("/api/opening-payables", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { year, vendorName, amount, description } = req.body;
+      
+      if (!year || !vendorName || !amount) {
+        return res.status(400).json({ error: "Year, vendor name, and amount are required" });
+      }
+
+      const payable = await storage.createOpeningPayable({
+        coldStorageId,
+        year,
+        vendorName,
+        amount,
+        description: description || null,
+      });
+      res.json(payable);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create opening payable" });
+    }
+  });
+
+  // Delete opening payable
+  app.delete("/api/opening-payables/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteOpeningPayable(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete opening payable" });
+    }
+  });
+
   // Recalculate all sales records to fix paidAmount/dueAmount
   app.post("/api/admin/recalculate-sales-charges", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
