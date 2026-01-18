@@ -166,6 +166,37 @@ export default function StockRegister() {
   }, [selectedLot, allSalesHistory]);
 
   const isInitialMount = useRef(true);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced auto-search effect
+  useEffect(() => {
+    if (isInitialMount.current) return;
+    
+    // Clear existing timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Check if we have enough input to search
+    const hasInput = 
+      (searchType === "phone" && searchQuery.trim().length >= 3) ||
+      (searchType === "farmerName" && farmerNameQuery.trim().length >= 2) ||
+      (searchType === "lotNoSize" && (lotNoQuery.trim() || sizeQuery.trim())) ||
+      (searchType === "filter" && (qualityFilter !== "all" || potatoTypeFilter !== "all" || paymentDueFilter));
+    
+    if (hasInput) {
+      // Debounce search by 300ms
+      searchTimeoutRef.current = setTimeout(() => {
+        handleSearch();
+      }, 300);
+    }
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, farmerNameQuery, lotNoQuery, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
@@ -183,16 +214,12 @@ export default function StockRegister() {
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
   }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter]);
   
-  // Re-run search when filters change (but not on initial mount)
+  // Mark initial mount as complete after first render
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      return;
     }
-    if (hasSearched) {
-      handleSearch();
-    }
-  }, [qualityFilter, potatoTypeFilter, paymentDueFilter]);
+  }, []);
 
   // Reset to initial view when search inputs are cleared
   useEffect(() => {
@@ -660,10 +687,7 @@ export default function StockRegister() {
                     </div>
                   )}
                 </div>
-                <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search">
-                  <Search className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">{t("search")}</span>
-                </Button>
+                {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
               </div>
               <div className="flex items-center gap-2 sm:border-l sm:pl-2">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
@@ -727,10 +751,7 @@ export default function StockRegister() {
                     </div>
                   )}
                 </div>
-                <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search-farmer">
-                  <Search className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">{t("search")}</span>
-                </Button>
+                {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
               </div>
               {selectedFarmerVillage && selectedFarmerMobile && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -796,10 +817,7 @@ export default function StockRegister() {
                   className="flex-1"
                   data-testid="input-search-size"
                 />
-                <Button onClick={handleSearch} disabled={isSearching || (!lotNoQuery.trim() && !sizeQuery.trim())} data-testid="button-search">
-                  <Search className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">{t("search")}</span>
-                </Button>
+                {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
               </div>
               <div className="flex items-center gap-2 sm:border-l sm:pl-2">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
@@ -869,10 +887,7 @@ export default function StockRegister() {
                     {t("coldChargesDue")}
                   </Label>
                 </div>
-                <Button onClick={handleSearch} disabled={isSearching || (qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter)} data-testid="button-search-filter">
-                  <Search className="h-4 w-4 sm:mr-1" />
-                  <span className="hidden sm:inline">{t("search")}</span>
-                </Button>
+                {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
               </div>
               <div className="flex items-center gap-2 sm:border-l sm:pl-2">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
