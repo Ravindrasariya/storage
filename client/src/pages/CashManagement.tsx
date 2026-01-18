@@ -969,18 +969,26 @@ export default function CashManagement() {
           <CardHeader className="pb-3">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "inward" | "expense" | "self")}>
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="inward" data-testid="tab-inward">
+                <TabsTrigger 
+                  value="inward" 
+                  data-testid="tab-inward"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                >
                   <ArrowDownLeft className="h-4 w-4 mr-1" />
                   {t("inwardCash")}
                 </TabsTrigger>
-                <TabsTrigger value="expense" data-testid="tab-expense">
+                <TabsTrigger 
+                  value="expense" 
+                  data-testid="tab-expense"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                >
                   <ArrowUpRight className="h-4 w-4 mr-1" />
                   {t("expense")}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="self" 
                   data-testid="tab-self"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=inactive]:bg-gray-200 data-[state=inactive]:text-gray-700 dark:data-[state=inactive]:bg-gray-700 dark:data-[state=inactive]:text-gray-300"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
                 >
                   <ArrowLeftRight className="h-4 w-4 mr-1" />
                   {t("self")}
