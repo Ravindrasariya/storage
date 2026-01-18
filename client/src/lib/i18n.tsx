@@ -30,7 +30,9 @@ const translations: Translations = {
   chargeUnit: { en: "Charge Unit", hi: "शुल्क इकाई" },
   perQuintal: { en: "/quintal", hi: "/क्विंटल" },
   quintal: { en: "Quintal", hi: "क्विंटल" },
-  netWeightQtl: { en: "Net Weight (Qtl)", hi: "नेट वज़न (क्विंटल)" },
+  netWeightQtl: { en: "Initial Net Weight (Kg)", hi: "प्रारंभिक शुद्ध वजन (किग्रा)" },
+  initialNetWeight: { en: "Initial Net Weight", hi: "प्रारंभिक शुद्ध वजन" },
+  kg: { en: "Kg", hi: "किग्रा" },
   expectedCharge: { en: "Expected Charge", hi: "अनुमानित शुल्क" },
   bag: { en: "bag", hi: "बैग" },
   wafer: { en: "Wafer", hi: "वेफर" },
@@ -227,8 +229,8 @@ const translations: Translations = {
   available: { en: "Available", hi: "उपलब्ध" },
   buyerName: { en: "Buyer Name", hi: "खरीदार का नाम" },
   pricePerKg: { en: "Price/kg (Selling Price)", hi: "मूल्य/किग्रा (बिक्री मूल्य)" },
-  netWeight: { en: "Net Weight", hi: "शुद्ध वजन" },
-  netWeightKg: { en: "Net weight in kg", hi: "किग्रा में शुद्ध वजन" },
+  netWeight: { en: "Initial Net Weight", hi: "प्रारंभिक शुद्ध वजन" },
+  netWeightKg: { en: "Initial Net Weight (Kg)", hi: "प्रारंभिक शुद्ध वजन (किग्रा)" },
   optional: { en: "Optional", hi: "वैकल्पिक" },
   
   // Sales History

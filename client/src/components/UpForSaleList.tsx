@@ -311,10 +311,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     const chargeQty = useChargeBasis ? getChargeQuantity(lot, actualQty) : actualQty;
     const rate = getEditableRate(lot);
     
-    // For quintal mode: (Initial Net Weight × Charge Qty × Rate) / Original Bags
+    // For quintal mode: (Initial Net Weight (Kg) × Charge Qty × Rate per quintal) / (Original Bags × 100)
     // For bag mode: Charge Qty × Rate
     if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
-      return (lot.netWeight * chargeQty * rate) / lot.originalSize;
+      return (lot.netWeight * chargeQty * rate) / (lot.originalSize * 100);
     }
     return rate * chargeQty;
   };
@@ -324,11 +324,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     const chargeQty = getChargeQuantity(lot, actualQty);
     const rate = customRate ?? getEditableRate(lot);
     
-    // For quintal mode: (Initial Net Weight × Charge Qty × Rate) / Original Bags
+    // For quintal mode: (Initial Net Weight (Kg) × Charge Qty × Rate per quintal) / (Original Bags × 100)
     // For bag mode: Charge Qty × Rate
     let baseCharge: number;
     if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
-      baseCharge = (lot.netWeight * chargeQty * rate) / lot.originalSize;
+      baseCharge = (lot.netWeight * chargeQty * rate) / (lot.originalSize * 100);
     } else {
       baseCharge = rate * chargeQty;
     }
@@ -620,7 +620,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <div className="text-sm text-muted-foreground mt-1 space-y-1">
                   {selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
                     <div>
-                      ({selectedLot.netWeight} Qtl × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableRate(selectedLot)} />) / {selectedLot.originalSize} = <Currency amount={calculateBaseCharge(selectedLot)} />
+                      ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableRate(selectedLot)} />) / ({selectedLot.originalSize} × 100) = <Currency amount={calculateBaseCharge(selectedLot)} />
                     </div>
                   ) : (
                     <div>{getChargeQuantity(selectedLot, selectedLot.remainingSize)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
@@ -918,7 +918,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <div className="text-sm text-muted-foreground mt-1 space-y-1">
                     {selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
                       <div>
-                        ({selectedLot.netWeight} Qtl × {getChargeQuantity(selectedLot, partialQuantity)} × <Currency amount={getEditableRate(selectedLot)} />) / {selectedLot.originalSize} = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} />
+                        ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, partialQuantity)} × <Currency amount={getEditableRate(selectedLot)} />) / ({selectedLot.originalSize} × 100) = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} />
                       </div>
                     ) : (
                       <div>{getChargeQuantity(selectedLot, partialQuantity)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} /></div>

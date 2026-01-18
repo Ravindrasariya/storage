@@ -341,10 +341,10 @@ export default function StockRegister() {
       const rate = useWaferRate 
         ? (coldStorage?.waferRate || 0) 
         : (coldStorage?.seedRate || 0);
-      // For quintal mode: use netWeight (if not set, contribute 0)
+      // For quintal mode: use (netWeight × rate) / 100 since weight is in Kg and rate is per quintal
       // For bag mode: use lot.size × rate
       const lotCharge = coldStorage?.chargeUnit === "quintal"
-        ? (lot.netWeight ? lot.netWeight * rate : 0)
+        ? (lot.netWeight ? (lot.netWeight * rate) / 100 : 0)
         : lot.size * rate;
       return sum + lotCharge;
     }, 0);
@@ -995,10 +995,10 @@ export default function StockRegister() {
             const rate = useWaferRate 
               ? (coldStorage?.waferRate || 0) 
               : (coldStorage?.seedRate || 0);
-            // For quintal mode: use netWeight (if not set, expectedColdCharge is 0)
+            // For quintal mode: use (netWeight × rate) / 100 since weight is in Kg and rate is per quintal
             // For bag mode: use lot.size × rate
             const expectedColdCharge = coldStorage?.chargeUnit === "quintal"
-              ? (lot.netWeight ? lot.netWeight * rate : 0)
+              ? (lot.netWeight ? (lot.netWeight * rate) / 100 : 0)
               : lot.size * rate;
             return { lot, lotPaidCharge, lotDueCharge, expectedColdCharge };
           });
@@ -1227,20 +1227,20 @@ export default function StockRegister() {
                     <span className="font-semibold">
                       <Currency 
                         amount={
-                          editForm.netWeight * (
+                          (editForm.netWeight * (
                             selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration"
                               ? (coldStorage.waferColdCharge + coldStorage.waferHammali)
                               : (coldStorage.seedColdCharge + coldStorage.seedHammali)
-                          )
+                          )) / 100
                         } 
                       />
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {editForm.netWeight} × {selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
+                    ({editForm.netWeight} {t("kg")} × {selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
                       ? (coldStorage.waferColdCharge + coldStorage.waferHammali) 
                       : (coldStorage.seedColdCharge + coldStorage.seedHammali)
-                    }
+                    }) / 100
                   </p>
                 </div>
               )}
