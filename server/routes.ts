@@ -374,7 +374,7 @@ export async function registerRoutes(
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { type, query, lotNo, size, quality, paymentDue } = req.query;
+      const { type, query, lotNo, size, quality, paymentDue, potatoType } = req.query;
       
       const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
       if (!validTypes.includes(type as string)) {
@@ -417,6 +417,11 @@ export async function registerRoutes(
       // Apply quality filter
       if (quality && ["poor", "medium", "good"].includes(quality as string)) {
         lots = lots.filter((lot) => lot.quality === quality);
+      }
+      
+      // Apply potato type filter
+      if (potatoType && typeof potatoType === "string" && potatoType.trim()) {
+        lots = lots.filter((lot) => lot.type === potatoType);
       }
       
       // Apply payment due filter (lots that have cold storage charges due)

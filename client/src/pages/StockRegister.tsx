@@ -69,6 +69,7 @@ export default function StockRegister() {
   const [lotNoQuery, setLotNoQuery] = useState(savedState?.lotNoQuery || "");
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
+  const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
   const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "Ration" | "seed">(savedState?.bagTypeFilter || "all");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
@@ -165,11 +166,12 @@ export default function StockRegister() {
       lotNoQuery,
       sizeQuery,
       qualityFilter,
+      potatoTypeFilter,
       paymentDueFilter,
       bagTypeFilter,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, bagTypeFilter]);
+  }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter]);
   
   // Re-run search when filters change (but not on initial mount)
   useEffect(() => {
@@ -180,7 +182,7 @@ export default function StockRegister() {
     if (hasSearched) {
       handleSearch();
     }
-  }, [qualityFilter, paymentDueFilter]);
+  }, [qualityFilter, potatoTypeFilter, paymentDueFilter]);
 
   // Reset to initial view when search inputs are cleared
   useEffect(() => {
@@ -189,7 +191,7 @@ export default function StockRegister() {
         (searchType === "phone" && !searchQuery.trim()) ||
         (searchType === "farmerName" && !farmerNameQuery.trim()) ||
         (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) ||
-        (searchType === "filter" && qualityFilter === "all" && !paymentDueFilter);
+        (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter);
       
       if (inputEmpty) {
         setHasSearched(false);
@@ -203,6 +205,16 @@ export default function StockRegister() {
     acc[chamber.id] = chamber.name;
     return acc;
   }, {} as Record<string, string>) || {};
+
+  // Get unique potato types from all lots for the filter dropdown
+  const uniquePotatoTypes = useMemo(() => {
+    const lots = initialLots || [];
+    const types = new Set<string>();
+    for (const lot of lots) {
+      if (lot.type) types.add(lot.type);
+    }
+    return Array.from(types).sort();
+  }, [initialLots]);
 
   // Filtered suggestions for phone number search
   const getPhoneSuggestions = useMemo(() => {
@@ -371,7 +383,7 @@ export default function StockRegister() {
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
     if (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) return;
-    if (searchType === "filter" && qualityFilter === "all" && !paymentDueFilter) return;
+    if (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter) return;
     if (searchType === "farmerName" && !farmerNameQuery.trim()) return;
     
     setIsSearching(true);
@@ -397,6 +409,9 @@ export default function StockRegister() {
       
       if (qualityFilter && qualityFilter !== "all") {
         url += `&quality=${encodeURIComponent(qualityFilter)}`;
+      }
+      if (potatoTypeFilter && potatoTypeFilter !== "all") {
+        url += `&potatoType=${encodeURIComponent(potatoTypeFilter)}`;
       }
       if (paymentDueFilter) {
         url += `&paymentDue=true`;
@@ -803,6 +818,20 @@ export default function StockRegister() {
                   </Select>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Label className="text-sm">{t("type")}:</Label>
+                  <Select value={potatoTypeFilter} onValueChange={setPotatoTypeFilter}>
+                    <SelectTrigger className="w-32" data-testid="select-potato-type-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t("all")}</SelectItem>
+                      {uniquePotatoTypes.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
                   <Checkbox
                     id="payment-due-filter-main"
                     checked={paymentDueFilter}
@@ -813,7 +842,7 @@ export default function StockRegister() {
                     {t("coldChargesDue")}
                   </Label>
                 </div>
-                <Button onClick={handleSearch} disabled={isSearching || (qualityFilter === "all" && !paymentDueFilter)} data-testid="button-search-filter">
+                <Button onClick={handleSearch} disabled={isSearching || (qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter)} data-testid="button-search-filter">
                   <Search className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">{t("search")}</span>
                 </Button>
