@@ -95,6 +95,16 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
                 )}
               </Badge>
             )}
+            {lot.baseColdChargesPaid === 1 && (
+              <Badge 
+                variant="outline" 
+                className="bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-400"
+                data-testid={`badge-base-charges-paid-${lot.id}`}
+              >
+                <CheckCircle className="h-3 w-3 mr-1" />
+                {t("baseColdChargesPaid")}
+              </Badge>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">

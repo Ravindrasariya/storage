@@ -619,7 +619,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -666,9 +666,15 @@ export async function registerRoutes(
         remainingSize: number; 
         totalPaidCharge?: number; 
         totalDueCharge?: number;
+        baseColdChargesPaid?: number;
       } = {
         remainingSize: newRemainingSize,
       };
+      
+      // Set baseColdChargesPaid flag when using totalRemaining charge basis
+      if (chargeBasis === "totalRemaining") {
+        updateData.baseColdChargesPaid = 1;
+      }
       
       // Track paid and due charges separately (include all surcharges)
       if (paymentStatus === "paid") {
