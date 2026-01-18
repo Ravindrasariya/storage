@@ -1096,8 +1096,8 @@ export default function CashManagement() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
+      <div className="grid gap-6 md:grid-cols-2 items-stretch">
+        <Card className="flex flex-col">
           <CardHeader className="pb-3">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "inward" | "expense" | "self")}>
               <TabsList className="grid w-full grid-cols-3">
@@ -1614,17 +1614,17 @@ export default function CashManagement() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="text-lg">{t("cashFlowHistory")}</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 flex-1 min-h-0">
             {isLoading ? (
               <div className="text-sm text-muted-foreground p-4">{t("loading")}</div>
             ) : allTransactions.length === 0 ? (
               <div className="text-sm text-muted-foreground text-center py-8 px-4">{t("noTransactions")}</div>
             ) : (
-              <ScrollArea className="h-[450px]">
+              <ScrollArea className="h-full">
                 <div className="space-y-2 px-4 py-2">
                   {allTransactions.map((transaction, index) => {
                     const isReversed = transaction.data.isReversed === 1;
