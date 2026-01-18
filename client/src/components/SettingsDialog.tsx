@@ -39,6 +39,8 @@ interface ColdStorageSettings {
   waferHammali: number;
   seedColdCharge: number;
   seedHammali: number;
+  startingWaferLotNumber: number;
+  startingRationSeedLotNumber: number;
 }
 
 type ChamberFloorsData = Record<string, ChamberFloor[]>;
@@ -315,6 +317,8 @@ export function SettingsDialog() {
         waferHammali: settings.waferHammali,
         seedColdCharge: settings.seedColdCharge,
         seedHammali: settings.seedHammali,
+        startingWaferLotNumber: settings.startingWaferLotNumber || 1,
+        startingRationSeedLotNumber: settings.startingRationSeedLotNumber || 1,
       });
 
       for (const chamber of chamberEdits) {
@@ -626,6 +630,45 @@ export function SettingsDialog() {
             <p className="text-sm text-muted-foreground">
               {t("total")}: Rs {(settings?.seedColdCharge || 0) + (settings?.seedHammali || 0)}
             </p>
+          </Card>
+
+          <Card className="p-4 space-y-4">
+            <div>
+              <h4 className="font-semibold">{t("startingLotNumbers") || "Starting Lot Numbers"}</h4>
+              <p className="text-sm text-muted-foreground">
+                {t("startingLotNumbersDesc") || "Set the starting lot number for each category at the beginning of a season"}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t("wafer")} {t("lotNumber") || "Lot #"}</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={settings?.startingWaferLotNumber || 1}
+                  onChange={(e) =>
+                    setSettings((prev) =>
+                      prev ? { ...prev, startingWaferLotNumber: e.target.value === "" ? 1 : Math.max(1, Number(e.target.value)) } : null
+                    )
+                  }
+                  data-testid="input-starting-wafer-lot"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Ration")}/{t("seed")} {t("lotNumber") || "Lot #"}</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={settings?.startingRationSeedLotNumber || 1}
+                  onChange={(e) =>
+                    setSettings((prev) =>
+                      prev ? { ...prev, startingRationSeedLotNumber: e.target.value === "" ? 1 : Math.max(1, Number(e.target.value)) } : null
+                    )
+                  }
+                  data-testid="input-starting-ration-seed-lot"
+                />
+              </div>
+            </div>
           </Card>
 
           <Card className="p-4 space-y-4">

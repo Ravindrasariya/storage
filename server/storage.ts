@@ -982,13 +982,20 @@ export class DatabaseStorage implements IStorage {
       .set({ currentFill: 0 })
       .where(eq(chambers.coldStorageId, coldStorageId));
     
-    // Reset all bill number counters to 1
+    // Get the starting lot numbers for this cold storage
+    const coldStorage = await this.getColdStorage(coldStorageId);
+    const startingWaferLotNumber = coldStorage?.startingWaferLotNumber || 1;
+    const startingRationSeedLotNumber = coldStorage?.startingRationSeedLotNumber || 1;
+
+    // Reset all bill number counters to 1, and lot counters to their starting values
     await db.update(coldStorages)
       .set({ 
         nextExitBillNumber: 1,
         nextColdStorageBillNumber: 1,
         nextSalesBillNumber: 1,
         nextEntryBillNumber: 1,
+        nextWaferLotNumber: startingWaferLotNumber,
+        nextRationSeedLotNumber: startingRationSeedLotNumber,
       })
       .where(eq(coldStorages.id, coldStorageId));
   }
