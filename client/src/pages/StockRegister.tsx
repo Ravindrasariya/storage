@@ -906,29 +906,23 @@ export default function StockRegister() {
 
       {summaryTotals && (
         <Card className="p-3 bg-muted/50">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
-            <h3 className="font-semibold text-xs md:text-sm whitespace-nowrap">{t("searchSummary")}:</h3>
-            <div className="grid grid-cols-2 gap-2 md:flex md:flex-nowrap md:items-center md:gap-4 md:flex-1">
-              <div className="flex items-center gap-1 md:flex-1">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalBags")}:</span>
-                <span className="font-bold text-sm md:text-base whitespace-nowrap md:min-w-[8ch]" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex items-center gap-1 md:flex-1">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalRemainingBags")}:</span>
-                <span className="font-bold text-sm md:text-base whitespace-nowrap md:min-w-[8ch]" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex items-center gap-1 md:flex-1">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalExpectedColdCharges")}:</span>
-                <span className="font-bold text-sm md:text-base text-blue-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-expected"><Currency amount={summaryTotals.expectedColdCharges} /></span>
-              </div>
-              <div className="flex items-center gap-1 md:flex-1">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesPaid")}:</span>
-                <span className="font-bold text-sm md:text-base text-green-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-paid"><Currency amount={summaryTotals.chargesPaid} /></span>
-              </div>
-              <div className="flex items-center gap-1 md:flex-1">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("totalChargesDue")}:</span>
-                <span className="font-bold text-sm md:text-base text-red-600 whitespace-nowrap md:min-w-[12ch]" data-testid="text-total-due"><Currency amount={summaryTotals.chargesDue} /></span>
-              </div>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-semibold text-xs md:text-sm whitespace-nowrap">{t("searchSummary")}:</h3>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              <span className="text-xs text-muted-foreground whitespace-nowrap text-center">{t("totalBags")}</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap text-center">{t("totalRemainingBags")}</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap text-center">{t("totalExpectedColdCharges")}</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap text-center">{t("totalChargesPaid")}</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap text-center">{t("totalChargesDue")}</span>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              <span className="font-bold text-sm md:text-base text-center" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString('en-IN')}</span>
+              <span className="font-bold text-sm md:text-base text-center" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
+              <span className="font-bold text-sm md:text-base text-blue-600 text-center" data-testid="text-total-expected"><Currency amount={summaryTotals.expectedColdCharges} /></span>
+              <span className="font-bold text-sm md:text-base text-green-600 text-center" data-testid="text-total-paid"><Currency amount={summaryTotals.chargesPaid} /></span>
+              <span className="font-bold text-sm md:text-base text-red-600 text-center" data-testid="text-total-due"><Currency amount={summaryTotals.chargesDue} /></span>
             </div>
           </div>
         </Card>
