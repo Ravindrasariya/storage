@@ -41,7 +41,7 @@
 **Navigation Menu:**
 - Dashboard (home icon)
 - New Lot Entry (plus icon)
-- Search/Edit Lot (search icon)
+- Stock Register (search icon)
 - Analytics (chart icon)
 - Help section with contact info at bottom
 
@@ -97,7 +97,7 @@
 - Bottom action bar with "Cancel" (text button) and "Submit" (filled button)
 - Validation messages inline below fields
 
-### Search/Edit Interface (Section 3)
+### Stock Register Interface (Section 3)
 
 **Search Header:**
 - Segmented control: "By Phone" | "By Lot #" | "By Size"

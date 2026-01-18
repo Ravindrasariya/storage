@@ -40,7 +40,7 @@ import { capitalizeFirstLetter } from "@/lib/utils";
 // Helper to get saved search state from sessionStorage
 const getSavedSearchState = () => {
   try {
-    const saved = sessionStorage.getItem("searchEditState");
+    const saved = sessionStorage.getItem("stockRegisterState");
     if (saved) {
       return JSON.parse(saved);
     }
@@ -50,7 +50,7 @@ const getSavedSearchState = () => {
   return null;
 };
 
-export default function SearchEdit() {
+export default function StockRegister() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -168,7 +168,7 @@ export default function SearchEdit() {
       paymentDueFilter,
       bagTypeFilter,
     };
-    sessionStorage.setItem("searchEditState", JSON.stringify(stateToSave));
+    sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
   }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, bagTypeFilter]);
   
   // Re-run search when filters change (but not on initial mount)
@@ -427,7 +427,7 @@ export default function SearchEdit() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">{t("searchEdit")}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">{t("stockRegister")}</h1>
             <p className="text-muted-foreground mt-1">
               Find and manage lot details
             </p>

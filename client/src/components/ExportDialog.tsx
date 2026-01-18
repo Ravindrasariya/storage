@@ -209,7 +209,7 @@ export function ExportDialog() {
                   htmlFor="export-lots" 
                   className="text-sm font-medium leading-none cursor-pointer"
                 >
-                  {language === "hi" ? "लॉट डेटा (खोजें/संपादित करें)" : "Lots Data (Search/Edit)"}
+                  {language === "hi" ? "लॉट डेटा (स्टॉक रजिस्टर)" : "Lots Data (Stock Register)"}
                 </label>
               </div>
               
