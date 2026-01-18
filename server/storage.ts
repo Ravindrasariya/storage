@@ -1523,6 +1523,34 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Add opening receivables for current year (cold_merchant type)
+    const currentYear = new Date().getFullYear();
+    const receivables = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.year, currentYear),
+        eq(openingReceivables.payerType, "cold_merchant"),
+        sql`${openingReceivables.buyerName} IS NOT NULL AND ${openingReceivables.buyerName} != ''`
+      ));
+
+    // Add receivables to buyer dues
+    for (const receivable of receivables) {
+      const trimmedName = (receivable.buyerName || "").trim();
+      if (!trimmedName) continue;
+      const normalizedKey = trimmedName.toLowerCase();
+      const dueAmount = receivable.dueAmount || 0;
+      
+      if (dueAmount > 0) {
+        const existing = buyerDues.get(normalizedKey);
+        if (existing) {
+          existing.totalDue += dueAmount;
+        } else {
+          buyerDues.set(normalizedKey, { displayName: trimmedName, totalDue: dueAmount });
+        }
+      }
+    }
+
     return Array.from(buyerDues.values())
       .map(({ displayName, totalDue }) => ({ buyerName: displayName, totalDue }))
       .sort((a, b) => a.buyerName.toLowerCase().localeCompare(b.buyerName.toLowerCase()));

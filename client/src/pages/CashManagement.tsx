@@ -15,8 +15,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, OpeningPayable } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable } from "@shared/schema";
 
 interface BuyerWithDue {
   buyerName: string;
@@ -70,7 +71,7 @@ export default function CashManagement() {
 
   // Settings dialog state
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"balances" | "receivables" | "payables">("balances");
+  const [settingsTab, setSettingsTab] = useState<"balances" | "receivables">("balances");
   const currentYear = new Date().getFullYear();
   const [settingsYear, setSettingsYear] = useState(currentYear);
   
@@ -84,12 +85,8 @@ export default function CashManagement() {
   const [newReceivableBuyerName, setNewReceivableBuyerName] = useState("");
   const [newReceivableAmount, setNewReceivableAmount] = useState("");
   const [newReceivableRemarks, setNewReceivableRemarks] = useState("");
+  const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   
-  // Payable form state
-  const [newPayableExpenseType, setNewPayableExpenseType] = useState<string>("salary");
-  const [newPayableReceiverName, setNewPayableReceiverName] = useState("");
-  const [newPayableAmount, setNewPayableAmount] = useState("");
-  const [newPayableRemarks, setNewPayableRemarks] = useState("");
 
   const { data: buyersWithDues = [], isLoading: loadingBuyers } = useQuery<BuyerWithDue[]>({
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
@@ -127,10 +124,6 @@ export default function CashManagement() {
     enabled: showSettings,
   });
 
-  const { data: openingPayables = [] } = useQuery<OpeningPayable[]>({
-    queryKey: ["/api/opening-payables", settingsYear],
-    enabled: showSettings,
-  });
 
   const { data: buyerRecords = [] } = useQuery<{ buyerName: string }[]>({
     queryKey: ["/api/buyers"],
@@ -321,37 +314,6 @@ export default function CashManagement() {
     onSuccess: () => {
       toast({ title: t("success"), description: t("receivableDeleted") });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
-    },
-    onError: () => {
-      toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
-    },
-  });
-
-  const createPayableMutation = useMutation({
-    mutationFn: async (data: { year: number; expenseType: string; receiverName?: string; dueAmount: number; remarks?: string }) => {
-      const response = await apiRequest("POST", "/api/opening-payables", data);
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({ title: t("success"), description: t("payableAdded") });
-      setNewPayableReceiverName("");
-      setNewPayableAmount("");
-      setNewPayableRemarks("");
-      queryClient.invalidateQueries({ queryKey: ["/api/opening-payables", settingsYear] });
-    },
-    onError: () => {
-      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
-    },
-  });
-
-  const deletePayableMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await apiRequest("DELETE", `/api/opening-payables/${id}`, {});
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({ title: t("success"), description: t("payableDeleted") });
-      queryClient.invalidateQueries({ queryKey: ["/api/opening-payables", settingsYear] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
@@ -1894,16 +1856,13 @@ export default function CashManagement() {
           </div>
 
           {/* Settings Tabs */}
-          <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as "balances" | "receivables" | "payables")} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-blue-50 dark:bg-blue-900/20">
+          <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as "balances" | "receivables")} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 bg-blue-50 dark:bg-blue-900/20">
               <TabsTrigger value="balances" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-opening-balances">
                 {t("openingBalances")}
               </TabsTrigger>
               <TabsTrigger value="receivables" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-receivables">
                 {t("receivables")}
-              </TabsTrigger>
-              <TabsTrigger value="payables" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-payables">
-                {t("payables")}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1976,7 +1935,10 @@ export default function CashManagement() {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label className="text-xs">{t("payerType")}</Label>
-                      <Select value={newReceivablePayerType} onValueChange={setNewReceivablePayerType}>
+                      <Select value={newReceivablePayerType} onValueChange={(v) => {
+                        setNewReceivablePayerType(v);
+                        setShowBuyerSuggestions(false);
+                      }}>
                         <SelectTrigger data-testid="select-receivable-payer-type">
                           <SelectValue />
                         </SelectTrigger>
@@ -1988,22 +1950,61 @@ export default function CashManagement() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
+                    <div className="relative">
                       <Label className="text-xs">{t("buyerName")}</Label>
-                      <Input
-                        value={newReceivableBuyerName}
-                        onChange={(e) => setNewReceivableBuyerName(e.target.value)}
-                        placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
-                        list={newReceivablePayerType !== "sales_goods" ? "buyer-options" : undefined}
-                        data-testid="input-receivable-buyer"
-                      />
-                      {newReceivablePayerType !== "sales_goods" && (
-                        <datalist id="buyer-options">
-                          {buyerRecords.map((b) => (
-                            <option key={b.buyerName} value={b.buyerName} />
-                          ))}
-                        </datalist>
-                      )}
+                      <Popover 
+                        open={showBuyerSuggestions && newReceivablePayerType !== "sales_goods"} 
+                        onOpenChange={(open) => {
+                          if (newReceivablePayerType !== "sales_goods") {
+                            setShowBuyerSuggestions(open);
+                          }
+                        }}
+                      >
+                        <PopoverTrigger asChild>
+                          <Input
+                            value={newReceivableBuyerName}
+                            onChange={(e) => setNewReceivableBuyerName(e.target.value)}
+                            onFocus={() => {
+                              if (newReceivablePayerType !== "sales_goods") {
+                                setShowBuyerSuggestions(true);
+                              }
+                            }}
+                            placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
+                            data-testid="input-receivable-buyer"
+                          />
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[250px] p-1" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+                          <ScrollArea className="max-h-[200px]">
+                            {buyerRecords.filter(b => 
+                              !newReceivableBuyerName || 
+                              b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
+                            ).length === 0 ? (
+                              <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults") || "No results"}</p>
+                            ) : (
+                              buyerRecords
+                                .filter(b => 
+                                  !newReceivableBuyerName || 
+                                  b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
+                                )
+                                .map((b) => (
+                                  <Button
+                                    key={b.buyerName}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full justify-start"
+                                    onClick={() => {
+                                      setNewReceivableBuyerName(b.buyerName);
+                                      setShowBuyerSuggestions(false);
+                                    }}
+                                    data-testid={`suggestion-buyer-${b.buyerName}`}
+                                  >
+                                    {b.buyerName}
+                                  </Button>
+                                ))
+                            )}
+                          </ScrollArea>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -2086,119 +2087,6 @@ export default function CashManagement() {
             </div>
           )}
 
-          {/* Payables Tab Content */}
-          {settingsTab === "payables" && (
-            <div className="space-y-4 mt-4">
-              {/* Add new payable form */}
-              <Card>
-                <CardHeader className="py-2">
-                  <CardTitle className="text-sm">{t("addPayable")}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-xs">{t("expenseType")}</Label>
-                      <Select value={newPayableExpenseType} onValueChange={setNewPayableExpenseType}>
-                        <SelectTrigger data-testid="select-payable-expense-type">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="salary">{t("salary")}</SelectItem>
-                          <SelectItem value="hammali">{t("hammali")}</SelectItem>
-                          <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
-                          <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">{t("receiverName")}</Label>
-                      <Input
-                        value={newPayableReceiverName}
-                        onChange={(e) => setNewPayableReceiverName(e.target.value)}
-                        placeholder={t("optional")}
-                        data-testid="input-payable-receiver"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-xs">{t("amount")}</Label>
-                      <Input
-                        type="number"
-                        value={newPayableAmount}
-                        onChange={(e) => setNewPayableAmount(e.target.value)}
-                        placeholder="0"
-                        data-testid="input-payable-amount"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">{t("remarks")}</Label>
-                      <Input
-                        value={newPayableRemarks}
-                        onChange={(e) => setNewPayableRemarks(e.target.value)}
-                        placeholder={t("optional")}
-                        data-testid="input-payable-remarks"
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      if (!newPayableAmount || parseFloat(newPayableAmount) <= 0) {
-                        toast({ title: t("error"), description: t("amountRequired"), variant: "destructive" });
-                        return;
-                      }
-                      createPayableMutation.mutate({
-                        year: settingsYear,
-                        expenseType: newPayableExpenseType,
-                        receiverName: newPayableReceiverName || undefined,
-                        dueAmount: parseFloat(newPayableAmount),
-                        remarks: newPayableRemarks || undefined,
-                      });
-                    }}
-                    disabled={createPayableMutation.isPending}
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                    data-testid="button-add-payable"
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    {createPayableMutation.isPending ? t("adding") : t("add")}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* List of payables */}
-              <ScrollArea className="h-48">
-                {openingPayables.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-4">{t("noPayables")}</p>
-                ) : (
-                  <div className="space-y-2">
-                    {openingPayables.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">{t(p.expenseType)}</Badge>
-                            {p.receiverName && <span className="text-sm font-medium">{p.receiverName}</span>}
-                          </div>
-                          {p.remarks && <p className="text-xs text-muted-foreground">{p.remarks}</p>}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-red-600">₹{p.dueAmount.toLocaleString()}</span>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => deletePayableMutation.mutate(p.id)}
-                            data-testid={`button-delete-payable-${p.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>

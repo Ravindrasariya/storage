@@ -76,13 +76,13 @@ Core entities:
 
 ### Start-of-Year Settings
 - Settings button in Cash Management header (edit access only)
-- Three tabs: Opening Balances, Receivables, Payables
+- Two tabs: Opening Balances and Receivables
 - Year selector allows configuring for current or previous 2 years
 - Opening balances (cash in hand, limit account, current account) affect displayed balance calculations
 - Receivables track outstanding amounts due from buyers with payer type categories
-- Payables track outstanding amounts owed to vendors/employees with expense type categories
-- Buyer name autocomplete from database for receivables (manual entry for sales_goods type)
-- Database tables: cashOpeningBalances, openingReceivables, openingPayables (all year-scoped)
+- Buyer name autocomplete with popover shows suggestions from sales history immediately on focus
+- Opening receivables for cold_merchant type are combined with sales history dues in buyer dropdown
+- Database tables: cashOpeningBalances, openingReceivables (year-scoped)
 
 ### Build and Deployment
 - Development: Vite dev server with HMR, Express API on same port
