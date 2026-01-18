@@ -64,8 +64,8 @@ export default function StockRegister() {
     savedState?.searchType || "phone"
   );
   const [farmerNameQuery, setFarmerNameQuery] = useState(savedState?.farmerNameQuery || "");
-  const [selectedFarmerVillage, setSelectedFarmerVillage] = useState("");
-  const [selectedFarmerMobile, setSelectedFarmerMobile] = useState("");
+  const [selectedFarmerVillage, setSelectedFarmerVillage] = useState(savedState?.selectedFarmerVillage || "");
+  const [selectedFarmerMobile, setSelectedFarmerMobile] = useState(savedState?.selectedFarmerMobile || "");
   const [searchQuery, setSearchQuery] = useState(savedState?.searchQuery || "");
   const [lotNoQuery, setLotNoQuery] = useState(savedState?.lotNoQuery || "");
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
@@ -202,13 +202,15 @@ export default function StockRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, farmerNameQuery, lotNoQuery, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoQuery, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
     const stateToSave = {
       searchType,
       farmerNameQuery,
+      selectedFarmerVillage,
+      selectedFarmerMobile,
       searchQuery,
       lotNoQuery,
       sizeQuery,
@@ -218,12 +220,28 @@ export default function StockRegister() {
       bagTypeFilter,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, searchQuery, lotNoQuery, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoQuery, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter]);
   
-  // Mark initial mount as complete after first render
+  // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
+      
+      // Check if we have saved search state that should trigger a search
+      // Use savedState directly to avoid closure issues
+      const saved = getSavedSearchState();
+      if (saved) {
+        const hasValidQuery = 
+          (saved.searchType === "phone" && saved.searchQuery?.trim().length >= 3) ||
+          (saved.searchType === "farmerName" && saved.farmerNameQuery?.trim().length >= 2) ||
+          (saved.searchType === "lotNoSize" && (saved.lotNoQuery?.trim() || saved.sizeQuery?.trim())) ||
+          (saved.searchType === "filter" && (saved.qualityFilter !== "all" || saved.potatoTypeFilter !== "all" || saved.paymentDueFilter));
+        
+        if (hasValidQuery) {
+          // Trigger search with saved state - use setTimeout to ensure state is fully initialized
+          setTimeout(() => handleSearch(), 0);
+        }
+      }
     }
   }, []);
 
@@ -239,9 +257,14 @@ export default function StockRegister() {
       if (inputEmpty) {
         setHasSearched(false);
         setSearchResults([]);
+        // Also clear farmer-specific filter when resetting
+        if (searchType === "farmerName") {
+          setSelectedFarmerVillage("");
+          setSelectedFarmerMobile("");
+        }
       }
     }
-  }, [searchQuery, farmerNameQuery, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, searchType, hasSearched]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, searchType, hasSearched]);
 
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
