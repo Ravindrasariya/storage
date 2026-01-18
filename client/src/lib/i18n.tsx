@@ -265,6 +265,9 @@ const translations: Translations = {
   extraHammaliPerBag: { en: "Extra Hammali/bag", hi: "अतिरिक्त हमाली/बैग" },
   rateBreakdown: { en: "Rate Breakdown", hi: "दर विवरण" },
   perBag: { en: "/bag", hi: "/बैग" },
+  chargeBasis: { en: "Charge Basis", hi: "शुल्क आधार" },
+  actualBags: { en: "Actual Bags", hi: "वास्तविक बैग" },
+  allRemainingBags: { en: "All Remaining Bags", hi: "सभी शेष बैग" },
 
   // Merchant Analysis
   merchantAnalysis: { en: "Merchant Analysis", hi: "व्यापारी विश्लेषण" },

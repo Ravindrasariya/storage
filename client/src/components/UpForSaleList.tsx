@@ -53,6 +53,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [editableColdCharge, setEditableColdCharge] = useState<string>("");
   const [editableHammali, setEditableHammali] = useState<string>("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
+  const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
 
   const { data: buyersData } = useQuery<{ buyerName: string }[]>({
     queryKey: ["/api/buyers/lookup"],
@@ -151,6 +152,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setNetWeight("");
     setEditableColdCharge("");
     setEditableHammali("");
+    setChargeBasis("actual");
   };
 
   const openSaleDialog = (lot: SaleLotInfo, mode: "full" | "partial") => {
@@ -208,7 +210,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       }
       
       const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
-      const qty = saleMode === "partial" ? partialQuantity : selectedLot.remainingSize;
+      const actualQty = saleMode === "partial" ? partialQuantity : selectedLot.remainingSize;
+      // Use charge basis quantity for calculating charges (consistent with calculateTotalCharge)
+      const chargeQty = getChargeQuantity(selectedLot, actualQty);
       
       // Parse custom rate components with NaN guard
       const parsedColdCharge = parseFloat(editableColdCharge);
@@ -221,9 +225,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         ? calculateTotalCharge(selectedLot, partialQuantity) 
         : calculateTotalCharge(selectedLot);
       
-      // Calculate extra charges
+      // Calculate extra charges using charge basis quantity
       const kata = parseFloat(kataCharges) || 0;
-      const extraHammaliTotal = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * qty : 0;
+      const extraHammaliTotal = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * chargeQty : 0;
       const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
       
       let paidAmount: number | undefined;
@@ -294,33 +298,43 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     return coldCharge + hammali;
   };
 
-  const calculateBaseCharge = (lot: SaleLotInfo, quantity?: number) => {
-    const qty = quantity ?? lot.remainingSize;
+  // Get the quantity to use for charge calculation based on chargeBasis selection
+  const getChargeQuantity = (lot: SaleLotInfo, actualQty?: number) => {
+    if (chargeBasis === "totalRemaining") {
+      return lot.remainingSize;
+    }
+    return actualQty ?? lot.remainingSize;
+  };
+
+  const calculateBaseCharge = (lot: SaleLotInfo, quantity?: number, useChargeBasis: boolean = true) => {
+    const actualQty = quantity ?? lot.remainingSize;
+    const chargeQty = useChargeBasis ? getChargeQuantity(lot, actualQty) : actualQty;
     const rate = getEditableRate(lot);
     
-    // For quintal mode: (Initial Net Weight × Remaining Bags × Rate) / Original Bags
-    // For bag mode: Remaining Bags × Rate
+    // For quintal mode: (Initial Net Weight × Charge Qty × Rate) / Original Bags
+    // For bag mode: Charge Qty × Rate
     if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
-      return (lot.netWeight * qty * rate) / lot.originalSize;
+      return (lot.netWeight * chargeQty * rate) / lot.originalSize;
     }
-    return rate * qty;
+    return rate * chargeQty;
   };
 
   const calculateTotalCharge = (lot: SaleLotInfo, quantity?: number, customRate?: number) => {
-    const qty = quantity ?? lot.remainingSize;
+    const actualQty = quantity ?? lot.remainingSize;
+    const chargeQty = getChargeQuantity(lot, actualQty);
     const rate = customRate ?? getEditableRate(lot);
     
-    // For quintal mode: (Initial Net Weight × Qty × Rate) / Original Bags
-    // For bag mode: Qty × Rate
+    // For quintal mode: (Initial Net Weight × Charge Qty × Rate) / Original Bags
+    // For bag mode: Charge Qty × Rate
     let baseCharge: number;
     if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
-      baseCharge = (lot.netWeight * qty * rate) / lot.originalSize;
+      baseCharge = (lot.netWeight * chargeQty * rate) / lot.originalSize;
     } else {
-      baseCharge = rate * qty;
+      baseCharge = rate * chargeQty;
     }
     
     const kata = parseFloat(kataCharges) || 0;
-    const extraHammali = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * qty : 0;
+    const extraHammali = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * chargeQty : 0;
     const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
     return baseCharge + kata + extraHammali + grading;
   };
@@ -494,7 +508,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
-                <div className="text-sm font-medium">{t("rateBreakdown")} ({t("perBag")})</div>
+                <div className="text-sm font-medium">{t("rateBreakdown")} ({selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")})</div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")}</Label>
@@ -527,7 +541,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
                 <div className="border-t pt-2 flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold"><Currency amount={getEditableRate(selectedLot)} />/{t("bag")}</span>
+                  <span className="font-bold"><Currency amount={getEditableRate(selectedLot)} />{selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")}</span>
                 </div>
               </div>
 
@@ -541,6 +555,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   placeholder="0"
                   data-testid="input-kata-charges"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t("chargeBasis")}</Label>
+                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
+                  <SelectTrigger data-testid="select-charge-basis">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="actual">{t("actualBags")}</SelectItem>
+                    <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -591,12 +618,21 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   </span>
                 </div>
                 <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                  <div>{selectedLot.remainingSize} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
+                  {selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
+                    <div>
+                      ({selectedLot.netWeight} Qtl × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableRate(selectedLot)} />) / {selectedLot.originalSize} = <Currency amount={calculateBaseCharge(selectedLot)} />
+                    </div>
+                  ) : (
+                    <div>{getChargeQuantity(selectedLot, selectedLot.remainingSize)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
+                  )}
+                  {chargeBasis === "totalRemaining" && (
+                    <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")})</div>
+                  )}
                   {(parseFloat(kataCharges) || 0) > 0 && (
                     <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
                   )}
                   {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                    <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /> ({selectedLot.remainingSize} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
+                    <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * getChargeQuantity(selectedLot, selectedLot.remainingSize)} /> ({getChargeQuantity(selectedLot, selectedLot.remainingSize)} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
                   )}
                   {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
                     <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
@@ -691,7 +727,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
-                <div className="text-sm font-medium">{t("rateBreakdown")} ({t("perBag")})</div>
+                <div className="text-sm font-medium">{t("rateBreakdown")} ({selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")})</div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")}</Label>
@@ -724,7 +760,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
                 <div className="border-t pt-2 flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold"><Currency amount={getEditableRate(selectedLot)} />/{t("bag")}</span>
+                  <span className="font-bold"><Currency amount={getEditableRate(selectedLot)} />{selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")}</span>
                 </div>
               </div>
 
@@ -819,6 +855,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
+                <Label>{t("chargeBasis")}</Label>
+                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
+                  <SelectTrigger data-testid="select-partial-charge-basis">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="actual">{t("actualBags")}</SelectItem>
+                    <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <Label>{t("deliveryType")}</Label>
                 <Select value={deliveryType} onValueChange={(value: "gate" | "bilty") => setDeliveryType(value)}>
                   <SelectTrigger data-testid="select-partial-delivery-type">
@@ -867,12 +916,21 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     </span>
                   </div>
                   <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                    <div>{partialQuantity} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={partialQuantity * getEditableRate(selectedLot)} /></div>
+                    {selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
+                      <div>
+                        ({selectedLot.netWeight} Qtl × {getChargeQuantity(selectedLot, partialQuantity)} × <Currency amount={getEditableRate(selectedLot)} />) / {selectedLot.originalSize} = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} />
+                      </div>
+                    ) : (
+                      <div>{getChargeQuantity(selectedLot, partialQuantity)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} /></div>
+                    )}
+                    {chargeBasis === "totalRemaining" && (
+                      <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")} - {selectedLot.remainingSize} {t("bags")})</div>
+                    )}
                     {(parseFloat(kataCharges) || 0) > 0 && (
                       <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
                     )}
                     {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                      <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /> ({partialQuantity} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
+                      <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * getChargeQuantity(selectedLot, partialQuantity)} /> ({getChargeQuantity(selectedLot, partialQuantity)} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
                     )}
                     {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
                       <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
