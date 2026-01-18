@@ -813,7 +813,7 @@ export default function LotEntry() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="text-sm font-medium">{t("chamber")} *</label>
+                    <label className="text-sm font-medium">{t("chamber")}</label>
                     <Select value={lot.chamberId} onValueChange={(v) => updateLot(index, "chamberId", v)}>
                       <SelectTrigger data-testid={`select-chamber-${index}`}>
                         <SelectValue placeholder="Select chamber" />
@@ -828,7 +828,7 @@ export default function LotEntry() {
                     </Select>
                   </div>
                   <div>
-                    <label className="text-sm font-medium">{t("floor")} *</label>
+                    <label className="text-sm font-medium">{t("floor")}</label>
                     <Select 
                       value={lot.floor ? lot.floor.toString() : ""} 
                       onValueChange={(v) => updateLot(index, "floor", parseInt(v))}
@@ -847,7 +847,7 @@ export default function LotEntry() {
                     </Select>
                   </div>
                   <div>
-                    <label className="text-sm font-medium">{t("position")} *</label>
+                    <label className="text-sm font-medium">{t("position")}</label>
                     <Input
                       type="text"
                       placeholder="e.g. 12/5, 12A/5"
@@ -866,7 +866,7 @@ export default function LotEntry() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium">{t("quality")} *</label>
+                    <label className="text-sm font-medium">{t("quality")}</label>
                     <Select value={lot.quality} onValueChange={(v) => updateLot(index, "quality", v as "poor" | "medium" | "good")}>
                       <SelectTrigger data-testid={`select-quality-${index}`}>
                         <SelectValue placeholder="Select quality" />
