@@ -1448,9 +1448,9 @@ export default function CashManagement() {
             ) : allTransactions.length === 0 ? (
               <div className="text-sm text-muted-foreground text-center py-8 px-4">{t("noTransactions")}</div>
             ) : (
-              <div className="overflow-x-auto">
-                <ScrollArea className="h-[450px]">
-                  <div className="space-y-2 px-4 py-2 min-w-[480px]">
+              <ScrollArea className="h-[450px]">
+                <div className="overflow-x-auto">
+                  <div className="space-y-2 px-4 py-2 min-w-[550px]">
                   {allTransactions.map((transaction, index) => {
                     const isReversed = transaction.data.isReversed === 1;
                     return (
@@ -1526,9 +1526,9 @@ export default function CashManagement() {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
-                </ScrollArea>
-              </div>
+              </ScrollArea>
             )}
           </CardContent>
         </Card>
