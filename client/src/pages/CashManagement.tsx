@@ -551,26 +551,27 @@ export default function CashManagement() {
       </p>
 
       <Card className="mb-6">
-        <CardContent className="pt-4 space-y-3">
-          {/* Row 1: Filter header + Transaction Type, Payment Mode, Month */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
-            <div className="flex items-center gap-2 h-8">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{t("filters")}</span>
-              {hasActiveFilters && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="h-6 text-xs px-2"
-                  data-testid="button-clear-filters"
-                >
-                  <X className="h-3 w-3 mr-1" />
-                  {t("clearFilters")}
-                </Button>
-              )}
-            </div>
+        <CardContent className="pt-3 pb-3 space-y-2">
+          {/* Header row: Filter icon + label + clear button */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">{t("filters")}</span>
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-6 text-xs px-2 ml-auto"
+                data-testid="button-clear-filters"
+              >
+                <X className="h-3 w-3 mr-1" />
+                {t("clearFilters")}
+              </Button>
+            )}
+          </div>
 
+          {/* Row 1: Transaction Type, Payment Mode, Month */}
+          <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("transactionType")}</Label>
               <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense")}>
