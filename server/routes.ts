@@ -659,8 +659,12 @@ export async function registerRoutes(
       const chargeQuantity = chargeBasis === "totalRemaining" ? lot.remainingSize : quantitySold;
       
       // Calculate storage charge based on charge unit mode
+      // If baseColdChargesBilled is already set, skip base charges (only extras apply)
       let storageCharge: number;
-      if (coldStorage?.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
+      if (lot.baseColdChargesBilled === 1) {
+        // Base charges already billed in a previous sale, don't charge again
+        storageCharge = 0;
+      } else if (coldStorage?.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
         // Quintal mode: (netWeight (Kg) × chargeQuantity × rate per quintal) / (originalSize × 100)
         storageCharge = (lot.netWeight * chargeQuantity * rate) / (lot.size * 100);
       } else {
@@ -683,8 +687,8 @@ export async function registerRoutes(
         remainingSize: newRemainingSize,
       };
       
-      // Set baseColdChargesBilled flag when using totalRemaining charge basis
-      if (chargeBasis === "totalRemaining") {
+      // Set baseColdChargesBilled flag when using totalRemaining charge basis (only if not already set)
+      if (chargeBasis === "totalRemaining" && lot.baseColdChargesBilled !== 1) {
         updateData.baseColdChargesBilled = 1;
       }
       

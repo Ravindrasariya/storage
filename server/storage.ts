@@ -1021,7 +1021,18 @@ export class DatabaseStorage implements IStorage {
     const hammaliRate = customHammali !== undefined ? customHammali : defaultHammali;
     const coldChargeRate = customColdCharge !== undefined ? customColdCharge : defaultColdCharge;
     const rate = coldChargeRate + hammaliRate;
-    const saleCharge = rate * lot.remainingSize;
+    
+    // If baseColdChargesBilled is already set, skip base charges (only extras apply)
+    let saleCharge: number;
+    if (lot.baseColdChargesBilled === 1) {
+      saleCharge = 0;
+    } else if (coldStorage.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
+      // Quintal mode: (netWeight × remainingSize × rate) / (originalSize × 100)
+      saleCharge = (lot.netWeight * lot.remainingSize * rate) / (lot.size * 100);
+    } else {
+      // Bag mode
+      saleCharge = rate * lot.remainingSize;
+    }
     
     // Calculate total charge including all extra charges
     const kata = kataCharges || 0;
