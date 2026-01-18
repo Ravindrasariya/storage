@@ -391,13 +391,15 @@ export class DatabaseStorage implements IStorage {
         }
         
         // Calculate correct paymentStatus based on both amounts
-        // If no dues, mark as paid (even if paidAmount is 0 - means zero-charge lot)
-        if (dueAmount <= 0) {
+        // 'paid' = fully paid (paid > 0 AND due <= 0)
+        // 'due' = any amount due (due > 0)
+        // null = no charges yet (paid == 0 AND due == 0)
+        if (paidAmount > 0 && dueAmount <= 0) {
           updates.paymentStatus = "paid";
-        } else if (paidAmount > 0) {
-          updates.paymentStatus = "partial";
-        } else {
+        } else if (dueAmount > 0) {
           updates.paymentStatus = "due";
+        } else {
+          updates.paymentStatus = null;
         }
       }
     }
@@ -1616,14 +1618,16 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Calculate correct paymentStatus based on totals
-    // If no dues, mark as paid (even if paidAmount is 0 - means zero-charge lot)
+    // 'paid' = fully paid (paid > 0 AND due <= 0)
+    // 'due' = any amount due (due > 0)
+    // null = no charges yet (paid == 0 AND due == 0)
     let newPaymentStatus: string | null = null;
-    if (totalDueCharge <= 0) {
+    if (totalPaidCharge > 0 && totalDueCharge <= 0) {
       newPaymentStatus = "paid";
-    } else if (totalPaidCharge > 0) {
-      newPaymentStatus = "partial";
-    } else {
+    } else if (totalDueCharge > 0) {
       newPaymentStatus = "due";
+    } else {
+      newPaymentStatus = null;
     }
 
     await db.update(lots)
@@ -2014,14 +2018,16 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Calculate correct paymentStatus based on totals
-      // If no dues, mark as paid (even if paidAmount is 0 - means zero-charge lot)
+      // 'paid' = fully paid (paid > 0 AND due <= 0)
+      // 'due' = any amount due (due > 0)
+      // null = no charges yet (paid == 0 AND due == 0)
       let newPaymentStatus: string | null = null;
-      if (totalDueCharge <= 0) {
+      if (totalPaidCharge > 0 && totalDueCharge <= 0) {
         newPaymentStatus = "paid";
-      } else if (totalPaidCharge > 0) {
-        newPaymentStatus = "partial";
-      } else {
+      } else if (totalDueCharge > 0) {
         newPaymentStatus = "due";
+      } else {
+        newPaymentStatus = null;
       }
       
       // Update lot if totals OR paymentStatus differs
