@@ -206,6 +206,7 @@ export const cashReceipts = pgTable("cash_receipts", {
   coldStorageId: varchar("cold_storage_id").notNull(),
   buyerName: text("buyer_name").notNull(),
   receiptType: text("receipt_type").notNull(), // 'cash' or 'account'
+  accountType: text("account_type"), // 'limit' or 'current' - only when receiptType is 'account'
   amount: real("amount").notNull(),
   receivedAt: timestamp("received_at").notNull(),
   appliedAmount: real("applied_amount").notNull().default(0), // Amount applied to sales

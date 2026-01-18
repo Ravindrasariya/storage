@@ -38,6 +38,7 @@ export default function CashManagement() {
   const [buyerName, setBuyerName] = useState("");
   const [customBuyerName, setCustomBuyerName] = useState("");
   const [receiptType, setReceiptType] = useState<"cash" | "account">("cash");
+  const [accountType, setAccountType] = useState<"limit" | "current">("limit");
   const [inwardAmount, setInwardAmount] = useState("");
   const [receivedDate, setReceivedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [inwardRemarks, setInwardRemarks] = useState("");
@@ -66,7 +67,7 @@ export default function CashManagement() {
   });
 
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { buyerName: string; receiptType: string; amount: number; receivedAt: string; notes?: string }) => {
+    mutationFn: async (data: { buyerName: string; receiptType: string; accountType?: string; amount: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -77,6 +78,8 @@ export default function CashManagement() {
       });
       setBuyerName("");
       setCustomBuyerName("");
+      setReceiptType("cash");
+      setAccountType("limit");
       setInwardAmount("");
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
       setInwardRemarks("");
@@ -170,6 +173,7 @@ export default function CashManagement() {
     createReceiptMutation.mutate({
       buyerName: finalBuyerName,
       receiptType,
+      accountType: receiptType === "account" ? accountType : undefined,
       amount: parseFloat(inwardAmount),
       receivedAt: new Date(receivedDate).toISOString(),
       notes: inwardRemarks || undefined,
@@ -583,6 +587,31 @@ export default function CashManagement() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {receiptType === "account" && (
+                  <div className="space-y-2">
+                    <Label>{t("accountType")} *</Label>
+                    <Select value={accountType} onValueChange={(v) => setAccountType(v as "limit" | "current")}>
+                      <SelectTrigger data-testid="select-account-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="limit">
+                          <span className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            {t("limitAccount")}
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="current">
+                          <span className="flex items-center gap-2">
+                            <Wallet className="h-4 w-4" />
+                            {t("currentAccount")}
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>{t("buyerName")} *</Label>

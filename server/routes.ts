@@ -1407,10 +1407,14 @@ export async function registerRoutes(
   const createCashReceiptSchema = z.object({
     buyerName: z.string().min(1),
     receiptType: z.enum(["cash", "account"]),
+    accountType: z.enum(["limit", "current"]).optional(),
     amount: z.number().positive(),
     receivedAt: z.string().transform((val) => new Date(val)),
     notes: z.string().optional(),
-  });
+  }).refine(
+    (data) => data.receiptType !== "account" || data.accountType !== undefined,
+    { message: "Account type is required when receipt type is account", path: ["accountType"] }
+  );
 
   app.post("/api/cash-receipts", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
@@ -1420,6 +1424,7 @@ export async function registerRoutes(
         coldStorageId: coldStorageId,
         buyerName: validatedData.buyerName,
         receiptType: validatedData.receiptType,
+        accountType: validatedData.accountType || null,
         amount: validatedData.amount,
         receivedAt: validatedData.receivedAt,
         notes: validatedData.notes || null,
