@@ -130,9 +130,16 @@ export default function LotEntry() {
     queryKey: ["/api/chamber-floors"],
   });
 
-  // Fetch next entry sequence for display
+  // Fetch next entry sequence for display (based on category)
   const { data: nextSequenceData } = useQuery<{ nextSequence: number }>({
-    queryKey: ["/api/next-entry-sequence"],
+    queryKey: ["/api/next-entry-sequence", bagTypeCategory],
+    queryFn: async () => {
+      const response = await fetch(`/api/next-entry-sequence?bagTypeCategory=${bagTypeCategory}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to fetch sequence');
+      return response.json();
+    },
   });
 
   // Fetch farmer records for autocomplete

@@ -341,7 +341,16 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const coldStorage = await storage.getColdStorage(coldStorageId);
-      const nextSequence = coldStorage?.nextEntryBillNumber ?? 1;
+      const bagTypeCategory = req.query.bagTypeCategory as string || "wafer";
+      
+      // Return the appropriate counter based on category
+      let nextSequence: number;
+      if (bagTypeCategory === "wafer") {
+        nextSequence = coldStorage?.nextWaferLotNumber ?? 1;
+      } else {
+        nextSequence = coldStorage?.nextRationSeedLotNumber ?? 1;
+      }
+      
       res.json({ nextSequence });
     } catch (error) {
       res.status(500).json({ error: "Failed to get next entry sequence" });
