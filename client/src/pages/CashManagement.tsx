@@ -645,7 +645,7 @@ export default function CashManagement() {
               </div>
             )}
 
-            {filterPayerType === "cold_merchant" && (
+            {(filterTransactionType === "all" || filterTransactionType === "inward") && (filterPayerType === "" || filterPayerType === "cold_merchant" || filterPayerType === "sales_goods") && (
               <div className="space-y-1">
                 <Label className="text-xs">{t("filterByBuyer")}</Label>
                 <div className="relative">
@@ -654,6 +654,31 @@ export default function CashManagement() {
                     onChange={(e) => {
                       setFilterBuyerSearch(e.target.value);
                       if (!e.target.value) setFilterBuyer("");
+                      else if (uniqueBuyers.includes(e.target.value)) {
+                        setFilterBuyer(e.target.value);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim();
+                      if (val && uniqueBuyers.some(b => b.toLowerCase() === val.toLowerCase())) {
+                        const match = uniqueBuyers.find(b => b.toLowerCase() === val.toLowerCase());
+                        if (match) {
+                          setFilterBuyer(match);
+                          setFilterBuyerSearch(match);
+                        }
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const val = filterBuyerSearch.trim();
+                        if (val && uniqueBuyers.some(b => b.toLowerCase() === val.toLowerCase())) {
+                          const match = uniqueBuyers.find(b => b.toLowerCase() === val.toLowerCase());
+                          if (match) {
+                            setFilterBuyer(match);
+                            setFilterBuyerSearch(match);
+                          }
+                        }
+                      }
                     }}
                     placeholder={t("searchBuyerName")}
                     className="h-8 text-sm"
@@ -666,13 +691,14 @@ export default function CashManagement() {
                     ))}
                   </datalist>
                 </div>
-                {filterBuyerSearch && filteredBuyerOptions.length > 0 && (
+                {filterBuyerSearch.length >= 1 && filteredBuyerOptions.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {filteredBuyerOptions.slice(0, 3).map((buyer) => (
+                    {filteredBuyerOptions.slice(0, 3).map((buyer, idx) => (
                       <Badge
                         key={buyer}
                         variant={filterBuyer === buyer ? "default" : "outline"}
                         className="text-xs cursor-pointer"
+                        data-testid={`badge-buyer-suggestion-${idx}`}
                         onClick={() => {
                           setFilterBuyer(buyer);
                           setFilterBuyerSearch(buyer);
