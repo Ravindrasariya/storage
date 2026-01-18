@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -765,12 +764,11 @@ export default function CashManagement() {
 
                 <div className="space-y-2">
                   <Label>{t("remarks")}</Label>
-                  <Textarea
+                  <Input
                     value={inwardRemarks}
                     onChange={(e) => setInwardRemarks(e.target.value)}
                     placeholder={t("remarks")}
-                    className="resize-none"
-                    rows={2}
+                    className="max-w-[180px]"
                     data-testid="input-inward-remarks"
                   />
                 </div>
@@ -864,12 +862,11 @@ export default function CashManagement() {
 
                 <div className="space-y-2">
                   <Label>{t("remarks")}</Label>
-                  <Textarea
+                  <Input
                     value={expenseRemarks}
                     onChange={(e) => setExpenseRemarks(e.target.value)}
                     placeholder={t("remarks")}
-                    className="resize-none"
-                    rows={2}
+                    className="max-w-[180px]"
                     data-testid="input-expense-remarks"
                   />
                 </div>
