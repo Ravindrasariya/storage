@@ -152,6 +152,13 @@ export const salesHistory = pgTable("sales_history", {
   // Bill numbers (assigned on first print, null means never printed)
   coldStorageBillNumber: integer("cold_storage_bill_number"), // Bill number for cold storage deduction receipt
   salesBillNumber: integer("sales_bill_number"), // Bill number for sales bill
+  // Transfer tracking
+  clearanceType: text("clearance_type"), // 'cash', 'transfer' - how the payment was cleared
+  transferredAmount: real("transferred_amount").default(0), // Amount transferred from previous buyers (liability, not cash)
+  transferToBuyerName: text("transfer_to_buyer_name"), // When dues are transferred to another buyer
+  transferGroupId: text("transfer_group_id"), // Links transfer-out and transfer-in entries for audit trail
+  transferDate: timestamp("transfer_date"), // When the transfer occurred
+  transferRemarks: text("transfer_remarks"), // Notes about the transfer
 });
 
 // Edit history for tracking changes
