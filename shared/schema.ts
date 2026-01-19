@@ -146,6 +146,7 @@ export const salesHistory = pgTable("sales_history", {
   dueAmount: real("due_amount").default(0), // Amount due for this sale
   paidAt: timestamp("paid_at"), // When marked as paid
   clearanceType: text("clearance_type"), // 'cash' = paid via cash/account, 'transfer' = due transferred to another buyer (excluded from FIFO)
+  transferredToBuyer: text("transferred_to_buyer"), // Name of buyer the due was transferred to (only set when clearanceType='transfer')
   // Timestamps
   entryDate: timestamp("entry_date"), // When lot was originally entered in cold storage (nullable for existing records)
   saleYear: integer("sale_year").notNull(),

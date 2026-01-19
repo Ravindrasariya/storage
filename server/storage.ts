@@ -143,6 +143,8 @@ export interface IStorage {
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
   // FIFO Recomputation
   recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
+  // Due Transfer
+  transferDuesToBuyer(lotIds: string[], newBuyerName: string, coldStorageId: string): Promise<{ salesCleared: number; totalTransferred: number }>;
   // Admin
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
   // Bill number assignment
@@ -2030,12 +2032,14 @@ export class DatabaseStorage implements IStorage {
     // Step 3: Re-apply each receipt in FIFO order
     for (const receipt of activeReceipts) {
       // Get all sales for this buyer with due or partial status (FIFO order)
+      // EXCLUDE transfer-cleared sales - they were settled by transferring the due to another buyer
       const sales = await db.select()
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
           sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
-          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
+          sql`(${salesHistory.clearanceType} IS NULL OR ${salesHistory.clearanceType} != 'transfer')`
         ))
         .orderBy(salesHistory.soldAt);
 
@@ -2108,6 +2112,51 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { salesUpdated, receiptsUpdated };
+  }
+
+  async transferDuesToBuyer(lotIds: string[], newBuyerName: string, coldStorageId: string): Promise<{ salesCleared: number; totalTransferred: number }> {
+    let salesCleared = 0;
+    let totalTransferred = 0;
+    
+    for (const lotId of lotIds) {
+      const salesWithDues = await db.select()
+        .from(salesHistory)
+        .where(and(
+          eq(salesHistory.lotId, lotId),
+          eq(salesHistory.coldStorageId, coldStorageId),
+          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
+          sql`(${salesHistory.clearanceType} IS NULL OR ${salesHistory.clearanceType} != 'transfer')`
+        ));
+      
+      for (const sale of salesWithDues) {
+        const dueAmountToTransfer = sale.dueAmount || 0;
+        if (dueAmountToTransfer <= 0) continue;
+        
+        totalTransferred += dueAmountToTransfer;
+        
+        const totalCharges = (sale.coldStorageCharge || 0) + 
+                            (sale.kataCharges || 0) + 
+                            (sale.extraHammali || 0) + 
+                            (sale.gradingCharges || 0);
+        
+        await db.update(salesHistory)
+          .set({
+            paymentStatus: "paid",
+            paidAmount: totalCharges,
+            dueAmount: 0,
+            clearanceType: "transfer",
+            transferredToBuyer: newBuyerName,
+            paidAt: new Date(),
+          })
+          .where(eq(salesHistory.id, sale.id));
+        
+        salesCleared++;
+      }
+      
+      await this.recalculateLotTotals(lotId);
+    }
+    
+    return { salesCleared, totalTransferred };
   }
 
   async recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }> {

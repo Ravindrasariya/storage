@@ -162,8 +162,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   };
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, billingLotIds }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; billingLotIds?: string[] }) => {
-      const result = await apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali });
+    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, billingLotIds, transferDueLotIds }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; billingLotIds?: string[]; transferDueLotIds?: string[] }) => {
+      const result = await apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, transferDueLotIds });
       // Mark additional lots as billed if any selected
       if (billingLotIds && billingLotIds.length > 0) {
         await apiRequest("POST", "/api/lots/mark-billed", { lotIds: billingLotIds });
@@ -198,8 +198,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, billingLotIds }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; billingLotIds?: string[] }) => {
-      const result = await apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, billingLotIds, transferDueLotIds }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; billingLotIds?: string[]; transferDueLotIds?: string[] }) => {
+      const result = await apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, transferDueLotIds });
       // Mark additional lots as billed if any selected
       if (billingLotIds && billingLotIds.length > 0) {
         await apiRequest("POST", "/api/lots/mark-billed", { lotIds: billingLotIds });
@@ -370,6 +370,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       
       // Get IDs of selected lots to mark as billed (cold charges selected)
       const billingLotIds = selectedBillingLots.filter(l => l.selectCold).map(l => l.id);
+      // Get IDs of lots with selected dues to transfer (excluding current lot - current lot's due is not a transfer)
+      const transferDueLotIds = selectedBillingLots.filter(l => l.selectDue && !l.isCurrentLot).map(l => l.id);
       
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
@@ -391,6 +393,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           customHammali,
           chargeBasis: chargeBasis === "selectLots" ? "actual" : chargeBasis,
           billingLotIds: billingLotIds.length > 0 ? billingLotIds : undefined,
+          transferDueLotIds: transferDueLotIds.length > 0 ? transferDueLotIds : undefined,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -409,6 +412,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           customColdCharge,
           customHammali,
           billingLotIds: billingLotIds.length > 0 ? billingLotIds : undefined,
+          transferDueLotIds: transferDueLotIds.length > 0 ? transferDueLotIds : undefined,
         });
       }
     }

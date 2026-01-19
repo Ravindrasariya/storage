@@ -631,6 +631,27 @@ export async function registerRoutes(
     }
   });
 
+  // Partial Sale schema
+  const partialSaleSchema = z.object({
+    quantitySold: z.number().positive(),
+    pricePerBag: z.number(),
+    paymentStatus: z.enum(["due", "paid", "partial"]),
+    paymentMode: z.enum(["cash", "account"]).optional(),
+    buyerName: z.string().optional(),
+    pricePerKg: z.number().optional(),
+    paidAmount: z.number().optional(),
+    dueAmount: z.number().optional(),
+    position: z.string().optional(),
+    kataCharges: z.number().optional(),
+    extraHammali: z.number().optional(),
+    gradingCharges: z.number().optional(),
+    netWeight: z.number().optional(),
+    customColdCharge: z.number().optional(),
+    customHammali: z.number().optional(),
+    chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
+    transferDueLotIds: z.array(z.string()).optional(),
+  });
+
   app.post("/api/lots/:id/partial-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -643,11 +664,8 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis } = req.body;
-
-      if (typeof quantitySold !== "number" || quantitySold <= 0) {
-        return res.status(400).json({ error: "Invalid quantity sold" });
-      }
+      const validatedData = partialSaleSchema.parse(req.body);
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, transferDueLotIds } = validatedData;
 
       if (quantitySold > lot.remainingSize) {
         return res.status(400).json({ error: "Quantity exceeds remaining size" });
@@ -656,6 +674,24 @@ export async function registerRoutes(
       // Update position if provided
       if (position) {
         await storage.updateLot(req.params.id, { position });
+      }
+
+      // Transfer dues from other lots if any selected
+      let totalTransferred = 0;
+      if (transferDueLotIds && transferDueLotIds.length > 0 && buyerName) {
+        const transferResult = await storage.transferDuesToBuyer(transferDueLotIds, buyerName, coldStorageId);
+        totalTransferred = transferResult.totalTransferred;
+      }
+      
+      // Validate that total charge includes transferred dues
+      if (totalTransferred > 0) {
+        const totalClientAmount = (paidAmount || 0) + (dueAmount || 0);
+        if (totalClientAmount < totalTransferred * 0.99) { // Allow 1% tolerance for rounding
+          return res.status(400).json({ 
+            error: "Total charge amount must include transferred dues",
+            details: { totalClientAmount, totalTransferred }
+          });
+        }
       }
 
       const previousData = {
@@ -805,6 +841,9 @@ export async function registerRoutes(
       const updatedLot = await storage.getLot(req.params.id);
       res.json(updatedLot);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
       res.status(500).json({ error: "Failed to process partial sale" });
     }
   });
@@ -842,6 +881,7 @@ export async function registerRoutes(
     netWeight: z.number().optional(),
     customColdCharge: z.number().optional(),
     customHammali: z.number().optional(),
+    transferDueLotIds: z.array(z.string()).optional(), // Lot IDs whose outstanding dues should be transferred to this buyer
   });
 
   app.post("/api/lots/:id/finalize-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -861,6 +901,26 @@ export async function registerRoutes(
       // Update position if provided
       if (validatedData.position) {
         await storage.updateLot(req.params.id, { position: validatedData.position });
+      }
+      
+      // Transfer dues from other lots if any selected
+      let totalTransferred = 0;
+      if (validatedData.transferDueLotIds && validatedData.transferDueLotIds.length > 0 && validatedData.buyerName) {
+        const transferResult = await storage.transferDuesToBuyer(validatedData.transferDueLotIds, validatedData.buyerName, coldStorageId);
+        totalTransferred = transferResult.totalTransferred;
+      }
+      
+      // Validate that total charge includes transferred dues
+      // For due/partial payments, dueAmount must be at least as large as transferred amount
+      // For paid payments, paidAmount must be at least as large as transferred amount
+      if (totalTransferred > 0) {
+        const totalClientAmount = (validatedData.paidAmount || 0) + (validatedData.dueAmount || 0);
+        if (totalClientAmount < totalTransferred * 0.99) { // Allow 1% tolerance for rounding
+          return res.status(400).json({ 
+            error: "Total charge amount must include transferred dues",
+            details: { totalClientAmount, totalTransferred }
+          });
+        }
       }
       
       const lot = await storage.finalizeSale(
