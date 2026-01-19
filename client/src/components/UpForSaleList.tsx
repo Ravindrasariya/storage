@@ -84,6 +84,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   useEffect(() => {
     if (chargeBasis === "selectLots" && selectedLot) {
       // Add current lot as first item - default to UNCHECKED
+      // Include any existing totalDueCharge from previous partial sales
       const currentLotEntry = {
         id: selectedLot.id,
         lotNo: selectedLot.lotNo,
@@ -92,12 +93,12 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         netWeight: selectedLot.netWeight,
         chargeUnit: selectedLot.chargeUnit,
         originalSize: selectedLot.originalSize,
-        totalDueCharge: 0, // Current lot's due comes from current sale
+        totalDueCharge: selectedLot.totalDueCharge || 0, // Include accumulated due from previous partial sales
         rate: selectedLot.coldCharge + selectedLot.hammali,
         baseColdChargesBilled: selectedLot.baseColdChargesBilled,
         isCurrentLot: true,
         selectCold: false, // Default to unchecked
-        selectDue: false, // Current lot has no prior due
+        selectDue: false, // Default to unchecked, user can toggle if there's prior due
       };
       setSelectedBillingLots([currentLotEntry]);
     } else {
@@ -930,15 +931,13 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                                   )}
                                 </span>
                               </td>
-                              {/* Clickable Already Due cell - only for non-current lots */}
+                              {/* Clickable Already Due cell - clickable if lot has due amount */}
                               <td 
-                                className={`text-right py-1 px-1 ${!lot.isCurrentLot ? 'cursor-pointer' : ''}`}
-                                onClick={() => !lot.isCurrentLot && toggleLotDueSelection(lot.id)}
+                                className={`text-right py-1 px-1 ${lot.totalDueCharge > 0 ? 'cursor-pointer' : ''}`}
+                                onClick={() => lot.totalDueCharge > 0 && toggleLotDueSelection(lot.id)}
                                 data-testid={`cell-due-${lot.id}`}
                               >
-                                {lot.isCurrentLot ? (
-                                  <span className="text-muted-foreground">-</span>
-                                ) : (
+                                {lot.totalDueCharge > 0 ? (
                                   <span
                                     className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
                                       lot.selectDue 
@@ -946,8 +945,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                                         : 'hover:bg-muted'
                                     }`}
                                   >
-                                    <Currency amount={lot.totalDueCharge || 0} />
+                                    <Currency amount={lot.totalDueCharge} />
                                   </span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
                                 )}
                               </td>
                               <td className="py-1 px-1">
@@ -1500,15 +1501,13 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                                   )}
                                 </span>
                               </td>
-                              {/* Clickable Already Due cell - only for non-current lots */}
+                              {/* Clickable Already Due cell - clickable if lot has due amount */}
                               <td 
-                                className={`text-right py-1 px-1 ${!lot.isCurrentLot ? 'cursor-pointer' : ''}`}
-                                onClick={() => !lot.isCurrentLot && toggleLotDueSelection(lot.id)}
+                                className={`text-right py-1 px-1 ${lot.totalDueCharge > 0 ? 'cursor-pointer' : ''}`}
+                                onClick={() => lot.totalDueCharge > 0 && toggleLotDueSelection(lot.id)}
                                 data-testid={`cell-partial-due-${lot.id}`}
                               >
-                                {lot.isCurrentLot ? (
-                                  <span className="text-muted-foreground">-</span>
-                                ) : (
+                                {lot.totalDueCharge > 0 ? (
                                   <span
                                     className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
                                       lot.selectDue 
@@ -1516,8 +1515,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                                         : 'hover:bg-muted'
                                     }`}
                                   >
-                                    <Currency amount={lot.totalDueCharge || 0} />
+                                    <Currency amount={lot.totalDueCharge} />
                                   </span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
                                 )}
                               </td>
                               <td className="py-1 px-1">
