@@ -1906,7 +1906,7 @@ export default function CashManagement() {
                             }`}>
                               {transaction.type === "inflow" ? "+" : transaction.type === "outflow" ? "-" : ""}₹{
                                 transaction.type === "buyerTransfer" 
-                                  ? ((transaction.data as SalesHistory).paidAmount || 0).toLocaleString()
+                                  ? ((transaction.data as SalesHistory).dueAmount || 0).toLocaleString()
                                   : transaction.data.amount.toLocaleString()
                               }
                             </span>
@@ -2083,8 +2083,8 @@ export default function CashManagement() {
                       <span>{(selectedTransaction.data as SalesHistory).lotNo}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("amount")}:</span>
-                      <span className="font-bold text-purple-600">₹{((selectedTransaction.data as SalesHistory).paidAmount || 0).toLocaleString()}</span>
+                      <span className="text-muted-foreground">{t("liabilityTransferred")}:</span>
+                      <span className="font-bold text-purple-600">₹{((selectedTransaction.data as SalesHistory).dueAmount || 0).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Date:</span>
