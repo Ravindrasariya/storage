@@ -1855,7 +1855,7 @@ export default function CashManagement() {
               <div className="text-sm text-muted-foreground text-center py-8 px-4">{t("noTransactions")}</div>
             ) : (
               <ScrollArea className="h-[520px]">
-                <div className="space-y-2 px-4 py-2">
+                <div className="space-y-2 px-4 py-2 min-w-[320px]">
                   {allTransactions.map((transaction, index) => {
                     const isReversed = transaction.type !== "buyerTransfer" && (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1;
                     return (
@@ -1898,8 +1898,8 @@ export default function CashManagement() {
                               }
                             </span>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className={`font-semibold text-sm ${
+                          <div className="flex items-center gap-2 flex-shrink-0 min-w-fit">
+                            <span className={`font-semibold text-sm whitespace-nowrap ${
                               isReversed 
                                 ? "text-gray-400" 
                                 : transaction.type === "inflow" ? "text-green-600" : transaction.type === "outflow" ? "text-red-600" : transaction.type === "buyerTransfer" ? "text-purple-600" : "text-blue-600"
