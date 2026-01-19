@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/queryClient";
 import { useI18n } from "@/lib/i18n";
@@ -28,16 +28,45 @@ type FarmerRecord = {
   contactNumber: string;
 };
 
+const SALES_FILTERS_KEY = "salesHistoryFilters";
+
+function loadSavedFilters() {
+  try {
+    const saved = localStorage.getItem(SALES_FILTERS_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch (e) {
+    console.error("Failed to load saved filters:", e);
+  }
+  return null;
+}
+
 export default function SalesHistoryPage() {
   const { t } = useI18n();
   
-  const [yearFilter, setYearFilter] = useState<string>(new Date().getFullYear().toString());
-  const [farmerFilter, setFarmerFilter] = useState("");
-  const [selectedFarmerVillage, setSelectedFarmerVillage] = useState("");
-  const [selectedFarmerMobile, setSelectedFarmerMobile] = useState("");
-  const [mobileFilter, setMobileFilter] = useState("");
-  const [paymentFilter, setPaymentFilter] = useState<string>("");
-  const [buyerFilter, setBuyerFilter] = useState("");
+  // Load persisted filters or use defaults
+  const savedFilters = loadSavedFilters();
+  const [yearFilter, setYearFilter] = useState<string>(savedFilters?.yearFilter ?? new Date().getFullYear().toString());
+  const [farmerFilter, setFarmerFilter] = useState(savedFilters?.farmerFilter ?? "");
+  const [selectedFarmerVillage, setSelectedFarmerVillage] = useState(savedFilters?.selectedFarmerVillage ?? "");
+  const [selectedFarmerMobile, setSelectedFarmerMobile] = useState(savedFilters?.selectedFarmerMobile ?? "");
+  const [mobileFilter, setMobileFilter] = useState(savedFilters?.mobileFilter ?? "");
+  const [paymentFilter, setPaymentFilter] = useState<string>(savedFilters?.paymentFilter ?? "");
+  const [buyerFilter, setBuyerFilter] = useState(savedFilters?.buyerFilter ?? "");
+
+  // Persist filters to localStorage whenever they change
+  useEffect(() => {
+    const filters = {
+      yearFilter,
+      farmerFilter,
+      selectedFarmerVillage,
+      selectedFarmerMobile,
+      mobileFilter,
+      paymentFilter,
+      buyerFilter,
+    };
+    localStorage.setItem(SALES_FILTERS_KEY, JSON.stringify(filters));
+  }, [yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter]);
+
   const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [printingSale, setPrintingSale] = useState<SalesHistory | null>(null);
