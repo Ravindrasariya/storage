@@ -19,6 +19,7 @@ interface ColdStorage {
   totalCapacity: number;
   waferRate: number;
   seedRate: number;
+  chargeUnit?: string; // 'bag' or 'quintal'
 }
 
 interface AuthContextType {

@@ -1268,6 +1268,8 @@ export class DatabaseStorage implements IStorage {
     kataCharges?: number;
     extraHammali?: number;
     gradingCharges?: number;
+    coldStorageCharge?: number;
+    chargeBasis?: "actual" | "totalRemaining";
   }): Promise<SalesHistory | undefined> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) return undefined;
@@ -1327,19 +1329,20 @@ export class DatabaseStorage implements IStorage {
       updateData.gradingCharges = updates.gradingCharges;
     }
 
-    // Recompute coldStorageCharge if any rate components changed
-    const chargesChanged = updates.coldCharge !== undefined || 
-                           updates.hammali !== undefined || 
-                           updates.kataCharges !== undefined || 
-                           updates.extraHammali !== undefined || 
-                           updates.gradingCharges !== undefined;
-
-    if (updates.coldCharge !== undefined || updates.hammali !== undefined) {
+    // Handle coldStorageCharge - use provided value if present, otherwise recalculate
+    if (updates.coldStorageCharge !== undefined) {
+      // Client-provided coldStorageCharge (from chargeBasis calculation)
+      updateData.coldStorageCharge = updates.coldStorageCharge;
+      // Also update pricePerBag based on individual rates
+      const coldCharge = updates.coldCharge ?? sale.coldCharge ?? 0;
+      const hammali = updates.hammali ?? sale.hammali ?? 0;
+      updateData.pricePerBag = coldCharge + hammali;
+    } else if (updates.coldCharge !== undefined || updates.hammali !== undefined) {
+      // Recalculate coldStorageCharge from updated rates (legacy behavior)
       const coldCharge = updates.coldCharge ?? sale.coldCharge ?? 0;
       const hammali = updates.hammali ?? sale.hammali ?? 0;
       const ratePerBag = coldCharge + hammali;
       updateData.coldStorageCharge = ratePerBag * (sale.quantitySold || 0);
-      // Also update pricePerBag to reflect the new rate
       updateData.pricePerBag = ratePerBag;
     }
 
@@ -1348,14 +1351,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(salesHistory.id, saleId))
       .returning();
 
-    // If charges changed and there's a buyer, trigger FIFO recomputation
-    if (chargesChanged && updated && updated.buyerName) {
-      await this.recomputeBuyerPayments(updated.buyerName, sale.coldStorageId);
-      // Re-fetch the sale to get updated payment status after FIFO recomputation
-      const [refreshed] = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId));
-      return refreshed;
-    }
-
+    // Note: FIFO recomputation is triggered in routes.ts after update
     return updated;
   }
 

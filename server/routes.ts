@@ -1124,6 +1124,8 @@ export async function registerRoutes(
     kataCharges: z.number().optional(),
     extraHammali: z.number().optional(),
     gradingCharges: z.number().optional(),
+    coldStorageCharge: z.number().optional(),
+    chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
   });
 
   app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -1163,6 +1165,23 @@ export async function registerRoutes(
               });
             }
           }
+        }
+      }
+      
+      // If cold storage charges changed, trigger FIFO recalculation for the CurrentDueBuyerName
+      const chargeFieldsChanged = validatedData.coldStorageCharge !== undefined || 
+        validatedData.coldCharge !== undefined || 
+        validatedData.hammali !== undefined;
+      
+      if (chargeFieldsChanged && updated) {
+        // Get CurrentDueBuyerName: transferToBuyerName if not blank, else buyerName
+        const currentDueBuyerName = (updated.transferToBuyerName && updated.transferToBuyerName.trim() !== '') 
+          ? updated.transferToBuyerName 
+          : updated.buyerName;
+        
+        if (currentDueBuyerName) {
+          // Trigger FIFO recalculation for this buyer (signature: buyerName, coldStorageId)
+          await storage.recomputeBuyerPayments(currentDueBuyerName, coldStorageId);
         }
       }
       

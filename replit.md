@@ -67,6 +67,13 @@ Core entities:
   - Collapsible rows showing cold storage details and address
   - User management per cold storage (add users, set access type, reset passwords)
 
+### Sales History Edit Dialog
+- Edit dialog allows modifying cold storage charges after initial sale
+- Charge Basis selector: "Actual Bags" (uses quantitySold) or "All Remaining Bags" (uses originalLotSize for bag-based charges)
+- chargeBasis is a calculation method only, NOT persisted; the calculated coldStorageCharge IS stored
+- Note: For quintal-based charges (chargeUnit="quintal"), "All Remaining Bags" has limited effect since original lot net weight is not stored
+- FIFO recalculation triggered after charge edits using CurrentDueBuyerName logic
+
 ### Bill Number System
 - Four independent bill number sequences: Exit, Cold Storage Deduction, Sales, and Lot Entry
 - Bill numbers assigned atomically on first print using UPDATE RETURNING pattern

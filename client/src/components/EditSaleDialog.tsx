@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/lib/auth";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "lucide-react";
@@ -26,6 +28,7 @@ interface EditSaleDialogProps {
 export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps) {
   const { t } = useI18n();
   const { toast } = useToast();
+  const { coldStorage } = useAuth();
   
   const [buyerName, setBuyerName] = useState("");
   const [pricePerKg, setPricePerKg] = useState("");
@@ -35,6 +38,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
   const [showReverseConfirm, setShowReverseConfirm] = useState(false);
   const [chargesOpen, setChargesOpen] = useState(false);
+  const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   
   const [editColdCharge, setEditColdCharge] = useState("");
   const [editHammali, setEditHammali] = useState("");
@@ -42,9 +46,35 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editExtraHammali, setEditExtraHammali] = useState("");
   const [editGradingCharges, setEditGradingCharges] = useState("");
 
+  // Get charge unit from cold storage settings
+  const chargeUnit = coldStorage?.chargeUnit || "bag";
+  const isQuintalBased = chargeUnit === "quintal";
+
   const getEditableChargeValue = (value: string, fallback: number) => {
     const parsed = parseFloat(value);
     return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  // Get the quantity/weight to use for charge calculation based on chargeBasis
+  const getChargeQuantity = () => {
+    if (!sale) return 0;
+    if (isQuintalBased) {
+      // For quintal-based charges, use net weight
+      const currentNetWeight = netWeight ? parseFloat(netWeight) : (sale.netWeight || 0);
+      if (chargeBasis === "totalRemaining") {
+        // Use original lot's net weight (approximation: originalLotSize * avgBagWeight)
+        // Since we don't have original lot net weight, we use current sale's quantity proportionally
+        return currentNetWeight;
+      }
+      return currentNetWeight;
+    } else {
+      // For bag-based charges
+      if (chargeBasis === "totalRemaining") {
+        // Use original lot size (all remaining bags at time of this sale)
+        return sale.originalLotSize || sale.quantitySold || 0;
+      }
+      return sale.quantitySold || 0;
+    }
   };
 
   const calculateEditableTotal = () => {
@@ -54,8 +84,15 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     const kata = getEditableChargeValue(editKataCharges, sale.kataCharges || 0);
     const extraHammali = getEditableChargeValue(editExtraHammali, sale.extraHammali || 0);
     const grading = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
-    const ratePerBag = coldCharge + hammali;
-    const coldStorageCharge = ratePerBag * (sale.quantitySold || 0);
+    
+    const ratePerUnit = coldCharge + hammali;
+    const chargeQty = getChargeQuantity();
+    
+    // For quintal-based: convert kg to quintals (1 quintal = 100 kg)
+    const baseUnits = isQuintalBased ? chargeQty / 100 : chargeQty;
+    const coldStorageCharge = ratePerUnit * baseUnits;
+    
+    // Extra hammali and grading always use actual bags sold (not charge basis)
     return coldStorageCharge + kata + extraHammali + grading;
   };
 
@@ -120,6 +157,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditExtraHammali(sale.extraHammali?.toString() || "0");
       setEditGradingCharges(sale.gradingCharges?.toString() || "0");
       setChargesOpen(false);
+      setChargeBasis("actual");
     }
   }, [sale]);
 
@@ -137,6 +175,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       kataCharges?: number;
       extraHammali?: number;
       gradingCharges?: number;
+      coldStorageCharge?: number;
+      chargeBasis?: "actual" | "totalRemaining";
     }) => {
       const response = await apiRequest("PATCH", `/api/sales-history/${sale!.id}`, data);
       return response.json();
@@ -188,10 +228,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     if (!sale) return;
 
     const updates: Record<string, unknown> = {};
-
-    if (buyerName !== (sale.buyerName || "")) {
-      updates.buyerName = buyerName;
-    }
 
     const newPriceKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
     if (newPriceKg !== sale.pricePerKg) {
@@ -255,6 +291,30 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       updates.gradingCharges = newGradingCharges;
     }
 
+    // Always include coldStorageCharge and chargeBasis if any charge-related field changed
+    // Also trigger if the total charge differs from the stored value (handles chargeBasis changes)
+    const originalTotal = sale.coldStorageCharge || 0;
+    const chargeFieldsChanged = Object.keys(updates).some(key => 
+      ['coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'netWeight'].includes(key)
+    ) || chargeBasis !== "actual" || Math.abs(totalCharge - originalTotal) > 0.01;
+    
+    if (chargeFieldsChanged) {
+      updates.coldStorageCharge = totalCharge;
+      updates.chargeBasis = chargeBasis;
+      // Recalculate dueAmount based on new total
+      const currentPaid = sale.paidAmount || 0;
+      updates.dueAmount = Math.max(0, totalCharge - currentPaid);
+      updates.paidAmount = Math.min(currentPaid, totalCharge);
+      // Update payment status based on new amounts
+      if (updates.dueAmount === 0 && totalCharge > 0) {
+        updates.paymentStatus = "paid";
+      } else if (updates.paidAmount === 0) {
+        updates.paymentStatus = "due";
+      } else {
+        updates.paymentStatus = "partial";
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       toast({ description: t("noChanges") });
       return;
@@ -306,8 +366,22 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 <Badge variant="outline">{t(sale.bagType)}</Badge>
               </div>
               <div>
+                <span className="text-muted-foreground">{t("originalBags")}:</span>
+                <p className="font-medium">{sale.originalLotSize} {t("bags")}</p>
+              </div>
+              <div>
                 <span className="text-muted-foreground">{t("quantitySold")}:</span>
                 <p className="font-medium">{sale.quantitySold} {t("bags")}</p>
+              </div>
+              {isQuintalBased && sale.netWeight && (
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">{t("initialNetWeight")}:</span>
+                  <p className="font-medium">{sale.netWeight} kg</p>
+                </div>
+              )}
+              <div className="col-span-2">
+                <span className="text-muted-foreground">{t("buyerName")}:</span>
+                <p className="font-medium">{sale.buyerName || "-"}</p>
               </div>
             </div>
           </div>
@@ -328,9 +402,23 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
               <CollapsibleContent>
                 <div className="p-3 pt-0 space-y-3 border-t">
                   <p className="text-xs text-muted-foreground">{t("editChargesHint") || "Click to expand and edit individual charges"}</p>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-xs">{t("chargeBasis")}</Label>
+                    <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
+                      <SelectTrigger className="h-8" data-testid="select-edit-charge-basis">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="actual">{t("actualBags")} ({sale.quantitySold} {t("bags")})</SelectItem>
+                        <SelectItem value="totalRemaining">{t("allRemainingBags")} ({sale.originalLotSize} {t("bags")})</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">{t("coldStorageCharge")}/{t("bag")}</Label>
+                      <Label className="text-xs">{t("coldStorageCharge")}/{isQuintalBased ? t("quintal") : t("bag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input
@@ -344,7 +432,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{t("hammali")}/{t("bag")}</Label>
+                      <Label className="text-xs">{t("hammali")}/{isQuintalBased ? t("quintal") : t("bag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input
@@ -401,10 +489,15 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground pt-2 border-t">
-                    <div className="flex justify-between">
-                      <span>({getEditableChargeValue(editColdCharge, sale.coldCharge || 0)} + {getEditableChargeValue(editHammali, sale.hammali || 0)}) × {sale.quantitySold} {t("bags")}</span>
-                      <span>= <Currency amount={(getEditableChargeValue(editColdCharge, sale.coldCharge || 0) + getEditableChargeValue(editHammali, sale.hammali || 0)) * (sale.quantitySold || 0)} /></span>
+                    <div className="flex justify-between flex-wrap gap-1">
+                      <span>
+                        ({getEditableChargeValue(editColdCharge, sale.coldCharge || 0)} + {getEditableChargeValue(editHammali, sale.hammali || 0)}) × {isQuintalBased ? `${(getChargeQuantity() / 100).toFixed(2)} ${t("quintal")}` : `${getChargeQuantity()} ${t("bags")}`}
+                      </span>
+                      <span>= <Currency amount={(getEditableChargeValue(editColdCharge, sale.coldCharge || 0) + getEditableChargeValue(editHammali, sale.hammali || 0)) * (isQuintalBased ? getChargeQuantity() / 100 : getChargeQuantity())} /></span>
                     </div>
+                    {chargeBasis === "totalRemaining" && sale.originalLotSize !== sale.quantitySold && (
+                      <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")})</div>
+                    )}
                     {(getEditableChargeValue(editKataCharges, 0) > 0 || getEditableChargeValue(editExtraHammali, 0) > 0 || getEditableChargeValue(editGradingCharges, 0) > 0) && (
                       <div className="flex justify-between">
                         <span>+ {t("surcharges")}</span>
@@ -419,17 +512,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="buyerName">{t("buyerName")}</Label>
-              <Input
-                id="buyerName"
-                value={buyerName}
-                onChange={(e) => setBuyerName(capitalizeFirstLetter(e.target.value))}
-                placeholder={t("enterBuyerName")}
-                data-testid="input-edit-buyer-name"
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="pricePerKg">{t("pricePerKg")} ({t("sellingPrice")})</Label>
               <Input
                 id="pricePerKg"
@@ -442,7 +524,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="netWeight">{t("netWeight")} (kg)</Label>
+              <Label htmlFor="netWeight">{t("finalNetWeight")} (kg)</Label>
               <Input
                 id="netWeight"
                 type="number"

@@ -178,6 +178,7 @@ const translations: Translations = {
   chambers: { en: "Chambers", hi: "कक्ष" },
   coldStorageCharge: { en: "Cold Storage Charge", hi: "कोल्ड स्टोरेज शुल्क" },
   totalColdStorageCharges: { en: "Total Cold Storage Charges", hi: "कुल कोल्ड स्टोरेज शुल्क" },
+  editChargesHint: { en: "Click to expand and edit individual charges", hi: "अलग-अलग शुल्क संपादित करने के लिए क्लिक करें" },
   hammali: { en: "Hammali", hi: "हमाली" },
   salary: { en: "Salary", hi: "वेतन" },
   gradingCharges: { en: "Grading Charge", hi: "ग्रेडिंग शुल्क" },
