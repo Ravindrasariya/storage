@@ -118,9 +118,9 @@ export interface IStorage {
     transferGroupId: string;
     transferDate: Date;
     transferRemarks: string | null;
-    paymentStatus: string;
-    paidAmount: number;
-    dueAmount: number;
+    paymentStatus?: string;
+    paidAmount?: number;
+    dueAmount?: number;
   }): Promise<SalesHistory | undefined>;
   // Maintenance Records
   getMaintenanceRecords(coldStorageId: string): Promise<MaintenanceRecord[]>;
@@ -1214,22 +1214,33 @@ export class DatabaseStorage implements IStorage {
     transferGroupId: string;
     transferDate: Date;
     transferRemarks: string | null;
-    paymentStatus: string;
-    paidAmount: number;
-    dueAmount: number;
+    paymentStatus?: string;
+    paidAmount?: number;
+    dueAmount?: number;
   }): Promise<SalesHistory | undefined> {
+    // Build update object - only include payment fields if provided
+    const updateData: any = {
+      clearanceType: updates.clearanceType,
+      transferToBuyerName: updates.transferToBuyerName,
+      transferGroupId: updates.transferGroupId,
+      transferDate: updates.transferDate,
+      transferRemarks: updates.transferRemarks,
+    };
+    
+    // Only update payment fields if explicitly provided (for liability transfers, we don't update these)
+    if (updates.paymentStatus !== undefined) {
+      updateData.paymentStatus = updates.paymentStatus;
+      updateData.paidAt = updates.paymentStatus === 'paid' ? new Date() : null;
+    }
+    if (updates.paidAmount !== undefined) {
+      updateData.paidAmount = updates.paidAmount;
+    }
+    if (updates.dueAmount !== undefined) {
+      updateData.dueAmount = updates.dueAmount;
+    }
+    
     const [updated] = await db.update(salesHistory)
-      .set({
-        clearanceType: updates.clearanceType,
-        transferToBuyerName: updates.transferToBuyerName,
-        transferGroupId: updates.transferGroupId,
-        transferDate: updates.transferDate,
-        transferRemarks: updates.transferRemarks,
-        paymentStatus: updates.paymentStatus,
-        paidAmount: updates.paidAmount,
-        dueAmount: updates.dueAmount,
-        paidAt: updates.paymentStatus === 'paid' ? new Date() : null,
-      })
+      .set(updateData)
       .where(eq(salesHistory.id, saleId))
       .returning();
     return updated;

@@ -1512,17 +1512,15 @@ export async function registerRoutes(
       // Generate a transfer group ID to link related records
       const transferGroupId = `transfer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
-      // Update the original sale: mark as paid via transfer, record transfer destination
+      // Update the original sale: record transfer destination (liability transfer only, payment status unchanged)
+      // Note: Transfer moves liability from one buyer to another, NOT an actual payment
       await storage.updateSalesHistoryForTransfer(validatedData.saleId, {
         clearanceType: 'transfer',
         transferToBuyerName: validatedData.toBuyerName,
         transferGroupId: transferGroupId,
         transferDate: validatedData.transferDate,
         transferRemarks: validatedData.remarks || null,
-        // If full amount is transferred, mark as paid; otherwise partial
-        paymentStatus: validatedData.amount >= (sale.dueAmount || 0) ? 'paid' : 'partial',
-        paidAmount: (sale.paidAmount || 0) + validatedData.amount,
-        dueAmount: (sale.dueAmount || 0) - validatedData.amount,
+        // DO NOT update paymentStatus, paidAmount, or dueAmount - transfer is liability move, not payment
       });
       
       res.json({ 
