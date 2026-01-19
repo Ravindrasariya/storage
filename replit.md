@@ -85,7 +85,13 @@ Core entities:
 - Different from regular cold charges which use CurrentDueBuyerName (COALESCE(NULLIF(transferToBuyerName, ''), buyerName))
 - Editable in Sales History Edit Dialog separately from cold charges
 - Aggregated in merchant analytics and cash management by original buyer
-- Database field: salesHistory.extraDueToMerchant (real, default 0)
+- Database fields:
+  - salesHistory.extraDueToMerchant (real, default 0): Remaining due (reduced by FIFO payments)
+  - salesHistory.extraDueToMerchantOriginal (real, default 0): Original value set by user (for recompute)
+- FIFO payment allocation: Two-pass system
+  1. First pass: Apply receipts to cold storage dues (dueAmount) in FIFO order
+  2. Second pass: If surplus remains, apply to extraDueToMerchant (by original buyerName, FIFO order)
+- Recompute behavior: restores extraDueToMerchant to extraDueToMerchantOriginal before reapplying receipts for idempotency
 
 ### Bill Number System
 - Four independent bill number sequences: Exit, Cold Storage Deduction, Sales, and Lot Entry

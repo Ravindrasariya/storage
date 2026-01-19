@@ -1368,6 +1368,8 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.extraDueToMerchant !== undefined) {
       updateData.extraDueToMerchant = updates.extraDueToMerchant;
+      // Also set the original value for recompute - user is setting the base value
+      updateData.extraDueToMerchantOriginal = updates.extraDueToMerchant;
     }
 
     // Handle coldStorageCharge - use provided value if present, otherwise recalculate
@@ -1833,6 +1835,48 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // SECOND PASS: Apply remaining surplus to extraDueToMerchant (by ORIGINAL buyerName only)
+    // This is separate from cold storage dues and tracks buyer-specific surcharges
+    if (remainingAmount > 0) {
+      // Get sales with extraDueToMerchant > 0 for the ORIGINAL buyerName (not CurrentDueBuyerName)
+      const salesWithExtraDue = await db.select()
+        .from(salesHistory)
+        .where(and(
+          eq(salesHistory.coldStorageId, data.coldStorageId),
+          sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
+          sql`${salesHistory.extraDueToMerchant} > 0`
+        ))
+        .orderBy(salesHistory.soldAt); // FIFO - oldest first
+
+      for (const sale of salesWithExtraDue) {
+        if (remainingAmount <= 0) break;
+
+        const extraDue = sale.extraDueToMerchant || 0;
+        if (extraDue <= 0) continue;
+
+        if (remainingAmount >= extraDue) {
+          // Can fully pay this extra due
+          await db.update(salesHistory)
+            .set({ extraDueToMerchant: 0 })
+            .where(eq(salesHistory.id, sale.id));
+          
+          remainingAmount -= extraDue;
+          appliedAmount += extraDue;
+          salesUpdated++;
+        } else {
+          // Can only partially pay this extra due
+          const newExtraDue = extraDue - remainingAmount;
+          await db.update(salesHistory)
+            .set({ extraDueToMerchant: newExtraDue })
+            .where(eq(salesHistory.id, sale.id));
+          
+          appliedAmount += remainingAmount;
+          remainingAmount = 0;
+          salesUpdated++;
+        }
+      }
+    }
+
     // Create the receipt record
     const [receipt] = await db.insert(cashReceipts)
       .values({
@@ -2151,6 +2195,32 @@ export class DatabaseStorage implements IStorage {
         .where(eq(salesHistory.id, sale.id));
     }
 
+    // Also reset extraDueToMerchant to original values (for sales where original buyerName matches)
+    // This is separate from cold storage dues - only reset for sales where ORIGINAL buyer matches
+    // Handles both extraDueToMerchantOriginal and legacy records (use extraDueToMerchant as fallback)
+    const salesByOriginalBuyer = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
+        sql`(${salesHistory.extraDueToMerchantOriginal} > 0 OR ${salesHistory.extraDueToMerchant} > 0)`
+      ));
+    
+    for (const sale of salesByOriginalBuyer) {
+      // Use extraDueToMerchantOriginal if set, otherwise use current extraDueToMerchant as the baseline
+      const originalValue = (sale.extraDueToMerchantOriginal && sale.extraDueToMerchantOriginal > 0) 
+        ? sale.extraDueToMerchantOriginal 
+        : (sale.extraDueToMerchant || 0);
+      
+      // If we're using extraDueToMerchant as fallback, also set extraDueToMerchantOriginal for future recomputes
+      await db.update(salesHistory)
+        .set({
+          extraDueToMerchant: originalValue,
+          extraDueToMerchantOriginal: originalValue,
+        })
+        .where(eq(salesHistory.id, sale.id));
+    }
+
     // Step 2: Get all non-reversed receipts for this buyer, ordered by receivedAt (FIFO)
     const activeReceipts = await db.select()
       .from(cashReceipts)
@@ -2226,6 +2296,44 @@ export class DatabaseStorage implements IStorage {
           appliedAmount += remainingAmount;
           remainingAmount = 0;
           salesUpdated++;
+        }
+      }
+
+      // SECOND PASS: Apply remaining surplus to extraDueToMerchant (by ORIGINAL buyerName only)
+      if (remainingAmount > 0) {
+        const salesWithExtraDue = await db.select()
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
+            sql`${salesHistory.extraDueToMerchant} > 0`
+          ))
+          .orderBy(salesHistory.soldAt); // FIFO - oldest first
+
+        for (const sale of salesWithExtraDue) {
+          if (remainingAmount <= 0) break;
+
+          const extraDue = sale.extraDueToMerchant || 0;
+          if (extraDue <= 0) continue;
+
+          if (remainingAmount >= extraDue) {
+            await db.update(salesHistory)
+              .set({ extraDueToMerchant: 0 })
+              .where(eq(salesHistory.id, sale.id));
+            
+            remainingAmount -= extraDue;
+            appliedAmount += extraDue;
+            salesUpdated++;
+          } else {
+            const newExtraDue = extraDue - remainingAmount;
+            await db.update(salesHistory)
+              .set({ extraDueToMerchant: newExtraDue })
+              .where(eq(salesHistory.id, sale.id));
+            
+            appliedAmount += remainingAmount;
+            remainingAmount = 0;
+            salesUpdated++;
+          }
         }
       }
 

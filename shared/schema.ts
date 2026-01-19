@@ -165,7 +165,8 @@ export const salesHistory = pgTable("sales_history", {
   baseChargeAmountAtSale: real("base_charge_amount_at_sale"), // Base cold charge (cold+hammali portion) at sale time; if 0, base charges already billed
   remainingSizeAtSale: integer("remaining_size_at_sale"), // Remaining bags before this sale (used for totalRemaining charge basis)
   // Extra merchant due (charged to original buyer, not affected by transfers, separate from farmer-centric cold charges)
-  extraDueToMerchant: real("extra_due_to_merchant").default(0),
+  extraDueToMerchant: real("extra_due_to_merchant").default(0), // Remaining due (reduced by FIFO payments)
+  extraDueToMerchantOriginal: real("extra_due_to_merchant_original").default(0), // Original value set by user (for recompute)
 });
 
 // Edit history for tracking changes
