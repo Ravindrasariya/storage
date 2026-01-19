@@ -1185,13 +1185,10 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     if (filters?.buyerName) {
-      // Search by CurrentDueBuyerName: match either buyerName OR transferToBuyerName
-      // This ensures searching for "RLT" finds sales transferred TO RLT
+      // Search by CurrentDueBuyerName: COALESCE(NULLIF(transferToBuyerName, ''), buyerName)
+      // This filters by the effective buyer - transferToBuyerName if available, else buyerName
       conditions.push(
-        or(
-          ilike(salesHistory.buyerName, `%${filters.buyerName}%`),
-          ilike(salesHistory.transferToBuyerName, `%${filters.buyerName}%`)
-        )!
+        sql`COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) ILIKE ${`%${filters.buyerName}%`}`
       );
     }
 
