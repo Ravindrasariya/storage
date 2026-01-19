@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ShoppingCart, Phone, MapPin, Package, Check, Minus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -54,6 +55,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [editableHammali, setEditableHammali] = useState<string>("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
+  const [isSelfBuyer, setIsSelfBuyer] = useState(false);
 
   const { data: buyersData } = useQuery<{ buyerName: string }[]>({
     queryKey: ["/api/buyers/lookup"],
@@ -150,6 +152,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setExtraHammaliPerBag("");
     setTotalGradingCharges("");
     setNetWeight("");
+    setIsSelfBuyer(false);
     setEditableColdCharge("");
     setEditableHammali("");
     setChargeBasis("actual");
@@ -658,7 +661,26 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
+                <div className="flex items-center justify-between">
+                  <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox 
+                      id="self-buyer-full"
+                      checked={isSelfBuyer}
+                      onCheckedChange={(checked) => {
+                        setIsSelfBuyer(!!checked);
+                        if (checked && selectedLot) {
+                          setBuyerName(selectedLot.farmerName);
+                          setShowBuyerSuggestions(false);
+                        } else {
+                          setBuyerName("");
+                        }
+                      }}
+                      data-testid="checkbox-self-buyer"
+                    />
+                    <Label htmlFor="self-buyer-full" className="text-sm font-normal cursor-pointer">{t("self")}</Label>
+                  </div>
+                </div>
                 <div className="relative">
                   <Input
                     type="text"
@@ -671,9 +693,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 200)}
                     placeholder={t("buyerName")}
                     autoComplete="off"
+                    disabled={isSelfBuyer}
+                    className={isSelfBuyer ? "bg-muted" : ""}
                     data-testid="input-buyer-name"
                   />
-                  {showBuyerSuggestions && buyerSuggestions.length > 0 && buyerName && (
+                  {!isSelfBuyer && showBuyerSuggestions && buyerSuggestions.length > 0 && buyerName && (
                     <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
                       {buyerSuggestions.map((buyer, idx) => (
                         <button
@@ -821,7 +845,26 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
+                <div className="flex items-center justify-between">
+                  <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox 
+                      id="self-buyer-partial"
+                      checked={isSelfBuyer}
+                      onCheckedChange={(checked) => {
+                        setIsSelfBuyer(!!checked);
+                        if (checked && selectedLot) {
+                          setBuyerName(selectedLot.farmerName);
+                          setShowBuyerSuggestions(false);
+                        } else {
+                          setBuyerName("");
+                        }
+                      }}
+                      data-testid="checkbox-partial-self-buyer"
+                    />
+                    <Label htmlFor="self-buyer-partial" className="text-sm font-normal cursor-pointer">{t("self")}</Label>
+                  </div>
+                </div>
                 <div className="relative">
                   <Input
                     type="text"
@@ -834,9 +877,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 200)}
                     placeholder={t("buyerName")}
                     autoComplete="off"
+                    disabled={isSelfBuyer}
+                    className={isSelfBuyer ? "bg-muted" : ""}
                     data-testid="input-partial-buyer-name"
                   />
-                  {showBuyerSuggestions && buyerSuggestions.length > 0 && buyerName && (
+                  {!isSelfBuyer && showBuyerSuggestions && buyerSuggestions.length > 0 && buyerName && (
                     <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
                       {buyerSuggestions.map((buyer, idx) => (
                         <button
