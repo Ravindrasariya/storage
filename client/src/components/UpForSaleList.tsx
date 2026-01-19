@@ -678,7 +678,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       onCheckedChange={(checked) => {
                         setIsSelfBuyer(!!checked);
                         if (checked && selectedLot) {
-                          setBuyerName(selectedLot.farmerName);
+                          const compositeName = `${selectedLot.farmerName} - ${selectedLot.contactNumber} - ${selectedLot.village}`;
+                          setBuyerName(compositeName);
                           setShowBuyerSuggestions(false);
                         } else {
                           setBuyerName("");
@@ -862,7 +863,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       onCheckedChange={(checked) => {
                         setIsSelfBuyer(!!checked);
                         if (checked && selectedLot) {
-                          setBuyerName(selectedLot.farmerName);
+                          const compositeName = `${selectedLot.farmerName} - ${selectedLot.contactNumber} - ${selectedLot.village}`;
+                          setBuyerName(compositeName);
                           setShowBuyerSuggestions(false);
                         } else {
                           setBuyerName("");
