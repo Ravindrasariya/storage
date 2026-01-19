@@ -876,7 +876,9 @@ export class DatabaseStorage implements IStorage {
     }>();
     
     for (const sale of allSales) {
-      const trimmedName = sale.buyerName?.trim() || "Unknown";
+      // Use CurrentDueBuyerName logic: transferToBuyerName if set, else buyerName
+      // This ensures transferred liabilities show under the correct buyer
+      const trimmedName = (sale.transferToBuyerName?.trim() || sale.buyerName?.trim()) || "Unknown";
       const normalizedKey = trimmedName.toLowerCase(); // Case-insensitive key
       
       const existing = merchantMap.get(normalizedKey) || {
