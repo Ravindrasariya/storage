@@ -203,6 +203,8 @@ const translations: Translations = {
   billedColdCharges: { en: "Cold Charges", hi: "कोल्ड शुल्क" },
   alreadyDue: { en: "Already Due", hi: "पहले से बकाया" },
   selectedLotsBilling: { en: "Selected Lots Billing", hi: "चयनित लॉट की बिलिंग" },
+  baseColdChargesSection: { en: "Cold Charges", hi: "कोल्ड शुल्क" },
+  extrasSection: { en: "Extras for Sale", hi: "बिक्री के लिए अतिरिक्त" },
   current: { en: "Current", hi: "वर्तमान" },
   addLotManually: { en: "Add Lot Manually", hi: "मैन्युअल रूप से लॉट जोड़ें" },
   enterLotNumber: { en: "Enter lot number...", hi: "लॉट नंबर दर्ज करें..." },

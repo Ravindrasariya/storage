@@ -853,10 +853,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                             baseColdChargesBilled: selectedLot.baseColdChargesBilled,
                           } : lot;
                           const hasZeroNetWeight = selectedLot?.chargeUnit === "quintal" && !effectiveLot.netWeight;
-                          // For current lot in full sale mode, use remainingSize
-                          const saleQty = lot.isCurrentLot ? selectedLot?.remainingSize : undefined;
+                          // For consolidated billing, always calculate based on ALL remaining bags (not just actual sale qty)
+                          const consolidatedQty = lot.isCurrentLot ? selectedLot?.remainingSize : lot.remainingSize;
                           // Calculate using shared function with effective lot data
-                          const billedCharge = calculateBillingLotCharge(effectiveLot, saleQty);
+                          const billedCharge = calculateBillingLotCharge(effectiveLot, consolidatedQty);
                           return (
                             <tr 
                               key={lot.id} 
@@ -996,16 +996,30 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         <Currency amount={calculateAllSelectedLotsTotal(selectedLot.remainingSize) + (parseFloat(kataCharges) || 0) + (deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize + (parseFloat(totalGradingCharges) || 0) : 0)} />
                       </span>
                     </div>
-                    <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                      <div>{t("selectedLotsBilling") || "Selected Lots Billing"}: <Currency amount={calculateAllSelectedLotsTotal(selectedLot.remainingSize)} /></div>
-                      {(parseFloat(kataCharges) || 0) > 0 && (
-                        <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
-                      )}
-                      {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                        <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /></div>
-                      )}
-                      {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                        <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
+                    <div className="text-sm text-muted-foreground mt-2 space-y-2">
+                      {/* Section a: Base Cold Charges - uses existing calculateAllSelectedLotsTotal */}
+                      <div className="border-b pb-2">
+                        <div className="font-medium text-xs mb-1">{t("baseColdChargesSection") || "Cold Charges"}</div>
+                        {selectedLot.baseColdChargesBilled === 1 ? (
+                          <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
+                        ) : (
+                          <div>{t("selectedLotsBilling")}: <Currency amount={calculateAllSelectedLotsTotal(selectedLot.remainingSize)} /></div>
+                        )}
+                      </div>
+                      {/* Section b: Extras for actual sale */}
+                      {((parseFloat(kataCharges) || 0) > 0 || (deliveryType === "bilty" && ((parseFloat(extraHammaliPerBag) || 0) > 0 || (parseFloat(totalGradingCharges) || 0) > 0))) && (
+                        <div>
+                          <div className="font-medium text-xs mb-1">{t("extrasSection") || "Extras for Sale"}</div>
+                          {(parseFloat(kataCharges) || 0) > 0 && (
+                            <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
+                          )}
+                          {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
+                            <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /></div>
+                          )}
+                          {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
+                            <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </>
@@ -1382,10 +1396,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                             baseColdChargesBilled: selectedLot.baseColdChargesBilled,
                           } : lot;
                           const hasZeroNetWeight = selectedLot.chargeUnit === "quintal" && !effectiveLot.netWeight;
-                          // For current lot in partial sale mode, use partialQuantity
-                          const saleQty = lot.isCurrentLot ? partialQuantity : undefined;
+                          // For consolidated billing, always calculate based on ALL remaining bags (not just actual sale qty)
+                          const consolidatedQty = lot.isCurrentLot ? selectedLot?.remainingSize : lot.remainingSize;
                           // Calculate using shared function with effective lot data
-                          const billedCharge = calculateBillingLotCharge(effectiveLot, saleQty);
+                          const billedCharge = calculateBillingLotCharge(effectiveLot, consolidatedQty);
                           return (
                             <tr 
                               key={lot.id} 
@@ -1503,28 +1517,47 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               {partialQuantity > 0 && (
                 <div className="p-4 rounded-lg bg-muted">
-                  {chargeBasis === "selectLots" ? (
+                  {chargeBasis === "selectLots" ? (() => {
+                    // Check if current lot is selected - if so, use ALL remaining bags; otherwise use actual partialQuantity
+                    const currentLotIsChecked = selectedBillingLots.find(l => l.isCurrentLot)?.isSelected ?? false;
+                    const coldChargeQty = currentLotIsChecked ? selectedLot.remainingSize : partialQuantity;
+                    return (
                     <>
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
                         <span className="text-2xl font-bold text-chart-2">
-                          <Currency amount={calculateAllSelectedLotsTotal(partialQuantity) + (parseFloat(kataCharges) || 0) + (deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * partialQuantity + (parseFloat(totalGradingCharges) || 0) : 0)} />
+                          <Currency amount={calculateAllSelectedLotsTotal(coldChargeQty) + (parseFloat(kataCharges) || 0) + (deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * partialQuantity + (parseFloat(totalGradingCharges) || 0) : 0)} />
                         </span>
                       </div>
-                      <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                        <div>{t("selectedLotsBilling") || "Selected Lots Billing"}: <Currency amount={calculateAllSelectedLotsTotal(partialQuantity)} /></div>
-                        {(parseFloat(kataCharges) || 0) > 0 && (
-                          <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
-                        )}
-                        {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                          <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /></div>
-                        )}
-                        {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                          <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
+                      <div className="text-sm text-muted-foreground mt-2 space-y-2">
+                        {/* Section a: Base Cold Charges - uses existing calculateAllSelectedLotsTotal */}
+                        <div className="border-b pb-2">
+                          <div className="font-medium text-xs mb-1">{t("baseColdChargesSection") || "Cold Charges"}</div>
+                          {selectedLot.baseColdChargesBilled === 1 ? (
+                            <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
+                          ) : (
+                            <div>{t("selectedLotsBilling")}: <Currency amount={calculateAllSelectedLotsTotal(coldChargeQty)} /></div>
+                          )}
+                        </div>
+                        {/* Section b: Extras for actual sale */}
+                        {((parseFloat(kataCharges) || 0) > 0 || (deliveryType === "bilty" && ((parseFloat(extraHammaliPerBag) || 0) > 0 || (parseFloat(totalGradingCharges) || 0) > 0))) && (
+                          <div>
+                            <div className="font-medium text-xs mb-1">{t("extrasSection") || "Extras for Sale"}</div>
+                            {(parseFloat(kataCharges) || 0) > 0 && (
+                              <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
+                            )}
+                            {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
+                              <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /></div>
+                            )}
+                            {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
+                              <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
+                            )}
+                          </div>
                         )}
                       </div>
                     </>
-                  ) : selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
+                    );
+                  })() : selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
                     <div className="text-red-600 dark:text-red-400 font-medium text-center py-2">
                       {t("addInitialNetWeightWarning")}
                     </div>
