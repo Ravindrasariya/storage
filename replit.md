@@ -69,10 +69,15 @@ Core entities:
 
 ### Sales History Edit Dialog
 - Edit dialog allows modifying cold storage charges after initial sale
-- Charge Basis selector: "Actual Bags" (uses quantitySold) or "All Remaining Bags" (uses originalLotSize for bag-based charges)
-- chargeBasis is a calculation method only, NOT persisted; the calculated coldStorageCharge IS stored
-- Note: For quintal-based charges (chargeUnit="quintal"), "All Remaining Bags" has limited effect since original lot net weight is not stored
+- Context fields recorded at sale time and shown as non-editable: chargeBasis, initialNetWeightKg, remainingSizeAtSale
+- If baseChargeAmountAtSale = 0, base charge fields are disabled (already billed) with "Already Billed" badge
+- Charge formulas use stored context:
+  - Quintal mode: (initialNetWeightKg × bagsToUse × rate) / (100 × originalLotSize)
+  - Bag mode: bagsToUse × rate
+  - bagsToUse = quantitySold (actual basis) or remainingSizeAtSale (totalRemaining basis)
+- Extras (Kata, Extra Hammali, Grading) always added on top of base charge calculation
 - FIFO recalculation triggered after charge edits using CurrentDueBuyerName logic
+- Note: lots.netWeight is stored in KG (not quintals)
 
 ### Bill Number System
 - Four independent bill number sequences: Exit, Cold Storage Deduction, Sales, and Lot Entry
