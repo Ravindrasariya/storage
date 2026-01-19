@@ -58,6 +58,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [isSelfBuyer, setIsSelfBuyer] = useState(false);
   
   // Multi-lot billing state - includes current lot and selected related lots
+  // selectCold: whether to include cold charges for this lot
+  // selectDue: whether to include outstanding due for this lot
   const [selectedBillingLots, setSelectedBillingLots] = useState<Array<{
     id: string;
     lotNo: string;
@@ -70,7 +72,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     rate: number;
     baseColdChargesBilled: number;
     isCurrentLot?: boolean;
-    isSelected: boolean;
+    selectCold: boolean;
+    selectDue: boolean;
   }>>([]);
   
   // Manual lot search state
@@ -93,7 +96,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         rate: selectedLot.coldCharge + selectedLot.hammali,
         baseColdChargesBilled: selectedLot.baseColdChargesBilled,
         isCurrentLot: true,
-        isSelected: false, // Default to unchecked
+        selectCold: false, // Default to unchecked
+        selectDue: false, // Current lot has no prior due
       };
       setSelectedBillingLots([currentLotEntry]);
     } else {
@@ -363,8 +367,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       
       const parsedNetWeight = netWeight ? parseFloat(netWeight) : undefined;
       
-      // Get IDs of selected lots to mark as billed (only selected ones)
-      const billingLotIds = selectedBillingLots.filter(l => l.isSelected).map(l => l.id);
+      // Get IDs of selected lots to mark as billed (cold charges selected)
+      const billingLotIds = selectedBillingLots.filter(l => l.selectCold).map(l => l.id);
       
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
@@ -495,47 +499,63 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const calculateMultiLotTotal = () => {
     let total = 0;
     for (const lot of selectedBillingLots) {
-      if (!lot.isSelected) continue;
       // Skip current lot - its charges are calculated separately
       if (lot.isCurrentLot) continue;
-      // Add previous outstanding dues
-      total += lot.totalDueCharge || 0;
-      // Add new cold charges
-      total += calculateBillingLotCharge(lot);
+      // Add previous outstanding dues if due is selected
+      if (lot.selectDue) {
+        total += lot.totalDueCharge || 0;
+      }
+      // Add new cold charges if cold is selected
+      if (lot.selectCold) {
+        total += calculateBillingLotCharge(lot);
+      }
     }
     return total;
   };
 
   // Calculate total for all selected lots including current lot
   // currentLotSaleQuantity: The quantity being sold for the current lot
-  // When all lots are unchecked, uses actual bags formula for current lot only
+  // When no cold charges are selected, uses actual bags formula for current lot only
   const calculateAllSelectedLotsTotal = (currentLotSaleQuantity?: number) => {
-    const anySelected = selectedBillingLots.some(lot => lot.isSelected);
+    const anyColdSelected = selectedBillingLots.some(lot => lot.selectCold);
+    const anyDueSelected = selectedBillingLots.some(lot => lot.selectDue);
     
-    // If no lots are selected, calculate using actual bags for current lot only
-    if (!anySelected && selectedLot) {
+    // If no cold charges selected, calculate using actual bags for current lot only
+    if (!anyColdSelected && selectedLot) {
       const actualQty = currentLotSaleQuantity ?? selectedLot.remainingSize;
       const rate = selectedLot.coldCharge + selectedLot.hammali;
       
+      let coldTotal = 0;
       if (selectedLot.chargeUnit === "quintal" && selectedLot.netWeight && selectedLot.originalSize > 0) {
         // Quintal mode: (Net Weight × actual bags × rate) / (Total bags × 100)
-        return (selectedLot.netWeight * actualQty * rate) / (selectedLot.originalSize * 100);
+        coldTotal = (selectedLot.netWeight * actualQty * rate) / (selectedLot.originalSize * 100);
+      } else {
+        // Bag mode: actual bags × rate
+        coldTotal = actualQty * rate;
       }
-      // Bag mode: actual bags × rate
-      return actualQty * rate;
+      
+      // Add any selected dues from other lots
+      let dueTotal = 0;
+      for (const lot of selectedBillingLots) {
+        if (lot.selectDue && !lot.isCurrentLot) {
+          dueTotal += lot.totalDueCharge || 0;
+        }
+      }
+      return coldTotal + dueTotal;
     }
     
     // Otherwise calculate sum of selected lots
     let total = 0;
     for (const lot of selectedBillingLots) {
-      if (!lot.isSelected) continue;
-      // Add previous outstanding dues (not for current lot)
-      if (!lot.isCurrentLot) {
+      // Add previous outstanding dues if selected (not for current lot)
+      if (lot.selectDue && !lot.isCurrentLot) {
         total += lot.totalDueCharge || 0;
       }
-      // Add new cold charges - pass sale quantity for current lot
-      const saleQty = lot.isCurrentLot ? currentLotSaleQuantity : undefined;
-      total += calculateBillingLotCharge(lot, saleQty);
+      // Add new cold charges if selected - pass sale quantity for current lot
+      if (lot.selectCold) {
+        const saleQty = lot.isCurrentLot ? currentLotSaleQuantity : undefined;
+        total += calculateBillingLotCharge(lot, saleQty);
+      }
     }
     return total;
   };
@@ -574,16 +594,27 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       rate: lotRate,
       baseColdChargesBilled: lot.baseColdChargesBilled || 0,
       isCurrentLot: false,
-      isSelected: false, // Default to unchecked
+      selectCold: false, // Default to unchecked
+      selectDue: false, // Default to unchecked
     }]);
   };
 
-  // Toggle lot selection (all lots can be toggled including current lot)
-  const toggleLotSelection = (lotId: string) => {
+  // Toggle cold charges selection for a lot
+  const toggleLotColdSelection = (lotId: string) => {
     setSelectedBillingLots(selectedBillingLots.map(lot => 
-      lot.id === lotId ? { ...lot, isSelected: !lot.isSelected } : lot
+      lot.id === lotId ? { ...lot, selectCold: !lot.selectCold } : lot
     ));
   };
+
+  // Toggle due selection for a lot (not applicable for current lot)
+  const toggleLotDueSelection = (lotId: string) => {
+    setSelectedBillingLots(selectedBillingLots.map(lot => 
+      lot.id === lotId ? { ...lot, selectDue: !lot.selectDue } : lot
+    ));
+  };
+
+  // Check if a lot has any selection (cold or due)
+  const isLotSelected = (lot: typeof selectedBillingLots[0]) => lot.selectCold || lot.selectDue;
 
   // Remove a lot from billing selection
   const removeLotFromBilling = (lotId: string) => {
@@ -828,16 +859,15 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
                   <div className="text-sm font-medium">{t("consolidatedBilling") || "Consolidated Billing"}</div>
                   
-                  {/* Table of lots for billing */}
+                  {/* Table of lots for billing - clickable Cold Charges and Due cells */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b text-muted-foreground">
-                          <th className="text-center py-1 px-1 w-8"></th>
                           <th className="text-left py-1 px-1">{t("bagType")}</th>
                           <th className="text-left py-1 px-1">{t("lot")} #</th>
                           <th className="text-right py-1 px-1">{t("remaining")}</th>
-                          <th className="text-right py-1 px-1">{t("billedColdCharges") || "Billed Cold Charges"}</th>
+                          <th className="text-right py-1 px-1">{t("coldCharges") || "Cold Charges"}</th>
                           <th className="text-right py-1 px-1">{t("alreadyDue") || "Already Due"}</th>
                           <th className="py-1 px-1 w-8"></th>
                         </tr>
@@ -862,13 +892,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                               key={lot.id} 
                               className={`border-b border-muted ${hasZeroNetWeight ? 'bg-red-50 dark:bg-red-900/20' : ''}`}
                             >
-                              <td className="py-1 px-1 text-center">
-                                <Checkbox
-                                  checked={lot.isSelected}
-                                  onCheckedChange={() => toggleLotSelection(lot.id)}
-                                  data-testid={`checkbox-lot-${lot.id}`}
-                                />
-                              </td>
                               <td className="py-1 px-1 capitalize">{lot.bagType}</td>
                               <td className="py-1 px-1">
                                 <div className="flex flex-col items-start">
@@ -877,14 +900,36 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                                 </div>
                               </td>
                               <td className="text-right py-1 px-1">{lot.remainingSize}</td>
-                              <td className={`text-right py-1 px-1 ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}>
+                              {/* Clickable Cold Charges cell */}
+                              <td 
+                                className={`text-right py-1 px-1 cursor-pointer rounded transition-colors ${
+                                  lot.selectCold 
+                                    ? 'bg-blue-100/70 dark:bg-blue-900/40 ring-1 ring-blue-400/50' 
+                                    : 'hover:bg-muted/50'
+                                } ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}
+                                onClick={() => toggleLotColdSelection(lot.id)}
+                                data-testid={`cell-cold-charges-${lot.id}`}
+                              >
                                 {hasZeroNetWeight ? (
                                   <span className="text-red-600 dark:text-red-400">₹0 ⚠</span>
                                 ) : (
                                   <Currency amount={billedCharge} />
                                 )}
                               </td>
-                              <td className="text-right py-1 px-1">
+                              {/* Clickable Already Due cell - only for non-current lots */}
+                              <td 
+                                className={`text-right py-1 px-1 ${
+                                  lot.isCurrentLot 
+                                    ? '' 
+                                    : `cursor-pointer rounded transition-colors ${
+                                        lot.selectDue 
+                                          ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-1 ring-amber-400/50' 
+                                          : 'hover:bg-muted/50'
+                                      }`
+                                }`}
+                                onClick={() => !lot.isCurrentLot && toggleLotDueSelection(lot.id)}
+                                data-testid={`cell-due-${lot.id}`}
+                              >
                                 {lot.isCurrentLot ? '-' : <Currency amount={lot.totalDueCharge || 0} />}
                               </td>
                               <td className="py-1 px-1">
@@ -1371,16 +1416,15 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
                   <div className="text-sm font-medium">{t("consolidatedBilling") || "Consolidated Billing"}</div>
                   
-                  {/* Table of lots for billing */}
+                  {/* Table of lots for billing - clickable Cold Charges and Due cells */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b text-muted-foreground">
-                          <th className="text-center py-1 px-1 w-8"></th>
                           <th className="text-left py-1 px-1">{t("bagType")}</th>
                           <th className="text-left py-1 px-1">{t("lot")} #</th>
                           <th className="text-right py-1 px-1">{t("remaining")}</th>
-                          <th className="text-right py-1 px-1">{t("billedColdCharges") || "Billed Cold Charges"}</th>
+                          <th className="text-right py-1 px-1">{t("coldCharges") || "Cold Charges"}</th>
                           <th className="text-right py-1 px-1">{t("alreadyDue") || "Already Due"}</th>
                           <th className="py-1 px-1 w-8"></th>
                         </tr>
@@ -1405,13 +1449,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                               key={lot.id} 
                               className={`border-b border-muted ${hasZeroNetWeight ? 'bg-red-50 dark:bg-red-900/20' : ''}`}
                             >
-                              <td className="py-1 px-1 text-center">
-                                <Checkbox
-                                  checked={lot.isSelected}
-                                  onCheckedChange={() => toggleLotSelection(lot.id)}
-                                  data-testid={`checkbox-partial-lot-${lot.id}`}
-                                />
-                              </td>
                               <td className="py-1 px-1 capitalize">{lot.bagType}</td>
                               <td className="py-1 px-1">
                                 <div className="flex flex-col items-start">
@@ -1420,14 +1457,36 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                                 </div>
                               </td>
                               <td className="text-right py-1 px-1">{lot.remainingSize}</td>
-                              <td className={`text-right py-1 px-1 ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}>
+                              {/* Clickable Cold Charges cell */}
+                              <td 
+                                className={`text-right py-1 px-1 cursor-pointer rounded transition-colors ${
+                                  lot.selectCold 
+                                    ? 'bg-blue-100/70 dark:bg-blue-900/40 ring-1 ring-blue-400/50' 
+                                    : 'hover:bg-muted/50'
+                                } ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}
+                                onClick={() => toggleLotColdSelection(lot.id)}
+                                data-testid={`cell-partial-cold-charges-${lot.id}`}
+                              >
                                 {hasZeroNetWeight ? (
                                   <span className="text-red-600 dark:text-red-400">₹0 ⚠</span>
                                 ) : (
                                   <Currency amount={billedCharge} />
                                 )}
                               </td>
-                              <td className="text-right py-1 px-1">
+                              {/* Clickable Already Due cell - only for non-current lots */}
+                              <td 
+                                className={`text-right py-1 px-1 ${
+                                  lot.isCurrentLot 
+                                    ? '' 
+                                    : `cursor-pointer rounded transition-colors ${
+                                        lot.selectDue 
+                                          ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-1 ring-amber-400/50' 
+                                          : 'hover:bg-muted/50'
+                                      }`
+                                }`}
+                                onClick={() => !lot.isCurrentLot && toggleLotDueSelection(lot.id)}
+                                data-testid={`cell-partial-due-${lot.id}`}
+                              >
                                 {lot.isCurrentLot ? '-' : <Currency amount={lot.totalDueCharge || 0} />}
                               </td>
                               <td className="py-1 px-1">
@@ -1518,9 +1577,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               {partialQuantity > 0 && (
                 <div className="p-4 rounded-lg bg-muted">
                   {chargeBasis === "selectLots" ? (() => {
-                    // Check if current lot is selected - if so, use ALL remaining bags; otherwise use actual partialQuantity
-                    const currentLotIsChecked = selectedBillingLots.find(l => l.isCurrentLot)?.isSelected ?? false;
-                    const coldChargeQty = currentLotIsChecked ? selectedLot.remainingSize : partialQuantity;
+                    // Check if current lot cold charges is selected - if so, use ALL remaining bags; otherwise use actual partialQuantity
+                    const currentLotColdSelected = selectedBillingLots.find(l => l.isCurrentLot)?.selectCold ?? false;
+                    const coldChargeQty = currentLotColdSelected ? selectedLot.remainingSize : partialQuantity;
                     return (
                     <>
                       <div className="flex justify-between items-center">
