@@ -693,9 +693,14 @@ export async function registerRoutes(
           });
         }
       }
+      
+      // Re-fetch lot after transfer to get updated totalPaidCharge/totalDueCharge
+      // (transferDuesToBuyer calls recalculateLotTotals which updates these values)
+      const lotAfterTransfer = totalTransferred > 0 ? await storage.getLot(req.params.id) : lot;
+      const currentLot = lotAfterTransfer || lot;
 
       const previousData = {
-        remainingSize: lot.remainingSize,
+        remainingSize: currentLot.remainingSize,
       };
 
       const newRemainingSize = lot.remainingSize - quantitySold;
@@ -753,17 +758,18 @@ export async function registerRoutes(
       }
       
       // Track paid and due charges separately (include all surcharges)
+      // Use currentLot which has updated totals after any transfers
       if (paymentStatus === "paid") {
-        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + totalChargeForLot;
+        updateData.totalPaidCharge = (currentLot.totalPaidCharge || 0) + totalChargeForLot;
       } else if (paymentStatus === "due") {
-        updateData.totalDueCharge = (lot.totalDueCharge || 0) + totalChargeForLot;
+        updateData.totalDueCharge = (currentLot.totalDueCharge || 0) + totalChargeForLot;
       } else if (paymentStatus === "partial") {
         // Validate and normalize partial payment amounts
         const rawPaid = Math.max(0, paidAmount || 0);
         const actualPaid = Math.min(rawPaid, totalChargeForLot); // Clamp to max charge (including surcharges)
         const actualDue = totalChargeForLot - actualPaid; // Calculate due as remainder to ensure sum equals total
-        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + actualPaid;
-        updateData.totalDueCharge = (lot.totalDueCharge || 0) + actualDue;
+        updateData.totalPaidCharge = (currentLot.totalPaidCharge || 0) + actualPaid;
+        updateData.totalDueCharge = (currentLot.totalDueCharge || 0) + actualDue;
       }
       
       await storage.updateLot(req.params.id, updateData);
