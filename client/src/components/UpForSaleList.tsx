@@ -370,8 +370,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       
       // Get IDs of selected lots to mark as billed (cold charges selected)
       const billingLotIds = selectedBillingLots.filter(l => l.selectCold).map(l => l.id);
-      // Get IDs of lots with selected dues to transfer (excluding current lot - current lot's due is not a transfer)
-      const transferDueLotIds = selectedBillingLots.filter(l => l.selectDue && !l.isCurrentLot).map(l => l.id);
+      // Get IDs of lots with selected dues to transfer (INCLUDING current lot - all selected dues get transferred to new buyer)
+      const transferDueLotIds = selectedBillingLots.filter(l => l.selectDue).map(l => l.id);
       
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
