@@ -234,6 +234,7 @@ const translations: Translations = {
   netWeightKg: { en: "Final Net Weight (Kg)", hi: "अंतिम शुद्ध वजन (किग्रा)" },
   finalNetWeight: { en: "Final Net Weight", hi: "अंतिम शुद्ध वजन" },
   initialNetWeightFromRegister: { en: "Initial Net Weight (from Stock Register)", hi: "प्रारंभिक शुद्ध वजन (स्टॉक रजिस्टर से)" },
+  addInitialNetWeightWarning: { en: "Add Initial Net Weight in Stock Register to Continue", hi: "जारी रखने के लिए स्टॉक रजिस्टर में प्रारंभिक शुद्ध वजन जोड़ें" },
   optional: { en: "Optional", hi: "वैकल्पिक" },
   
   // Sales History
