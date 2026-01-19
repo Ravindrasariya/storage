@@ -44,6 +44,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editKataCharges, setEditKataCharges] = useState("");
   const [editExtraHammali, setEditExtraHammali] = useState("");
   const [editGradingCharges, setEditGradingCharges] = useState("");
+  const [editExtraDueToMerchant, setEditExtraDueToMerchant] = useState("");
 
   // Get charge unit from cold storage settings
   const chargeUnit = coldStorage?.chargeUnit || "bag";
@@ -166,6 +167,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditKataCharges(sale.kataCharges?.toString() || "0");
       setEditExtraHammali(sale.extraHammali?.toString() || "0");
       setEditGradingCharges(sale.gradingCharges?.toString() || "0");
+      setEditExtraDueToMerchant(sale.extraDueToMerchant?.toString() || "0");
       setChargesOpen(false);
     }
   }, [sale]);
@@ -186,6 +188,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       gradingCharges?: number;
       coldStorageCharge?: number;
       chargeBasis?: "actual" | "totalRemaining";
+      extraDueToMerchant?: number;
     }) => {
       const response = await apiRequest("PATCH", `/api/sales-history/${sale!.id}`, data);
       return response.json();
@@ -298,6 +301,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     const newGradingCharges = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
     if (newGradingCharges !== (sale.gradingCharges || 0)) {
       updates.gradingCharges = newGradingCharges;
+    }
+
+    const newExtraDueToMerchant = getEditableChargeValue(editExtraDueToMerchant, sale.extraDueToMerchant || 0);
+    if (newExtraDueToMerchant !== (sale.extraDueToMerchant || 0)) {
+      updates.extraDueToMerchant = newExtraDueToMerchant;
     }
 
     // Trigger recalculation if any charge-related field changed or if calculated total differs from stored value
@@ -513,6 +521,26 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       </div>
                     </div>
                   </div>
+                  
+                  {/* Extra Due to Merchant - separate from cold charges, charged to original buyer */}
+                  <div className="pt-3 border-t mt-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium">{t("extraDueToMerchant")}</Label>
+                      <p className="text-xs text-muted-foreground mb-1">{t("extraDueToMerchantHint")}</p>
+                      <div className="flex items-center gap-1">
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editExtraDueToMerchant}
+                          onChange={(e) => setEditExtraDueToMerchant(e.target.value)}
+                          className="h-8"
+                          data-testid="input-edit-extra-due-to-merchant"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="text-xs text-muted-foreground pt-2 border-t">
                     {baseChargesWereBilled ? (
                       <div className="flex justify-between">

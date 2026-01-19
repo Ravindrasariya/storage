@@ -164,6 +164,8 @@ export const salesHistory = pgTable("sales_history", {
   initialNetWeightKg: real("initial_net_weight_kg"), // Lot's net weight at time of sale (for quintal-based charges)
   baseChargeAmountAtSale: real("base_charge_amount_at_sale"), // Base cold charge (cold+hammali portion) at sale time; if 0, base charges already billed
   remainingSizeAtSale: integer("remaining_size_at_sale"), // Remaining bags before this sale (used for totalRemaining charge basis)
+  // Extra merchant due (charged to original buyer, not affected by transfers, separate from farmer-centric cold charges)
+  extraDueToMerchant: real("extra_due_to_merchant").default(0),
 });
 
 // Edit history for tracking changes

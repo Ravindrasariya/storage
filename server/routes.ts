@@ -1131,6 +1131,7 @@ export async function registerRoutes(
     gradingCharges: z.number().optional(),
     coldStorageCharge: z.number().optional(),
     chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
+    extraDueToMerchant: z.number().optional(),
   });
 
   app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -1154,7 +1155,7 @@ export async function registerRoutes(
       
       // Log changes to edit history
       if (currentSale) {
-        const fieldsToTrack = ['buyerName', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'coldStorageCharge'] as const;
+        const fieldsToTrack = ['buyerName', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'coldStorageCharge', 'extraDueToMerchant'] as const;
         for (const field of fieldsToTrack) {
           if (validatedData[field as keyof typeof validatedData] !== undefined || field === 'coldStorageCharge') {
             const oldValue = currentSale[field as keyof typeof currentSale];

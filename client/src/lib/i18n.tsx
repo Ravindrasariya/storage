@@ -228,6 +228,8 @@ const translations: Translations = {
   totalDue: { en: "Total Due", hi: "कुल बाकी" },
   totalHammali: { en: "Total Hammali", hi: "कुल हम्माली" },
   totalGradingCharges: { en: "Total Grading", hi: "कुल ग्रेडिंग" },
+  extraDueToMerchant: { en: "Extra Due to Merchant", hi: "व्यापारी को अतिरिक्त बकाया" },
+  extraDueToMerchantHint: { en: "Charged to original buyer only (not affected by transfers)", hi: "केवल मूल खरीदार से वसूला जाएगा (ट्रांसफर से प्रभावित नहीं)" },
   soldLots: { en: "sold lots", hi: "बेचे गए लॉट" },
   lots: { en: "lots", hi: "लॉट" },
   paymentSummary: { en: "Payment Summary", hi: "भुगतान सारांश" },

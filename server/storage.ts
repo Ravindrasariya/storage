@@ -875,6 +875,9 @@ export class DatabaseStorage implements IStorage {
       accountPaid: number;
     }>();
     
+    // Separate map for extraDueToMerchant - tracked by ORIGINAL buyerName (not transferred)
+    const extraDueByOriginalBuyer = new Map<string, number>();
+    
     for (const sale of allSales) {
       // Use CurrentDueBuyerName logic: transferToBuyerName if set, else buyerName
       // This ensures transferred liabilities show under the correct buyer
@@ -927,6 +930,37 @@ export class DatabaseStorage implements IStorage {
       // If paymentMode is null (legacy records), we don't split it
       
       merchantMap.set(normalizedKey, existing);
+      
+      // Track extraDueToMerchant separately by ORIGINAL buyerName (not affected by transfers)
+      if (sale.extraDueToMerchant && sale.extraDueToMerchant > 0) {
+        const originalBuyer = (sale.buyerName?.trim()) || "Unknown";
+        const originalKey = originalBuyer.toLowerCase();
+        const currentExtra = extraDueByOriginalBuyer.get(originalKey) || 0;
+        extraDueByOriginalBuyer.set(originalKey, currentExtra + sale.extraDueToMerchant);
+      }
+    }
+    
+    // Add extraDueToMerchant to the totalChargeDue for each merchant
+    // This is added based on original buyerName, not CurrentDueBuyerName
+    for (const [normalizedKey, extraDue] of Array.from(extraDueByOriginalBuyer.entries())) {
+      const merchant = merchantMap.get(normalizedKey);
+      if (merchant) {
+        merchant.totalChargeDue += extraDue;
+      } else {
+        // If original buyer doesn't exist in map (all sales transferred), create entry
+        // Find the display name from sales
+        const sale = allSales.find(s => (s.buyerName?.trim().toLowerCase()) === normalizedKey);
+        const displayName = sale?.buyerName?.trim() || normalizedKey;
+        merchantMap.set(normalizedKey, {
+          displayName,
+          bagsPurchased: 0,
+          totalValue: 0,
+          totalChargePaid: 0,
+          totalChargeDue: extraDue,
+          cashPaid: 0,
+          accountPaid: 0,
+        });
+      }
     }
     
     // Extract unique buyer display names (sorted case-insensitively)
@@ -1273,6 +1307,7 @@ export class DatabaseStorage implements IStorage {
     gradingCharges?: number;
     coldStorageCharge?: number;
     chargeBasis?: "actual" | "totalRemaining";
+    extraDueToMerchant?: number;
   }): Promise<SalesHistory | undefined> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) return undefined;
@@ -1330,6 +1365,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.gradingCharges !== undefined) {
       updateData.gradingCharges = updates.gradingCharges;
+    }
+    if (updates.extraDueToMerchant !== undefined) {
+      updateData.extraDueToMerchant = updates.extraDueToMerchant;
     }
 
     // Handle coldStorageCharge - use provided value if present, otherwise recalculate
@@ -1592,6 +1630,10 @@ export class DatabaseStorage implements IStorage {
 
     // Group by CurrentDueBuyerName (transferToBuyerName if set, else buyerName) and sum the due amounts
     const buyerDues = new Map<string, { displayName: string; totalDue: number }>();
+    
+    // Separate map for extraDueToMerchant - tracked by ORIGINAL buyerName (not transferred)
+    const extraDueByOriginalBuyer = new Map<string, number>();
+    
     for (const sale of sales) {
       // CurrentDueBuyerName logic: use transferToBuyerName if not blank, else buyerName
       const transferTo = (sale.transferToBuyerName || "").trim();
@@ -1600,7 +1642,7 @@ export class DatabaseStorage implements IStorage {
       if (!currentDueBuyerName) continue;
       const normalizedKey = currentDueBuyerName.toLowerCase();
       
-      // Calculate total charges including all surcharges
+      // Calculate total charges including all surcharges (but NOT extraDueToMerchant)
       // Always recalculate from totalCharges - paidAmount to ensure accuracy
       const totalCharges = (sale.coldStorageCharge || 0) + 
                           (sale.kataCharges || 0) + 
@@ -1614,6 +1656,48 @@ export class DatabaseStorage implements IStorage {
         } else {
           buyerDues.set(normalizedKey, { displayName: currentDueBuyerName, totalDue: dueAmount });
         }
+      }
+      
+      // Track extraDueToMerchant separately by ORIGINAL buyerName (not affected by transfers)
+      if (sale.extraDueToMerchant && sale.extraDueToMerchant > 0 && buyer) {
+        const originalKey = buyer.toLowerCase();
+        const currentExtra = extraDueByOriginalBuyer.get(originalKey) || 0;
+        extraDueByOriginalBuyer.set(originalKey, currentExtra + sale.extraDueToMerchant);
+      }
+    }
+    
+    // Also get extraDueToMerchant from ALL sales (not just due/partial) by original buyer
+    // since this is a separate charge that may exist even when cold charges are paid
+    const allSalesForExtraDue = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`${salesHistory.extraDueToMerchant} > 0`,
+        sql`${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != ''`
+      ));
+    
+    for (const sale of allSalesForExtraDue) {
+      const buyer = (sale.buyerName || "").trim();
+      if (!buyer) continue;
+      const originalKey = buyer.toLowerCase();
+      // Check if not already added (avoid double counting)
+      if (!sales.some(s => s.id === sale.id)) {
+        const currentExtra = extraDueByOriginalBuyer.get(originalKey) || 0;
+        extraDueByOriginalBuyer.set(originalKey, currentExtra + (sale.extraDueToMerchant || 0));
+      }
+    }
+    
+    // Add extraDueToMerchant to buyer dues by original buyer name
+    for (const [normalizedKey, extraDue] of Array.from(extraDueByOriginalBuyer.entries())) {
+      const existing = buyerDues.get(normalizedKey);
+      if (existing) {
+        existing.totalDue += extraDue;
+      } else {
+        // Find display name from sales
+        const sale = allSalesForExtraDue.find(s => (s.buyerName?.trim().toLowerCase()) === normalizedKey) ||
+                     sales.find(s => (s.buyerName?.trim().toLowerCase()) === normalizedKey);
+        const displayName = sale?.buyerName?.trim() || normalizedKey;
+        buyerDues.set(normalizedKey, { displayName, totalDue: extraDue });
       }
     }
 
