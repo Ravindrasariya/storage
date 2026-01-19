@@ -771,12 +771,11 @@ export default function CashManagement() {
         {canEdit && (
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
             onClick={() => setShowSettings(true)}
             data-testid="button-settings"
           >
-            <Settings className="h-4 w-4 mr-1" />
-            {t("settings")}
+            <Settings className="h-5 w-5" />
           </Button>
         )}
       </div>
