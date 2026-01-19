@@ -776,6 +776,11 @@ export async function registerRoutes(
         dueAmount: saleDueAmount,
         entryDate: lot.createdAt,
         saleYear: new Date().getFullYear(),
+        // Charge calculation context for edit dialog
+        chargeBasis: chargeBasis || "actual",
+        initialNetWeightKg: lot.netWeight || null,
+        baseChargeAmountAtSale: storageCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
+        remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
       });
 
       const updatedLot = await storage.getLot(req.params.id);

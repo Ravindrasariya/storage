@@ -1100,6 +1100,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Create permanent sales history record for full sale
+    // For full sales, chargeBasis is always "actual" since we're selling all remaining bags
     await this.createSalesHistory({
       coldStorageId: lot.coldStorageId,
       farmerName: lot.farmerName,
@@ -1135,6 +1136,11 @@ export class DatabaseStorage implements IStorage {
       dueAmount: saleDueAmount,
       entryDate: lot.createdAt,
       saleYear: new Date().getFullYear(),
+      // Charge calculation context for edit dialog
+      chargeBasis: "actual", // Full sales always use "actual" (selling all remaining)
+      initialNetWeightKg: lot.netWeight || null,
+      baseChargeAmountAtSale: saleCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
+      remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
     });
 
     return updatedLot;

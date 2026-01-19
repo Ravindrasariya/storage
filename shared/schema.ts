@@ -80,7 +80,7 @@ export const lots = pgTable("lots", {
   lotNo: text("lot_no").notNull(), // String representation of entrySequence (for backward compat)
   entrySequence: integer("entry_sequence"), // Unified lot/receipt/bill number (auto-assigned)
   size: integer("size").notNull(), // Original lot size (bags)
-  netWeight: real("net_weight"), // Net weight in quintals (for quintal-based charging)
+  netWeight: real("net_weight"), // Net weight in kg (for quintal-based charging)
   remainingSize: integer("remaining_size").notNull(), // After partial sales
   chamberId: varchar("chamber_id").notNull(),
   floor: integer("floor").notNull(),
@@ -159,6 +159,11 @@ export const salesHistory = pgTable("sales_history", {
   transferGroupId: text("transfer_group_id"), // Links transfer-out and transfer-in entries for audit trail
   transferDate: timestamp("transfer_date"), // When the transfer occurred
   transferRemarks: text("transfer_remarks"), // Notes about the transfer
+  // Charge calculation context (recorded at time of sale for edit dialog)
+  chargeBasis: text("charge_basis"), // 'actual' or 'totalRemaining' - how charges were calculated
+  initialNetWeightKg: real("initial_net_weight_kg"), // Lot's net weight at time of sale (for quintal-based charges)
+  baseChargeAmountAtSale: real("base_charge_amount_at_sale"), // Base cold charge (cold+hammali portion) at sale time; if 0, base charges already billed
+  remainingSizeAtSale: integer("remaining_size_at_sale"), // Remaining bags before this sale (used for totalRemaining charge basis)
 });
 
 // Edit history for tracking changes
@@ -396,7 +401,7 @@ export interface SaleLotInfo {
   rate: number;
   coldCharge: number; // Cold storage charge per bag
   hammali: number; // Hammali charge per bag
-  netWeight: number | null; // Net weight in quintals (for quintal-based charging)
+  netWeight: number | null; // Net weight in kg (for quintal-based charging)
   chargeUnit: string; // "bag" or "quintal"
   baseColdChargesBilled: number; // 0 = not billed, 1 = billed (base cold charges already billed)
 }

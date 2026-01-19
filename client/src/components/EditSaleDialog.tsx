@@ -38,7 +38,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
   const [showReverseConfirm, setShowReverseConfirm] = useState(false);
   const [chargesOpen, setChargesOpen] = useState(false);
-  const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   
   const [editColdCharge, setEditColdCharge] = useState("");
   const [editHammali, setEditHammali] = useState("");
@@ -49,52 +48,63 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   // Get charge unit from cold storage settings
   const chargeUnit = coldStorage?.chargeUnit || "bag";
   const isQuintalBased = chargeUnit === "quintal";
+  
+  // Use stored values from sale record (recorded at time of sale)
+  const storedChargeBasis = (sale?.chargeBasis as "actual" | "totalRemaining") || "actual";
+  const storedInitialNetWeightKg = sale?.initialNetWeightKg || sale?.netWeight || null;
+  const baseChargesWereBilled = (sale?.baseChargeAmountAtSale ?? -1) === 0; // If 0, base charges were already billed
 
   const getEditableChargeValue = (value: string, fallback: number) => {
     const parsed = parseFloat(value);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
 
-  // Get the quantity/weight to use for charge calculation based on chargeBasis
-  const getChargeQuantity = () => {
+  // Calculate base cold storage charge using stored chargeBasis and exact formulas
+  const calculateBaseCharge = () => {
     if (!sale) return 0;
+    // If base charges were already billed, return 0 regardless of rate edits
+    if (baseChargesWereBilled) return 0;
+    
+    const coldCharge = getEditableChargeValue(editColdCharge, sale.coldCharge || 0);
+    const hammali = getEditableChargeValue(editHammali, sale.hammali || 0);
+    const ratePerUnit = coldCharge + hammali;
+    
+    const initialNetWeight = storedInitialNetWeightKg || 0;
+    const actualBags = sale.quantitySold || 0;
+    const originalBags = sale.originalLotSize || 1; // Avoid division by zero
+    
+    // Remaining bags at time of sale (stored when sale was recorded)
+    // Falls back to originalLotSize for legacy records
+    const remainingBags = sale.remainingSizeAtSale || sale.originalLotSize || 0;
+    
     if (isQuintalBased) {
-      // For quintal-based charges, use net weight
-      const currentNetWeight = netWeight ? parseFloat(netWeight) : (sale.netWeight || 0);
-      if (chargeBasis === "totalRemaining") {
-        // Use original lot's net weight (approximation: originalLotSize * avgBagWeight)
-        // Since we don't have original lot net weight, we use current sale's quantity proportionally
-        return currentNetWeight;
-      }
-      return currentNetWeight;
+      // Quintal-based formulas:
+      // Actual: (Initial Net Weight (Kg) × Actual # Bags × rate) / (100 × Original # of bags)
+      // Remaining: (Initial Net Weight (Kg) × Remaining # Bags × rate) / (100 × Original # of bags)
+      const bagsToUse = storedChargeBasis === "totalRemaining" ? remainingBags : actualBags;
+      return (initialNetWeight * bagsToUse * ratePerUnit) / (100 * originalBags);
     } else {
-      // For bag-based charges
-      if (chargeBasis === "totalRemaining") {
-        // Use original lot size (all remaining bags at time of this sale)
-        return sale.originalLotSize || sale.quantitySold || 0;
-      }
-      return sale.quantitySold || 0;
+      // Bag-based formulas:
+      // Actual: Actual # of bags × rate
+      // Remaining: Remaining # of bags × rate
+      const bagsToUse = storedChargeBasis === "totalRemaining" ? remainingBags : actualBags;
+      return bagsToUse * ratePerUnit;
     }
   };
 
   const calculateEditableTotal = () => {
     if (!sale) return 0;
-    const coldCharge = getEditableChargeValue(editColdCharge, sale.coldCharge || 0);
-    const hammali = getEditableChargeValue(editHammali, sale.hammali || 0);
+    const baseCharge = calculateBaseCharge();
     const kata = getEditableChargeValue(editKataCharges, sale.kataCharges || 0);
     const extraHammali = getEditableChargeValue(editExtraHammali, sale.extraHammali || 0);
     const grading = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
     
-    const ratePerUnit = coldCharge + hammali;
-    const chargeQty = getChargeQuantity();
-    
-    // For quintal-based: convert kg to quintals (1 quintal = 100 kg)
-    const baseUnits = isQuintalBased ? chargeQty / 100 : chargeQty;
-    const coldStorageCharge = ratePerUnit * baseUnits;
-    
-    // Extra hammali and grading always use actual bags sold (not charge basis)
-    return coldStorageCharge + kata + extraHammali + grading;
+    // Extras (Kata, Extra Hammali, Grading) are added on top of base charge
+    return baseCharge + kata + extraHammali + grading;
   };
+  
+  // Get the calculated base charge for display
+  const baseCharge = calculateBaseCharge();
 
   const totalCharge = calculateEditableTotal();
 
@@ -157,7 +167,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditExtraHammali(sale.extraHammali?.toString() || "0");
       setEditGradingCharges(sale.gradingCharges?.toString() || "0");
       setChargesOpen(false);
-      setChargeBasis("actual");
     }
   }, [sale]);
 
@@ -291,16 +300,14 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       updates.gradingCharges = newGradingCharges;
     }
 
-    // Always include coldStorageCharge and chargeBasis if any charge-related field changed
-    // Also trigger if the total charge differs from the stored value (handles chargeBasis changes)
+    // Trigger recalculation if any charge-related field changed or if calculated total differs from stored value
     const originalTotal = sale.coldStorageCharge || 0;
     const chargeFieldsChanged = Object.keys(updates).some(key => 
       ['coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'netWeight'].includes(key)
-    ) || chargeBasis !== "actual" || Math.abs(totalCharge - originalTotal) > 0.01;
+    ) || Math.abs(totalCharge - originalTotal) > 0.01;
     
     if (chargeFieldsChanged) {
       updates.coldStorageCharge = totalCharge;
-      updates.chargeBasis = chargeBasis;
       // Recalculate dueAmount based on new total
       const currentPaid = sale.paidAmount || 0;
       updates.dueAmount = Math.max(0, totalCharge - currentPaid);
@@ -403,17 +410,33 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 <div className="p-3 pt-0 space-y-3 border-t">
                   <p className="text-xs text-muted-foreground">{t("editChargesHint") || "Click to expand and edit individual charges"}</p>
                   
-                  <div className="space-y-2">
-                    <Label className="text-xs">{t("chargeBasis")}</Label>
-                    <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
-                      <SelectTrigger className="h-8" data-testid="select-edit-charge-basis">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="actual">{t("actualBags")} ({sale.quantitySold} {t("bags")})</SelectItem>
-                        <SelectItem value="totalRemaining">{t("allRemainingBags")} ({sale.originalLotSize} {t("bags")})</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  {baseChargesWereBilled && (
+                    <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded-md">
+                      <Badge variant="outline" className="text-amber-700 dark:text-amber-300 border-amber-500">
+                        {t("baseColdChargesBilled") || "Base Cold Charges Already Billed"}
+                      </Badge>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        {t("baseColdChargesBilledHint") || "Base charges were billed in a previous sale. Only extras can be edited."}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-3 text-sm bg-muted/30 p-2 rounded-md">
+                    <div>
+                      <span className="text-xs text-muted-foreground">{t("chargeBasis")}:</span>
+                      <p className="font-medium">
+                        {storedChargeBasis === "totalRemaining" ? t("allRemainingBags") : t("actualBags")}
+                        <span className="text-muted-foreground ml-1">
+                          ({storedChargeBasis === "totalRemaining" ? (sale.remainingSizeAtSale || sale.originalLotSize) : sale.quantitySold} {t("bags")})
+                        </span>
+                      </p>
+                    </div>
+                    {isQuintalBased && storedInitialNetWeightKg && (
+                      <div>
+                        <span className="text-xs text-muted-foreground">{t("initialNetWeight")}:</span>
+                        <p className="font-medium">{storedInitialNetWeightKg} kg</p>
+                      </div>
+                    )}
                   </div>
                   
                   <div className="grid grid-cols-2 gap-3">
@@ -427,6 +450,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                           value={editColdCharge}
                           onChange={(e) => setEditColdCharge(e.target.value)}
                           className="h-8"
+                          disabled={baseChargesWereBilled}
                           data-testid="input-edit-cold-charge"
                         />
                       </div>
@@ -441,6 +465,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                           value={editHammali}
                           onChange={(e) => setEditHammali(e.target.value)}
                           className="h-8"
+                          disabled={baseChargesWereBilled}
                           data-testid="input-edit-hammali"
                         />
                       </div>
@@ -489,14 +514,16 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground pt-2 border-t">
-                    <div className="flex justify-between flex-wrap gap-1">
-                      <span>
-                        ({getEditableChargeValue(editColdCharge, sale.coldCharge || 0)} + {getEditableChargeValue(editHammali, sale.hammali || 0)}) × {isQuintalBased ? `${(getChargeQuantity() / 100).toFixed(2)} ${t("quintal")}` : `${getChargeQuantity()} ${t("bags")}`}
-                      </span>
-                      <span>= <Currency amount={(getEditableChargeValue(editColdCharge, sale.coldCharge || 0) + getEditableChargeValue(editHammali, sale.hammali || 0)) * (isQuintalBased ? getChargeQuantity() / 100 : getChargeQuantity())} /></span>
-                    </div>
-                    {chargeBasis === "totalRemaining" && sale.originalLotSize !== sale.quantitySold && (
-                      <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")})</div>
+                    {baseChargesWereBilled ? (
+                      <div className="flex justify-between">
+                        <span>{t("baseCharges")}</span>
+                        <span>= <Currency amount={0} /> ({t("alreadyBilled")})</span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between flex-wrap gap-1">
+                        <span>{t("baseCharges")}</span>
+                        <span>= <Currency amount={baseCharge} /></span>
+                      </div>
                     )}
                     {(getEditableChargeValue(editKataCharges, 0) > 0 || getEditableChargeValue(editExtraHammali, 0) > 0 || getEditableChargeValue(editGradingCharges, 0) > 0) && (
                       <div className="flex justify-between">
