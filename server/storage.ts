@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, like, ilike, desc, sql, gte, lte, gt, inArray } from "drizzle-orm";
+import { eq, and, like, ilike, desc, sql, gte, lte } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -94,7 +94,7 @@ export interface IStorage {
   getAnalyticsYears(coldStorageId: string): Promise<number[]>;
   checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }>;
   resetSeason(coldStorageId: string): Promise<void>;
-  finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number, customColdCharge?: number, customHammali?: number, transferredAmount?: number): Promise<Lot | undefined>;
+  finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number, customColdCharge?: number, customHammali?: number): Promise<Lot | undefined>;
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
   updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined>;
@@ -143,8 +143,6 @@ export interface IStorage {
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
   // FIFO Recomputation
   recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
-  // Due Transfer
-  transferDuesToBuyer(lotIds: string[], newBuyerName: string, coldStorageId: string): Promise<{ salesCleared: number; totalTransferred: number }>;
   // Admin
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
   // Bill number assignment
@@ -187,9 +185,6 @@ export interface IStorage {
   getOpeningPayables(coldStorageId: string, year: number): Promise<OpeningPayable[]>;
   createOpeningPayable(data: InsertOpeningPayable): Promise<OpeningPayable>;
   deleteOpeningPayable(id: string): Promise<boolean>;
-  // Related Lots for Multi-Lot Billing
-  getRelatedLots(coldStorageId: string, farmerName: string, contactNumber: string, village: string, excludeLotId?: string): Promise<Lot[]>;
-  markLotsBaseChargesBilled(lotIds: string[]): Promise<{ updated: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -611,7 +606,6 @@ export class DatabaseStorage implements IStorage {
           netWeight: lot.netWeight,
           chargeUnit: coldStorage?.chargeUnit || "bag",
           baseColdChargesBilled: lot.baseColdChargesBilled || 0,
-          totalDueCharge: lot.totalDueCharge || 0,
         };
       })
       .sort((a, b) => parseInt(a.lotNo, 10) - parseInt(b.lotNo, 10));
@@ -1009,7 +1003,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(coldStorages.id, coldStorageId));
   }
 
-  async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number, customColdCharge?: number, customHammali?: number, transferredAmount?: number): Promise<Lot | undefined> {
+  async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number, customColdCharge?: number, customHammali?: number): Promise<Lot | undefined> {
     const lot = await this.getLot(lotId);
     if (!lot || lot.saleStatus === "sold") return undefined;
 
@@ -1127,7 +1121,6 @@ export class DatabaseStorage implements IStorage {
       paymentMode: (paymentStatus === "paid" || paymentStatus === "partial") ? paymentMode : null,
       paidAmount: salePaidAmount,
       dueAmount: saleDueAmount,
-      transferredAmount: transferredAmount || 0, // Track transferred dues separately
       entryDate: lot.createdAt,
       saleYear: new Date().getFullYear(),
     });
@@ -1633,14 +1626,12 @@ export class DatabaseStorage implements IStorage {
   async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
     // Get all sales for this buyer with due or partial status, ordered by sale date (FIFO)
     // Use case-insensitive matching for buyer name
-    // Exclude transfer-cleared records - they were settled by transferring the due to another buyer
     const sales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
         sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
-        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
-        sql`(${salesHistory.clearanceType} IS NULL OR ${salesHistory.clearanceType} != 'transfer')`
+        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
       ))
       .orderBy(salesHistory.soldAt); // FIFO - oldest first
 
@@ -1990,13 +1981,11 @@ export class DatabaseStorage implements IStorage {
   async recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }> {
     // Step 1: Reset all sales for this buyer to "due" status with 0 paidAmount
     // Calculate proper dueAmount using all surcharges
-    // EXCLUDE transfer-cleared sales - they were settled by transferring the due to another buyer
     const buyerSales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
-        sql`(${salesHistory.clearanceType} IS NULL OR ${salesHistory.clearanceType} != 'transfer')`
+        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`
       ))
       .orderBy(salesHistory.soldAt);
 
@@ -2033,14 +2022,12 @@ export class DatabaseStorage implements IStorage {
     // Step 3: Re-apply each receipt in FIFO order
     for (const receipt of activeReceipts) {
       // Get all sales for this buyer with due or partial status (FIFO order)
-      // EXCLUDE transfer-cleared sales - they were settled by transferring the due to another buyer
       const sales = await db.select()
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
           sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
-          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
-          sql`(${salesHistory.clearanceType} IS NULL OR ${salesHistory.clearanceType} != 'transfer')`
+          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
         ))
         .orderBy(salesHistory.soldAt);
 
@@ -2113,51 +2100,6 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { salesUpdated, receiptsUpdated };
-  }
-
-  async transferDuesToBuyer(lotIds: string[], newBuyerName: string, coldStorageId: string): Promise<{ salesCleared: number; totalTransferred: number }> {
-    let salesCleared = 0;
-    let totalTransferred = 0;
-    
-    for (const lotId of lotIds) {
-      const salesWithDues = await db.select()
-        .from(salesHistory)
-        .where(and(
-          eq(salesHistory.lotId, lotId),
-          eq(salesHistory.coldStorageId, coldStorageId),
-          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
-          sql`(${salesHistory.clearanceType} IS NULL OR ${salesHistory.clearanceType} != 'transfer')`
-        ));
-      
-      for (const sale of salesWithDues) {
-        const dueAmountToTransfer = sale.dueAmount || 0;
-        if (dueAmountToTransfer <= 0) continue;
-        
-        totalTransferred += dueAmountToTransfer;
-        
-        const totalCharges = (sale.coldStorageCharge || 0) + 
-                            (sale.kataCharges || 0) + 
-                            (sale.extraHammali || 0) + 
-                            (sale.gradingCharges || 0);
-        
-        await db.update(salesHistory)
-          .set({
-            paymentStatus: "paid",
-            paidAmount: totalCharges,
-            dueAmount: 0,
-            clearanceType: "transfer",
-            transferredToBuyer: newBuyerName,
-            paidAt: new Date(),
-          })
-          .where(eq(salesHistory.id, sale.id));
-        
-        salesCleared++;
-      }
-      
-      await this.recalculateLotTotals(lotId);
-    }
-    
-    return { salesCleared, totalTransferred };
   }
 
   async recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }> {
@@ -2693,39 +2635,6 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(openingPayables)
       .where(eq(openingPayables.id, id));
     return true;
-  }
-
-  // Related Lots for Multi-Lot Billing
-  async getRelatedLots(coldStorageId: string, farmerName: string, contactNumber: string, village: string, excludeLotId?: string): Promise<Lot[]> {
-    const conditions = [
-      eq(lots.coldStorageId, coldStorageId),
-      eq(lots.farmerName, farmerName),
-      eq(lots.contactNumber, contactNumber),
-      eq(lots.village, village),
-      eq(lots.saleStatus, "available"),
-      gt(lots.remainingSize, 0),
-    ];
-    
-    const allLots = await db.select()
-      .from(lots)
-      .where(and(...conditions))
-      .orderBy(lots.lotNo);
-    
-    // Filter out the excluded lot and already-billed lots
-    return allLots.filter(lot => 
-      lot.id !== excludeLotId && 
-      lot.baseColdChargesBilled !== 1
-    );
-  }
-
-  async markLotsBaseChargesBilled(lotIds: string[]): Promise<{ updated: number }> {
-    if (lotIds.length === 0) return { updated: 0 };
-    
-    const result = await db.update(lots)
-      .set({ baseColdChargesBilled: 1 })
-      .where(inArray(lots.id, lotIds));
-    
-    return { updated: lotIds.length };
   }
 }
 

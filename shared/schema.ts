@@ -142,12 +142,9 @@ export const salesHistory = pgTable("sales_history", {
   // Payment tracking
   paymentStatus: text("payment_status").notNull(), // 'paid', 'due', or 'partial'
   paymentMode: text("payment_mode"), // 'cash' or 'account' (only when paid/partial)
-  paidAmount: real("paid_amount").default(0), // Amount paid for this sale (actual cash received)
+  paidAmount: real("paid_amount").default(0), // Amount paid for this sale
   dueAmount: real("due_amount").default(0), // Amount due for this sale
-  transferredAmount: real("transferred_amount").default(0), // Amount of dues transferred from previous buyers (liability transfer, not actual cash)
   paidAt: timestamp("paid_at"), // When marked as paid
-  clearanceType: text("clearance_type"), // 'cash' = paid via cash/account, 'transfer' = due transferred to another buyer (excluded from FIFO)
-  transferredToBuyer: text("transferred_to_buyer"), // Name of buyer the due was transferred to (only set when clearanceType='transfer')
   // Timestamps
   entryDate: timestamp("entry_date"), // When lot was originally entered in cold storage (nullable for existing records)
   saleYear: integer("sale_year").notNull(),
@@ -395,7 +392,6 @@ export interface SaleLotInfo {
   netWeight: number | null; // Net weight in quintals (for quintal-based charging)
   chargeUnit: string; // "bag" or "quintal"
   baseColdChargesBilled: number; // 0 = not billed, 1 = billed (base cold charges already billed)
-  totalDueCharge: number; // Accumulated due charges from previous partial sales
 }
 
 // Dashboard stats type

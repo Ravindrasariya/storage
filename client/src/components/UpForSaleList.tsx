@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ShoppingCart, Phone, MapPin, Package, Check, Minus, X, AlertTriangle } from "lucide-react";
+import { ShoppingCart, Phone, MapPin, Package, Check, Minus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -54,98 +54,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [editableColdCharge, setEditableColdCharge] = useState<string>("");
   const [editableHammali, setEditableHammali] = useState<string>("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
-  const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining" | "selectLots">("actual");
+  const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   const [isSelfBuyer, setIsSelfBuyer] = useState(false);
-  
-  // Multi-lot billing state - includes current lot and selected related lots
-  // selectCold: whether to include cold charges for this lot
-  // selectDue: whether to include outstanding due for this lot
-  const [selectedBillingLots, setSelectedBillingLots] = useState<Array<{
-    id: string;
-    lotNo: string;
-    bagType: string;
-    remainingSize: number;
-    netWeight: number | null;
-    chargeUnit: string;
-    originalSize: number;
-    totalDueCharge: number;
-    rate: number;
-    baseColdChargesBilled: number;
-    isCurrentLot?: boolean;
-    selectCold: boolean;
-    selectDue: boolean;
-  }>>([]);
-  
-  // Manual lot search state
-  const [manualLotSearch, setManualLotSearch] = useState("");
-
-  // Initialize billing lots when "selectLots" is chosen
-  // Also re-initialize when key selectedLot properties change
-  useEffect(() => {
-    if (chargeBasis === "selectLots" && selectedLot) {
-      // Add current lot as first item - default to UNCHECKED
-      // Include any existing totalDueCharge from previous partial sales
-      const currentLotEntry = {
-        id: selectedLot.id,
-        lotNo: selectedLot.lotNo,
-        bagType: selectedLot.bagType,
-        remainingSize: selectedLot.remainingSize,
-        netWeight: selectedLot.netWeight,
-        chargeUnit: selectedLot.chargeUnit,
-        originalSize: selectedLot.originalSize,
-        totalDueCharge: selectedLot.totalDueCharge || 0, // Include accumulated due from previous partial sales
-        rate: selectedLot.coldCharge + selectedLot.hammali,
-        baseColdChargesBilled: selectedLot.baseColdChargesBilled,
-        isCurrentLot: true,
-        selectCold: false, // Default to unchecked
-        selectDue: false, // Default to unchecked, user can toggle if there's prior due
-      };
-      setSelectedBillingLots([currentLotEntry]);
-    } else {
-      setSelectedBillingLots([]);
-    }
-  }, [chargeBasis, selectedLot?.id, selectedLot?.netWeight, selectedLot?.chargeUnit, selectedLot?.coldCharge, selectedLot?.hammali]);
-
-  // Reset charge basis when lot changes
-  useEffect(() => {
-    setChargeBasis("actual");
-    setManualLotSearch("");
-  }, [selectedLot?.id]);
 
   const { data: buyersData } = useQuery<{ buyerName: string }[]>({
     queryKey: ["/api/buyers/lookup"],
-  });
-  
-  // Query for related lots (same farmer + contact + village)
-  const { data: relatedLotsData } = useQuery<Array<{
-    id: string;
-    lotNo: string;
-    bagType: string;
-    remainingSize: number;
-    netWeight: number | null;
-    originalSize: number;
-    size: number;
-    totalDueCharge: number;
-    baseColdChargesBilled: number | null;
-    coldCharge: number | null;
-    hammali: number | null;
-  }>>({
-    queryKey: ["/api/lots/related", selectedLot?.id],
-    queryFn: async () => {
-      if (!selectedLot) return [];
-      const params = new URLSearchParams({
-        farmerName: selectedLot.farmerName,
-        contactNumber: selectedLot.contactNumber,
-        village: selectedLot.village,
-        excludeLotId: selectedLot.id,
-      });
-      const res = await fetch(`/api/lots/related?${params}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch related lots");
-      return res.json();
-    },
-    enabled: !!selectedLot && chargeBasis === "selectLots",
   });
 
   const buyerSuggestions = useMemo(() => {
@@ -162,13 +75,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   };
 
   const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, billingLotIds, transferDueLotIds }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; billingLotIds?: string[]; transferDueLotIds?: string[] }) => {
-      const result = await apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, transferDueLotIds });
-      // Mark additional lots as billed if any selected
-      if (billingLotIds && billingLotIds.length > 0) {
-        await apiRequest("POST", "/api/lots/mark-billed", { lotIds: billingLotIds });
-      }
-      return result;
+    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -198,13 +106,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   });
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, billingLotIds, transferDueLotIds }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; billingLotIds?: string[]; transferDueLotIds?: string[] }) => {
-      const result = await apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, transferDueLotIds });
-      // Mark additional lots as billed if any selected
-      if (billingLotIds && billingLotIds.length > 0) {
-        await apiRequest("POST", "/api/lots/mark-billed", { lotIds: billingLotIds });
-      }
-      return result;
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining" }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -233,17 +136,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     },
   });
 
-  // Mutation to mark lots as base cold charges billed
-  const markLotsBilledMutation = useMutation({
-    mutationFn: async (lotIds: string[]) => {
-      return apiRequest("POST", "/api/lots/mark-billed", { lotIds });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/lots/related"] });
-    },
-  });
-
   const resetDialog = () => {
     setSelectedLot(null);
     setSaleMode("full");
@@ -264,8 +156,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setEditableColdCharge("");
     setEditableHammali("");
     setChargeBasis("actual");
-    setSelectedBillingLots([]);
-    setManualLotSearch("");
   };
 
   const openSaleDialog = (lot: SaleLotInfo, mode: "full" | "partial") => {
@@ -334,7 +224,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       const customHammali = Number.isFinite(parsedHammali) ? parsedHammali : undefined;
       const editableRate = (customColdCharge ?? selectedLot.coldCharge) + (customHammali ?? selectedLot.hammali);
       
-      const baseTotalCharge = saleMode === "partial" 
+      const totalCharge = saleMode === "partial" 
         ? calculateTotalCharge(selectedLot, partialQuantity) 
         : calculateTotalCharge(selectedLot);
       
@@ -342,11 +232,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       const kata = parseFloat(kataCharges) || 0;
       const extraHammaliTotal = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
       const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
-      
-      // Include multi-lot charges if enabled and lots are selected
-      const totalCharge = chargeBasis === "selectLots" 
-        ? calculateAllSelectedLotsTotal(actualQty) + kata + extraHammaliTotal + grading
-        : baseTotalCharge;
       
       let paidAmount: number | undefined;
       let dueAmount: number | undefined;
@@ -368,11 +253,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       
       const parsedNetWeight = netWeight ? parseFloat(netWeight) : undefined;
       
-      // Get IDs of selected lots to mark as billed (cold charges selected)
-      const billingLotIds = selectedBillingLots.filter(l => l.selectCold).map(l => l.id);
-      // Get IDs of lots with selected dues to transfer (INCLUDING current lot - all selected dues get transferred to new buyer)
-      const transferDueLotIds = selectedBillingLots.filter(l => l.selectDue).map(l => l.id);
-      
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
           lotId: selectedLot.id,
@@ -391,9 +271,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           netWeight: parsedNetWeight,
           customColdCharge,
           customHammali,
-          chargeBasis: chargeBasis === "selectLots" ? "actual" : chargeBasis,
-          billingLotIds: billingLotIds.length > 0 ? billingLotIds : undefined,
-          transferDueLotIds: transferDueLotIds.length > 0 ? transferDueLotIds : undefined,
+          chargeBasis,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -411,8 +289,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           netWeight: parsedNetWeight,
           customColdCharge,
           customHammali,
-          billingLotIds: billingLotIds.length > 0 ? billingLotIds : undefined,
-          transferDueLotIds: transferDueLotIds.length > 0 ? transferDueLotIds : undefined,
         });
       }
     }
@@ -478,196 +354,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
   const calculateCharge = (lot: SaleLotInfo) => {
     return calculateTotalCharge(lot);
-  };
-
-  // Calculate charge for a billing lot (multi-lot billing)
-  // saleQuantity: Optional override for current lot (use sale quantity instead of remainingSize)
-  // customRate: Optional override rate (used for current lot to apply user-edited rates)
-  const calculateBillingLotCharge = (billingLot: typeof selectedBillingLots[0], saleQuantity?: number, customRate?: number) => {
-    if (billingLot.baseColdChargesBilled === 1) return 0;
-    
-    // Return 0 for quintal mode with missing netWeight
-    if (billingLot.chargeUnit === "quintal" && !billingLot.netWeight) return 0;
-    
-    // Use custom rate if provided (for current lot with user edits), otherwise use stored rate
-    const rate = customRate ?? billingLot.rate;
-    // Use saleQuantity for current lot if provided
-    const quantity = saleQuantity ?? billingLot.remainingSize;
-    
-    if (billingLot.chargeUnit === "quintal" && billingLot.netWeight && billingLot.originalSize > 0) {
-      // Quintal mode: (Net Weight × Quantity × Rate) / (Original Bags × 100)
-      return (billingLot.netWeight * quantity * rate) / (billingLot.originalSize * 100);
-    }
-    // Bag mode: Quantity × Rate
-    return quantity * rate;
-  };
-
-  // Calculate total multi-lot billing charges (only for selected lots)
-  const calculateMultiLotTotal = () => {
-    let total = 0;
-    for (const lot of selectedBillingLots) {
-      // Skip current lot - its charges are calculated separately
-      if (lot.isCurrentLot) continue;
-      // Add previous outstanding dues if due is selected
-      if (lot.selectDue) {
-        total += lot.totalDueCharge || 0;
-      }
-      // Add new cold charges if cold is selected
-      if (lot.selectCold) {
-        total += calculateBillingLotCharge(lot);
-      }
-    }
-    return total;
-  };
-
-  // Calculate total for all selected lots including current lot
-  // currentLotSaleQuantity: The quantity being sold for the current lot
-  // When no cold charges are selected, uses actual bags formula for current lot only
-  const calculateAllSelectedLotsTotal = (currentLotSaleQuantity?: number) => {
-    const anyColdSelected = selectedBillingLots.some(lot => lot.selectCold);
-    const anyDueSelected = selectedBillingLots.some(lot => lot.selectDue);
-    
-    // If no cold charges selected, calculate using actual bags for current lot only
-    if (!anyColdSelected && selectedLot) {
-      const actualQty = currentLotSaleQuantity ?? selectedLot.remainingSize;
-      // Use user-edited rate from input fields
-      const rate = getEditableRate(selectedLot);
-      
-      let coldTotal = 0;
-      if (selectedLot.chargeUnit === "quintal" && selectedLot.netWeight && selectedLot.originalSize > 0) {
-        // Quintal mode: (Net Weight × actual bags × rate) / (Total bags × 100)
-        coldTotal = (selectedLot.netWeight * actualQty * rate) / (selectedLot.originalSize * 100);
-      } else {
-        // Bag mode: actual bags × rate
-        coldTotal = actualQty * rate;
-      }
-      
-      // Add any selected dues from ALL lots (including current lot)
-      let dueTotal = 0;
-      for (const lot of selectedBillingLots) {
-        if (lot.selectDue) {
-          dueTotal += lot.totalDueCharge || 0;
-        }
-      }
-      return coldTotal + dueTotal;
-    }
-    
-    // Otherwise calculate sum of selected lots
-    let total = 0;
-    for (const lot of selectedBillingLots) {
-      // Add previous outstanding dues if selected (for ANY lot including current)
-      if (lot.selectDue) {
-        total += lot.totalDueCharge || 0;
-      }
-      // Add new cold charges if selected - pass sale quantity and user-edited rate for current lot
-      if (lot.selectCold) {
-        const saleQty = lot.isCurrentLot ? currentLotSaleQuantity : undefined;
-        // For current lot, use user-edited rate from input fields
-        const rate = lot.isCurrentLot && selectedLot ? getEditableRate(selectedLot) : undefined;
-        total += calculateBillingLotCharge(lot, saleQty, rate);
-      }
-    }
-    return total;
-  };
-
-  // Calculate total of selected previous dues (for display)
-  const calculateSelectedDuesTotal = () => {
-    let total = 0;
-    for (const lot of selectedBillingLots) {
-      if (lot.selectDue) {
-        total += lot.totalDueCharge || 0;
-      }
-    }
-    return total;
-  };
-
-  // Calculate total of selected cold charges (for display)
-  const calculateSelectedColdChargesTotal = (currentLotSaleQuantity?: number) => {
-    const anyColdSelected = selectedBillingLots.some(lot => lot.selectCold);
-    
-    // If no cold charges selected, calculate using actual bags for current lot only
-    if (!anyColdSelected && selectedLot) {
-      const actualQty = currentLotSaleQuantity ?? selectedLot.remainingSize;
-      const rate = getEditableRate(selectedLot);
-      
-      if (selectedLot.chargeUnit === "quintal" && selectedLot.netWeight && selectedLot.originalSize > 0) {
-        return (selectedLot.netWeight * actualQty * rate) / (selectedLot.originalSize * 100);
-      } else {
-        return actualQty * rate;
-      }
-    }
-    
-    // Otherwise calculate sum of selected cold charges only
-    let total = 0;
-    for (const lot of selectedBillingLots) {
-      if (lot.selectCold) {
-        const saleQty = lot.isCurrentLot ? currentLotSaleQuantity : undefined;
-        const rate = lot.isCurrentLot && selectedLot ? getEditableRate(selectedLot) : undefined;
-        total += calculateBillingLotCharge(lot, saleQty, rate);
-      }
-    }
-    return total;
-  };
-
-  // Type for related lot data
-  type RelatedLot = {
-    id: string;
-    lotNo: string;
-    bagType: string;
-    remainingSize: number;
-    netWeight: number | null;
-    originalSize: number;
-    size: number;
-    totalDueCharge: number;
-    baseColdChargesBilled: number | null;
-    coldCharge: number | null;
-    hammali: number | null;
-  };
-  
-  // Add a lot to billing selection
-  const addLotToBilling = (lot: RelatedLot) => {
-    if (selectedBillingLots.find(l => l.id === lot.id)) return;
-    
-    const chargeUnit = selectedLot?.chargeUnit || "bag";
-    // Use the lot's own coldCharge + hammali as rate
-    const lotRate = (lot.coldCharge || 0) + (lot.hammali || 0);
-    setSelectedBillingLots([...selectedBillingLots, {
-      id: lot.id,
-      lotNo: lot.lotNo,
-      bagType: lot.bagType,
-      remainingSize: lot.remainingSize,
-      netWeight: lot.netWeight,
-      chargeUnit,
-      originalSize: lot.originalSize || lot.size,
-      totalDueCharge: lot.totalDueCharge || 0,
-      rate: lotRate,
-      baseColdChargesBilled: lot.baseColdChargesBilled || 0,
-      isCurrentLot: false,
-      selectCold: false, // Default to unchecked
-      selectDue: false, // Default to unchecked
-    }]);
-  };
-
-  // Toggle cold charges selection for a lot
-  const toggleLotColdSelection = (lotId: string) => {
-    setSelectedBillingLots(selectedBillingLots.map(lot => 
-      lot.id === lotId ? { ...lot, selectCold: !lot.selectCold } : lot
-    ));
-  };
-
-  // Toggle due selection for a lot (not applicable for current lot)
-  const toggleLotDueSelection = (lotId: string) => {
-    setSelectedBillingLots(selectedBillingLots.map(lot => 
-      lot.id === lotId ? { ...lot, selectDue: !lot.selectDue } : lot
-    ));
-  };
-
-  // Check if a lot has any selection (cold or due)
-  const isLotSelected = (lot: typeof selectedBillingLots[0]) => lot.selectCold || lot.selectDue;
-
-  // Remove a lot from billing selection
-  const removeLotFromBilling = (lotId: string) => {
-    setSelectedBillingLots(selectedBillingLots.filter(l => l.id !== lotId));
   };
 
   if (saleLots.length === 0) {
@@ -891,168 +577,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="space-y-2">
                 <Label>{t("chargeBasis")}</Label>
-                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining" | "selectLots") => setChargeBasis(value)}>
+                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
                   <SelectTrigger data-testid="select-charge-basis">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="actual">{t("actualBags")}</SelectItem>
                     <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
-                    <SelectItem value="selectLots">{t("selectLots") || "Select Lots"}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
-              {/* Multi-Lot Billing Section - shown when "Select Lots" is selected in Charge Basis */}
-              {chargeBasis === "selectLots" && (
-                <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
-                  <div className="text-sm font-medium">{t("consolidatedBilling") || "Consolidated Billing"}</div>
-                  
-                  {/* Table of lots for billing - clickable Cold Charges and Due cells */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b text-muted-foreground">
-                          <th className="text-left py-1 px-1">{t("bagType")}</th>
-                          <th className="text-left py-1 px-1">{t("lot")} #</th>
-                          <th className="text-right py-1 px-1">{t("remaining")}</th>
-                          <th className="text-right py-1 px-1">{t("coldCharges") || "Cold Charges"}</th>
-                          <th className="text-right py-1 px-1">{t("alreadyDue") || "Already Due"}</th>
-                          <th className="py-1 px-1 w-8"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedBillingLots.map((lot) => {
-                          // For current lot, override with selectedLot's properties to ensure fresh data
-                          // Use user-edited rate for current lot
-                          const currentLotRate = getEditableRate(selectedLot);
-                          const effectiveLot = lot.isCurrentLot ? {
-                            ...lot,
-                            netWeight: selectedLot.netWeight,
-                            originalSize: selectedLot.originalSize,
-                            rate: currentLotRate,
-                            baseColdChargesBilled: selectedLot.baseColdChargesBilled,
-                          } : lot;
-                          const hasZeroNetWeight = selectedLot?.chargeUnit === "quintal" && !effectiveLot.netWeight;
-                          // For consolidated billing, always calculate based on ALL remaining bags (not just actual sale qty)
-                          const consolidatedQty = lot.isCurrentLot ? selectedLot?.remainingSize : lot.remainingSize;
-                          // Calculate using shared function with effective lot data (rate already set in effectiveLot)
-                          const billedCharge = calculateBillingLotCharge(effectiveLot, consolidatedQty);
-                          return (
-                            <tr 
-                              key={lot.id} 
-                              className={`border-b border-muted ${hasZeroNetWeight ? 'bg-red-50 dark:bg-red-900/20' : ''}`}
-                            >
-                              <td className="py-1 px-1 capitalize">{lot.bagType}</td>
-                              <td className="py-1 px-1">
-                                <div className="flex flex-row items-center gap-1">
-                                  <span className="text-xs">{lot.lotNo}</span>
-                                  {lot.isCurrentLot && <Badge variant="outline" className="text-[9px] py-0 px-1">{t("current") || "Current"}</Badge>}
-                                </div>
-                              </td>
-                              <td className="text-right py-1 px-1">{lot.remainingSize}</td>
-                              {/* Clickable Cold Charges cell */}
-                              <td 
-                                className="text-right py-1 px-1 cursor-pointer"
-                                onClick={() => toggleLotColdSelection(lot.id)}
-                                data-testid={`cell-cold-charges-${lot.id}`}
-                              >
-                                <span
-                                  className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
-                                    lot.selectCold 
-                                      ? 'bg-blue-100 dark:bg-blue-900/50 ring-1 ring-blue-400/60 text-blue-700 dark:text-blue-300' 
-                                      : 'hover:bg-muted'
-                                  } ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}
-                                >
-                                  {hasZeroNetWeight ? (
-                                    <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400">
-                                      <Currency amount={0} />
-                                      <AlertTriangle className="h-3 w-3" />
-                                    </span>
-                                  ) : (
-                                    <Currency amount={billedCharge} />
-                                  )}
-                                </span>
-                              </td>
-                              {/* Clickable Already Due cell - clickable if lot has due amount */}
-                              <td 
-                                className={`text-right py-1 px-1 ${lot.totalDueCharge > 0 ? 'cursor-pointer' : ''}`}
-                                onClick={() => lot.totalDueCharge > 0 && toggleLotDueSelection(lot.id)}
-                                data-testid={`cell-due-${lot.id}`}
-                              >
-                                {lot.totalDueCharge > 0 ? (
-                                  <span
-                                    className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
-                                      lot.selectDue 
-                                        ? 'bg-amber-100 dark:bg-amber-900/50 ring-1 ring-amber-400/60 text-amber-700 dark:text-amber-300' 
-                                        : 'hover:bg-muted'
-                                    }`}
-                                  >
-                                    <Currency amount={lot.totalDueCharge} />
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground">-</span>
-                                )}
-                              </td>
-                              <td className="py-1 px-1">
-                                {!lot.isCurrentLot && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-5 w-5"
-                                    onClick={() => removeLotFromBilling(lot.id)}
-                                    data-testid={`button-remove-billing-lot-${lot.id}`}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Add related lots buttons */}
-                  {relatedLotsData && relatedLotsData.length > 0 && (
-                    <div className="space-y-1">
-                      <Label className="text-xs">{t("addRelatedLots") || "Add Related Lots"}</Label>
-                      <div className="flex flex-wrap gap-1">
-                        {relatedLotsData
-                          .filter(lot => !selectedBillingLots.find(l => l.id === lot.id))
-                          .map((lot) => (
-                            <Button
-                              key={lot.id}
-                              size="sm"
-                              variant="outline"
-                              className="h-6 text-xs"
-                              onClick={() => addLotToBilling(lot)}
-                              data-testid={`button-add-related-lot-${lot.id}`}
-                            >
-                              + {lot.lotNo} ({lot.bagType})
-                            </Button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Manual lot search */}
-                  <div className="space-y-1">
-                    <Label className="text-xs">{t("addLotManually") || "Add Lot Manually"}</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="text"
-                        placeholder={t("enterLotNumber") || "Enter lot number..."}
-                        value={manualLotSearch}
-                        onChange={(e) => setManualLotSearch(e.target.value)}
-                        className="h-7 text-xs"
-                        data-testid="input-manual-lot-search"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <div className="space-y-2">
                 <Label>{t("deliveryType")}</Label>
@@ -1095,49 +629,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               )}
 
               <div className="p-4 rounded-lg bg-muted">
-                {chargeBasis === "selectLots" ? (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
-                      <span className="text-2xl font-bold text-chart-2">
-                        <Currency amount={calculateAllSelectedLotsTotal(selectedLot.remainingSize) + (parseFloat(kataCharges) || 0) + (deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize + (parseFloat(totalGradingCharges) || 0) : 0)} />
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-2 space-y-2">
-                      {/* Section a: Base Cold Charges */}
-                      <div className={calculateSelectedDuesTotal() > 0 ? "border-b pb-2" : ""}>
-                        <div className="font-medium text-xs mb-1">{t("baseColdChargesSection") || "Cold Charges"}</div>
-                        {selectedLot.baseColdChargesBilled === 1 ? (
-                          <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
-                        ) : (
-                          <div>{t("selectedLotsBilling")}: <Currency amount={calculateSelectedColdChargesTotal(selectedLot.remainingSize)} /></div>
-                        )}
-                      </div>
-                      {/* Section b: Previous Dues - only show if any dues selected */}
-                      {calculateSelectedDuesTotal() > 0 && (
-                        <div className="border-b pb-2">
-                          <div className="font-medium text-xs mb-1">{t("previousDues") || "Previous Dues"}</div>
-                          <div>{t("selectedDues") || "Selected Dues"}: <Currency amount={calculateSelectedDuesTotal()} /></div>
-                        </div>
-                      )}
-                      {/* Section c: Extras for actual sale */}
-                      {((parseFloat(kataCharges) || 0) > 0 || (deliveryType === "bilty" && ((parseFloat(extraHammaliPerBag) || 0) > 0 || (parseFloat(totalGradingCharges) || 0) > 0))) && (
-                        <div>
-                          <div className="font-medium text-xs mb-1">{t("extrasSection") || "Extras for Sale"}</div>
-                          {(parseFloat(kataCharges) || 0) > 0 && (
-                            <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
-                          )}
-                          {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                            <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /></div>
-                          )}
-                          {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                            <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
+                {selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
                   <div className="text-red-600 dark:text-red-400 font-medium text-center py-2">
                     {t("addInitialNetWeightWarning")}
                   </div>
@@ -1468,153 +960,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="space-y-2">
                 <Label>{t("chargeBasis")}</Label>
-                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining" | "selectLots") => setChargeBasis(value)}>
+                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
                   <SelectTrigger data-testid="select-partial-charge-basis">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="actual">{t("actualBags")}</SelectItem>
                     <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
-                    <SelectItem value="selectLots">{t("selectLots") || "Select Lots"}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
-              {/* Multi-Lot Billing Section for Partial Sale - shown when "Select Lots" is selected */}
-              {chargeBasis === "selectLots" && (
-                <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
-                  <div className="text-sm font-medium">{t("consolidatedBilling") || "Consolidated Billing"}</div>
-                  
-                  {/* Table of lots for billing - clickable Cold Charges and Due cells */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b text-muted-foreground">
-                          <th className="text-left py-1 px-1">{t("bagType")}</th>
-                          <th className="text-left py-1 px-1">{t("lot")} #</th>
-                          <th className="text-right py-1 px-1">{t("remaining")}</th>
-                          <th className="text-right py-1 px-1">{t("coldCharges") || "Cold Charges"}</th>
-                          <th className="text-right py-1 px-1">{t("alreadyDue") || "Already Due"}</th>
-                          <th className="py-1 px-1 w-8"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedBillingLots.map((lot) => {
-                          // For current lot, override with selectedLot's properties to ensure fresh data
-                          // Use user-edited rate for current lot
-                          const currentLotRate = getEditableRate(selectedLot);
-                          const effectiveLot = lot.isCurrentLot ? {
-                            ...lot,
-                            netWeight: selectedLot.netWeight,
-                            originalSize: selectedLot.originalSize,
-                            rate: currentLotRate,
-                            baseColdChargesBilled: selectedLot.baseColdChargesBilled,
-                          } : lot;
-                          const hasZeroNetWeight = selectedLot.chargeUnit === "quintal" && !effectiveLot.netWeight;
-                          // For consolidated billing, always calculate based on ALL remaining bags (not just actual sale qty)
-                          const consolidatedQty = lot.isCurrentLot ? selectedLot?.remainingSize : lot.remainingSize;
-                          // Calculate using shared function with effective lot data (rate already set in effectiveLot)
-                          const billedCharge = calculateBillingLotCharge(effectiveLot, consolidatedQty);
-                          return (
-                            <tr 
-                              key={lot.id} 
-                              className={`border-b border-muted ${hasZeroNetWeight ? 'bg-red-50 dark:bg-red-900/20' : ''}`}
-                            >
-                              <td className="py-1 px-1 capitalize">{lot.bagType}</td>
-                              <td className="py-1 px-1">
-                                <div className="flex flex-row items-center gap-1">
-                                  <span className="text-xs">{lot.lotNo}</span>
-                                  {lot.isCurrentLot && <Badge variant="outline" className="text-[9px] py-0 px-1">{t("current") || "Current"}</Badge>}
-                                </div>
-                              </td>
-                              <td className="text-right py-1 px-1">{lot.remainingSize}</td>
-                              {/* Clickable Cold Charges cell */}
-                              <td 
-                                className="text-right py-1 px-1 cursor-pointer"
-                                onClick={() => toggleLotColdSelection(lot.id)}
-                                data-testid={`cell-partial-cold-charges-${lot.id}`}
-                              >
-                                <span
-                                  className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
-                                    lot.selectCold 
-                                      ? 'bg-blue-100 dark:bg-blue-900/50 ring-1 ring-blue-400/60 text-blue-700 dark:text-blue-300' 
-                                      : 'hover:bg-muted'
-                                  } ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}
-                                >
-                                  {hasZeroNetWeight ? (
-                                    <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400">
-                                      <Currency amount={0} />
-                                      <AlertTriangle className="h-3 w-3" />
-                                    </span>
-                                  ) : (
-                                    <Currency amount={billedCharge} />
-                                  )}
-                                </span>
-                              </td>
-                              {/* Clickable Already Due cell - clickable if lot has due amount */}
-                              <td 
-                                className={`text-right py-1 px-1 ${lot.totalDueCharge > 0 ? 'cursor-pointer' : ''}`}
-                                onClick={() => lot.totalDueCharge > 0 && toggleLotDueSelection(lot.id)}
-                                data-testid={`cell-partial-due-${lot.id}`}
-                              >
-                                {lot.totalDueCharge > 0 ? (
-                                  <span
-                                    className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
-                                      lot.selectDue 
-                                        ? 'bg-amber-100 dark:bg-amber-900/50 ring-1 ring-amber-400/60 text-amber-700 dark:text-amber-300' 
-                                        : 'hover:bg-muted'
-                                    }`}
-                                  >
-                                    <Currency amount={lot.totalDueCharge} />
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground">-</span>
-                                )}
-                              </td>
-                              <td className="py-1 px-1">
-                                {!lot.isCurrentLot && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-5 w-5"
-                                    onClick={() => removeLotFromBilling(lot.id)}
-                                    data-testid={`button-partial-remove-billing-lot-${lot.id}`}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Add related lots buttons */}
-                  {relatedLotsData && relatedLotsData.length > 0 && (
-                    <div className="space-y-1">
-                      <Label className="text-xs">{t("addRelatedLots") || "Add Related Lots"}</Label>
-                      <div className="flex flex-wrap gap-1">
-                        {relatedLotsData
-                          .filter(lot => !selectedBillingLots.find(l => l.id === lot.id))
-                          .map((lot) => (
-                            <Button
-                              key={lot.id}
-                              size="sm"
-                              variant="outline"
-                              className="h-6 text-xs"
-                              onClick={() => addLotToBilling(lot)}
-                              data-testid={`button-partial-add-related-lot-${lot.id}`}
-                            >
-                              + {lot.lotNo} ({lot.bagType})
-                            </Button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
               <div className="space-y-2">
                 <Label>{t("deliveryType")}</Label>
@@ -1658,54 +1013,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               {partialQuantity > 0 && (
                 <div className="p-4 rounded-lg bg-muted">
-                  {chargeBasis === "selectLots" ? (() => {
-                    // Check if current lot cold charges is selected - if so, use ALL remaining bags; otherwise use actual partialQuantity
-                    const currentLotColdSelected = selectedBillingLots.find(l => l.isCurrentLot)?.selectCold ?? false;
-                    const coldChargeQty = currentLotColdSelected ? selectedLot.remainingSize : partialQuantity;
-                    return (
-                    <>
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
-                        <span className="text-2xl font-bold text-chart-2">
-                          <Currency amount={calculateAllSelectedLotsTotal(coldChargeQty) + (parseFloat(kataCharges) || 0) + (deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * partialQuantity + (parseFloat(totalGradingCharges) || 0) : 0)} />
-                        </span>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-2 space-y-2">
-                        {/* Section a: Base Cold Charges */}
-                        <div className={calculateSelectedDuesTotal() > 0 ? "border-b pb-2" : ""}>
-                          <div className="font-medium text-xs mb-1">{t("baseColdChargesSection") || "Cold Charges"}</div>
-                          {selectedLot.baseColdChargesBilled === 1 ? (
-                            <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
-                          ) : (
-                            <div>{t("selectedLotsBilling")}: <Currency amount={calculateSelectedColdChargesTotal(coldChargeQty)} /></div>
-                          )}
-                        </div>
-                        {/* Section b: Previous Dues - only show if any dues selected */}
-                        {calculateSelectedDuesTotal() > 0 && (
-                          <div className="border-b pb-2">
-                            <div className="font-medium text-xs mb-1">{t("previousDues") || "Previous Dues"}</div>
-                            <div>{t("selectedDues") || "Selected Dues"}: <Currency amount={calculateSelectedDuesTotal()} /></div>
-                          </div>
-                        )}
-                        {/* Section c: Extras for actual sale */}
-                        {((parseFloat(kataCharges) || 0) > 0 || (deliveryType === "bilty" && ((parseFloat(extraHammaliPerBag) || 0) > 0 || (parseFloat(totalGradingCharges) || 0) > 0))) && (
-                          <div>
-                            <div className="font-medium text-xs mb-1">{t("extrasSection") || "Extras for Sale"}</div>
-                            {(parseFloat(kataCharges) || 0) > 0 && (
-                              <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
-                            )}
-                            {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                              <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /></div>
-                            )}
-                            {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                              <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                    );
-                  })() : selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
+                  {selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
                     <div className="text-red-600 dark:text-red-400 font-medium text-center py-2">
                       {t("addInitialNetWeightWarning")}
                     </div>

@@ -144,9 +144,7 @@ export default function StockRegister() {
     queryKey: ["/api/sales-history"],
   });
 
-  // Calculate charges for selected lot from sales history
-  // Cold Charges Due = sum of dueAmount from sales marked as 'due' or 'partial'
-  // Cold Charges Paid = only actual cash paid (exclude transfers where clearanceType === 'transfer')
+  // Calculate charges for selected lot from sales history (same calculation as Analytics)
   const selectedLotCharges = useMemo(() => {
     if (!selectedLot || !allSalesHistory) return { totalPaid: 0, totalDue: 0 };
     
@@ -156,15 +154,17 @@ export default function StockRegister() {
     let totalDue = 0;
     
     for (const sale of lotSales) {
-      // Add due amounts from sales with pending dues
-      if (sale.paymentStatus === "due" || sale.paymentStatus === "partial") {
-        totalDue += sale.dueAmount || 0;
-      }
+      const totalCharges = calculateTotalColdCharges(sale);
       
-      // Only count actual cash payments (exclude transfer-cleared sales)
-      // Transfer payments are liability transfers, not actual cash received
-      if (sale.clearanceType !== "transfer") {
-        totalPaid += sale.paidAmount || 0;
+      if (sale.paymentStatus === "paid") {
+        totalPaid += totalCharges;
+      } else if (sale.paymentStatus === "due") {
+        totalDue += totalCharges;
+      } else if (sale.paymentStatus === "partial") {
+        // Use paidAmount from sale, calculate due as remainder to ensure consistency
+        const paidAmount = sale.paidAmount || 0;
+        totalPaid += paidAmount;
+        totalDue += Math.max(0, totalCharges - paidAmount);
       }
     }
     
@@ -320,9 +320,7 @@ export default function StockRegister() {
     return useWaferRate ? coldStorage.waferRate : coldStorage.seedRate;
   };
 
-  // Calculate summary totals from sales history
-  // Cold Charges Due = sum of dueAmount from sales marked as 'due' or 'partial'
-  // Cold Charges Paid = only actual cash paid (exclude transfers where clearanceType === 'transfer')
+  // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
     // Use search results if searched, otherwise use initial lots
     const baseLots = hasSearched ? searchResults : (initialLots || []);
@@ -345,15 +343,17 @@ export default function StockRegister() {
       for (const sale of allSalesHistory) {
         if (!lotIds.has(sale.lotId)) continue;
         
-        // Add due amounts from sales with pending dues
-        if (sale.paymentStatus === "due" || sale.paymentStatus === "partial") {
-          chargesDue += sale.dueAmount || 0;
-        }
+        const totalCharges = calculateTotalColdCharges(sale);
         
-        // Only count actual cash payments (exclude transfer-cleared sales)
-        // Transfer payments are liability transfers, not actual cash received
-        if (sale.clearanceType !== "transfer") {
-          chargesPaid += sale.paidAmount || 0;
+        if (sale.paymentStatus === "paid") {
+          chargesPaid += totalCharges;
+        } else if (sale.paymentStatus === "due") {
+          chargesDue += totalCharges;
+        } else if (sale.paymentStatus === "partial") {
+          // Use paidAmount from sale, calculate due as remainder to ensure consistency
+          const paidAmount = sale.paidAmount || 0;
+          chargesPaid += paidAmount;
+          chargesDue += Math.max(0, totalCharges - paidAmount);
         }
       }
     }

@@ -177,7 +177,7 @@ const translations: Translations = {
   rate: { en: "Rate", hi: "दर" },
   chambers: { en: "Chambers", hi: "कक्ष" },
   coldStorageCharge: { en: "Cold Storage Charge", hi: "कोल्ड स्टोरेज शुल्क" },
-  totalColdStorageCharges: { en: "Total Cold Charges", hi: "कुल कोल्ड स्टोरेज शुल्क" },
+  totalColdStorageCharges: { en: "Total Cold Storage Charges", hi: "कुल कोल्ड स्टोरेज शुल्क" },
   hammali: { en: "Hammali", hi: "हमाली" },
   salary: { en: "Salary", hi: "वेतन" },
   gradingCharges: { en: "Grading Charge", hi: "ग्रेडिंग शुल्क" },
@@ -191,23 +191,6 @@ const translations: Translations = {
   markForSale: { en: "Mark for Sale", hi: "बिक्री के लिए चिह्नित करें" },
   removeFromSale: { en: "Remove from Sale", hi: "बिक्री से हटाएं" },
   removedFromSale: { en: "Removed from sale list", hi: "बिक्री सूची से हटाया गया" },
-  
-  // Multi-Lot Billing
-  selectLots: { en: "Select Lots", hi: "लॉट चुनें" },
-  currentLotOnly: { en: "Current Lot Only", hi: "केवल वर्तमान लॉट" },
-  includeOtherLots: { en: "Include Other Lots", hi: "अन्य लॉट शामिल करें" },
-  consolidatedBilling: { en: "Consolidated Billing", hi: "समेकित बिलिंग" },
-  addRelatedLots: { en: "Add Related Lots", hi: "संबंधित लॉट जोड़ें" },
-  additionalLotsCharges: { en: "Additional Lots Charges", hi: "अतिरिक्त लॉट शुल्क" },
-  coldCharges: { en: "Cold Charges", hi: "कोल्ड शुल्क" },
-  billedColdCharges: { en: "Cold Charges", hi: "कोल्ड शुल्क" },
-  alreadyDue: { en: "Already Due", hi: "पहले से बकाया" },
-  selectedLotsBilling: { en: "Selected Lots Billing", hi: "चयनित लॉट की बिलिंग" },
-  baseColdChargesSection: { en: "Cold Charges", hi: "कोल्ड शुल्क" },
-  extrasSection: { en: "Extras for Sale", hi: "बिक्री के लिए अतिरिक्त" },
-  current: { en: "Current", hi: "वर्तमान" },
-  addLotManually: { en: "Add Lot Manually", hi: "मैन्युअल रूप से लॉट जोड़ें" },
-  enterLotNumber: { en: "Enter lot number...", hi: "लॉट नंबर दर्ज करें..." },
   
   // Sale/Payment
   sold: { en: "Sold", hi: "बेचा गया" },
@@ -271,7 +254,6 @@ const translations: Translations = {
   potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
-  transferPaidOn: { en: "Transfer paid on", hi: "हस्तांतरण भुगतान तिथि" },
   
   // Maintenance
   maintenance: { en: "Maintenance", hi: "रखरखाव" },

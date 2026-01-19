@@ -465,30 +465,6 @@ export async function registerRoutes(
     }
   });
 
-  // Get related lots for multi-lot billing (same farmer name + contact number + village)
-  // This route must come BEFORE /api/lots/:id to avoid matching "related" as an id
-  app.get("/api/lots/related", requireAuth, async (req: AuthenticatedRequest, res) => {
-    try {
-      const coldStorageId = getColdStorageId(req);
-      const { farmerName, contactNumber, village, excludeLotId } = req.query;
-      
-      if (!farmerName || !contactNumber || !village) {
-        return res.status(400).json({ error: "farmerName, contactNumber, and village are required" });
-      }
-      
-      const relatedLots = await storage.getRelatedLots(
-        coldStorageId,
-        farmerName as string,
-        contactNumber as string,
-        village as string,
-        excludeLotId as string | undefined
-      );
-      res.json(relatedLots);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch related lots" });
-    }
-  });
-
   app.get("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -631,27 +607,6 @@ export async function registerRoutes(
     }
   });
 
-  // Partial Sale schema
-  const partialSaleSchema = z.object({
-    quantitySold: z.number().positive(),
-    pricePerBag: z.number(),
-    paymentStatus: z.enum(["due", "paid", "partial"]),
-    paymentMode: z.enum(["cash", "account"]).optional(),
-    buyerName: z.string().optional(),
-    pricePerKg: z.number().optional(),
-    paidAmount: z.number().optional(),
-    dueAmount: z.number().optional(),
-    position: z.string().optional(),
-    kataCharges: z.number().optional(),
-    extraHammali: z.number().optional(),
-    gradingCharges: z.number().optional(),
-    netWeight: z.number().optional(),
-    customColdCharge: z.number().optional(),
-    customHammali: z.number().optional(),
-    chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
-    transferDueLotIds: z.array(z.string()).optional(),
-  });
-
   app.post("/api/lots/:id/partial-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -664,8 +619,11 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const validatedData = partialSaleSchema.parse(req.body);
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, transferDueLotIds } = validatedData;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis } = req.body;
+
+      if (typeof quantitySold !== "number" || quantitySold <= 0) {
+        return res.status(400).json({ error: "Invalid quantity sold" });
+      }
 
       if (quantitySold > lot.remainingSize) {
         return res.status(400).json({ error: "Quantity exceeds remaining size" });
@@ -676,31 +634,8 @@ export async function registerRoutes(
         await storage.updateLot(req.params.id, { position });
       }
 
-      // Transfer dues from other lots if any selected
-      let totalTransferred = 0;
-      if (transferDueLotIds && transferDueLotIds.length > 0 && buyerName) {
-        const transferResult = await storage.transferDuesToBuyer(transferDueLotIds, buyerName, coldStorageId);
-        totalTransferred = transferResult.totalTransferred;
-      }
-      
-      // Validate that total charge includes transferred dues
-      if (totalTransferred > 0) {
-        const totalClientAmount = (paidAmount || 0) + (dueAmount || 0);
-        if (totalClientAmount < totalTransferred * 0.99) { // Allow 1% tolerance for rounding
-          return res.status(400).json({ 
-            error: "Total charge amount must include transferred dues",
-            details: { totalClientAmount, totalTransferred }
-          });
-        }
-      }
-      
-      // Re-fetch lot after transfer to get updated totalPaidCharge/totalDueCharge
-      // (transferDuesToBuyer calls recalculateLotTotals which updates these values)
-      const lotAfterTransfer = totalTransferred > 0 ? await storage.getLot(req.params.id) : lot;
-      const currentLot = lotAfterTransfer || lot;
-
       const previousData = {
-        remainingSize: currentLot.remainingSize,
+        remainingSize: lot.remainingSize,
       };
 
       const newRemainingSize = lot.remainingSize - quantitySold;
@@ -758,18 +693,17 @@ export async function registerRoutes(
       }
       
       // Track paid and due charges separately (include all surcharges)
-      // Use currentLot which has updated totals after any transfers
       if (paymentStatus === "paid") {
-        updateData.totalPaidCharge = (currentLot.totalPaidCharge || 0) + totalChargeForLot;
+        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + totalChargeForLot;
       } else if (paymentStatus === "due") {
-        updateData.totalDueCharge = (currentLot.totalDueCharge || 0) + totalChargeForLot;
+        updateData.totalDueCharge = (lot.totalDueCharge || 0) + totalChargeForLot;
       } else if (paymentStatus === "partial") {
         // Validate and normalize partial payment amounts
         const rawPaid = Math.max(0, paidAmount || 0);
         const actualPaid = Math.min(rawPaid, totalChargeForLot); // Clamp to max charge (including surcharges)
         const actualDue = totalChargeForLot - actualPaid; // Calculate due as remainder to ensure sum equals total
-        updateData.totalPaidCharge = (currentLot.totalPaidCharge || 0) + actualPaid;
-        updateData.totalDueCharge = (currentLot.totalDueCharge || 0) + actualDue;
+        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + actualPaid;
+        updateData.totalDueCharge = (lot.totalDueCharge || 0) + actualDue;
       }
       
       await storage.updateLot(req.params.id, updateData);
@@ -793,19 +727,17 @@ export async function registerRoutes(
       // Get chamber for sales history
       const chamber = await storage.getChamber(lot.chamberId);
       
-      // Calculate paid/due amounts based on payment status
-      // Include transferred dues in the new sale's amounts
-      const totalChargeWithTransferred = totalChargeForLot + totalTransferred;
+      // Calculate paid/due amounts based on payment status (use totalChargeForLot which includes all charges)
       let salePaidAmount = 0;
       let saleDueAmount = 0;
       if (paymentStatus === "paid") {
-        salePaidAmount = totalChargeWithTransferred;
+        salePaidAmount = totalChargeForLot;
       } else if (paymentStatus === "due") {
-        saleDueAmount = totalChargeWithTransferred;
+        saleDueAmount = totalChargeForLot;
       } else if (paymentStatus === "partial") {
         const rawPaidForSale = Math.max(0, paidAmount || 0);
-        salePaidAmount = Math.min(rawPaidForSale, totalChargeWithTransferred);
-        saleDueAmount = totalChargeWithTransferred - salePaidAmount;
+        salePaidAmount = Math.min(rawPaidForSale, totalChargeForLot);
+        saleDueAmount = totalChargeForLot - salePaidAmount;
       }
       
       // Create permanent sales history record
@@ -842,7 +774,6 @@ export async function registerRoutes(
         paymentMode: (paymentStatus === "paid" || paymentStatus === "partial") ? paymentMode : null,
         paidAmount: salePaidAmount,
         dueAmount: saleDueAmount,
-        transferredAmount: totalTransferred, // Track transferred dues separately
         entryDate: lot.createdAt,
         saleYear: new Date().getFullYear(),
       });
@@ -850,9 +781,6 @@ export async function registerRoutes(
       const updatedLot = await storage.getLot(req.params.id);
       res.json(updatedLot);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid request data", details: error.errors });
-      }
       res.status(500).json({ error: "Failed to process partial sale" });
     }
   });
@@ -890,7 +818,6 @@ export async function registerRoutes(
     netWeight: z.number().optional(),
     customColdCharge: z.number().optional(),
     customHammali: z.number().optional(),
-    transferDueLotIds: z.array(z.string()).optional(), // Lot IDs whose outstanding dues should be transferred to this buyer
   });
 
   app.post("/api/lots/:id/finalize-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -912,26 +839,6 @@ export async function registerRoutes(
         await storage.updateLot(req.params.id, { position: validatedData.position });
       }
       
-      // Transfer dues from other lots if any selected
-      let totalTransferred = 0;
-      if (validatedData.transferDueLotIds && validatedData.transferDueLotIds.length > 0 && validatedData.buyerName) {
-        const transferResult = await storage.transferDuesToBuyer(validatedData.transferDueLotIds, validatedData.buyerName, coldStorageId);
-        totalTransferred = transferResult.totalTransferred;
-      }
-      
-      // Validate that total charge includes transferred dues
-      // For due/partial payments, dueAmount must be at least as large as transferred amount
-      // For paid payments, paidAmount must be at least as large as transferred amount
-      if (totalTransferred > 0) {
-        const totalClientAmount = (validatedData.paidAmount || 0) + (validatedData.dueAmount || 0);
-        if (totalClientAmount < totalTransferred * 0.99) { // Allow 1% tolerance for rounding
-          return res.status(400).json({ 
-            error: "Total charge amount must include transferred dues",
-            details: { totalClientAmount, totalTransferred }
-          });
-        }
-      }
-      
       const lot = await storage.finalizeSale(
         req.params.id, 
         validatedData.paymentStatus,
@@ -945,8 +852,7 @@ export async function registerRoutes(
         validatedData.gradingCharges,
         validatedData.netWeight,
         validatedData.customColdCharge,
-        validatedData.customHammali,
-        totalTransferred // Track transferred dues separately
+        validatedData.customHammali
       );
       if (!lot) {
         return res.status(404).json({ error: "Lot not found or already sold" });
@@ -958,34 +864,6 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid payment status", details: error.errors });
       }
       res.status(500).json({ error: "Failed to finalize sale" });
-    }
-  });
-
-  // Bulk mark lots as base cold charges billed (for multi-lot billing)
-  app.post("/api/lots/mark-billed", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
-    try {
-      const coldStorageId = getColdStorageId(req);
-      const { lotIds } = req.body;
-      
-      if (!Array.isArray(lotIds) || lotIds.length === 0) {
-        return res.status(400).json({ error: "lotIds array is required" });
-      }
-      
-      // Verify all lots belong to this cold storage
-      for (const lotId of lotIds) {
-        const lot = await storage.getLot(lotId);
-        if (!lot) {
-          return res.status(404).json({ error: `Lot ${lotId} not found` });
-        }
-        if (lot.coldStorageId !== coldStorageId) {
-          return res.status(403).json({ error: `Access denied for lot ${lotId}` });
-        }
-      }
-      
-      const result = await storage.markLotsBaseChargesBilled(lotIds);
-      res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to mark lots as billed" });
     }
   });
 
@@ -2471,8 +2349,8 @@ export async function registerRoutes(
       const sales = await storage.getSalesForExport(coldStorageId, from, to);
 
       const headers = language === "hi"
-        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "हस्तांतरित राशि", "नेट वजन (Kg)", "दर/Kg"]
-        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Chamber", "Floor", "Position", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Payment Status", "Paid Amount", "Due Amount", "Transferred Amount", "Net Weight (Kg)", "Rate/Kg"];
+        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "नेट वजन (Kg)", "दर/Kg"]
+        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Chamber", "Floor", "Position", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Payment Status", "Paid Amount", "Due Amount", "Net Weight (Kg)", "Rate/Kg"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
@@ -2505,7 +2383,6 @@ export async function registerRoutes(
           sale.paymentStatus,
           sale.paidAmount || 0,
           totalCharges - (sale.paidAmount || 0),
-          sale.transferredAmount || 0, // Liability transferred from previous buyers
           sale.netWeight || "",
           sale.pricePerKg || "",
         ];
