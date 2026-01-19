@@ -787,17 +787,19 @@ export async function registerRoutes(
       // Get chamber for sales history
       const chamber = await storage.getChamber(lot.chamberId);
       
-      // Calculate paid/due amounts based on payment status (use totalChargeForLot which includes all charges)
+      // Calculate paid/due amounts based on payment status
+      // Include transferred dues in the new sale's amounts
+      const totalChargeWithTransferred = totalChargeForLot + totalTransferred;
       let salePaidAmount = 0;
       let saleDueAmount = 0;
       if (paymentStatus === "paid") {
-        salePaidAmount = totalChargeForLot;
+        salePaidAmount = totalChargeWithTransferred;
       } else if (paymentStatus === "due") {
-        saleDueAmount = totalChargeForLot;
+        saleDueAmount = totalChargeWithTransferred;
       } else if (paymentStatus === "partial") {
         const rawPaidForSale = Math.max(0, paidAmount || 0);
-        salePaidAmount = Math.min(rawPaidForSale, totalChargeForLot);
-        saleDueAmount = totalChargeForLot - salePaidAmount;
+        salePaidAmount = Math.min(rawPaidForSale, totalChargeWithTransferred);
+        saleDueAmount = totalChargeWithTransferred - salePaidAmount;
       }
       
       // Create permanent sales history record
