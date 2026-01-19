@@ -79,7 +79,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   // Initialize billing lots when "selectLots" is chosen
   useEffect(() => {
     if (chargeBasis === "selectLots" && selectedLot) {
-      // Add current lot as first item if not already present
+      // Add current lot as first item - default to UNCHECKED
       const currentLotEntry = {
         id: selectedLot.id,
         lotNo: selectedLot.lotNo,
@@ -92,7 +92,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         rate: selectedLot.coldCharge + selectedLot.hammali,
         baseColdChargesBilled: selectedLot.baseColdChargesBilled,
         isCurrentLot: true,
-        isSelected: true,
+        isSelected: false, // Default to unchecked
       };
       setSelectedBillingLots([currentLotEntry]);
     } else {
@@ -362,8 +362,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       
       const parsedNetWeight = netWeight ? parseFloat(netWeight) : undefined;
       
-      // Get IDs of additional lots to mark as billed
-      const billingLotIds = selectedBillingLots.map(l => l.id);
+      // Get IDs of selected lots to mark as billed (only selected ones)
+      const billingLotIds = selectedBillingLots.filter(l => l.isSelected).map(l => l.id);
       
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
@@ -383,7 +383,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           netWeight: parsedNetWeight,
           customColdCharge,
           customHammali,
-          chargeBasis,
+          chargeBasis: chargeBasis === "selectLots" ? "actual" : chargeBasis,
           billingLotIds: billingLotIds.length > 0 ? billingLotIds : undefined,
         });
       } else {
@@ -506,8 +506,25 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   };
 
   // Calculate total for all selected lots including current lot
-  // currentLotSaleQuantity: The quantity being sold for the current lot (for partial sales)
+  // currentLotSaleQuantity: The quantity being sold for the current lot
+  // When all lots are unchecked, uses actual bags formula for current lot only
   const calculateAllSelectedLotsTotal = (currentLotSaleQuantity?: number) => {
+    const anySelected = selectedBillingLots.some(lot => lot.isSelected);
+    
+    // If no lots are selected, calculate using actual bags for current lot only
+    if (!anySelected && selectedLot) {
+      const actualQty = currentLotSaleQuantity ?? selectedLot.remainingSize;
+      const rate = selectedLot.coldCharge + selectedLot.hammali;
+      
+      if (selectedLot.chargeUnit === "quintal" && selectedLot.netWeight && selectedLot.originalSize > 0) {
+        // Quintal mode: (Net Weight × actual bags × rate) / (Total bags × 100)
+        return (selectedLot.netWeight * actualQty * rate) / (selectedLot.originalSize * 100);
+      }
+      // Bag mode: actual bags × rate
+      return actualQty * rate;
+    }
+    
+    // Otherwise calculate sum of selected lots
     let total = 0;
     for (const lot of selectedBillingLots) {
       if (!lot.isSelected) continue;
@@ -522,8 +539,23 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     return total;
   };
 
+  // Type for related lot data
+  type RelatedLot = {
+    id: string;
+    lotNo: string;
+    bagType: string;
+    remainingSize: number;
+    netWeight: number | null;
+    originalSize: number;
+    size: number;
+    totalDueCharge: number;
+    baseColdChargesBilled: number | null;
+    coldCharge: number | null;
+    hammali: number | null;
+  };
+  
   // Add a lot to billing selection
-  const addLotToBilling = (lot: typeof relatedLotsData extends Array<infer T> ? T : never) => {
+  const addLotToBilling = (lot: RelatedLot) => {
     if (selectedBillingLots.find(l => l.id === lot.id)) return;
     
     const chargeUnit = selectedLot?.chargeUnit || "bag";
@@ -541,17 +573,15 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       rate: lotRate,
       baseColdChargesBilled: lot.baseColdChargesBilled || 0,
       isCurrentLot: false,
-      isSelected: true,
+      isSelected: false, // Default to unchecked
     }]);
   };
 
-  // Toggle lot selection (current lot cannot be deselected)
+  // Toggle lot selection (all lots can be toggled including current lot)
   const toggleLotSelection = (lotId: string) => {
-    setSelectedBillingLots(selectedBillingLots.map(lot => {
-      // Never toggle current lot - it must always be selected
-      if (lot.isCurrentLot) return lot;
-      return lot.id === lotId ? { ...lot, isSelected: !lot.isSelected } : lot;
-    }));
+    setSelectedBillingLots(selectedBillingLots.map(lot => 
+      lot.id === lotId ? { ...lot, isSelected: !lot.isSelected } : lot
+    ));
   };
 
   // Remove a lot from billing selection
@@ -866,7 +896,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                                 <Checkbox
                                   checked={lot.isSelected}
                                   onCheckedChange={() => toggleLotSelection(lot.id)}
-                                  disabled={lot.isCurrentLot}
                                   data-testid={`checkbox-lot-${lot.id}`}
                                 />
                               </td>
@@ -1299,13 +1328,14 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="space-y-2">
                 <Label>{t("chargeBasis")}</Label>
-                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
+                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining" | "selectLots") => setChargeBasis(value)}>
                   <SelectTrigger data-testid="select-partial-charge-basis">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="actual">{t("actualBags")}</SelectItem>
                     <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
+                    <SelectItem value="selectLots">{t("selectLots") || "Select Lots"}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1350,21 +1380,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
               )}
 
-              {/* Charge Basis for Partial Sale */}
-              <div className="space-y-2">
-                <Label>{t("chargeBasis")}</Label>
-                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining" | "selectLots") => setChargeBasis(value)}>
-                  <SelectTrigger data-testid="select-partial-charge-basis">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="actual">{t("actualBags")}</SelectItem>
-                    <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
-                    <SelectItem value="selectLots">{t("selectLots") || "Select Lots"}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Multi-Lot Billing Section for Partial Sale - shown when "Select Lots" is selected */}
               {chargeBasis === "selectLots" && (
                 <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
@@ -1399,7 +1414,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                                 <Checkbox
                                   checked={lot.isSelected}
                                   onCheckedChange={() => toggleLotSelection(lot.id)}
-                                  disabled={lot.isCurrentLot}
                                   data-testid={`checkbox-partial-lot-${lot.id}`}
                                 />
                               </td>
