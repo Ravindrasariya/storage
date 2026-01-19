@@ -176,12 +176,10 @@ export default function SalesHistoryPage() {
   const summary = salesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
-      // Calculate total charges including all surcharges
-      const totalCharges = calculateTotalColdCharges(sale);
-      // Use paidAmount from sale, calculate due as remainder to ensure consistency
-      const salePaid = sale.paidAmount || 0;
-      acc.amountPaid += salePaid;
-      acc.amountDue += Math.max(0, totalCharges - salePaid);
+      // Use paidAmount and dueAmount directly from sale record
+      // This includes transferred dues for consistency with display
+      acc.amountPaid += sale.paidAmount || 0;
+      acc.amountDue += sale.dueAmount || 0;
       return acc;
     },
     { totalBags: 0, amountPaid: 0, amountDue: 0 }
@@ -491,7 +489,7 @@ export default function SalesHistoryPage() {
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
                       <TableCell className="text-right font-medium">
-                        <Currency amount={calculateTotalColdCharges(sale)} />
+                        <Currency amount={(sale.paidAmount || 0) + (sale.dueAmount || 0)} />
                       </TableCell>
                       <TableCell>{sale.buyerName || "-"}</TableCell>
                       <TableCell className="text-right">
@@ -511,7 +509,7 @@ export default function SalesHistoryPage() {
                         )}
                         {sale.paidAt && (
                           <div className="text-xs text-muted-foreground mt-1">
-                            {t("paidOn")}: {format(new Date(sale.paidAt), "dd/MM/yy")}
+                            {sale.clearanceType === "transfer" ? t("transferPaidOn") : t("paidOn")}: {format(new Date(sale.paidAt), "dd/MM/yy")}
                           </div>
                         )}
                       </TableCell>

@@ -177,7 +177,7 @@ const translations: Translations = {
   rate: { en: "Rate", hi: "दर" },
   chambers: { en: "Chambers", hi: "कक्ष" },
   coldStorageCharge: { en: "Cold Storage Charge", hi: "कोल्ड स्टोरेज शुल्क" },
-  totalColdStorageCharges: { en: "Total Cold Storage Charges", hi: "कुल कोल्ड स्टोरेज शुल्क" },
+  totalColdStorageCharges: { en: "Total Amount", hi: "कुल राशि" },
   hammali: { en: "Hammali", hi: "हमाली" },
   salary: { en: "Salary", hi: "वेतन" },
   gradingCharges: { en: "Grading Charge", hi: "ग्रेडिंग शुल्क" },
@@ -271,6 +271,7 @@ const translations: Translations = {
   potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
+  transferPaidOn: { en: "Transfer paid on", hi: "हस्तांतरण भुगतान तिथि" },
   
   // Maintenance
   maintenance: { en: "Maintenance", hi: "रखरखाव" },
