@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, like, ilike, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, or, like, ilike, desc, sql, gte, lte } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -1179,7 +1179,14 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     if (filters?.buyerName) {
-      conditions.push(ilike(salesHistory.buyerName, `%${filters.buyerName}%`));
+      // Search by CurrentDueBuyerName: match either buyerName OR transferToBuyerName
+      // This ensures searching for "RLT" finds sales transferred TO RLT
+      conditions.push(
+        or(
+          ilike(salesHistory.buyerName, `%${filters.buyerName}%`),
+          ilike(salesHistory.transferToBuyerName, `%${filters.buyerName}%`)
+        )!
+      );
     }
 
     return db.select()
