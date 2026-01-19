@@ -2471,8 +2471,8 @@ export async function registerRoutes(
       const sales = await storage.getSalesForExport(coldStorageId, from, to);
 
       const headers = language === "hi"
-        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "नेट वजन (Kg)", "दर/Kg"]
-        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Chamber", "Floor", "Position", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Payment Status", "Paid Amount", "Due Amount", "Net Weight (Kg)", "Rate/Kg"];
+        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "हस्तांतरित राशि", "नेट वजन (Kg)", "दर/Kg"]
+        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Chamber", "Floor", "Position", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Payment Status", "Paid Amount", "Due Amount", "Transferred Amount", "Net Weight (Kg)", "Rate/Kg"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
@@ -2505,6 +2505,7 @@ export async function registerRoutes(
           sale.paymentStatus,
           sale.paidAmount || 0,
           totalCharges - (sale.paidAmount || 0),
+          sale.transferredAmount || 0, // Liability transferred from previous buyers
           sale.netWeight || "",
           sale.pricePerKg || "",
         ];
