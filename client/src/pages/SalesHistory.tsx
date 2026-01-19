@@ -176,12 +176,9 @@ export default function SalesHistoryPage() {
   const summary = salesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
-      // Calculate total charges including all surcharges
-      const totalCharges = calculateTotalColdCharges(sale);
-      // Use paidAmount from sale, calculate due as remainder to ensure consistency
-      const salePaid = sale.paidAmount || 0;
-      acc.amountPaid += salePaid;
-      acc.amountDue += Math.max(0, totalCharges - salePaid);
+      // Use persisted paidAmount and dueAmount directly for consistency with FIFO and analytics
+      acc.amountPaid += sale.paidAmount || 0;
+      acc.amountDue += sale.dueAmount || 0;
       return acc;
     },
     { totalBags: 0, amountPaid: 0, amountDue: 0 }
