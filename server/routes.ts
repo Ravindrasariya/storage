@@ -2400,16 +2400,35 @@ export async function registerRoutes(
 
       const lots = await storage.getLotsForExport(coldStorageId, from, to);
       const chambers = await storage.getChambers(coldStorageId);
+      const coldStorage = await storage.getColdStorage(coldStorageId);
       const chamberMap = new Map(chambers.map(c => [c.id, c.name]));
+
+      // Calculate expected cold charge based on bag type and charge unit
+      // Note: "Ration" bagType uses wafer rates (same as UI logic)
+      const calculateExpectedCharge = (lot: typeof lots[0]) => {
+        if (!coldStorage) return 0;
+        const rate = (lot.bagType === "seed" ? coldStorage.seedColdCharge : coldStorage.waferColdCharge) || 0;
+        if (coldStorage.chargeUnit === "quintal") {
+          return lot.netWeight ? (lot.netWeight * rate) / 100 : 0;
+        }
+        return lot.size * rate;
+      };
 
       // Column headers (English / Hindi)
       const headers = language === "hi" 
-        ? ["तारीख", "लॉट नंबर", "किसान का नाम", "मोबाइल", "गाँव", "तहसील", "जिला", "राज्य", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "कुल बोरे", "बचे हुए बोरे", "आलू का प्रकार", "गुणवत्ता", "आलू का आकार", "टिप्पणी", "स्थिति"]
-        : ["Date", "Lot #", "Farmer Name", "Mobile", "Village", "Tehsil", "District", "State", "Chamber", "Floor", "Position", "Bag Type", "Total Bags", "Remaining Bags", "Potato Type", "Quality", "Potato Size", "Remarks", "Status"];
+        ? ["तारीख", "लॉट नंबर", "किसान का नाम", "मोबाइल", "गाँव", "तहसील", "जिला", "राज्य", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "कुल बोरे", "बचे हुए बोरे", "आलू का प्रकार", "गुणवत्ता", "आलू का आकार", "प्रारंभिक नेट वजन (Kg)", "अपेक्षित कोल्ड शुल्क", "भुगतान किया गया शुल्क", "बकाया शुल्क", "बेस कोल्ड चार्ज बिल्ड", "टिप्पणी", "स्थिति"]
+        : ["Date", "Lot #", "Farmer Name", "Mobile", "Village", "Tehsil", "District", "State", "Chamber", "Floor", "Position", "Bag Type", "Total Bags", "Remaining Bags", "Potato Type", "Quality", "Potato Size", "Initial Net Weight (Kg)", "Expected Cold Charges", "Charges Paid", "Charges Due", "Base Cold Charges Billed", "Remarks", "Status"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
       for (const lot of lots) {
+        const expectedCharge = calculateExpectedCharge(lot);
+        const chargesPaid = lot.totalPaidCharge || 0;
+        const chargesDue = lot.totalDueCharge || 0;
+        const baseBilledTag = lot.baseColdChargesBilled === 1 
+          ? (language === "hi" ? "हाँ" : "Yes") 
+          : (language === "hi" ? "नहीं" : "No");
+        
         const row = [
           formatDateForExport(lot.createdAt),
           lot.entrySequence || lot.lotNo,
@@ -2428,6 +2447,11 @@ export async function registerRoutes(
           lot.type,
           lot.quality,
           lot.potatoSize,
+          lot.netWeight || "",
+          expectedCharge.toFixed(2),
+          chargesPaid.toFixed(2),
+          chargesDue.toFixed(2),
+          baseBilledTag,
           lot.remarks || "",
           lot.saleStatus,
         ];
