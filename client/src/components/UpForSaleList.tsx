@@ -538,10 +538,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         coldTotal = actualQty * rate;
       }
       
-      // Add any selected dues from other lots
+      // Add any selected dues from ALL lots (including current lot)
       let dueTotal = 0;
       for (const lot of selectedBillingLots) {
-        if (lot.selectDue && !lot.isCurrentLot) {
+        if (lot.selectDue) {
           dueTotal += lot.totalDueCharge || 0;
         }
       }
@@ -551,14 +551,53 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     // Otherwise calculate sum of selected lots
     let total = 0;
     for (const lot of selectedBillingLots) {
-      // Add previous outstanding dues if selected (not for current lot)
-      if (lot.selectDue && !lot.isCurrentLot) {
+      // Add previous outstanding dues if selected (for ANY lot including current)
+      if (lot.selectDue) {
         total += lot.totalDueCharge || 0;
       }
       // Add new cold charges if selected - pass sale quantity and user-edited rate for current lot
       if (lot.selectCold) {
         const saleQty = lot.isCurrentLot ? currentLotSaleQuantity : undefined;
         // For current lot, use user-edited rate from input fields
+        const rate = lot.isCurrentLot && selectedLot ? getEditableRate(selectedLot) : undefined;
+        total += calculateBillingLotCharge(lot, saleQty, rate);
+      }
+    }
+    return total;
+  };
+
+  // Calculate total of selected previous dues (for display)
+  const calculateSelectedDuesTotal = () => {
+    let total = 0;
+    for (const lot of selectedBillingLots) {
+      if (lot.selectDue) {
+        total += lot.totalDueCharge || 0;
+      }
+    }
+    return total;
+  };
+
+  // Calculate total of selected cold charges (for display)
+  const calculateSelectedColdChargesTotal = (currentLotSaleQuantity?: number) => {
+    const anyColdSelected = selectedBillingLots.some(lot => lot.selectCold);
+    
+    // If no cold charges selected, calculate using actual bags for current lot only
+    if (!anyColdSelected && selectedLot) {
+      const actualQty = currentLotSaleQuantity ?? selectedLot.remainingSize;
+      const rate = getEditableRate(selectedLot);
+      
+      if (selectedLot.chargeUnit === "quintal" && selectedLot.netWeight && selectedLot.originalSize > 0) {
+        return (selectedLot.netWeight * actualQty * rate) / (selectedLot.originalSize * 100);
+      } else {
+        return actualQty * rate;
+      }
+    }
+    
+    // Otherwise calculate sum of selected cold charges only
+    let total = 0;
+    for (const lot of selectedBillingLots) {
+      if (lot.selectCold) {
+        const saleQty = lot.isCurrentLot ? currentLotSaleQuantity : undefined;
         const rate = lot.isCurrentLot && selectedLot ? getEditableRate(selectedLot) : undefined;
         total += calculateBillingLotCharge(lot, saleQty, rate);
       }
@@ -1061,16 +1100,23 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       </span>
                     </div>
                     <div className="text-sm text-muted-foreground mt-2 space-y-2">
-                      {/* Section a: Base Cold Charges - uses existing calculateAllSelectedLotsTotal */}
-                      <div className="border-b pb-2">
+                      {/* Section a: Base Cold Charges */}
+                      <div className={calculateSelectedDuesTotal() > 0 ? "border-b pb-2" : ""}>
                         <div className="font-medium text-xs mb-1">{t("baseColdChargesSection") || "Cold Charges"}</div>
                         {selectedLot.baseColdChargesBilled === 1 ? (
                           <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
                         ) : (
-                          <div>{t("selectedLotsBilling")}: <Currency amount={calculateAllSelectedLotsTotal(selectedLot.remainingSize)} /></div>
+                          <div>{t("selectedLotsBilling")}: <Currency amount={calculateSelectedColdChargesTotal(selectedLot.remainingSize)} /></div>
                         )}
                       </div>
-                      {/* Section b: Extras for actual sale */}
+                      {/* Section b: Previous Dues - only show if any dues selected */}
+                      {calculateSelectedDuesTotal() > 0 && (
+                        <div className="border-b pb-2">
+                          <div className="font-medium text-xs mb-1">{t("previousDues") || "Previous Dues"}</div>
+                          <div>{t("selectedDues") || "Selected Dues"}: <Currency amount={calculateSelectedDuesTotal()} /></div>
+                        </div>
+                      )}
+                      {/* Section c: Extras for actual sale */}
                       {((parseFloat(kataCharges) || 0) > 0 || (deliveryType === "bilty" && ((parseFloat(extraHammaliPerBag) || 0) > 0 || (parseFloat(totalGradingCharges) || 0) > 0))) && (
                         <div>
                           <div className="font-medium text-xs mb-1">{t("extrasSection") || "Extras for Sale"}</div>
@@ -1621,16 +1667,23 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         </span>
                       </div>
                       <div className="text-sm text-muted-foreground mt-2 space-y-2">
-                        {/* Section a: Base Cold Charges - uses existing calculateAllSelectedLotsTotal */}
-                        <div className="border-b pb-2">
+                        {/* Section a: Base Cold Charges */}
+                        <div className={calculateSelectedDuesTotal() > 0 ? "border-b pb-2" : ""}>
                           <div className="font-medium text-xs mb-1">{t("baseColdChargesSection") || "Cold Charges"}</div>
                           {selectedLot.baseColdChargesBilled === 1 ? (
                             <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
                           ) : (
-                            <div>{t("selectedLotsBilling")}: <Currency amount={calculateAllSelectedLotsTotal(coldChargeQty)} /></div>
+                            <div>{t("selectedLotsBilling")}: <Currency amount={calculateSelectedColdChargesTotal(coldChargeQty)} /></div>
                           )}
                         </div>
-                        {/* Section b: Extras for actual sale */}
+                        {/* Section b: Previous Dues - only show if any dues selected */}
+                        {calculateSelectedDuesTotal() > 0 && (
+                          <div className="border-b pb-2">
+                            <div className="font-medium text-xs mb-1">{t("previousDues") || "Previous Dues"}</div>
+                            <div>{t("selectedDues") || "Selected Dues"}: <Currency amount={calculateSelectedDuesTotal()} /></div>
+                          </div>
+                        )}
+                        {/* Section c: Extras for actual sale */}
                         {((parseFloat(kataCharges) || 0) > 0 || (deliveryType === "bilty" && ((parseFloat(extraHammaliPerBag) || 0) > 0 || (parseFloat(totalGradingCharges) || 0) > 0))) && (
                           <div>
                             <div className="font-medium text-xs mb-1">{t("extrasSection") || "Extras for Sale"}</div>
