@@ -79,6 +79,14 @@ Core entities:
 - FIFO recalculation triggered after charge edits using CurrentDueBuyerName logic
 - Note: lots.netWeight is stored in KG (not quintals)
 
+### Extra Due to Merchant (extraDueToMerchant)
+- Separate field for buyer-specific surcharges charged by merchant
+- Always tracked by ORIGINAL buyerName (NOT affected by transfers)
+- Different from regular cold charges which use CurrentDueBuyerName (COALESCE(NULLIF(transferToBuyerName, ''), buyerName))
+- Editable in Sales History Edit Dialog separately from cold charges
+- Aggregated in merchant analytics and cash management by original buyer
+- Database field: salesHistory.extraDueToMerchant (real, default 0)
+
 ### Bill Number System
 - Four independent bill number sequences: Exit, Cold Storage Deduction, Sales, and Lot Entry
 - Bill numbers assigned atomically on first print using UPDATE RETURNING pattern
