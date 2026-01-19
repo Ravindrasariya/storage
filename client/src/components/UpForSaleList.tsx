@@ -77,6 +77,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [manualLotSearch, setManualLotSearch] = useState("");
 
   // Initialize billing lots when "selectLots" is chosen
+  // Also re-initialize when key selectedLot properties change
   useEffect(() => {
     if (chargeBasis === "selectLots" && selectedLot) {
       // Add current lot as first item - default to UNCHECKED
@@ -98,7 +99,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     } else {
       setSelectedBillingLots([]);
     }
-  }, [chargeBasis, selectedLot?.id]);
+  }, [chargeBasis, selectedLot?.id, selectedLot?.netWeight, selectedLot?.chargeUnit, selectedLot?.coldCharge, selectedLot?.hammali]);
 
   // Reset charge basis when lot changes
   useEffect(() => {
@@ -822,46 +823,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>{t("deliveryType")}</Label>
-                <Select value={deliveryType} onValueChange={(value: "gate" | "bilty") => setDeliveryType(value)}>
-                  <SelectTrigger data-testid="select-delivery-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gate">{t("gateCut")}</SelectItem>
-                    <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {deliveryType === "bilty" && (
-                <div className="space-y-4 p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20">
-                  <div className="space-y-2">
-                    <Label>{t("extraHammaliPerBag")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={extraHammaliPerBag}
-                      onChange={(e) => setExtraHammaliPerBag(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-extra-hammali"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("totalGradingCharges")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={totalGradingCharges}
-                      onChange={(e) => setTotalGradingCharges(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-grading-charges"
-                    />
-                  </div>
-                </div>
-              )}
-
               {/* Multi-Lot Billing Section - shown when "Select Lots" is selected in Charge Basis */}
               {chargeBasis === "selectLots" && (
                 <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
@@ -883,10 +844,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       </thead>
                       <tbody>
                         {selectedBillingLots.map((lot) => {
-                          const hasZeroNetWeight = selectedLot?.chargeUnit === "quintal" && !lot.netWeight;
+                          // For current lot, override with selectedLot's properties to ensure fresh data
+                          const effectiveLot = lot.isCurrentLot ? {
+                            ...lot,
+                            netWeight: selectedLot.netWeight,
+                            originalSize: selectedLot.originalSize,
+                            rate: selectedLot.coldCharge + selectedLot.hammali,
+                            baseColdChargesBilled: selectedLot.baseColdChargesBilled,
+                          } : lot;
+                          const hasZeroNetWeight = selectedLot?.chargeUnit === "quintal" && !effectiveLot.netWeight;
                           // For current lot in full sale mode, use remainingSize
                           const saleQty = lot.isCurrentLot ? selectedLot?.remainingSize : undefined;
-                          const billedCharge = calculateBillingLotCharge(lot, saleQty);
+                          // Calculate using shared function with effective lot data
+                          const billedCharge = calculateBillingLotCharge(effectiveLot, saleQty);
                           return (
                             <tr 
                               key={lot.id} 
@@ -971,6 +941,46 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         data-testid="input-manual-lot-search"
                       />
                     </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>{t("deliveryType")}</Label>
+                <Select value={deliveryType} onValueChange={(value: "gate" | "bilty") => setDeliveryType(value)}>
+                  <SelectTrigger data-testid="select-delivery-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gate">{t("gateCut")}</SelectItem>
+                    <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {deliveryType === "bilty" && (
+                <div className="space-y-4 p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20">
+                  <div className="space-y-2">
+                    <Label>{t("extraHammaliPerBag")}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={extraHammaliPerBag}
+                      onChange={(e) => setExtraHammaliPerBag(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-extra-hammali"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("totalGradingCharges")}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={totalGradingCharges}
+                      onChange={(e) => setTotalGradingCharges(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-grading-charges"
+                    />
                   </div>
                 </div>
               )}
@@ -1340,46 +1350,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>{t("deliveryType")}</Label>
-                <Select value={deliveryType} onValueChange={(value: "gate" | "bilty") => setDeliveryType(value)}>
-                  <SelectTrigger data-testid="select-partial-delivery-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gate">{t("gateCut")}</SelectItem>
-                    <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {deliveryType === "bilty" && (
-                <div className="space-y-4 p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20">
-                  <div className="space-y-2">
-                    <Label>{t("extraHammaliPerBag")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={extraHammaliPerBag}
-                      onChange={(e) => setExtraHammaliPerBag(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-partial-extra-hammali"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("totalGradingCharges")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={totalGradingCharges}
-                      onChange={(e) => setTotalGradingCharges(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-partial-grading-charges"
-                    />
-                  </div>
-                </div>
-              )}
-
               {/* Multi-Lot Billing Section for Partial Sale - shown when "Select Lots" is selected */}
               {chargeBasis === "selectLots" && (
                 <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
@@ -1401,10 +1371,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       </thead>
                       <tbody>
                         {selectedBillingLots.map((lot) => {
-                          const hasZeroNetWeight = selectedLot.chargeUnit === "quintal" && !lot.netWeight;
+                          // For current lot, override with selectedLot's properties to ensure fresh data
+                          const effectiveLot = lot.isCurrentLot ? {
+                            ...lot,
+                            netWeight: selectedLot.netWeight,
+                            originalSize: selectedLot.originalSize,
+                            rate: selectedLot.coldCharge + selectedLot.hammali,
+                            baseColdChargesBilled: selectedLot.baseColdChargesBilled,
+                          } : lot;
+                          const hasZeroNetWeight = selectedLot.chargeUnit === "quintal" && !effectiveLot.netWeight;
                           // For current lot in partial sale mode, use partialQuantity
                           const saleQty = lot.isCurrentLot ? partialQuantity : undefined;
-                          const billedCharge = calculateBillingLotCharge(lot, saleQty);
+                          // Calculate using shared function with effective lot data
+                          const billedCharge = calculateBillingLotCharge(effectiveLot, saleQty);
                           return (
                             <tr 
                               key={lot.id} 
@@ -1475,6 +1454,46 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>{t("deliveryType")}</Label>
+                <Select value={deliveryType} onValueChange={(value: "gate" | "bilty") => setDeliveryType(value)}>
+                  <SelectTrigger data-testid="select-partial-delivery-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gate">{t("gateCut")}</SelectItem>
+                    <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {deliveryType === "bilty" && (
+                <div className="space-y-4 p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20">
+                  <div className="space-y-2">
+                    <Label>{t("extraHammaliPerBag")}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={extraHammaliPerBag}
+                      onChange={(e) => setExtraHammaliPerBag(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-partial-extra-hammali"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("totalGradingCharges")}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={totalGradingCharges}
+                      onChange={(e) => setTotalGradingCharges(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-partial-grading-charges"
+                    />
+                  </div>
                 </div>
               )}
 
