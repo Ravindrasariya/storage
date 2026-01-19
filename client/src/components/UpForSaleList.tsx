@@ -382,7 +382,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           {saleLots.map((lot) => (
             <div
               key={lot.id}
-              className="p-4 rounded-lg border bg-card"
+              className="p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-card"
               data-testid={`sale-lot-${lot.id}`}
             >
               <div className="flex flex-col gap-3">
