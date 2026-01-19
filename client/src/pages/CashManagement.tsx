@@ -17,7 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory } from "@shared/schema";
 
 interface BuyerWithDue {
   buyerName: string;
@@ -60,6 +60,17 @@ export default function CashManagement() {
   const [transferAmount, setTransferAmount] = useState("");
   const [transferDate, setTransferDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [transferRemarks, setTransferRemarks] = useState("");
+  
+  // Buyer-to-buyer transfer state
+  const [transferTypeMode, setTransferTypeMode] = useState<"internal" | "buyer">("internal");
+  const [buyerTransferFrom, setBuyerTransferFrom] = useState("");
+  const [buyerTransferTo, setBuyerTransferTo] = useState("");
+  const [selectedSaleId, setSelectedSaleId] = useState("");
+  const [buyerTransferAmount, setBuyerTransferAmount] = useState("");
+  const [buyerTransferDate, setBuyerTransferDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [buyerTransferRemarks, setBuyerTransferRemarks] = useState("");
+  const [showBuyerFromSuggestions, setShowBuyerFromSuggestions] = useState(false);
+  const [showBuyerToSuggestions, setShowBuyerToSuggestions] = useState(false);
 
   const [filterTransactionType, setFilterTransactionType] = useState<"all" | "inward" | "expense" | "self">("all");
   const [filterPaymentMode, setFilterPaymentMode] = useState<string>("");
@@ -130,7 +141,42 @@ export default function CashManagement() {
     enabled: showSettings,
   });
 
+  // All buyers for Buyer To dropdown
+  const { data: allBuyers = [] } = useQuery<{ buyerName: string }[]>({
+    queryKey: ["/api/buyers/lookup"],
+  });
 
+  // Sales with dues for selected buyer (for buyer-to-buyer transfer)
+  const { data: buyerSalesWithDues = [] } = useQuery<SalesHistory[]>({
+    queryKey: ["/api/sales-history/by-buyer", buyerTransferFrom],
+    enabled: !!buyerTransferFrom && transferTypeMode === "buyer",
+  });
+
+  const createBuyerTransferMutation = useMutation({
+    mutationFn: async (data: { saleId: string; fromBuyerName: string; toBuyerName: string; amount: number; transferDate: string; remarks?: string }) => {
+      const response = await apiRequest("POST", "/api/buyer-transfer", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: t("buyerTransferRecorded"),
+        variant: "success",
+      });
+      setBuyerTransferFrom("");
+      setBuyerTransferTo("");
+      setSelectedSaleId("");
+      setBuyerTransferAmount("");
+      setBuyerTransferDate(format(new Date(), "yyyy-MM-dd"));
+      setBuyerTransferRemarks("");
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: "Failed to record buyer transfer", variant: "destructive" });
+    },
+  });
 
   const createReceiptMutation = useMutation({
     mutationFn: async (data: { payerType: string; buyerName?: string; receiptType: string; accountType?: string; amount: number; receivedAt: string; notes?: string }) => {
@@ -397,6 +443,26 @@ export default function CashManagement() {
       amount: parseFloat(transferAmount),
       transferredAt: new Date(transferDate).toISOString(),
       remarks: transferRemarks || undefined,
+    });
+  };
+
+  const handleBuyerTransferSubmit = () => {
+    if (!buyerTransferFrom || !buyerTransferTo || !selectedSaleId || !buyerTransferAmount) {
+      toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+    if (parseFloat(buyerTransferAmount) <= 0) {
+      toast({ title: t("error"), description: "Amount must be greater than zero", variant: "destructive" });
+      return;
+    }
+
+    createBuyerTransferMutation.mutate({
+      saleId: selectedSaleId,
+      fromBuyerName: buyerTransferFrom,
+      toBuyerName: buyerTransferTo,
+      amount: parseFloat(buyerTransferAmount),
+      transferDate: new Date(buyerTransferDate).toISOString(),
+      remarks: buyerTransferRemarks || undefined,
     });
   };
 
@@ -1118,11 +1184,11 @@ export default function CashManagement() {
                 </TabsTrigger>
                 <TabsTrigger 
                   value="self" 
-                  data-testid="tab-self"
+                  data-testid="tab-transfer"
                   className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
                 >
                   <ArrowLeftRight className="h-4 w-4 mr-1" />
-                  {t("self")}
+                  {t("transfer")}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -1497,116 +1563,247 @@ export default function CashManagement() {
               </>
             ) : activeTab === "self" ? (
               <>
+                {/* Transfer Type Selection */}
                 <div className="space-y-2">
-                  <Label>{t("fromAccount")} *</Label>
-                  <Select value={transferFromAccount} onValueChange={(v) => setTransferFromAccount(v as "cash" | "limit" | "current")}>
-                    <SelectTrigger data-testid="select-transfer-from">
+                  <Label>{t("transferType")} *</Label>
+                  <Select value={transferTypeMode} onValueChange={(v) => setTransferTypeMode(v as "internal" | "buyer")}>
+                    <SelectTrigger data-testid="select-transfer-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cash">
-                        <span className="flex items-center gap-2">
-                          <Banknote className="h-4 w-4" />
-                          {t("cashInHand")}
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="limit">
-                        <span className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4" />
-                          {t("limitAccount")}
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="current">
-                        <span className="flex items-center gap-2">
-                          <Wallet className="h-4 w-4" />
-                          {t("currentAccount")}
-                        </span>
-                      </SelectItem>
+                      <SelectItem value="internal">{t("internalTransfer")}</SelectItem>
+                      <SelectItem value="buyer">{t("buyerToBuyer")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>{t("toAccount")} *</Label>
-                  <Select value={transferToAccount} onValueChange={(v) => setTransferToAccount(v as "cash" | "limit" | "current")}>
-                    <SelectTrigger data-testid="select-transfer-to">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">
-                        <span className="flex items-center gap-2">
-                          <Banknote className="h-4 w-4" />
-                          {t("cashInHand")}
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="limit">
-                        <span className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4" />
-                          {t("limitAccount")}
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="current">
-                        <span className="flex items-center gap-2">
-                          <Wallet className="h-4 w-4" />
-                          {t("currentAccount")}
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {transferTypeMode === "internal" ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>{t("fromAccount")} *</Label>
+                      <Select value={transferFromAccount} onValueChange={(v) => setTransferFromAccount(v as "cash" | "limit" | "current")}>
+                        <SelectTrigger data-testid="select-transfer-from">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">
+                            <span className="flex items-center gap-2">
+                              <Banknote className="h-4 w-4" />
+                              {t("cashInHand")}
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="limit">
+                            <span className="flex items-center gap-2">
+                              <Building2 className="h-4 w-4" />
+                              {t("limitAccount")}
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="current">
+                            <span className="flex items-center gap-2">
+                              <Wallet className="h-4 w-4" />
+                              {t("currentAccount")}
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                {transferFromAccount === transferToAccount && (
-                  <p className="text-xs text-red-500">{t("sameAccountError")}</p>
-                )}
+                    <div className="space-y-2">
+                      <Label>{t("toAccount")} *</Label>
+                      <Select value={transferToAccount} onValueChange={(v) => setTransferToAccount(v as "cash" | "limit" | "current")}>
+                        <SelectTrigger data-testid="select-transfer-to">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">
+                            <span className="flex items-center gap-2">
+                              <Banknote className="h-4 w-4" />
+                              {t("cashInHand")}
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="limit">
+                            <span className="flex items-center gap-2">
+                              <Building2 className="h-4 w-4" />
+                              {t("limitAccount")}
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="current">
+                            <span className="flex items-center gap-2">
+                              <Wallet className="h-4 w-4" />
+                              {t("currentAccount")}
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>{t("amount")} (₹) *</Label>
-                  <Input
-                    type="number"
-                    value={transferAmount}
-                    onChange={(e) => setTransferAmount(e.target.value)}
-                    placeholder="0"
-                    min={1}
-                    data-testid="input-transfer-amount"
-                  />
-                </div>
+                    {transferFromAccount === transferToAccount && (
+                      <p className="text-xs text-red-500">{t("sameAccountError")}</p>
+                    )}
 
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    {t("transferDate")}
-                  </Label>
-                  <Input
-                    type="date"
-                    value={transferDate}
-                    onChange={(e) => setTransferDate(e.target.value)}
-                    data-testid="input-transfer-date"
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label>{t("amount")} (₹) *</Label>
+                      <Input
+                        type="number"
+                        value={transferAmount}
+                        onChange={(e) => setTransferAmount(e.target.value)}
+                        placeholder="0"
+                        min={1}
+                        data-testid="input-transfer-amount"
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>{t("remarks")}</Label>
-                  <Input
-                    value={transferRemarks}
-                    onChange={(e) => setTransferRemarks(e.target.value)}
-                    placeholder={t("remarks")}
-                    data-testid="input-transfer-remarks"
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        {t("transferDate")}
+                      </Label>
+                      <Input
+                        type="date"
+                        value={transferDate}
+                        onChange={(e) => setTransferDate(e.target.value)}
+                        data-testid="input-transfer-date"
+                      />
+                    </div>
 
-                <Button
-                  onClick={handleTransferSubmit}
-                  disabled={!canEdit || !transferAmount || transferFromAccount === transferToAccount || createTransferMutation.isPending}
-                  className="w-full bg-blue-600 hover:bg-blue-700"
-                  data-testid="button-record-transfer"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {createTransferMutation.isPending ? t("saving") : t("recordTransfer")}
-                </Button>
-                {!canEdit && (
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
-                  </p>
+                    <div className="space-y-2">
+                      <Label>{t("remarks")}</Label>
+                      <Input
+                        value={transferRemarks}
+                        onChange={(e) => setTransferRemarks(e.target.value)}
+                        placeholder={t("remarks")}
+                        data-testid="input-transfer-remarks"
+                      />
+                    </div>
+
+                    <Button
+                      onClick={handleTransferSubmit}
+                      disabled={!canEdit || !transferAmount || transferFromAccount === transferToAccount || createTransferMutation.isPending}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      data-testid="button-record-transfer"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {createTransferMutation.isPending ? t("saving") : t("recordTransfer")}
+                    </Button>
+                    {!canEdit && (
+                      <p className="text-xs text-muted-foreground text-center mt-2">
+                        {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Buyer-to-Buyer Transfer Form */}
+                    <div className="space-y-2">
+                      <Label>{t("fromBuyer")} *</Label>
+                      <Select value={buyerTransferFrom} onValueChange={(v) => {
+                        setBuyerTransferFrom(v);
+                        setSelectedSaleId("");
+                        setBuyerTransferAmount("");
+                      }}>
+                        <SelectTrigger data-testid="select-buyer-from">
+                          <SelectValue placeholder={t("selectBuyer")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {buyersWithDues.filter(b => b.totalDue > 0).map((buyer) => (
+                            <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
+                              {buyer.buyerName} (₹{buyer.totalDue.toLocaleString()})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {buyerTransferFrom && (
+                      <div className="space-y-2">
+                        <Label>{t("selectSale")} *</Label>
+                        <Select value={selectedSaleId} onValueChange={(v) => {
+                          setSelectedSaleId(v);
+                          const sale = buyerSalesWithDues.find(s => s.id === v);
+                          if (sale) {
+                            setBuyerTransferAmount(sale.dueAmount?.toString() || "");
+                          }
+                        }}>
+                          <SelectTrigger data-testid="select-sale">
+                            <SelectValue placeholder={t("selectSale")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {buyerSalesWithDues.filter(s => (s.dueAmount || 0) > 0).map((sale) => (
+                              <SelectItem key={sale.id} value={sale.id}>
+                                {sale.farmerName} - {sale.quantitySold} {t("bags")} (₹{sale.dueAmount?.toLocaleString()})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label>{t("toBuyer")} *</Label>
+                      <Select value={buyerTransferTo} onValueChange={setBuyerTransferTo}>
+                        <SelectTrigger data-testid="select-buyer-to">
+                          <SelectValue placeholder={t("selectBuyer")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allBuyers.filter(b => b.buyerName !== buyerTransferFrom).map((buyer) => (
+                            <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
+                              {buyer.buyerName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t("transferAmount")} (₹) *</Label>
+                      <Input
+                        type="number"
+                        value={buyerTransferAmount}
+                        onChange={(e) => setBuyerTransferAmount(e.target.value)}
+                        placeholder="0"
+                        min={1}
+                        data-testid="input-buyer-transfer-amount"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        {t("transferDate")}
+                      </Label>
+                      <Input
+                        type="date"
+                        value={buyerTransferDate}
+                        onChange={(e) => setBuyerTransferDate(e.target.value)}
+                        data-testid="input-buyer-transfer-date"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t("remarks")}</Label>
+                      <Input
+                        value={buyerTransferRemarks}
+                        onChange={(e) => setBuyerTransferRemarks(e.target.value)}
+                        placeholder={t("remarks")}
+                        data-testid="input-buyer-transfer-remarks"
+                      />
+                    </div>
+
+                    <Button
+                      onClick={handleBuyerTransferSubmit}
+                      disabled={!canEdit || !buyerTransferFrom || !buyerTransferTo || !selectedSaleId || !buyerTransferAmount || createBuyerTransferMutation.isPending}
+                      className="w-full bg-purple-600 hover:bg-purple-700"
+                      data-testid="button-record-buyer-transfer"
+                    >
+                      <ArrowLeftRight className="h-4 w-4 mr-2" />
+                      {createBuyerTransferMutation.isPending ? t("saving") : t("transferDebt")}
+                    </Button>
+                    {!canEdit && (
+                      <p className="text-xs text-muted-foreground text-center mt-2">
+                        {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
+                      </p>
+                    )}
+                  </>
                 )}
               </>
             ) : null}

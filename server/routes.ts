@@ -1450,6 +1450,80 @@ export async function registerRoutes(
     }
   });
 
+  // Get sales with dues for a specific buyer (for buyer-to-buyer transfer)
+  app.get("/api/sales-history/by-buyer/:buyerName", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const buyerName = decodeURIComponent(req.params.buyerName);
+      const allSales = await storage.getSalesHistory(coldStorageId, { buyerName });
+      // Filter to only include sales with dues (paymentStatus is 'due' or 'partial')
+      const salesWithDues = allSales.filter(s => 
+        (s.paymentStatus === 'due' || s.paymentStatus === 'partial') && 
+        (s.dueAmount || 0) > 0
+      );
+      res.json(salesWithDues);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch buyer sales" });
+    }
+  });
+
+  // Buyer-to-buyer transfer endpoint
+  const buyerTransferSchema = z.object({
+    saleId: z.string(),
+    fromBuyerName: z.string(),
+    toBuyerName: z.string(),
+    amount: z.number().positive(),
+    transferDate: z.string().transform((val) => new Date(val)),
+    remarks: z.string().optional(),
+  });
+
+  app.post("/api/buyer-transfer", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const validatedData = buyerTransferSchema.parse(req.body);
+      
+      // Get the sale to transfer
+      const sales = await storage.getSalesHistory(coldStorageId);
+      const sale = sales.find(s => s.id === validatedData.saleId);
+      
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
+      
+      if ((sale.dueAmount || 0) < validatedData.amount) {
+        return res.status(400).json({ error: "Transfer amount exceeds due amount" });
+      }
+      
+      // Generate a transfer group ID to link related records
+      const transferGroupId = `transfer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Update the original sale: mark as paid via transfer, record transfer destination
+      await storage.updateSalesHistoryForTransfer(validatedData.saleId, {
+        clearanceType: 'transfer',
+        transferToBuyerName: validatedData.toBuyerName,
+        transferGroupId: transferGroupId,
+        transferDate: validatedData.transferDate,
+        transferRemarks: validatedData.remarks || null,
+        // If full amount is transferred, mark as paid; otherwise partial
+        paymentStatus: validatedData.amount >= (sale.dueAmount || 0) ? 'paid' : 'partial',
+        paidAmount: (sale.paidAmount || 0) + validatedData.amount,
+        dueAmount: (sale.dueAmount || 0) - validatedData.amount,
+      });
+      
+      res.json({ 
+        success: true, 
+        message: "Transfer recorded successfully",
+        transferGroupId 
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid transfer data", details: error.errors });
+      }
+      console.error("Buyer transfer error:", error);
+      res.status(500).json({ error: "Failed to record buyer transfer" });
+    }
+  });
+
   const createCashReceiptSchema = z.object({
     payerType: z.enum(["cold_merchant", "sales_goods", "kata", "others"]),
     buyerName: z.string().optional(),

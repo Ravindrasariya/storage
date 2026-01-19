@@ -389,6 +389,22 @@ const translations: Translations = {
   recordTransfer: { en: "Record Transfer", hi: "स्थानांतरण दर्ज करें" },
   transferRecorded: { en: "Transfer recorded successfully", hi: "स्थानांतरण सफलतापूर्वक दर्ज किया गया" },
   sameAccountError: { en: "From and To accounts cannot be the same", hi: "किस खाते से और किस खाते में समान नहीं हो सकते" },
+  // Buyer-to-Buyer Transfer
+  transferType: { en: "Transfer Type", hi: "स्थानांतरण प्रकार" },
+  internalTransfer: { en: "Internal (Cash/Account)", hi: "आंतरिक (नकद/खाता)" },
+  buyerToBuyer: { en: "Buyer to Buyer", hi: "खरीदार से खरीदार" },
+  buyerFrom: { en: "Buyer From", hi: "किस खरीदार से" },
+  buyerTo: { en: "Buyer To", hi: "किस खरीदार को" },
+  fromBuyer: { en: "From Buyer", hi: "किस खरीदार से" },
+  toBuyer: { en: "To Buyer", hi: "किस खरीदार को" },
+  transferAmount: { en: "Transfer Amount", hi: "स्थानांतरण राशि" },
+  transferDebt: { en: "Transfer Debt", hi: "बकाया स्थानांतरित करें" },
+  selectSale: { en: "Select Sale", hi: "बिक्री चुनें" },
+  selectBuyerFirst: { en: "Select buyer first", hi: "पहले खरीदार चुनें" },
+  noSalesFound: { en: "No sales with dues found", hi: "बकाया वाली कोई बिक्री नहीं मिली" },
+  transferToBuyer: { en: "Transfer To Buyer", hi: "खरीदार को हस्तांतरित" },
+  buyerTransferRecorded: { en: "Buyer transfer recorded successfully", hi: "खरीदार स्थानांतरण सफलतापूर्वक दर्ज किया गया" },
+  sameBuyerError: { en: "From and To buyers cannot be the same", hi: "किस खरीदार से और किस खरीदार को समान नहीं हो सकते" },
   
   // Settings - Opening Balances
   startOfYearSettings: { en: "Start of Year Settings", hi: "वर्ष प्रारंभ सेटिंग्स" },

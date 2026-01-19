@@ -112,6 +112,16 @@ export interface IStorage {
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
   reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string }>;
+  updateSalesHistoryForTransfer(saleId: string, updates: {
+    clearanceType: string;
+    transferToBuyerName: string;
+    transferGroupId: string;
+    transferDate: Date;
+    transferRemarks: string | null;
+    paymentStatus: string;
+    paidAmount: number;
+    dueAmount: number;
+  }): Promise<SalesHistory | undefined>;
   // Maintenance Records
   getMaintenanceRecords(coldStorageId: string): Promise<MaintenanceRecord[]>;
   createMaintenanceRecord(data: InsertMaintenanceRecord): Promise<MaintenanceRecord>;
@@ -1192,6 +1202,33 @@ export class DatabaseStorage implements IStorage {
       .set({ 
         paymentStatus: "due",
         paidAt: null
+      })
+      .where(eq(salesHistory.id, saleId))
+      .returning();
+    return updated;
+  }
+
+  async updateSalesHistoryForTransfer(saleId: string, updates: {
+    clearanceType: string;
+    transferToBuyerName: string;
+    transferGroupId: string;
+    transferDate: Date;
+    transferRemarks: string | null;
+    paymentStatus: string;
+    paidAmount: number;
+    dueAmount: number;
+  }): Promise<SalesHistory | undefined> {
+    const [updated] = await db.update(salesHistory)
+      .set({
+        clearanceType: updates.clearanceType,
+        transferToBuyerName: updates.transferToBuyerName,
+        transferGroupId: updates.transferGroupId,
+        transferDate: updates.transferDate,
+        transferRemarks: updates.transferRemarks,
+        paymentStatus: updates.paymentStatus,
+        paidAmount: updates.paidAmount,
+        dueAmount: updates.dueAmount,
+        paidAt: updates.paymentStatus === 'paid' ? new Date() : null,
       })
       .where(eq(salesHistory.id, saleId))
       .returning();
