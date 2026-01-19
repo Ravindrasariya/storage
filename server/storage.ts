@@ -1630,12 +1630,14 @@ export class DatabaseStorage implements IStorage {
   async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
     // Get all sales for this buyer with due or partial status, ordered by sale date (FIFO)
     // Use case-insensitive matching for buyer name
+    // Exclude transfer-cleared records - they were settled by transferring the due to another buyer
     const sales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
         sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
-        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
+        sql`(${salesHistory.clearanceType} IS NULL OR ${salesHistory.clearanceType} != 'transfer')`
       ))
       .orderBy(salesHistory.soldAt); // FIFO - oldest first
 
@@ -1985,11 +1987,13 @@ export class DatabaseStorage implements IStorage {
   async recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }> {
     // Step 1: Reset all sales for this buyer to "due" status with 0 paidAmount
     // Calculate proper dueAmount using all surcharges
+    // EXCLUDE transfer-cleared sales - they were settled by transferring the due to another buyer
     const buyerSales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`
+        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
+        sql`(${salesHistory.clearanceType} IS NULL OR ${salesHistory.clearanceType} != 'transfer')`
       ))
       .orderBy(salesHistory.soldAt);
 
