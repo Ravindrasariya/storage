@@ -392,6 +392,7 @@ export interface SaleLotInfo {
   netWeight: number | null; // Net weight in quintals (for quintal-based charging)
   chargeUnit: string; // "bag" or "quintal"
   baseColdChargesBilled: number; // 0 = not billed, 1 = billed (base cold charges already billed)
+  totalDueCharge: number; // Accumulated due charges from previous partial sales
 }
 
 // Dashboard stats type
