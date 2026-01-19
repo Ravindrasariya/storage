@@ -1450,6 +1450,21 @@ export async function registerRoutes(
     }
   });
 
+  // Get buyer-to-buyer transfers for cash flow history (salesHistory with transferToBuyerName set)
+  app.get("/api/sales-history/buyer-transfers", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const allSales = await storage.getSalesHistory(coldStorageId);
+      // Filter to include only records where a buyer-to-buyer transfer was made
+      const buyerTransfers = allSales.filter(s => 
+        s.clearanceType === 'transfer' && s.transferToBuyerName
+      );
+      res.json(buyerTransfers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch buyer transfers" });
+    }
+  });
+
   // Get sales with dues for a specific buyer (for buyer-to-buyer transfer)
   app.get("/api/sales-history/by-buyer/:buyerName", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {

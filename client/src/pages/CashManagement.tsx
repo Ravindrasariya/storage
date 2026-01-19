@@ -27,7 +27,8 @@ interface BuyerWithDue {
 type TransactionItem = 
   | { type: "inflow"; data: CashReceipt; timestamp: number }
   | { type: "outflow"; data: Expense; timestamp: number }
-  | { type: "transfer"; data: CashTransfer; timestamp: number };
+  | { type: "transfer"; data: CashTransfer; timestamp: number }
+  | { type: "buyerTransfer"; data: SalesHistory; timestamp: number };
 
 export default function CashManagement() {
   const { t } = useI18n();
@@ -72,7 +73,7 @@ export default function CashManagement() {
   const [showBuyerFromSuggestions, setShowBuyerFromSuggestions] = useState(false);
   const [showBuyerToSuggestions, setShowBuyerToSuggestions] = useState(false);
 
-  const [filterTransactionType, setFilterTransactionType] = useState<"all" | "inward" | "expense" | "self">("all");
+  const [filterTransactionType, setFilterTransactionType] = useState<"all" | "inward" | "expense" | "self" | "buyerTransfer">("all");
   const [filterPaymentMode, setFilterPaymentMode] = useState<string>("");
   const [filterPayerType, setFilterPayerType] = useState<string>("");
   const [filterBuyer, setFilterBuyer] = useState<string>("");
@@ -152,6 +153,11 @@ export default function CashManagement() {
     enabled: !!buyerTransferFrom && transferTypeMode === "buyer",
   });
 
+  // Buyer-to-buyer transfers for cash flow history
+  const { data: buyerTransfers = [], isLoading: loadingBuyerTransfers } = useQuery<SalesHistory[]>({
+    queryKey: ["/api/sales-history/buyer-transfers"],
+  });
+
   const createBuyerTransferMutation = useMutation({
     mutationFn: async (data: { saleId: string; fromBuyerName: string; toBuyerName: string; amount: number; transferDate: string; remarks?: string }) => {
       const response = await apiRequest("POST", "/api/buyer-transfer", data);
@@ -172,6 +178,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record buyer transfer", variant: "destructive" });
@@ -590,9 +597,30 @@ export default function CashManagement() {
     const includeInward = filterTransactionType === "all" || filterTransactionType === "inward";
     const includeExpense = filterTransactionType === "all" || filterTransactionType === "expense";
     const includeTransfer = filterTransactionType === "all" || filterTransactionType === "self";
+    const includeBuyerTransfer = filterTransactionType === "all" || filterTransactionType === "buyerTransfer";
+
+    // Apply filters to buyer transfers
+    let filteredBuyerTransfers = buyerTransfers;
+    
+    // Month filter for buyer transfers
+    if (filterMonth) {
+      filteredBuyerTransfers = filteredBuyerTransfers.filter(bt => {
+        const date = new Date(bt.transferDate || bt.soldAt);
+        return format(date, "yyyy-MM") === filterMonth;
+      });
+    }
+    
+    // Remarks filter for buyer transfers
+    if (filterRemarks) {
+      const searchKey = filterRemarks.trim().toLowerCase();
+      filteredBuyerTransfers = filteredBuyerTransfers.filter(bt => 
+        bt.transferRemarks && bt.transferRemarks.toLowerCase().includes(searchKey)
+      );
+    }
 
     // Combine and sort descending (latest first)
-    const getTimestamp = (dateStr: string | Date): number => {
+    const getTimestamp = (dateStr: string | Date | null): number => {
+      if (!dateStr) return 0;
       if (dateStr instanceof Date) return dateStr.getTime();
       const parsed = Date.parse(dateStr);
       return isNaN(parsed) ? new Date(dateStr).getTime() : parsed;
@@ -614,14 +642,19 @@ export default function CashManagement() {
         data: t, 
         timestamp: getTimestamp(t.transferredAt)
       })) : []),
+      ...(includeBuyerTransfer ? filteredBuyerTransfers.map(bt => ({ 
+        type: "buyerTransfer" as const, 
+        data: bt, 
+        timestamp: getTimestamp(bt.transferDate || bt.soldAt)
+      })) : []),
     ].sort((a, b) => {
       const timeDiff = b.timestamp - a.timestamp;
       if (timeDiff !== 0) return timeDiff;
       return String(b.data.id).localeCompare(String(a.data.id));
     });
-  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
+  }, [receipts, expensesList, transfers, buyerTransfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
 
-  const isLoading = loadingReceipts || loadingExpenses || loadingTransfers;
+  const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers;
 
   const uniqueBuyers = useMemo(() => {
     // Aggregate buyers case-insensitively with trimming
@@ -964,7 +997,7 @@ export default function CashManagement() {
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("transactionType")}</Label>
-              <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense" | "self")}>
+              <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense" | "self" | "buyerTransfer")}>
                 <SelectTrigger data-testid="select-filter-transaction-type" className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
@@ -973,6 +1006,7 @@ export default function CashManagement() {
                   <SelectItem value="inward">{t("inwardCash")}</SelectItem>
                   <SelectItem value="expense">{t("expense")}</SelectItem>
                   <SelectItem value="self">{t("selfTransfers")}</SelectItem>
+                  <SelectItem value="buyerTransfer">{t("buyerToBuyer")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1730,7 +1764,7 @@ export default function CashManagement() {
                           <SelectContent>
                             {buyerSalesWithDues.filter(s => (s.dueAmount || 0) > 0).map((sale) => (
                               <SelectItem key={sale.id} value={sale.id}>
-                                {sale.farmerName} - {sale.quantitySold} {t("bags")} (₹{sale.dueAmount?.toLocaleString()})
+                                {sale.farmerName} - {t("lot")} {sale.lotNo}, {sale.quantitySold} {t("bags")} (₹{sale.dueAmount?.toLocaleString()})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -1759,9 +1793,9 @@ export default function CashManagement() {
                       <Input
                         type="number"
                         value={buyerTransferAmount}
-                        onChange={(e) => setBuyerTransferAmount(e.target.value)}
+                        readOnly
+                        className="bg-muted cursor-not-allowed"
                         placeholder="0"
-                        min={1}
                         data-testid="input-buyer-transfer-amount"
                       />
                     </div>
@@ -1823,7 +1857,7 @@ export default function CashManagement() {
               <ScrollArea className="h-[520px]">
                 <div className="space-y-2 px-4 py-2">
                   {allTransactions.map((transaction, index) => {
-                    const isReversed = transaction.data.isReversed === 1;
+                    const isReversed = transaction.type !== "buyerTransfer" && (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1;
                     return (
                       <div
                         key={`${transaction.type}-${transaction.data.id}`}
@@ -1834,7 +1868,9 @@ export default function CashManagement() {
                               ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900" 
                               : transaction.type === "outflow"
                                 ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"
-                                : "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900"
+                                : transaction.type === "buyerTransfer"
+                                  ? "bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900"
+                                  : "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900"
                         }`}
                         onClick={() => setSelectedTransaction(transaction)}
                         data-testid={`transaction-${transaction.type}-${index}`}
@@ -1846,6 +1882,8 @@ export default function CashManagement() {
                               <ArrowDownLeft className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-green-600"}`} />
                             ) : transaction.type === "outflow" ? (
                               <ArrowUpRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-red-600"}`} />
+                            ) : transaction.type === "buyerTransfer" ? (
+                              <ArrowLeftRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-purple-600"}`} />
                             ) : (
                               <ArrowLeftRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-blue-600"}`} />
                             )}
@@ -1854,7 +1892,9 @@ export default function CashManagement() {
                                 ? ((transaction.data as CashReceipt).buyerName || getPayerTypeLabel((transaction.data as CashReceipt).payerType))
                                 : transaction.type === "outflow"
                                   ? getExpenseTypeLabel((transaction.data as Expense).expenseType)
-                                  : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`
+                                  : transaction.type === "buyerTransfer"
+                                    ? `${(transaction.data as SalesHistory).buyerName} → ${(transaction.data as SalesHistory).transferToBuyerName}`
+                                    : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`
                               }
                             </span>
                           </div>
@@ -1862,18 +1902,22 @@ export default function CashManagement() {
                             <span className={`font-semibold text-sm ${
                               isReversed 
                                 ? "text-gray-400" 
-                                : transaction.type === "inflow" ? "text-green-600" : transaction.type === "outflow" ? "text-red-600" : "text-blue-600"
+                                : transaction.type === "inflow" ? "text-green-600" : transaction.type === "outflow" ? "text-red-600" : transaction.type === "buyerTransfer" ? "text-purple-600" : "text-blue-600"
                             }`}>
-                              {transaction.type === "inflow" ? "+" : transaction.type === "outflow" ? "-" : ""}₹{transaction.data.amount.toLocaleString()}
+                              {transaction.type === "inflow" ? "+" : transaction.type === "outflow" ? "-" : ""}₹{
+                                transaction.type === "buyerTransfer" 
+                                  ? ((transaction.data as SalesHistory).paidAmount || 0).toLocaleString()
+                                  : transaction.data.amount.toLocaleString()
+                              }
                             </span>
                             {isReversed ? (
                               <Badge variant="secondary" className="text-xs">{t("reversed")}</Badge>
                             ) : (
                               <Badge 
                                 variant={transaction.type === "inflow" ? "default" : transaction.type === "outflow" ? "destructive" : "outline"} 
-                                className={`text-xs ${transaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : ""}`}
+                                className={`text-xs ${transaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : transaction.type === "buyerTransfer" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" : ""}`}
                               >
-                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : t("transfer")}
+                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : transaction.type === "buyerTransfer" ? t("buyerToBuyer") : t("transfer")}
                               </Badge>
                             )}
                           </div>
@@ -1881,7 +1925,7 @@ export default function CashManagement() {
                         {/* Row 2: Date + Payment Mode */}
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
-                          {transaction.type !== "transfer" && (
+                          {transaction.type !== "transfer" && transaction.type !== "buyerTransfer" && (
                             <Badge variant="outline" className="text-xs py-0 h-5">
                               {transaction.type === "inflow" 
                                 ? ((transaction.data as CashReceipt).receiptType === "cash" 
@@ -1892,6 +1936,11 @@ export default function CashManagement() {
                                     : `${t("account")} (${(transaction.data as Expense).accountType === "limit" ? t("limitAccount") : t("currentAccount")})`)
                               }
                             </Badge>
+                          )}
+                          {transaction.type === "buyerTransfer" && (
+                            <span className="text-purple-600">
+                              {t("lot")} {(transaction.data as SalesHistory).lotNo}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1919,6 +1968,11 @@ export default function CashManagement() {
                   <ArrowUpRight className="h-5 w-5 text-red-600" />
                   {t("expenseDetails")}
                 </>
+              ) : selectedTransaction?.type === "buyerTransfer" ? (
+                <>
+                  <ArrowLeftRight className="h-5 w-5 text-purple-600" />
+                  {t("buyerToBuyer")}
+                </>
               ) : (
                 <>
                   <ArrowLeftRight className="h-5 w-5 text-blue-600" />
@@ -1935,7 +1989,7 @@ export default function CashManagement() {
             <div className="space-y-4">
               {/* Status Badge */}
               <div className="flex flex-col items-center gap-1">
-                {selectedTransaction.data.isReversed === 1 ? (
+                {selectedTransaction.type !== "buyerTransfer" && (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1 ? (
                   <>
                     <Badge variant="secondary" className="text-base px-4 py-1">
                       {t("reversed")}
@@ -1949,7 +2003,7 @@ export default function CashManagement() {
                 ) : (
                   <Badge 
                     variant={selectedTransaction.type === "inflow" ? "default" : selectedTransaction.type === "outflow" ? "destructive" : "outline"}
-                    className={`text-base px-4 py-1 ${selectedTransaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : ""}`}
+                    className={`text-base px-4 py-1 ${selectedTransaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : selectedTransaction.type === "buyerTransfer" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" : ""}`}
                   >
                     {t("active")}
                   </Badge>
@@ -2014,6 +2068,35 @@ export default function CashManagement() {
                       </div>
                     )}
                   </>
+                ) : selectedTransaction.type === "buyerTransfer" ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("fromBuyer")}:</span>
+                      <span className="font-medium">{(selectedTransaction.data as SalesHistory).buyerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("toBuyer")}:</span>
+                      <span className="font-medium">{(selectedTransaction.data as SalesHistory).transferToBuyerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("lot")}:</span>
+                      <span>{(selectedTransaction.data as SalesHistory).lotNo}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("amount")}:</span>
+                      <span className="font-bold text-purple-600">₹{((selectedTransaction.data as SalesHistory).paidAmount || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date:</span>
+                      <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
+                    </div>
+                    {(selectedTransaction.data as SalesHistory).transferRemarks && (
+                      <div className="pt-2 border-t">
+                        <span className="text-muted-foreground text-sm">{t("remarks")}:</span>
+                        <p className="text-sm mt-1">{(selectedTransaction.data as SalesHistory).transferRemarks}</p>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
                     <div className="flex justify-between">
@@ -2030,7 +2113,7 @@ export default function CashManagement() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("amount")}:</span>
-                      <span className="font-bold text-blue-600">₹{selectedTransaction.data.amount.toLocaleString()}</span>
+                      <span className="font-bold text-blue-600">₹{(selectedTransaction.data as CashTransfer).amount.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Date:</span>
@@ -2047,7 +2130,7 @@ export default function CashManagement() {
               </div>
 
               {/* Reverse Button */}
-              {canEdit && selectedTransaction.data.isReversed !== 1 && (
+              {canEdit && selectedTransaction.type !== "buyerTransfer" && (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed !== 1 && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="w-full" data-testid="button-reverse-from-dialog">
