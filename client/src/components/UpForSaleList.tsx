@@ -871,8 +871,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                               </td>
                               <td className="py-1 px-1 capitalize">{lot.bagType}</td>
                               <td className="py-1 px-1">
-                                {lot.lotNo}
-                                {lot.isCurrentLot && <Badge variant="outline" className="ml-1 text-[10px] py-0">{t("current") || "Current"}</Badge>}
+                                <div className="flex flex-col items-start">
+                                  <span>{lot.lotNo}</span>
+                                  {lot.isCurrentLot && <Badge variant="outline" className="text-[10px] py-0 mt-0.5">{t("current") || "Current"}</Badge>}
+                                </div>
                               </td>
                               <td className="text-right py-1 px-1">{lot.remainingSize}</td>
                               <td className={`text-right py-1 px-1 ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}>
@@ -1398,8 +1400,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                               </td>
                               <td className="py-1 px-1 capitalize">{lot.bagType}</td>
                               <td className="py-1 px-1">
-                                {lot.lotNo}
-                                {lot.isCurrentLot && <Badge variant="outline" className="ml-1 text-[10px] py-0">{t("current") || "Current"}</Badge>}
+                                <div className="flex flex-col items-start">
+                                  <span>{lot.lotNo}</span>
+                                  {lot.isCurrentLot && <Badge variant="outline" className="text-[10px] py-0 mt-0.5">{t("current") || "Current"}</Badge>}
+                                </div>
                               </td>
                               <td className="text-right py-1 px-1">{lot.remainingSize}</td>
                               <td className={`text-right py-1 px-1 ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}>
