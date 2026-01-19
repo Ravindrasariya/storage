@@ -2525,12 +2525,20 @@ export async function registerRoutes(
       const to = new Date(toDate);
       to.setHours(23, 59, 59, 999);
 
-      const { receipts, expenses } = await storage.getCashDataForExport(coldStorageId, from, to);
+      const { receipts, expenses, transfers } = await storage.getCashDataForExport(coldStorageId, from, to);
 
-      // Headers with all columns for both types
+      // Headers with all columns for all types
       const headers = language === "hi"
-        ? ["तारीख", "प्रकार", "खरीदार का नाम", "खर्च प्रकार", "भुगतान मोड", "राशि", "नोट्स/टिप्पणी", "स्थिति", "रद्द तारीख"]
-        : ["Date", "Type", "Buyer Name", "Expense Type", "Payment Mode", "Amount", "Notes/Remarks", "Status", "Reversal Date"];
+        ? ["तारीख", "प्रकार", "भुगतानकर्ता प्रकार", "खरीदार/प्राप्तकर्ता का नाम", "खर्च प्रकार", "भुगतान मोड", "खाता प्रकार", "से खाता", "में खाता", "राशि", "नोट्स/टिप्पणी", "स्थिति", "रद्द तारीख"]
+        : ["Date", "Type", "Payer Type", "Buyer/Receiver Name", "Expense Type", "Payment Mode", "Account Type", "From Account", "To Account", "Amount", "Notes/Remarks", "Status", "Reversal Date"];
+
+      // Payer type labels
+      const payerTypeMap: Record<string, { en: string; hi: string }> = {
+        cold_merchant: { en: "Cold Merchant", hi: "कोल्ड व्यापारी" },
+        sales_goods: { en: "Sales Goods", hi: "बिक्री माल" },
+        kata: { en: "Kata", hi: "काटा" },
+        others: { en: "Others", hi: "अन्य" },
+      };
 
       // Expense type labels
       const expenseTypeMap: Record<string, { en: string; hi: string }> = {
@@ -2540,13 +2548,24 @@ export async function registerRoutes(
         general_expenses: { en: "General Expenses", hi: "सामान्य खर्च" },
       };
 
+      // Account type labels
+      const accountTypeMap: Record<string, { en: string; hi: string }> = {
+        cash: { en: "Cash", hi: "नकद" },
+        limit: { en: "Limit Account", hi: "लिमिट खाता" },
+        current: { en: "Current Account", hi: "चालू खाता" },
+      };
+
       // Combine and sort by date (latest first)
       interface CashEntry {
         date: Date;
         type: string;
-        buyerName: string;
+        payerType: string;
+        buyerReceiverName: string;
         expenseType: string;
-        mode: string;
+        paymentMode: string;
+        accountType: string;
+        fromAccount: string;
+        toAccount: string;
         amount: number;
         notes: string;
         status: string;
@@ -2554,14 +2573,24 @@ export async function registerRoutes(
       }
       const allEntries: CashEntry[] = [];
       
+      // Process receipts (Inward)
       for (const r of receipts) {
         const isReversed = r.isReversed === 1;
+        const payerLabel = payerTypeMap[r.payerType] || { en: r.payerType, hi: r.payerType };
+        const accountLabel = r.receiptType === "account" && r.accountType 
+          ? (accountTypeMap[r.accountType] || { en: r.accountType, hi: r.accountType })
+          : { en: "", hi: "" };
+        
         allEntries.push({
           date: new Date(r.receivedAt),
           type: language === "hi" ? "आवक" : "Inward",
-          buyerName: r.buyerName || "",
-          expenseType: "", // Not applicable for inward
-          mode: r.receiptType === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
+          payerType: language === "hi" ? payerLabel.hi : payerLabel.en,
+          buyerReceiverName: r.buyerName || "",
+          expenseType: "",
+          paymentMode: r.receiptType === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
+          accountType: language === "hi" ? accountLabel.hi : accountLabel.en,
+          fromAccount: "",
+          toAccount: "",
           amount: r.amount,
           notes: r.notes || "",
           status: isReversed ? (language === "hi" ? "रद्द" : "Reversed") : (language === "hi" ? "सक्रिय" : "Active"),
@@ -2569,20 +2598,51 @@ export async function registerRoutes(
         });
       }
       
+      // Process expenses (Expense)
       for (const e of expenses) {
         const isReversed = e.isReversed === 1;
         const expenseLabel = expenseTypeMap[e.expenseType] || { en: e.expenseType, hi: e.expenseType };
+        const accountLabel = e.paymentMode === "account" && e.accountType 
+          ? (accountTypeMap[e.accountType] || { en: e.accountType, hi: e.accountType })
+          : { en: "", hi: "" };
         
         allEntries.push({
           date: new Date(e.paidAt),
           type: language === "hi" ? "खर्च" : "Expense",
-          buyerName: "", // Not applicable for expense
+          payerType: "",
+          buyerReceiverName: e.receiverName || "",
           expenseType: language === "hi" ? expenseLabel.hi : expenseLabel.en,
-          mode: e.paymentMode === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
+          paymentMode: e.paymentMode === "cash" ? (language === "hi" ? "नकद" : "Cash") : (language === "hi" ? "खाता" : "Account"),
+          accountType: language === "hi" ? accountLabel.hi : accountLabel.en,
+          fromAccount: "",
+          toAccount: "",
           amount: e.amount,
           notes: e.remarks || "",
           status: isReversed ? (language === "hi" ? "रद्द" : "Reversed") : (language === "hi" ? "सक्रिय" : "Active"),
           reversalDate: isReversed && e.reversedAt ? formatDateForExport(new Date(e.reversedAt)) : "",
+        });
+      }
+
+      // Process transfers (Self Transfer)
+      for (const t of transfers) {
+        const isReversed = t.isReversed === 1;
+        const fromLabel = accountTypeMap[t.fromAccountType] || { en: t.fromAccountType, hi: t.fromAccountType };
+        const toLabel = accountTypeMap[t.toAccountType] || { en: t.toAccountType, hi: t.toAccountType };
+        
+        allEntries.push({
+          date: new Date(t.transferredAt),
+          type: language === "hi" ? "स्व-स्थानांतरण" : "Self Transfer",
+          payerType: "",
+          buyerReceiverName: "",
+          expenseType: "",
+          paymentMode: "",
+          accountType: "",
+          fromAccount: language === "hi" ? fromLabel.hi : fromLabel.en,
+          toAccount: language === "hi" ? toLabel.hi : toLabel.en,
+          amount: t.amount,
+          notes: t.remarks || "",
+          status: isReversed ? (language === "hi" ? "रद्द" : "Reversed") : (language === "hi" ? "सक्रिय" : "Active"),
+          reversalDate: isReversed && t.reversedAt ? formatDateForExport(new Date(t.reversedAt)) : "",
         });
       }
 
@@ -2595,9 +2655,13 @@ export async function registerRoutes(
         const row = [
           formatDateForExport(entry.date),
           entry.type,
-          entry.buyerName,
+          entry.payerType,
+          entry.buyerReceiverName,
           entry.expenseType,
-          entry.mode,
+          entry.paymentMode,
+          entry.accountType,
+          entry.fromAccount,
+          entry.toAccount,
           entry.amount,
           entry.notes,
           entry.status,

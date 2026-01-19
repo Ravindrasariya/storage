@@ -179,7 +179,7 @@ export interface IStorage {
   // Export
   getLotsForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<Lot[]>;
   getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<SalesHistory[]>;
-  getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[] }>;
+  getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[]; transfers: CashTransfer[] }>;
   // Farmer lookup for auto-complete
   getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]>;
   // Buyer lookup for auto-complete (last 2 years)
@@ -2505,7 +2505,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(salesHistory.soldAt));
   }
 
-  async getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[] }> {
+  async getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[]; transfers: CashTransfer[] }> {
     const receiptsData = await db.select()
       .from(cashReceipts)
       .where(
@@ -2530,7 +2530,19 @@ export class DatabaseStorage implements IStorage {
       )
       .orderBy(desc(expenses.paidAt));
 
-    return { receipts: receiptsData, expenses: expensesData };
+    const transfersData = await db.select()
+      .from(cashTransfers)
+      .where(
+        and(
+          eq(cashTransfers.coldStorageId, coldStorageId),
+          eq(cashTransfers.isReversed, 0),
+          gte(cashTransfers.transferredAt, fromDate),
+          lte(cashTransfers.transferredAt, toDate)
+        )
+      )
+      .orderBy(desc(cashTransfers.transferredAt));
+
+    return { receipts: receiptsData, expenses: expensesData, transfers: transfersData };
   }
 
   async getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]> {
