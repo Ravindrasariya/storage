@@ -842,6 +842,7 @@ export async function registerRoutes(
         paymentMode: (paymentStatus === "paid" || paymentStatus === "partial") ? paymentMode : null,
         paidAmount: salePaidAmount,
         dueAmount: saleDueAmount,
+        transferredAmount: totalTransferred, // Track transferred dues separately
         entryDate: lot.createdAt,
         saleYear: new Date().getFullYear(),
       });
@@ -944,7 +945,8 @@ export async function registerRoutes(
         validatedData.gradingCharges,
         validatedData.netWeight,
         validatedData.customColdCharge,
-        validatedData.customHammali
+        validatedData.customHammali,
+        totalTransferred // Track transferred dues separately
       );
       if (!lot) {
         return res.status(404).json({ error: "Lot not found or already sold" });

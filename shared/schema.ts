@@ -142,8 +142,9 @@ export const salesHistory = pgTable("sales_history", {
   // Payment tracking
   paymentStatus: text("payment_status").notNull(), // 'paid', 'due', or 'partial'
   paymentMode: text("payment_mode"), // 'cash' or 'account' (only when paid/partial)
-  paidAmount: real("paid_amount").default(0), // Amount paid for this sale
+  paidAmount: real("paid_amount").default(0), // Amount paid for this sale (actual cash received)
   dueAmount: real("due_amount").default(0), // Amount due for this sale
+  transferredAmount: real("transferred_amount").default(0), // Amount of dues transferred from previous buyers (liability transfer, not actual cash)
   paidAt: timestamp("paid_at"), // When marked as paid
   clearanceType: text("clearance_type"), // 'cash' = paid via cash/account, 'transfer' = due transferred to another buyer (excluded from FIFO)
   transferredToBuyer: text("transferred_to_buyer"), // Name of buyer the due was transferred to (only set when clearanceType='transfer')
