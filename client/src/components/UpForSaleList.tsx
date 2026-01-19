@@ -880,17 +880,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       <tbody>
                         {selectedBillingLots.map((lot) => {
                           // For current lot, override with selectedLot's properties to ensure fresh data
+                          // Use user-edited rate for current lot
+                          const currentLotRate = getEditableRate(selectedLot);
                           const effectiveLot = lot.isCurrentLot ? {
                             ...lot,
                             netWeight: selectedLot.netWeight,
                             originalSize: selectedLot.originalSize,
-                            rate: selectedLot.coldCharge + selectedLot.hammali,
+                            rate: currentLotRate,
                             baseColdChargesBilled: selectedLot.baseColdChargesBilled,
                           } : lot;
                           const hasZeroNetWeight = selectedLot?.chargeUnit === "quintal" && !effectiveLot.netWeight;
                           // For consolidated billing, always calculate based on ALL remaining bags (not just actual sale qty)
                           const consolidatedQty = lot.isCurrentLot ? selectedLot?.remainingSize : lot.remainingSize;
-                          // Calculate using shared function with effective lot data
+                          // Calculate using shared function with effective lot data (rate already set in effectiveLot)
                           const billedCharge = calculateBillingLotCharge(effectiveLot, consolidatedQty);
                           return (
                             <tr 
@@ -1437,17 +1439,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       <tbody>
                         {selectedBillingLots.map((lot) => {
                           // For current lot, override with selectedLot's properties to ensure fresh data
+                          // Use user-edited rate for current lot
+                          const currentLotRate = getEditableRate(selectedLot);
                           const effectiveLot = lot.isCurrentLot ? {
                             ...lot,
                             netWeight: selectedLot.netWeight,
                             originalSize: selectedLot.originalSize,
-                            rate: selectedLot.coldCharge + selectedLot.hammali,
+                            rate: currentLotRate,
                             baseColdChargesBilled: selectedLot.baseColdChargesBilled,
                           } : lot;
                           const hasZeroNetWeight = selectedLot.chargeUnit === "quintal" && !effectiveLot.netWeight;
                           // For consolidated billing, always calculate based on ALL remaining bags (not just actual sale qty)
                           const consolidatedQty = lot.isCurrentLot ? selectedLot?.remainingSize : lot.remainingSize;
-                          // Calculate using shared function with effective lot data
+                          // Calculate using shared function with effective lot data (rate already set in effectiveLot)
                           const billedCharge = calculateBillingLotCharge(effectiveLot, consolidatedQty);
                           return (
                             <tr 
