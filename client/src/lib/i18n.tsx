@@ -192,6 +192,15 @@ const translations: Translations = {
   removeFromSale: { en: "Remove from Sale", hi: "बिक्री से हटाएं" },
   removedFromSale: { en: "Removed from sale list", hi: "बिक्री सूची से हटाया गया" },
   
+  // Multi-Lot Billing
+  selectLots: { en: "Select Lots", hi: "लॉट चुनें" },
+  currentLotOnly: { en: "Current Lot Only", hi: "केवल वर्तमान लॉट" },
+  includeOtherLots: { en: "Include Other Lots", hi: "अन्य लॉट शामिल करें" },
+  consolidatedBilling: { en: "Consolidated Billing", hi: "समेकित बिलिंग" },
+  addRelatedLots: { en: "Add Related Lots", hi: "संबंधित लॉट जोड़ें" },
+  additionalLotsCharges: { en: "Additional Lots Charges", hi: "अतिरिक्त लॉट शुल्क" },
+  coldCharges: { en: "Cold Charges", hi: "कोल्ड शुल्क" },
+  
   // Sale/Payment
   sold: { en: "Sold", hi: "बेचा गया" },
   markAsSold: { en: "Mark as Sold", hi: "बेचा गया चिह्नित करें" },

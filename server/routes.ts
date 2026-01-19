@@ -465,6 +465,30 @@ export async function registerRoutes(
     }
   });
 
+  // Get related lots for multi-lot billing (same farmer name + contact number + village)
+  // This route must come BEFORE /api/lots/:id to avoid matching "related" as an id
+  app.get("/api/lots/related", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { farmerName, contactNumber, village, excludeLotId } = req.query;
+      
+      if (!farmerName || !contactNumber || !village) {
+        return res.status(400).json({ error: "farmerName, contactNumber, and village are required" });
+      }
+      
+      const relatedLots = await storage.getRelatedLots(
+        coldStorageId,
+        farmerName as string,
+        contactNumber as string,
+        village as string,
+        excludeLotId as string | undefined
+      );
+      res.json(relatedLots);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch related lots" });
+    }
+  });
+
   app.get("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -864,6 +888,34 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid payment status", details: error.errors });
       }
       res.status(500).json({ error: "Failed to finalize sale" });
+    }
+  });
+
+  // Bulk mark lots as base cold charges billed (for multi-lot billing)
+  app.post("/api/lots/mark-billed", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { lotIds } = req.body;
+      
+      if (!Array.isArray(lotIds) || lotIds.length === 0) {
+        return res.status(400).json({ error: "lotIds array is required" });
+      }
+      
+      // Verify all lots belong to this cold storage
+      for (const lotId of lotIds) {
+        const lot = await storage.getLot(lotId);
+        if (!lot) {
+          return res.status(404).json({ error: `Lot ${lotId} not found` });
+        }
+        if (lot.coldStorageId !== coldStorageId) {
+          return res.status(403).json({ error: `Access denied for lot ${lotId}` });
+        }
+      }
+      
+      const result = await storage.markLotsBaseChargesBilled(lotIds);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to mark lots as billed" });
     }
   });
 

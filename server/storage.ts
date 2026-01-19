@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, like, ilike, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, like, ilike, desc, sql, gte, lte, gt, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -185,6 +185,9 @@ export interface IStorage {
   getOpeningPayables(coldStorageId: string, year: number): Promise<OpeningPayable[]>;
   createOpeningPayable(data: InsertOpeningPayable): Promise<OpeningPayable>;
   deleteOpeningPayable(id: string): Promise<boolean>;
+  // Related Lots for Multi-Lot Billing
+  getRelatedLots(coldStorageId: string, farmerName: string, contactNumber: string, village: string, excludeLotId?: string): Promise<Lot[]>;
+  markLotsBaseChargesBilled(lotIds: string[]): Promise<{ updated: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2635,6 +2638,39 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(openingPayables)
       .where(eq(openingPayables.id, id));
     return true;
+  }
+
+  // Related Lots for Multi-Lot Billing
+  async getRelatedLots(coldStorageId: string, farmerName: string, contactNumber: string, village: string, excludeLotId?: string): Promise<Lot[]> {
+    const conditions = [
+      eq(lots.coldStorageId, coldStorageId),
+      eq(lots.farmerName, farmerName),
+      eq(lots.contactNumber, contactNumber),
+      eq(lots.village, village),
+      eq(lots.saleStatus, "available"),
+      gt(lots.remainingSize, 0),
+    ];
+    
+    const allLots = await db.select()
+      .from(lots)
+      .where(and(...conditions))
+      .orderBy(lots.lotNo);
+    
+    // Filter out the excluded lot and already-billed lots
+    return allLots.filter(lot => 
+      lot.id !== excludeLotId && 
+      lot.baseColdChargesBilled !== 1
+    );
+  }
+
+  async markLotsBaseChargesBilled(lotIds: string[]): Promise<{ updated: number }> {
+    if (lotIds.length === 0) return { updated: 0 };
+    
+    const result = await db.update(lots)
+      .set({ baseColdChargesBilled: 1 })
+      .where(inArray(lots.id, lotIds));
+    
+    return { updated: lotIds.length };
   }
 }
 
