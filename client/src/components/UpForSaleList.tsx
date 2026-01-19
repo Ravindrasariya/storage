@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ShoppingCart, Phone, MapPin, Package, Check, Minus, X } from "lucide-react";
+import { ShoppingCart, Phone, MapPin, Package, Check, Minus, X, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -901,43 +901,54 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                             >
                               <td className="py-1 px-1 capitalize">{lot.bagType}</td>
                               <td className="py-1 px-1">
-                                <div className="flex flex-col items-start">
-                                  <span>{lot.lotNo}</span>
-                                  {lot.isCurrentLot && <Badge variant="outline" className="text-[10px] py-0 mt-0.5">{t("current") || "Current"}</Badge>}
+                                <div className="flex flex-row items-center gap-1">
+                                  <span className="text-xs">{lot.lotNo}</span>
+                                  {lot.isCurrentLot && <Badge variant="outline" className="text-[9px] py-0 px-1">{t("current") || "Current"}</Badge>}
                                 </div>
                               </td>
                               <td className="text-right py-1 px-1">{lot.remainingSize}</td>
                               {/* Clickable Cold Charges cell */}
                               <td 
-                                className={`text-right py-1 px-1 cursor-pointer rounded transition-colors ${
-                                  lot.selectCold 
-                                    ? 'bg-blue-100/70 dark:bg-blue-900/40 ring-1 ring-blue-400/50' 
-                                    : 'hover:bg-muted/50'
-                                } ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}
+                                className="text-right py-1 px-1 cursor-pointer"
                                 onClick={() => toggleLotColdSelection(lot.id)}
                                 data-testid={`cell-cold-charges-${lot.id}`}
                               >
-                                {hasZeroNetWeight ? (
-                                  <span className="text-red-600 dark:text-red-400">₹0 ⚠</span>
-                                ) : (
-                                  <Currency amount={billedCharge} />
-                                )}
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
+                                    lot.selectCold 
+                                      ? 'bg-blue-100 dark:bg-blue-900/50 ring-1 ring-blue-400/60 text-blue-700 dark:text-blue-300' 
+                                      : 'hover:bg-muted'
+                                  } ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}
+                                >
+                                  {hasZeroNetWeight ? (
+                                    <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400">
+                                      <Currency amount={0} />
+                                      <AlertTriangle className="h-3 w-3" />
+                                    </span>
+                                  ) : (
+                                    <Currency amount={billedCharge} />
+                                  )}
+                                </span>
                               </td>
                               {/* Clickable Already Due cell - only for non-current lots */}
                               <td 
-                                className={`text-right py-1 px-1 ${
-                                  lot.isCurrentLot 
-                                    ? '' 
-                                    : `cursor-pointer rounded transition-colors ${
-                                        lot.selectDue 
-                                          ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-1 ring-amber-400/50' 
-                                          : 'hover:bg-muted/50'
-                                      }`
-                                }`}
+                                className={`text-right py-1 px-1 ${!lot.isCurrentLot ? 'cursor-pointer' : ''}`}
                                 onClick={() => !lot.isCurrentLot && toggleLotDueSelection(lot.id)}
                                 data-testid={`cell-due-${lot.id}`}
                               >
-                                {lot.isCurrentLot ? '-' : <Currency amount={lot.totalDueCharge || 0} />}
+                                {lot.isCurrentLot ? (
+                                  <span className="text-muted-foreground">-</span>
+                                ) : (
+                                  <span
+                                    className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
+                                      lot.selectDue 
+                                        ? 'bg-amber-100 dark:bg-amber-900/50 ring-1 ring-amber-400/60 text-amber-700 dark:text-amber-300' 
+                                        : 'hover:bg-muted'
+                                    }`}
+                                  >
+                                    <Currency amount={lot.totalDueCharge || 0} />
+                                  </span>
+                                )}
                               </td>
                               <td className="py-1 px-1">
                                 {!lot.isCurrentLot && (
@@ -1460,43 +1471,54 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                             >
                               <td className="py-1 px-1 capitalize">{lot.bagType}</td>
                               <td className="py-1 px-1">
-                                <div className="flex flex-col items-start">
-                                  <span>{lot.lotNo}</span>
-                                  {lot.isCurrentLot && <Badge variant="outline" className="text-[10px] py-0 mt-0.5">{t("current") || "Current"}</Badge>}
+                                <div className="flex flex-row items-center gap-1">
+                                  <span className="text-xs">{lot.lotNo}</span>
+                                  {lot.isCurrentLot && <Badge variant="outline" className="text-[9px] py-0 px-1">{t("current") || "Current"}</Badge>}
                                 </div>
                               </td>
                               <td className="text-right py-1 px-1">{lot.remainingSize}</td>
                               {/* Clickable Cold Charges cell */}
                               <td 
-                                className={`text-right py-1 px-1 cursor-pointer rounded transition-colors ${
-                                  lot.selectCold 
-                                    ? 'bg-blue-100/70 dark:bg-blue-900/40 ring-1 ring-blue-400/50' 
-                                    : 'hover:bg-muted/50'
-                                } ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}
+                                className="text-right py-1 px-1 cursor-pointer"
                                 onClick={() => toggleLotColdSelection(lot.id)}
                                 data-testid={`cell-partial-cold-charges-${lot.id}`}
                               >
-                                {hasZeroNetWeight ? (
-                                  <span className="text-red-600 dark:text-red-400">₹0 ⚠</span>
-                                ) : (
-                                  <Currency amount={billedCharge} />
-                                )}
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
+                                    lot.selectCold 
+                                      ? 'bg-blue-100 dark:bg-blue-900/50 ring-1 ring-blue-400/60 text-blue-700 dark:text-blue-300' 
+                                      : 'hover:bg-muted'
+                                  } ${hasZeroNetWeight ? 'text-red-600 dark:text-red-400' : ''}`}
+                                >
+                                  {hasZeroNetWeight ? (
+                                    <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400">
+                                      <Currency amount={0} />
+                                      <AlertTriangle className="h-3 w-3" />
+                                    </span>
+                                  ) : (
+                                    <Currency amount={billedCharge} />
+                                  )}
+                                </span>
                               </td>
                               {/* Clickable Already Due cell - only for non-current lots */}
                               <td 
-                                className={`text-right py-1 px-1 ${
-                                  lot.isCurrentLot 
-                                    ? '' 
-                                    : `cursor-pointer rounded transition-colors ${
-                                        lot.selectDue 
-                                          ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-1 ring-amber-400/50' 
-                                          : 'hover:bg-muted/50'
-                                      }`
-                                }`}
+                                className={`text-right py-1 px-1 ${!lot.isCurrentLot ? 'cursor-pointer' : ''}`}
                                 onClick={() => !lot.isCurrentLot && toggleLotDueSelection(lot.id)}
                                 data-testid={`cell-partial-due-${lot.id}`}
                               >
-                                {lot.isCurrentLot ? '-' : <Currency amount={lot.totalDueCharge || 0} />}
+                                {lot.isCurrentLot ? (
+                                  <span className="text-muted-foreground">-</span>
+                                ) : (
+                                  <span
+                                    className={`inline-block px-2 py-0.5 rounded-md transition-colors ${
+                                      lot.selectDue 
+                                        ? 'bg-amber-100 dark:bg-amber-900/50 ring-1 ring-amber-400/60 text-amber-700 dark:text-amber-300' 
+                                        : 'hover:bg-muted'
+                                    }`}
+                                  >
+                                    <Currency amount={lot.totalDueCharge || 0} />
+                                  </span>
+                                )}
                               </td>
                               <td className="py-1 px-1">
                                 {!lot.isCurrentLot && (
