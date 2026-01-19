@@ -1562,20 +1562,24 @@ export class DatabaseStorage implements IStorage {
   // Cash Receipts methods
   async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
     // Get all sales with due or partial payment status that have a buyer name
+    // Include sales where either buyerName or transferToBuyerName is set
     const sales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
-        sql`${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != ''`
+        sql`(${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != '') OR (${salesHistory.transferToBuyerName} IS NOT NULL AND ${salesHistory.transferToBuyerName} != '')`
       ));
 
-    // Group by buyer name (case-insensitive with trimming) and sum the due amounts
+    // Group by CurrentDueBuyerName (transferToBuyerName if set, else buyerName) and sum the due amounts
     const buyerDues = new Map<string, { displayName: string; totalDue: number }>();
     for (const sale of sales) {
-      const trimmedName = (sale.buyerName || "").trim();
-      if (!trimmedName) continue;
-      const normalizedKey = trimmedName.toLowerCase();
+      // CurrentDueBuyerName logic: use transferToBuyerName if not blank, else buyerName
+      const transferTo = (sale.transferToBuyerName || "").trim();
+      const buyer = (sale.buyerName || "").trim();
+      const currentDueBuyerName = transferTo || buyer;
+      if (!currentDueBuyerName) continue;
+      const normalizedKey = currentDueBuyerName.toLowerCase();
       
       // Calculate total charges including all surcharges
       // Always recalculate from totalCharges - paidAmount to ensure accuracy
@@ -1589,7 +1593,7 @@ export class DatabaseStorage implements IStorage {
         if (existing) {
           existing.totalDue += dueAmount;
         } else {
-          buyerDues.set(normalizedKey, { displayName: trimmedName, totalDue: dueAmount });
+          buyerDues.set(normalizedKey, { displayName: currentDueBuyerName, totalDue: dueAmount });
         }
       }
     }
@@ -1662,12 +1666,12 @@ export class DatabaseStorage implements IStorage {
 
   async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
     // Get all sales for this buyer with due or partial status, ordered by sale date (FIFO)
-    // Use case-insensitive matching for buyer name
+    // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
     const sales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
-        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
+        sql`LOWER(TRIM(COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}))) = LOWER(TRIM(${data.buyerName}))`,
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
       ))
       .orderBy(salesHistory.soldAt); // FIFO - oldest first
@@ -2018,11 +2022,12 @@ export class DatabaseStorage implements IStorage {
   async recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }> {
     // Step 1: Reset all sales for this buyer to "due" status with 0 paidAmount
     // Calculate proper dueAmount using all surcharges
+    // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
     const buyerSales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`
+        sql`LOWER(TRIM(COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}))) = LOWER(TRIM(${buyerName}))`
       ))
       .orderBy(salesHistory.soldAt);
 
@@ -2059,11 +2064,12 @@ export class DatabaseStorage implements IStorage {
     // Step 3: Re-apply each receipt in FIFO order
     for (const receipt of activeReceipts) {
       // Get all sales for this buyer with due or partial status (FIFO order)
+      // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
       const sales = await db.select()
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
-          sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
+          sql`LOWER(TRIM(COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}))) = LOWER(TRIM(${buyerName}))`,
           sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
         ))
         .orderBy(salesHistory.soldAt);

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut, ArrowLeftRight } from "lucide-react";
 import { EditSaleDialog } from "@/components/EditSaleDialog";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { ExitDialog } from "@/components/ExitDialog";
@@ -491,9 +491,23 @@ export default function SalesHistoryPage() {
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
                       <TableCell className="text-right font-medium">
-                        <Currency amount={calculateTotalColdCharges(sale)} />
+                        <div className="flex items-center justify-end gap-1">
+                          <Currency amount={calculateTotalColdCharges(sale)} />
+                          {sale.transferToBuyerName && sale.transferToBuyerName.trim() && (
+                            <ArrowLeftRight className="h-4 w-4 text-purple-600" />
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell>{sale.buyerName || "-"}</TableCell>
+                      <TableCell>
+                        {sale.transferToBuyerName && sale.transferToBuyerName.trim() ? (
+                          <div className="flex flex-col">
+                            <span className="line-through text-muted-foreground text-sm">{sale.buyerName || "-"}</span>
+                            <span className="text-purple-600 font-medium">{sale.transferToBuyerName}</span>
+                          </div>
+                        ) : (
+                          sale.buyerName || "-"
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         {sale.pricePerKg ? <><Currency amount={sale.pricePerKg} />/kg</> : "-"}
                       </TableCell>
