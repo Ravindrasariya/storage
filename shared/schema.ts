@@ -497,10 +497,7 @@ export function calculateTotalColdCharges(sale: {
   extraHammali?: number | null;
   gradingCharges?: number | null;
 }): number {
-  return (
-    (sale.coldStorageCharge || 0) +
-    (sale.kataCharges || 0) +
-    (sale.extraHammali || 0) +
-    (sale.gradingCharges || 0)
-  );
+  // coldStorageCharge already includes base charges + all extras (kata, extraHammali, grading)
+  // Just return it directly - don't add extras again
+  return sale.coldStorageCharge || 0;
 }
