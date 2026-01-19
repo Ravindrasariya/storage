@@ -477,13 +477,15 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
   // Calculate charge for a billing lot (multi-lot billing)
   // saleQuantity: Optional override for current lot (use sale quantity instead of remainingSize)
-  const calculateBillingLotCharge = (billingLot: typeof selectedBillingLots[0], saleQuantity?: number) => {
+  // customRate: Optional override rate (used for current lot to apply user-edited rates)
+  const calculateBillingLotCharge = (billingLot: typeof selectedBillingLots[0], saleQuantity?: number, customRate?: number) => {
     if (billingLot.baseColdChargesBilled === 1) return 0;
     
     // Return 0 for quintal mode with missing netWeight
     if (billingLot.chargeUnit === "quintal" && !billingLot.netWeight) return 0;
     
-    const rate = billingLot.rate;
+    // Use custom rate if provided (for current lot with user edits), otherwise use stored rate
+    const rate = customRate ?? billingLot.rate;
     // Use saleQuantity for current lot if provided
     const quantity = saleQuantity ?? billingLot.remainingSize;
     
@@ -523,7 +525,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     // If no cold charges selected, calculate using actual bags for current lot only
     if (!anyColdSelected && selectedLot) {
       const actualQty = currentLotSaleQuantity ?? selectedLot.remainingSize;
-      const rate = selectedLot.coldCharge + selectedLot.hammali;
+      // Use user-edited rate from input fields
+      const rate = getEditableRate(selectedLot);
       
       let coldTotal = 0;
       if (selectedLot.chargeUnit === "quintal" && selectedLot.netWeight && selectedLot.originalSize > 0) {
@@ -551,10 +554,12 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       if (lot.selectDue && !lot.isCurrentLot) {
         total += lot.totalDueCharge || 0;
       }
-      // Add new cold charges if selected - pass sale quantity for current lot
+      // Add new cold charges if selected - pass sale quantity and user-edited rate for current lot
       if (lot.selectCold) {
         const saleQty = lot.isCurrentLot ? currentLotSaleQuantity : undefined;
-        total += calculateBillingLotCharge(lot, saleQty);
+        // For current lot, use user-edited rate from input fields
+        const rate = lot.isCurrentLot && selectedLot ? getEditableRate(selectedLot) : undefined;
+        total += calculateBillingLotCharge(lot, saleQty, rate);
       }
     }
     return total;
