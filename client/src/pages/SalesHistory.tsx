@@ -207,7 +207,9 @@ export default function SalesHistoryPage() {
       acc.totalBags += sale.quantitySold || 0;
       // Use persisted paidAmount and dueAmount directly for consistency with FIFO and analytics
       acc.amountPaid += sale.paidAmount || 0;
-      acc.amountDue += sale.dueAmount || 0;
+      // Include extraDueToMerchant in total due for all displayed sales
+      // This ensures summary matches what user sees in the table
+      acc.amountDue += (sale.dueAmount || 0) + (sale.extraDueToMerchant || 0);
       return acc;
     },
     { totalBags: 0, amountPaid: 0, amountDue: 0 }
