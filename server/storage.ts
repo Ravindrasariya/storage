@@ -816,11 +816,9 @@ export class DatabaseStorage implements IStorage {
     const lotPaymentMap = new Map<string, { paidAmount: number; dueAmount: number }>();
     
     for (const sale of allSales) {
-      // Calculate total charges including all surcharges
-      const totalCharges = (sale.coldStorageCharge || 0) + 
-                          (sale.kataCharges || 0) + 
-                          (sale.extraHammali || 0) + 
-                          (sale.gradingCharges || 0);
+      // coldStorageCharge already includes base + kata + extraHammali + grading
+      // Do NOT add them again to avoid double-counting
+      const totalCharges = sale.coldStorageCharge || 0;
       
       // Sum up hammali (hammali per bag × bags sold + extra hammali) and grading charges
       totalHammali += ((sale.hammali || 0) * (sale.quantitySold || 0)) + (sale.extraHammali || 0);
@@ -909,11 +907,9 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Total charges = cold storage rent + hammali + kata + extra hammali + grading
-      const totalCharges = (sale.coldStorageCharge || 0) + 
-                          (sale.kataCharges || 0) + 
-                          (sale.extraHammali || 0) + 
-                          (sale.gradingCharges || 0);
+      // coldStorageCharge already includes base + kata + extraHammali + grading
+      // Do NOT add them again to avoid double-counting
+      const totalCharges = sale.coldStorageCharge || 0;
       
       // Use paidAmount from sale, calculate due as remainder to ensure consistency
       const salePaid = sale.paidAmount || 0;
@@ -1657,12 +1653,9 @@ export class DatabaseStorage implements IStorage {
       if (!currentDueBuyerName) continue;
       const normalizedKey = currentDueBuyerName.toLowerCase();
       
-      // Calculate total charges including all surcharges (but NOT extraDueToMerchant)
-      // Always recalculate from totalCharges - paidAmount to ensure accuracy
-      const totalCharges = (sale.coldStorageCharge || 0) + 
-                          (sale.kataCharges || 0) + 
-                          (sale.extraHammali || 0) + 
-                          (sale.gradingCharges || 0);
+      // coldStorageCharge already includes base + kata + extraHammali + grading
+      // Do NOT add them again to avoid double-counting
+      const totalCharges = sale.coldStorageCharge || 0;
       const dueAmount = totalCharges - (sale.paidAmount || 0);
       if (dueAmount > 0) {
         const existing = buyerDues.get(normalizedKey);
