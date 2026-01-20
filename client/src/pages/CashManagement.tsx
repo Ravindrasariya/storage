@@ -11,13 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats } from "@shared/schema";
 
 interface BuyerWithDue {
   buyerName: string;
@@ -151,6 +151,16 @@ export default function CashManagement() {
   const { data: buyerSalesWithDues = [] } = useQuery<SalesHistory[]>({
     queryKey: ["/api/sales-history/by-buyer", buyerTransferFrom],
     enabled: !!buyerTransferFrom && transferTypeMode === "buyer",
+  });
+
+  // Payment stats for expense type dropdown (totalHammali, totalGradingCharges)
+  const { data: paymentStats } = useQuery<PaymentStats>({
+    queryKey: ["/api/analytics/payments"],
+    queryFn: async () => {
+      const response = await authFetch("/api/analytics/payments");
+      if (!response.ok) throw new Error("Failed to fetch payment stats");
+      return response.json();
+    },
   });
 
   // Buyer-to-buyer transfers for cash flow history
@@ -1495,8 +1505,12 @@ export default function CashManagement() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="salary">{t("salary")}</SelectItem>
-                      <SelectItem value="hammali">{t("hammali")}</SelectItem>
-                      <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
+                      <SelectItem value="hammali">
+                        {t("hammali")} {paymentStats?.totalHammali ? `(₹${paymentStats.totalHammali.toLocaleString("en-IN")})` : ""}
+                      </SelectItem>
+                      <SelectItem value="grading_charges">
+                        {t("gradingCharges")} {paymentStats?.totalGradingCharges ? `(₹${paymentStats.totalGradingCharges.toLocaleString("en-IN")})` : ""}
+                      </SelectItem>
                       <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                       <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                       <SelectItem value="tds">{t("tds")}</SelectItem>
