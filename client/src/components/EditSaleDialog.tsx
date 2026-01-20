@@ -97,11 +97,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     if (!sale) return 0;
     const baseCharge = calculateBaseCharge();
     const kata = getEditableChargeValue(editKataCharges, sale.kataCharges || 0);
-    const extraHammali = getEditableChargeValue(editExtraHammali, sale.extraHammali || 0);
+    // extraHammali is now stored as per-bag rate in state, multiply by quantitySold for total
+    const extraHammaliPerBag = getEditableChargeValue(editExtraHammali, 0);
+    const extraHammaliTotal = extraHammaliPerBag * (sale.quantitySold || 0);
     const grading = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
     
     // Extras (Kata, Extra Hammali, Grading) are added on top of base charge
-    return baseCharge + kata + extraHammali + grading;
+    return baseCharge + kata + extraHammaliTotal + grading;
   };
   
   // Get the calculated base charge for display
@@ -165,7 +167,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditColdCharge(sale.coldCharge?.toString() || "0");
       setEditHammali(sale.hammali?.toString() || "0");
       setEditKataCharges(sale.kataCharges?.toString() || "0");
-      setEditExtraHammali(sale.extraHammali?.toString() || "0");
+      // Convert total extraHammali to per-bag rate for consistency with sales entry
+      const perBagExtraHammali = sale.quantitySold && sale.quantitySold > 0 
+        ? (sale.extraHammali || 0) / sale.quantitySold 
+        : 0;
+      setEditExtraHammali(perBagExtraHammali.toString());
       setEditGradingCharges(sale.gradingCharges?.toString() || "0");
       setEditExtraDueToMerchant(sale.extraDueToMerchant?.toString() || "0");
       setChargesOpen(false);
@@ -293,9 +299,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       updates.kataCharges = newKataCharges;
     }
 
-    const newExtraHammali = getEditableChargeValue(editExtraHammali, sale.extraHammali || 0);
-    if (newExtraHammali !== (sale.extraHammali || 0)) {
-      updates.extraHammali = newExtraHammali;
+    // extraHammali in state is per-bag rate, convert to total for API
+    const newExtraHammaliPerBag = getEditableChargeValue(editExtraHammali, 0);
+    const newExtraHammaliTotal = newExtraHammaliPerBag * (sale.quantitySold || 0);
+    if (Math.abs(newExtraHammaliTotal - (sale.extraHammali || 0)) > 0.01) {
+      updates.extraHammali = newExtraHammaliTotal;
     }
 
     const newGradingCharges = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
@@ -553,12 +561,19 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         <span>= <Currency amount={baseCharge} /></span>
                       </div>
                     )}
-                    {(getEditableChargeValue(editKataCharges, 0) > 0 || getEditableChargeValue(editExtraHammali, 0) > 0 || getEditableChargeValue(editGradingCharges, 0) > 0) && (
-                      <div className="flex justify-between">
-                        <span>+ {t("surcharges")}</span>
-                        <span>= <Currency amount={getEditableChargeValue(editKataCharges, 0) + getEditableChargeValue(editExtraHammali, 0) + getEditableChargeValue(editGradingCharges, 0)} /></span>
-                      </div>
-                    )}
+                    {(() => {
+                      const kataVal = getEditableChargeValue(editKataCharges, 0);
+                      const extraHammaliPerBag = getEditableChargeValue(editExtraHammali, 0);
+                      const extraHammaliTotal = extraHammaliPerBag * (sale.quantitySold || 0);
+                      const gradingVal = getEditableChargeValue(editGradingCharges, 0);
+                      const surchargesTotal = kataVal + extraHammaliTotal + gradingVal;
+                      return surchargesTotal > 0 ? (
+                        <div className="flex justify-between">
+                          <span>+ {t("surcharges")}</span>
+                          <span>= <Currency amount={surchargesTotal} /></span>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               </CollapsibleContent>
