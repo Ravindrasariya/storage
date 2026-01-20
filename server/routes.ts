@@ -1869,6 +1869,13 @@ export async function registerRoutes(
         dueAmount,
         remarks: remarks || null,
       });
+
+      // Trigger FIFO recomputation for cold_merchant type with buyer name
+      // This ensures new receivables are integrated into the 3-pass FIFO allocation
+      if (payerType === "cold_merchant" && buyerName) {
+        await storage.recomputeBuyerPayments(buyerName, coldStorageId);
+      }
+
       res.json(receivable);
     } catch (error) {
       res.status(500).json({ error: "Failed to create opening receivable" });
@@ -1878,8 +1885,17 @@ export async function registerRoutes(
   // Delete opening receivable
   app.delete("/api/opening-receivables/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
+      const coldStorageId = getColdStorageId(req);
       const { id } = req.params;
-      await storage.deleteOpeningReceivable(id);
+      
+      // Delete and get the receivable info for FIFO recomputation
+      const deletedReceivable = await storage.deleteOpeningReceivable(id);
+
+      // Trigger FIFO recomputation if this was a cold_merchant receivable with buyer name
+      if (deletedReceivable && deletedReceivable.payerType === "cold_merchant" && deletedReceivable.buyerName) {
+        await storage.recomputeBuyerPayments(deletedReceivable.buyerName, coldStorageId);
+      }
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete opening receivable" });

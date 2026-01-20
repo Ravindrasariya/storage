@@ -295,6 +295,7 @@ export const openingReceivables = pgTable("opening_receivables", {
   payerType: text("payer_type").notNull(), // 'cold_merchant', 'sales_goods', 'kata', 'others'
   buyerName: text("buyer_name"),
   dueAmount: real("due_amount").notNull(),
+  paidAmount: real("paid_amount").notNull().default(0), // Track FIFO payments against this receivable
   remarks: text("remarks"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

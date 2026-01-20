@@ -190,7 +190,7 @@ export interface IStorage {
   // Opening Receivables
   getOpeningReceivables(coldStorageId: string, year: number): Promise<OpeningReceivable[]>;
   createOpeningReceivable(data: InsertOpeningReceivable): Promise<OpeningReceivable>;
-  deleteOpeningReceivable(id: string): Promise<boolean>;
+  deleteOpeningReceivable(id: string): Promise<OpeningReceivable | undefined>;
   // Opening Payables
   getOpeningPayables(coldStorageId: string, year: number): Promise<OpeningPayable[]>;
   createOpeningPayable(data: InsertOpeningPayable): Promise<OpeningPayable>;
@@ -1784,19 +1784,20 @@ export class DatabaseStorage implements IStorage {
         sql`${openingReceivables.buyerName} IS NOT NULL AND ${openingReceivables.buyerName} != ''`
       ));
 
-    // Add receivables to buyer dues
+    // Add receivables to buyer dues (using remaining amount after FIFO payments)
     for (const receivable of receivables) {
       const trimmedName = (receivable.buyerName || "").trim();
       if (!trimmedName) continue;
       const normalizedKey = trimmedName.toLowerCase();
-      const dueAmount = receivable.dueAmount || 0;
+      // Use remaining due amount (dueAmount - paidAmount) after FIFO allocation
+      const remainingDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
       
-      if (dueAmount > 0) {
+      if (remainingDue > 0) {
         const existing = buyerDues.get(normalizedKey);
         if (existing) {
-          existing.totalDue += dueAmount;
+          existing.totalDue += remainingDue;
         } else {
-          buyerDues.set(normalizedKey, { displayName: trimmedName, totalDue: dueAmount });
+          buyerDues.set(normalizedKey, { displayName: trimmedName, totalDue: remainingDue });
         }
       }
     }
@@ -1840,7 +1841,54 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
-    // Get all sales for this buyer with due or partial status, ordered by sale date (FIFO)
+    let remainingAmount = data.amount;
+    let appliedAmount = 0;
+    let salesUpdated = 0;
+    const paymentMode = data.receiptType as "cash" | "account";
+    const currentYear = new Date().getFullYear();
+
+    // PASS 0: Apply to opening receivables first (FIFO by createdAt)
+    // These are prior year balances that should be settled before current year charges
+    if (remainingAmount > 0) {
+      const buyerReceivables = await db.select()
+        .from(openingReceivables)
+        .where(and(
+          eq(openingReceivables.coldStorageId, data.coldStorageId),
+          eq(openingReceivables.year, currentYear),
+          eq(openingReceivables.payerType, "cold_merchant"),
+          sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
+          sql`(${openingReceivables.dueAmount} - ${openingReceivables.paidAmount}) > 0`
+        ))
+        .orderBy(openingReceivables.createdAt); // FIFO - oldest first
+
+      for (const receivable of buyerReceivables) {
+        if (remainingAmount <= 0) break;
+
+        const receivableDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+        if (receivableDue <= 0) continue;
+
+        if (remainingAmount >= receivableDue) {
+          // Can fully pay this receivable
+          await db.update(openingReceivables)
+            .set({ paidAmount: receivable.dueAmount })
+            .where(eq(openingReceivables.id, receivable.id));
+          
+          remainingAmount -= receivableDue;
+          appliedAmount += receivableDue;
+        } else {
+          // Can only partially pay this receivable
+          const newPaidAmount = (receivable.paidAmount || 0) + remainingAmount;
+          await db.update(openingReceivables)
+            .set({ paidAmount: newPaidAmount })
+            .where(eq(openingReceivables.id, receivable.id));
+          
+          appliedAmount += remainingAmount;
+          remainingAmount = 0;
+        }
+      }
+    }
+
+    // PASS 1: Apply to cold storage dues (FIFO by soldAt)
     // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
     const sales = await db.select()
       .from(salesHistory)
@@ -1851,12 +1899,6 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(salesHistory.soldAt); // FIFO - oldest first
 
-    let remainingAmount = data.amount;
-    let appliedAmount = 0;
-    let salesUpdated = 0;
-    const paymentMode = data.receiptType as "cash" | "account";
-
-    // Apply payment to each sale in FIFO order
     for (const sale of sales) {
       if (remainingAmount <= 0) break;
 
@@ -1902,7 +1944,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // SECOND PASS: Apply remaining surplus to extraDueToMerchant (by ORIGINAL buyerName only)
+    // PASS 2: Apply remaining surplus to extraDueToMerchant (by ORIGINAL buyerName only)
     // This is separate from cold storage dues and tracks buyer-specific surcharges
     if (remainingAmount > 0) {
       // Get sales with extraDueToMerchant > 0 for the ORIGINAL buyerName (not CurrentDueBuyerName)
@@ -2283,6 +2325,17 @@ export class DatabaseStorage implements IStorage {
         .where(eq(salesHistory.id, sale.id));
     }
 
+    // Reset opening receivables paidAmount to 0 for this buyer (current year, cold_merchant type)
+    const currentYear = new Date().getFullYear();
+    await db.update(openingReceivables)
+      .set({ paidAmount: 0 })
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.year, currentYear),
+        eq(openingReceivables.payerType, "cold_merchant"),
+        sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName}))`
+      ));
+
     // Step 2: Get all non-reversed receipts for this buyer, ordered by receivedAt (FIFO)
     const activeReceipts = await db.select()
       .from(cashReceipts)
@@ -2296,70 +2349,111 @@ export class DatabaseStorage implements IStorage {
     let salesUpdated = 0;
     let receiptsUpdated = 0;
 
-    // Step 3: Re-apply each receipt in FIFO order
+    // Step 3: Re-apply each receipt in FIFO order with 3-pass allocation
     for (const receipt of activeReceipts) {
-      // Get all sales for this buyer with due or partial status (FIFO order)
-      // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
-      const sales = await db.select()
-        .from(salesHistory)
-        .where(and(
-          eq(salesHistory.coldStorageId, coldStorageId),
-          sql`LOWER(TRIM(COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}))) = LOWER(TRIM(${buyerName}))`,
-          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
-        ))
-        .orderBy(salesHistory.soldAt);
-
       let remainingAmount = receipt.amount;
       let appliedAmount = 0;
       const paymentMode = receipt.receiptType as "cash" | "account";
 
-      // Apply payment to each sale in FIFO order
-      for (const sale of sales) {
-        if (remainingAmount <= 0) break;
+      // PASS 0: Apply to opening receivables first (FIFO by createdAt)
+      // These are prior year balances that should be settled before current year charges
+      if (remainingAmount > 0) {
+        const buyerReceivables = await db.select()
+          .from(openingReceivables)
+          .where(and(
+            eq(openingReceivables.coldStorageId, coldStorageId),
+            eq(openingReceivables.year, currentYear),
+            eq(openingReceivables.payerType, "cold_merchant"),
+            sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName}))`,
+            sql`(${openingReceivables.dueAmount} - ${openingReceivables.paidAmount}) > 0`
+          ))
+          .orderBy(openingReceivables.createdAt); // FIFO - oldest first
 
-        // coldStorageCharge already includes base + kata + extraHammali + grading
-        // Do NOT add them again to avoid double-counting
-        const totalCharges = sale.coldStorageCharge || 0;
-        const saleDueAmount = totalCharges - (sale.paidAmount || 0);
-        
-        if (saleDueAmount <= 0) continue;
+        for (const receivable of buyerReceivables) {
+          if (remainingAmount <= 0) break;
 
-        if (remainingAmount >= saleDueAmount) {
-          // Can fully pay this sale
-          await db.update(salesHistory)
-            .set({
-              paymentStatus: "paid",
-              paidAmount: totalCharges,
-              dueAmount: 0,
-              paymentMode: paymentMode,
-              paidAt: receipt.receivedAt,
-            })
-            .where(eq(salesHistory.id, sale.id));
-          
-          remainingAmount -= saleDueAmount;
-          appliedAmount += saleDueAmount;
-          salesUpdated++;
-        } else {
-          // Can only partially pay this sale
-          const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
-          const newDueAmount = totalCharges - newPaidAmount;
-          
-          await db.update(salesHistory)
-            .set({
-              paymentStatus: "partial",
-              paidAmount: newPaidAmount,
-              dueAmount: newDueAmount,
-              paymentMode: paymentMode,
-            })
-            .where(eq(salesHistory.id, sale.id));
-          
-          appliedAmount += remainingAmount;
-          remainingAmount = 0;
-          salesUpdated++;
+          const receivableDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+          if (receivableDue <= 0) continue;
+
+          if (remainingAmount >= receivableDue) {
+            // Can fully pay this receivable
+            await db.update(openingReceivables)
+              .set({ paidAmount: receivable.dueAmount })
+              .where(eq(openingReceivables.id, receivable.id));
+            
+            remainingAmount -= receivableDue;
+            appliedAmount += receivableDue;
+          } else {
+            // Can only partially pay this receivable
+            const newPaidAmount = (receivable.paidAmount || 0) + remainingAmount;
+            await db.update(openingReceivables)
+              .set({ paidAmount: newPaidAmount })
+              .where(eq(openingReceivables.id, receivable.id));
+            
+            appliedAmount += remainingAmount;
+            remainingAmount = 0;
+          }
         }
       }
 
-      // SECOND PASS: Apply remaining surplus to extraDueToMerchant (by ORIGINAL buyerName only)
+      // PASS 1: Apply to cold storage dues (FIFO by soldAt)
+      // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
+      if (remainingAmount > 0) {
+        const sales = await db.select()
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            sql`LOWER(TRIM(COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}))) = LOWER(TRIM(${buyerName}))`,
+            sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+          ))
+          .orderBy(salesHistory.soldAt);
+
+        for (const sale of sales) {
+          if (remainingAmount <= 0) break;
+
+          // coldStorageCharge already includes base + kata + extraHammali + grading
+          const totalCharges = sale.coldStorageCharge || 0;
+          const saleDueAmount = totalCharges - (sale.paidAmount || 0);
+          
+          if (saleDueAmount <= 0) continue;
+
+          if (remainingAmount >= saleDueAmount) {
+            // Can fully pay this sale
+            await db.update(salesHistory)
+              .set({
+                paymentStatus: "paid",
+                paidAmount: totalCharges,
+                dueAmount: 0,
+                paymentMode: paymentMode,
+                paidAt: receipt.receivedAt,
+              })
+              .where(eq(salesHistory.id, sale.id));
+            
+            remainingAmount -= saleDueAmount;
+            appliedAmount += saleDueAmount;
+            salesUpdated++;
+          } else {
+            // Can only partially pay this sale
+            const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
+            const newDueAmount = totalCharges - newPaidAmount;
+            
+            await db.update(salesHistory)
+              .set({
+                paymentStatus: "partial",
+                paidAmount: newPaidAmount,
+                dueAmount: newDueAmount,
+                paymentMode: paymentMode,
+              })
+              .where(eq(salesHistory.id, sale.id));
+            
+            appliedAmount += remainingAmount;
+            remainingAmount = 0;
+            salesUpdated++;
+          }
+        }
+      }
+
+      // PASS 2: Apply remaining surplus to extraDueToMerchant (by ORIGINAL buyerName only)
       if (remainingAmount > 0) {
         const salesWithExtraDue = await db.select()
           .from(salesHistory)
@@ -2925,10 +3019,18 @@ export class DatabaseStorage implements IStorage {
     return receivable;
   }
 
-  async deleteOpeningReceivable(id: string): Promise<boolean> {
-    const result = await db.delete(openingReceivables)
+  async deleteOpeningReceivable(id: string): Promise<OpeningReceivable | undefined> {
+    // Get the receivable first before deleting (for FIFO recomputation trigger)
+    const [receivable] = await db.select()
+      .from(openingReceivables)
       .where(eq(openingReceivables.id, id));
-    return true;
+    
+    if (!receivable) return undefined;
+    
+    await db.delete(openingReceivables)
+      .where(eq(openingReceivables.id, id));
+    
+    return receivable;
   }
 
   // Opening Payables
