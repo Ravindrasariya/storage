@@ -857,13 +857,48 @@ export class DatabaseStorage implements IStorage {
       }
     });
 
+    // Subtract expenses already paid for hammali and grading
+    // This makes the dropdown show remaining due instead of total
+    let yearFilter = year;
+    if (!yearFilter) {
+      // Default to current year for expenses if no year specified
+      yearFilter = new Date().getFullYear();
+    }
+    
+    const allExpenses = await db.select()
+      .from(expenses)
+      .where(and(
+        eq(expenses.coldStorageId, coldStorageId),
+        eq(expenses.isReversed, 0)
+      ));
+    
+    // Sum expenses by type, optionally filtered by year
+    let hammaliExpensesPaid = 0;
+    let gradingExpensesPaid = 0;
+    
+    for (const expense of allExpenses) {
+      const expenseYear = new Date(expense.paidAt).getFullYear();
+      // Only include expenses from the relevant year (or current year if no filter)
+      if (year && expenseYear !== yearFilter) continue;
+      
+      if (expense.expenseType === "hammali") {
+        hammaliExpensesPaid += expense.amount;
+      } else if (expense.expenseType === "grading_charges") {
+        gradingExpensesPaid += expense.amount;
+      }
+    }
+    
+    // Reduce totals by amounts already paid (show remaining due)
+    const hammaliDue = Math.max(0, totalHammali - hammaliExpensesPaid);
+    const gradingDue = Math.max(0, totalGradingCharges - gradingExpensesPaid);
+
     return {
       totalPaid,
       totalDue,
       paidCount,
       dueCount,
-      totalHammali,
-      totalGradingCharges,
+      totalHammali: hammaliDue,
+      totalGradingCharges: gradingDue,
     };
   }
 
