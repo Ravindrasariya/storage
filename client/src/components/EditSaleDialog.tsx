@@ -44,7 +44,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editKataCharges, setEditKataCharges] = useState("");
   const [editExtraHammali, setEditExtraHammali] = useState("");
   const [editGradingCharges, setEditGradingCharges] = useState("");
-  const [editExtraDueToMerchant, setEditExtraDueToMerchant] = useState("");
+  // Sub-fields for Extra Due to Merchant (sum = extraDueToMerchant)
+  const [editExtraDueHammaliMerchant, setEditExtraDueHammaliMerchant] = useState("");
+  const [editExtraDueGradingMerchant, setEditExtraDueGradingMerchant] = useState("");
+  const [editExtraDueOtherMerchant, setEditExtraDueOtherMerchant] = useState("");
 
   // Get charge unit from cold storage settings
   const chargeUnit = coldStorage?.chargeUnit || "bag";
@@ -173,7 +176,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
         : 0;
       setEditExtraHammali(perBagExtraHammali.toString());
       setEditGradingCharges(sale.gradingCharges?.toString() || "0");
-      setEditExtraDueToMerchant(sale.extraDueToMerchant?.toString() || "0");
+      // Load sub-fields for extraDueToMerchant (legacy records will have 0s)
+      setEditExtraDueHammaliMerchant(sale.extraDueHammaliMerchant?.toString() || "0");
+      setEditExtraDueGradingMerchant(sale.extraDueGradingMerchant?.toString() || "0");
+      setEditExtraDueOtherMerchant(sale.extraDueOtherMerchant?.toString() || "0");
       setChargesOpen(false);
     }
   }, [sale]);
@@ -195,6 +201,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       coldStorageCharge?: number;
       chargeBasis?: "actual" | "totalRemaining";
       extraDueToMerchant?: number;
+      extraDueHammaliMerchant?: number;
+      extraDueGradingMerchant?: number;
+      extraDueOtherMerchant?: number;
     }) => {
       const response = await apiRequest("PATCH", `/api/sales-history/${sale!.id}`, data);
       return response.json();
@@ -311,8 +320,22 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       updates.gradingCharges = newGradingCharges;
     }
 
-    const newExtraDueToMerchant = getEditableChargeValue(editExtraDueToMerchant, sale.extraDueToMerchant || 0);
-    if (newExtraDueToMerchant !== (sale.extraDueToMerchant || 0)) {
+    // Compute extraDueToMerchant as sum of sub-fields
+    const newHammaliMerchant = getEditableChargeValue(editExtraDueHammaliMerchant, 0);
+    const newGradingMerchant = getEditableChargeValue(editExtraDueGradingMerchant, 0);
+    const newOtherMerchant = getEditableChargeValue(editExtraDueOtherMerchant, 0);
+    const newExtraDueToMerchant = newHammaliMerchant + newGradingMerchant + newOtherMerchant;
+    
+    // Always send sub-fields and computed total if any changed
+    const oldHammaliMerchant = sale.extraDueHammaliMerchant || 0;
+    const oldGradingMerchant = sale.extraDueGradingMerchant || 0;
+    const oldOtherMerchant = sale.extraDueOtherMerchant || 0;
+    if (Math.abs(newHammaliMerchant - oldHammaliMerchant) > 0.01 ||
+        Math.abs(newGradingMerchant - oldGradingMerchant) > 0.01 ||
+        Math.abs(newOtherMerchant - oldOtherMerchant) > 0.01) {
+      updates.extraDueHammaliMerchant = newHammaliMerchant;
+      updates.extraDueGradingMerchant = newGradingMerchant;
+      updates.extraDueOtherMerchant = newOtherMerchant;
       updates.extraDueToMerchant = newExtraDueToMerchant;
     }
 
@@ -532,20 +555,65 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                   
                   {/* Extra Due to Merchant - separate from cold charges, charged to original buyer */}
                   <div className="pt-3 border-t mt-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs font-medium">{t("extraDueToMerchant")}</Label>
-                      <p className="text-xs text-muted-foreground mb-1">{t("extraDueToMerchantHint")}</p>
-                      <div className="flex items-center gap-1">
-                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
-                        <Input
-                          type="number"
-                          min={0}
-                          value={editExtraDueToMerchant}
-                          onChange={(e) => setEditExtraDueToMerchant(e.target.value)}
-                          className="h-8"
-                          data-testid="input-edit-extra-due-to-merchant"
-                        />
+                    <Label className="text-xs font-medium">{t("extraDueToMerchant")}</Label>
+                    <p className="text-xs text-muted-foreground mb-2">{t("extraDueToMerchantHint")}</p>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("hammaliToMerchant")}</Label>
+                        <div className="flex items-center gap-1">
+                          <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
+                          <Input
+                            type="number"
+                            min={0}
+                            value={editExtraDueHammaliMerchant}
+                            onChange={(e) => setEditExtraDueHammaliMerchant(e.target.value)}
+                            className="h-8"
+                            data-testid="input-edit-extra-due-hammali-merchant"
+                          />
+                        </div>
                       </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("gradingToMerchant")}</Label>
+                        <div className="flex items-center gap-1">
+                          <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
+                          <Input
+                            type="number"
+                            min={0}
+                            value={editExtraDueGradingMerchant}
+                            onChange={(e) => setEditExtraDueGradingMerchant(e.target.value)}
+                            className="h-8"
+                            data-testid="input-edit-extra-due-grading-merchant"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("otherExtra")}</Label>
+                        <div className="flex items-center gap-1">
+                          <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
+                          <Input
+                            type="number"
+                            min={0}
+                            value={editExtraDueOtherMerchant}
+                            onChange={(e) => setEditExtraDueOtherMerchant(e.target.value)}
+                            className="h-8"
+                            data-testid="input-edit-extra-due-other-merchant"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Read-only total */}
+                    <div className="mt-2 flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{t("total")}:</span>
+                      <Currency 
+                        amount={
+                          getEditableChargeValue(editExtraDueHammaliMerchant, 0) +
+                          getEditableChargeValue(editExtraDueGradingMerchant, 0) +
+                          getEditableChargeValue(editExtraDueOtherMerchant, 0)
+                        } 
+                        className="font-medium"
+                      />
                     </div>
                   </div>
 

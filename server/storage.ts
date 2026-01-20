@@ -1308,6 +1308,9 @@ export class DatabaseStorage implements IStorage {
     coldStorageCharge?: number;
     chargeBasis?: "actual" | "totalRemaining";
     extraDueToMerchant?: number;
+    extraDueHammaliMerchant?: number;
+    extraDueGradingMerchant?: number;
+    extraDueOtherMerchant?: number;
   }): Promise<SalesHistory | undefined> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) return undefined;
@@ -1370,6 +1373,16 @@ export class DatabaseStorage implements IStorage {
       updateData.extraDueToMerchant = updates.extraDueToMerchant;
       // Also set the original value for recompute - user is setting the base value
       updateData.extraDueToMerchantOriginal = updates.extraDueToMerchant;
+    }
+    // Handle sub-fields for extraDueToMerchant breakdown
+    if (updates.extraDueHammaliMerchant !== undefined) {
+      updateData.extraDueHammaliMerchant = updates.extraDueHammaliMerchant;
+    }
+    if (updates.extraDueGradingMerchant !== undefined) {
+      updateData.extraDueGradingMerchant = updates.extraDueGradingMerchant;
+    }
+    if (updates.extraDueOtherMerchant !== undefined) {
+      updateData.extraDueOtherMerchant = updates.extraDueOtherMerchant;
     }
 
     // Handle coldStorageCharge - use provided value if present, otherwise recalculate

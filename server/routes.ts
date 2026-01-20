@@ -1132,6 +1132,10 @@ export async function registerRoutes(
     coldStorageCharge: z.number().optional(),
     chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
     extraDueToMerchant: z.number().optional(),
+    // Sub-fields for extraDueToMerchant breakdown (sum = extraDueToMerchant)
+    extraDueHammaliMerchant: z.number().optional(),
+    extraDueGradingMerchant: z.number().optional(),
+    extraDueOtherMerchant: z.number().optional(),
   });
 
   app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -1148,6 +1152,16 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Sale not found" });
       }
       
+      // Server-side computation: if any sub-field is provided, compute extraDueToMerchant as sum
+      if (validatedData.extraDueHammaliMerchant !== undefined ||
+          validatedData.extraDueGradingMerchant !== undefined ||
+          validatedData.extraDueOtherMerchant !== undefined) {
+        const hammali = validatedData.extraDueHammaliMerchant ?? (currentSale.extraDueHammaliMerchant || 0);
+        const grading = validatedData.extraDueGradingMerchant ?? (currentSale.extraDueGradingMerchant || 0);
+        const other = validatedData.extraDueOtherMerchant ?? (currentSale.extraDueOtherMerchant || 0);
+        validatedData.extraDueToMerchant = hammali + grading + other;
+      }
+      
       const updated = await storage.updateSalesHistory(req.params.id, validatedData);
       if (!updated) {
         return res.status(404).json({ error: "Sale not found" });
@@ -1155,7 +1169,7 @@ export async function registerRoutes(
       
       // Log changes to edit history
       if (currentSale) {
-        const fieldsToTrack = ['buyerName', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'coldStorageCharge', 'extraDueToMerchant'] as const;
+        const fieldsToTrack = ['buyerName', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'coldStorageCharge', 'extraDueToMerchant', 'extraDueHammaliMerchant', 'extraDueGradingMerchant', 'extraDueOtherMerchant'] as const;
         for (const field of fieldsToTrack) {
           if (validatedData[field as keyof typeof validatedData] !== undefined || field === 'coldStorageCharge') {
             const oldValue = currentSale[field as keyof typeof currentSale];

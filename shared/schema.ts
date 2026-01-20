@@ -167,6 +167,10 @@ export const salesHistory = pgTable("sales_history", {
   // Extra merchant due (charged to original buyer, not affected by transfers, separate from farmer-centric cold charges)
   extraDueToMerchant: real("extra_due_to_merchant").default(0), // Remaining due (reduced by FIFO payments)
   extraDueToMerchantOriginal: real("extra_due_to_merchant_original").default(0), // Original value set by user (for recompute)
+  // Sub-fields for extraDueToMerchant breakdown (sum = extraDueToMerchant)
+  extraDueHammaliMerchant: real("extra_due_hammali_merchant").default(0), // Hammali to Merchant
+  extraDueGradingMerchant: real("extra_due_grading_merchant").default(0), // Grading Charges to Merchant
+  extraDueOtherMerchant: real("extra_due_other_merchant").default(0), // Other Extra to Merchant
 });
 
 // Edit history for tracking changes
