@@ -2523,14 +2523,27 @@ export async function registerRoutes(
       const sales = await storage.getSalesForExport(coldStorageId, from, to);
 
       const headers = language === "hi"
-        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "ट्रांसफर टू खरीदार", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "व्यापारी को हम्माली", "व्यापारी को ग्रेडिंग", "व्यापारी को अन्य", "व्यापारी अतिरिक्त बकाया", "नेट वजन (Kg)", "दर/Kg"]
-        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Transfer To Buyer", "Chamber", "Floor", "Position", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Payment Status", "Paid Amount", "Due Amount", "Hammali To Merchant", "Grading To Merchant", "Other To Merchant", "Total Extra Due To Merchant", "Net Weight (Kg)", "Rate/Kg"];
+        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "ट्रांसफर टू खरीदार", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "कुल हम्माली", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "व्यापारी को हम्माली", "व्यापारी को ग्रेडिंग", "व्यापारी को अन्य", "व्यापारी अतिरिक्त बकाया", "नेट वजन (Kg)", "दर/Kg"]
+        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Transfer To Buyer", "Chamber", "Floor", "Position", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Total Hammali", "Payment Status", "Paid Amount", "Due Amount", "Hammali To Merchant", "Grading To Merchant", "Other To Merchant", "Total Extra Due To Merchant", "Net Weight (Kg)", "Rate/Kg"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
       for (const sale of sales) {
         // coldStorageCharge already includes base charges + all extras (but NOT extraDueToMerchant)
         const totalCharges = sale.coldStorageCharge || 0;
+        
+        // Calculate Total Hammali: base hammali + extra hammali (bilty cut) + extra hammali to merchant
+        const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+        const baseChargesTotal = (sale.coldStorageCharge || 0) - extras;
+        let baseHammali = 0;
+        if (sale.coldCharge && sale.hammali) {
+          const totalRate = sale.coldCharge + sale.hammali;
+          if (totalRate > 0) {
+            baseHammali = (baseChargesTotal * sale.hammali) / totalRate;
+          }
+        }
+        const totalHammali = baseHammali + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
+        
         const row = [
           formatDateForExport(sale.soldAt),
           formatDateForExport(sale.entryDate),
@@ -2556,6 +2569,7 @@ export async function registerRoutes(
           sale.extraHammali || 0,
           sale.gradingCharges || 0,
           totalCharges,
+          totalHammali.toFixed(2),
           sale.paymentStatus,
           sale.paidAmount || 0,
           totalCharges - (sale.paidAmount || 0),
