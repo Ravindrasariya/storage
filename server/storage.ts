@@ -822,8 +822,9 @@ export class DatabaseStorage implements IStorage {
       const totalCharges = sale.coldStorageCharge || 0;
       
       // Sum up hammali (hammali per bag × bags sold + extra hammali) and grading charges
-      totalHammali += ((sale.hammali || 0) * (sale.quantitySold || 0)) + (sale.extraHammali || 0);
-      totalGradingCharges += (sale.gradingCharges || 0);
+      // Also include hammali/grading to merchant from edit dialog
+      totalHammali += ((sale.hammali || 0) * (sale.quantitySold || 0)) + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
+      totalGradingCharges += (sale.gradingCharges || 0) + (sale.extraDueGradingMerchant || 0);
       
       // Track extraDueToMerchant (remaining due, already reduced by FIFO payments)
       totalExtraDueToMerchant += (sale.extraDueToMerchant || 0);
