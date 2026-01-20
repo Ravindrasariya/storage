@@ -161,6 +161,8 @@ const translations: Translations = {
   expectedColdCharges: { en: "Expected Cold Charges", hi: "अपेक्षित कोल्ड स्टोरेज शुल्क" },
   baseColdChargesBilled: { en: "Base Cold Charges Billed", hi: "आधार कोल्ड शुल्क बिल हो गया" },
   baseColdChargesBilledHint: { en: "Base charges were billed in a previous sale. Only extras can be edited.", hi: "आधार शुल्क पिछली बिक्री में बिल हो चुके हैं। केवल अतिरिक्त शुल्क संपादित किए जा सकते हैं।" },
+  fullSaleChargeBasisHint: { en: "Full sale always uses actual bags", hi: "पूर्ण बिक्री हमेशा वास्तविक बोरी का उपयोग करती है" },
+  baseChargesBilledChargeBasisHint: { en: "Base charges already billed - using actual bags only", hi: "आधार शुल्क पहले से बिल हो चुके हैं - केवल वास्तविक बोरी का उपयोग" },
   baseCharges: { en: "Base Charges", hi: "आधार शुल्क" },
   alreadyBilled: { en: "Already Billed", hi: "पहले से बिल किया गया" },
   totalExpectedColdCharges: { en: "Total Expected Cold Charges", hi: "कुल अपेक्षित कोल्ड स्टोरेज शुल्क" },

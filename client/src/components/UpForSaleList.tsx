@@ -166,6 +166,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setEditPosition(lot.position);
     setEditableColdCharge(lot.coldCharge.toString());
     setEditableHammali(lot.hammali.toString());
+    // Force chargeBasis to "actual" for full sales or when base charges already billed
+    if (mode === "full" || lot.baseColdChargesBilled === 1) {
+      setChargeBasis("actual");
+    }
   };
 
   const removeFromSaleMutation = useMutation({
@@ -253,6 +257,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       
       const parsedNetWeight = netWeight ? parseFloat(netWeight) : undefined;
       
+      // Hardening: force chargeBasis to "actual" when base charges already billed
+      const effectiveChargeBasis = selectedLot.baseColdChargesBilled === 1 ? "actual" : chargeBasis;
+      
       if (saleMode === "partial") {
         partialSaleMutation.mutate({
           lotId: selectedLot.id,
@@ -271,7 +278,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           netWeight: parsedNetWeight,
           customColdCharge,
           customHammali,
-          chargeBasis,
+          chargeBasis: effectiveChargeBasis,
         });
       } else {
         finalizeSaleMutation.mutate({
@@ -577,8 +584,12 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="space-y-2">
                 <Label>{t("chargeBasis")}</Label>
-                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
-                  <SelectTrigger data-testid="select-charge-basis">
+                <Select 
+                  value={chargeBasis} 
+                  onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}
+                  disabled={saleMode === "full"}
+                >
+                  <SelectTrigger data-testid="select-charge-basis" className={saleMode === "full" ? "bg-muted cursor-not-allowed" : ""}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -586,6 +597,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
+                {saleMode === "full" && (
+                  <p className="text-xs text-muted-foreground">{t("fullSaleChargeBasisHint") || "Full sale always uses actual bags"}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -962,8 +976,15 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
               <div className="space-y-2">
                 <Label>{t("chargeBasis")}</Label>
-                <Select value={chargeBasis} onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}>
-                  <SelectTrigger data-testid="select-partial-charge-basis">
+                <Select 
+                  value={chargeBasis} 
+                  onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}
+                  disabled={selectedLot?.baseColdChargesBilled === 1}
+                >
+                  <SelectTrigger 
+                    data-testid="select-partial-charge-basis" 
+                    className={selectedLot?.baseColdChargesBilled === 1 ? "bg-muted cursor-not-allowed" : ""}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -971,6 +992,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
+                {selectedLot?.baseColdChargesBilled === 1 && (
+                  <p className="text-xs text-muted-foreground">{t("baseChargesBilledChargeBasisHint") || "Base charges already billed - using actual bags only"}</p>
+                )}
               </div>
 
               <div className="space-y-2">
