@@ -205,11 +205,12 @@ export default function SalesHistoryPage() {
   const summary = salesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
-      // Use persisted paidAmount and dueAmount directly for consistency with FIFO and analytics
       acc.amountPaid += sale.paidAmount || 0;
-      // Include extraDueToMerchant in total due for all displayed sales
-      // This ensures summary matches what user sees in the table
-      acc.amountDue += (sale.dueAmount || 0) + (sale.extraDueToMerchant || 0);
+      // Calculate due from authoritative coldStorageCharge field, not persisted dueAmount
+      // Formula: max(0, coldStorageCharge - paidAmount) + extraDueToMerchant
+      // This matches Analytics calculation for consistency
+      const coldStorageDue = Math.max(0, (sale.coldStorageCharge || 0) - (sale.paidAmount || 0));
+      acc.amountDue += coldStorageDue + (sale.extraDueToMerchant || 0);
       return acc;
     },
     { totalBags: 0, amountPaid: 0, amountDue: 0 }
