@@ -1803,12 +1803,9 @@ export class DatabaseStorage implements IStorage {
     for (const sale of sales) {
       if (remainingAmount <= 0) break;
 
-      // Calculate total charges including all surcharges
-      // Always recalculate from totalCharges - paidAmount to ensure accuracy
-      const totalCharges = (sale.coldStorageCharge || 0) + 
-                          (sale.kataCharges || 0) + 
-                          (sale.extraHammali || 0) + 
-                          (sale.gradingCharges || 0);
+      // coldStorageCharge already includes base + kata + extraHammali + grading
+      // Do NOT add them again to avoid double-counting
+      const totalCharges = sale.coldStorageCharge || 0;
       const saleDueAmount = totalCharges - (sale.paidAmount || 0);
       
       if (saleDueAmount <= 0) continue;
@@ -1919,10 +1916,9 @@ export class DatabaseStorage implements IStorage {
     let totalDueCharge = 0;
 
     for (const sale of lotSales) {
-      const charges = (sale.coldStorageCharge || 0) + 
-                     (sale.kataCharges || 0) + 
-                     (sale.extraHammali || 0) + 
-                     (sale.gradingCharges || 0);
+      // coldStorageCharge already includes base + kata + extraHammali + grading
+      // Do NOT add them again to avoid double-counting
+      const charges = sale.coldStorageCharge || 0;
       
       if (sale.paymentStatus === "paid") {
         totalPaidCharge += charges;
@@ -2087,12 +2083,9 @@ export class DatabaseStorage implements IStorage {
       for (const sale of sales) {
         if (remainingAmount <= 0) break;
 
-        // Calculate total charges including all surcharges
-        // Always recalculate from totalCharges - paidAmount to ensure accuracy
-        const totalCharges = (sale.coldStorageCharge || 0) + 
-                            (sale.kataCharges || 0) + 
-                            (sale.extraHammali || 0) + 
-                            (sale.gradingCharges || 0);
+        // coldStorageCharge already includes base + kata + extraHammali + grading
+        // Do NOT add them again to avoid double-counting
+        const totalCharges = sale.coldStorageCharge || 0;
         const saleDueAmount = totalCharges - (sale.paidAmount || 0);
         
         if (saleDueAmount <= 0) continue;
@@ -2193,10 +2186,9 @@ export class DatabaseStorage implements IStorage {
 
     // Reset each sale's payment info and recalculate dueAmount from current charges
     for (const sale of buyerSales) {
-      const totalCharges = (sale.coldStorageCharge || 0) + 
-                          (sale.kataCharges || 0) + 
-                          (sale.extraHammali || 0) + 
-                          (sale.gradingCharges || 0);
+      // coldStorageCharge already includes base + kata + extraHammali + grading
+      // Do NOT add them again to avoid double-counting
+      const totalCharges = sale.coldStorageCharge || 0;
       await db.update(salesHistory)
         .set({
           paymentStatus: "due",
@@ -2268,11 +2260,9 @@ export class DatabaseStorage implements IStorage {
       for (const sale of sales) {
         if (remainingAmount <= 0) break;
 
-        // Calculate total charges including all surcharges
-        const totalCharges = (sale.coldStorageCharge || 0) + 
-                            (sale.kataCharges || 0) + 
-                            (sale.extraHammali || 0) + 
-                            (sale.gradingCharges || 0);
+        // coldStorageCharge already includes base + kata + extraHammali + grading
+        // Do NOT add them again to avoid double-counting
+        const totalCharges = sale.coldStorageCharge || 0;
         const saleDueAmount = totalCharges - (sale.paidAmount || 0);
         
         if (saleDueAmount <= 0) continue;
@@ -2376,11 +2366,9 @@ export class DatabaseStorage implements IStorage {
     let updated = 0;
     
     for (const sale of allSales) {
-      // Calculate total charges (coldStorageCharge + surcharges)
-      const totalCharges = (sale.coldStorageCharge || 0) + 
-                          (sale.kataCharges || 0) + 
-                          (sale.extraHammali || 0) + 
-                          (sale.gradingCharges || 0);
+      // coldStorageCharge already includes base + kata + extraHammali + grading
+      // Do NOT add them again to avoid double-counting
+      const totalCharges = sale.coldStorageCharge || 0;
       
       // Calculate what the paid/due amounts should be based on payment status
       let newPaidAmount = 0;
@@ -2430,10 +2418,9 @@ export class DatabaseStorage implements IStorage {
       let totalDueCharge = 0;
       
       for (const sale of lotSales) {
-        const charges = (sale.coldStorageCharge || 0) + 
-                       (sale.kataCharges || 0) + 
-                       (sale.extraHammali || 0) + 
-                       (sale.gradingCharges || 0);
+        // coldStorageCharge already includes base + kata + extraHammali + grading
+        // Do NOT add them again to avoid double-counting
+        const charges = sale.coldStorageCharge || 0;
         
         if (sale.paymentStatus === "paid") {
           totalPaidCharge += charges;
