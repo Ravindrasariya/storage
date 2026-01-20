@@ -642,46 +642,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
               )}
 
-              <div className="p-4 rounded-lg bg-muted">
-                {selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
-                  <div className="text-red-600 dark:text-red-400 font-medium text-center py-2">
-                    {t("addInitialNetWeightWarning")}
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
-                      <span className="text-2xl font-bold text-chart-2">
-                        <Currency amount={calculateCharge(selectedLot)} />
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                      {selectedLot.baseColdChargesBilled === 1 ? (
-                        <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
-                      ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
-                        <div>
-                          ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableRate(selectedLot)} />) / ({selectedLot.originalSize} × 100) = <Currency amount={calculateBaseCharge(selectedLot)} />
-                        </div>
-                      ) : (
-                        <div>{getChargeQuantity(selectedLot, selectedLot.remainingSize)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
-                      )}
-                      {chargeBasis === "totalRemaining" && selectedLot.baseColdChargesBilled !== 1 && (
-                        <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")})</div>
-                      )}
-                      {(parseFloat(kataCharges) || 0) > 0 && (
-                        <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
-                      )}
-                      {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                        <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /> ({selectedLot.remainingSize} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
-                      )}
-                      {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                        <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
@@ -775,6 +735,46 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   placeholder={t("netWeightKg")}
                   data-testid="input-net-weight"
                 />
+              </div>
+
+              <div className="p-4 rounded-lg bg-muted">
+                {selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
+                  <div className="text-red-600 dark:text-red-400 font-medium text-center py-2">
+                    {t("addInitialNetWeightWarning")}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
+                      <span className="text-2xl font-bold text-chart-2">
+                        <Currency amount={calculateCharge(selectedLot)} />
+                      </span>
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                      {selectedLot.baseColdChargesBilled === 1 ? (
+                        <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
+                      ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
+                        <div>
+                          ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableRate(selectedLot)} />) / ({selectedLot.originalSize} × 100) = <Currency amount={calculateBaseCharge(selectedLot)} />
+                        </div>
+                      ) : (
+                        <div>{getChargeQuantity(selectedLot, selectedLot.remainingSize)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
+                      )}
+                      {chargeBasis === "totalRemaining" && selectedLot.baseColdChargesBilled !== 1 && (
+                        <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")})</div>
+                      )}
+                      {(parseFloat(kataCharges) || 0) > 0 && (
+                        <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
+                      )}
+                      {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
+                        <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /> ({selectedLot.remainingSize} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
+                      )}
+                      {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
+                        <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
             </div>
