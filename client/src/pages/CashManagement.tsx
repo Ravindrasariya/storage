@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
@@ -19,6 +19,66 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats } from "@shared/schema";
 
+const CASH_MGMT_STATE_KEY_PREFIX = "cashManagementFormState";
+const STATE_EXPIRY_MS = 30000; // 30 seconds
+
+interface PersistedFormState {
+  timestamp: number;
+  activeTab: "inward" | "expense" | "self";
+  payerType: string;
+  buyerName: string;
+  customBuyerName: string;
+  salesGoodsBuyerName: string;
+  receiptType: string;
+  accountType: string;
+  inwardAmount: string;
+  receivedDate: string;
+  inwardRemarks: string;
+  expenseType: string;
+  expenseReceiverName: string;
+  expensePaymentMode: string;
+  expenseAccountType: string;
+  expenseAmount: string;
+  expenseDate: string;
+  expenseRemarks: string;
+  transferFromAccount: string;
+  transferToAccount: string;
+  transferAmount: string;
+  transferDate: string;
+  transferRemarks: string;
+  transferTypeMode: "internal" | "buyer";
+  buyerTransferFrom: string;
+  buyerTransferTo: string;
+  selectedSaleId: string;
+  buyerTransferAmount: string;
+  buyerTransferDate: string;
+  buyerTransferRemarks: string;
+}
+
+function getStateKey(coldStorageId: string): string {
+  return `${CASH_MGMT_STATE_KEY_PREFIX}:${coldStorageId}`;
+}
+
+function loadPersistedState(coldStorageId: string): Partial<PersistedFormState> | null {
+  try {
+    const stored = sessionStorage.getItem(getStateKey(coldStorageId));
+    if (!stored) return null;
+    const parsed: PersistedFormState = JSON.parse(stored);
+    const now = Date.now();
+    if (now - parsed.timestamp > STATE_EXPIRY_MS) {
+      sessionStorage.removeItem(getStateKey(coldStorageId));
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function clearPersistedState(coldStorageId: string): void {
+  sessionStorage.removeItem(getStateKey(coldStorageId));
+}
+
 interface BuyerWithDue {
   buyerName: string;
   totalDue: number;
@@ -33,43 +93,58 @@ type TransactionItem =
 export default function CashManagement() {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { canEdit } = useAuth();
+  const { canEdit, coldStorage } = useAuth();
+  const coldStorageId = coldStorage?.id || "";
   
-  const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">("inward");
+  // Load persisted state once on mount (scoped to coldStorageId)
+  const [initialLoadResult] = useState<{ state: Partial<PersistedFormState> | null; wasLoaded: boolean }>(() => {
+    if (coldStorageId) {
+      const state = loadPersistedState(coldStorageId);
+      return { state, wasLoaded: true };
+    }
+    return { state: null, wasLoaded: false };
+  });
+  const persistedState = initialLoadResult.state;
   
-  const [payerType, setPayerType] = useState<"cold_merchant" | "sales_goods" | "kata" | "others">("cold_merchant");
-  const [buyerName, setBuyerName] = useState("");
-  const [customBuyerName, setCustomBuyerName] = useState("");
-  const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState("");
-  const [receiptType, setReceiptType] = useState<"cash" | "account">("cash");
-  const [accountType, setAccountType] = useState<"limit" | "current">("limit");
-  const [inwardAmount, setInwardAmount] = useState("");
-  const [receivedDate, setReceivedDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [inwardRemarks, setInwardRemarks] = useState("");
+  // Track if persisted state has been loaded (either on mount or async)
+  const [hasLoadedPersistedState, setHasLoadedPersistedState] = useState(initialLoadResult.wasLoaded);
+  const todayDate = format(new Date(), "yyyy-MM-dd");
+  
+  const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">(persistedState?.activeTab || "inward");
+  
+  const [payerType, setPayerType] = useState<"cold_merchant" | "sales_goods" | "kata" | "others">((persistedState?.payerType as "cold_merchant" | "sales_goods" | "kata" | "others") || "cold_merchant");
+  const [buyerName, setBuyerName] = useState(persistedState?.buyerName || "");
+  const [customBuyerName, setCustomBuyerName] = useState(persistedState?.customBuyerName || "");
+  const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState(persistedState?.salesGoodsBuyerName || "");
+  const [receiptType, setReceiptType] = useState<"cash" | "account">((persistedState?.receiptType as "cash" | "account") || "cash");
+  const [accountType, setAccountType] = useState<"limit" | "current">((persistedState?.accountType as "limit" | "current") || "limit");
+  const [inwardAmount, setInwardAmount] = useState(persistedState?.inwardAmount || "");
+  const [receivedDate, setReceivedDate] = useState(persistedState?.receivedDate || todayDate);
+  const [inwardRemarks, setInwardRemarks] = useState(persistedState?.inwardRemarks || "");
 
-  const [expenseType, setExpenseType] = useState<string>("");
-  const [expenseReceiverName, setExpenseReceiverName] = useState("");
+  const [expenseType, setExpenseType] = useState<string>(persistedState?.expenseType || "");
+  const [expenseReceiverName, setExpenseReceiverName] = useState(persistedState?.expenseReceiverName || "");
   const [showReceiverSuggestions, setShowReceiverSuggestions] = useState(false);
-  const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account">("cash");
-  const [expenseAccountType, setExpenseAccountType] = useState<"limit" | "current">("limit");
-  const [expenseAmount, setExpenseAmount] = useState("");
-  const [expenseDate, setExpenseDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [expenseRemarks, setExpenseRemarks] = useState("");
+  const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account">((persistedState?.expensePaymentMode as "cash" | "account") || "cash");
+  const [expenseAccountType, setExpenseAccountType] = useState<"limit" | "current">((persistedState?.expenseAccountType as "limit" | "current") || "limit");
+  const [expenseAmount, setExpenseAmount] = useState(persistedState?.expenseAmount || "");
+  const [expenseDate, setExpenseDate] = useState(persistedState?.expenseDate || todayDate);
+  const [expenseRemarks, setExpenseRemarks] = useState(persistedState?.expenseRemarks || "");
 
-  const [transferFromAccount, setTransferFromAccount] = useState<"cash" | "limit" | "current">("cash");
-  const [transferToAccount, setTransferToAccount] = useState<"cash" | "limit" | "current">("limit");
-  const [transferAmount, setTransferAmount] = useState("");
-  const [transferDate, setTransferDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [transferRemarks, setTransferRemarks] = useState("");
+  const [transferFromAccount, setTransferFromAccount] = useState<"cash" | "limit" | "current">((persistedState?.transferFromAccount as "cash" | "limit" | "current") || "cash");
+  const [transferToAccount, setTransferToAccount] = useState<"cash" | "limit" | "current">((persistedState?.transferToAccount as "cash" | "limit" | "current") || "limit");
+  const [transferAmount, setTransferAmount] = useState(persistedState?.transferAmount || "");
+  const [transferDate, setTransferDate] = useState(persistedState?.transferDate || todayDate);
+  const [transferRemarks, setTransferRemarks] = useState(persistedState?.transferRemarks || "");
   
   // Buyer-to-buyer transfer state
-  const [transferTypeMode, setTransferTypeMode] = useState<"internal" | "buyer">("internal");
-  const [buyerTransferFrom, setBuyerTransferFrom] = useState("");
-  const [buyerTransferTo, setBuyerTransferTo] = useState("");
-  const [selectedSaleId, setSelectedSaleId] = useState("");
-  const [buyerTransferAmount, setBuyerTransferAmount] = useState("");
-  const [buyerTransferDate, setBuyerTransferDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [buyerTransferRemarks, setBuyerTransferRemarks] = useState("");
+  const [transferTypeMode, setTransferTypeMode] = useState<"internal" | "buyer">(persistedState?.transferTypeMode || "internal");
+  const [buyerTransferFrom, setBuyerTransferFrom] = useState(persistedState?.buyerTransferFrom || "");
+  const [buyerTransferTo, setBuyerTransferTo] = useState(persistedState?.buyerTransferTo || "");
+  const [selectedSaleId, setSelectedSaleId] = useState(persistedState?.selectedSaleId || "");
+  const [buyerTransferAmount, setBuyerTransferAmount] = useState(persistedState?.buyerTransferAmount || "");
+  const [buyerTransferDate, setBuyerTransferDate] = useState(persistedState?.buyerTransferDate || todayDate);
+  const [buyerTransferRemarks, setBuyerTransferRemarks] = useState(persistedState?.buyerTransferRemarks || "");
   const [showBuyerFromSuggestions, setShowBuyerFromSuggestions] = useState(false);
   const [showBuyerToSuggestions, setShowBuyerToSuggestions] = useState(false);
 
@@ -101,6 +176,96 @@ export default function CashManagement() {
   const [newReceivableRemarks, setNewReceivableRemarks] = useState("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   
+  // Save form state to sessionStorage (persists for 30 seconds when navigating away)
+  const saveFormState = useCallback(() => {
+    if (!coldStorageId) return; // Don't save if no cold storage
+    const stateToSave: PersistedFormState = {
+      timestamp: Date.now(),
+      activeTab,
+      payerType,
+      buyerName,
+      customBuyerName,
+      salesGoodsBuyerName,
+      receiptType,
+      accountType,
+      inwardAmount,
+      receivedDate,
+      inwardRemarks,
+      expenseType,
+      expenseReceiverName,
+      expensePaymentMode,
+      expenseAccountType,
+      expenseAmount,
+      expenseDate,
+      expenseRemarks,
+      transferFromAccount,
+      transferToAccount,
+      transferAmount,
+      transferDate,
+      transferRemarks,
+      transferTypeMode,
+      buyerTransferFrom,
+      buyerTransferTo,
+      selectedSaleId,
+      buyerTransferAmount,
+      buyerTransferDate,
+      buyerTransferRemarks,
+    };
+    sessionStorage.setItem(getStateKey(coldStorageId), JSON.stringify(stateToSave));
+  }, [
+    coldStorageId, activeTab, payerType, buyerName, customBuyerName, salesGoodsBuyerName, receiptType, accountType,
+    inwardAmount, receivedDate, inwardRemarks, expenseType, expenseReceiverName, expensePaymentMode,
+    expenseAccountType, expenseAmount, expenseDate, expenseRemarks, transferFromAccount, transferToAccount,
+    transferAmount, transferDate, transferRemarks, transferTypeMode, buyerTransferFrom, buyerTransferTo,
+    selectedSaleId, buyerTransferAmount, buyerTransferDate, buyerTransferRemarks
+  ]);
+
+  // Auto-save form state whenever any form field changes
+  useEffect(() => {
+    if (hasLoadedPersistedState) {
+      saveFormState();
+    }
+  }, [saveFormState, hasLoadedPersistedState]);
+
+  // Load persisted state when coldStorageId becomes available after mount
+  useEffect(() => {
+    if (coldStorageId && !hasLoadedPersistedState) {
+      const loaded = loadPersistedState(coldStorageId);
+      if (loaded) {
+        // Apply loaded state to all form fields
+        if (loaded.activeTab) setActiveTab(loaded.activeTab);
+        if (loaded.payerType) setPayerType(loaded.payerType as "cold_merchant" | "sales_goods" | "kata" | "others");
+        if (loaded.buyerName) setBuyerName(loaded.buyerName);
+        if (loaded.customBuyerName) setCustomBuyerName(loaded.customBuyerName);
+        if (loaded.salesGoodsBuyerName) setSalesGoodsBuyerName(loaded.salesGoodsBuyerName);
+        if (loaded.receiptType) setReceiptType(loaded.receiptType as "cash" | "account");
+        if (loaded.accountType) setAccountType(loaded.accountType as "limit" | "current");
+        if (loaded.inwardAmount) setInwardAmount(loaded.inwardAmount);
+        if (loaded.receivedDate) setReceivedDate(loaded.receivedDate);
+        if (loaded.inwardRemarks) setInwardRemarks(loaded.inwardRemarks);
+        if (loaded.expenseType) setExpenseType(loaded.expenseType);
+        if (loaded.expenseReceiverName) setExpenseReceiverName(loaded.expenseReceiverName);
+        if (loaded.expensePaymentMode) setExpensePaymentMode(loaded.expensePaymentMode as "cash" | "account");
+        if (loaded.expenseAccountType) setExpenseAccountType(loaded.expenseAccountType as "limit" | "current");
+        if (loaded.expenseAmount) setExpenseAmount(loaded.expenseAmount);
+        if (loaded.expenseDate) setExpenseDate(loaded.expenseDate);
+        if (loaded.expenseRemarks) setExpenseRemarks(loaded.expenseRemarks);
+        if (loaded.transferFromAccount) setTransferFromAccount(loaded.transferFromAccount as "cash" | "limit" | "current");
+        if (loaded.transferToAccount) setTransferToAccount(loaded.transferToAccount as "cash" | "limit" | "current");
+        if (loaded.transferAmount) setTransferAmount(loaded.transferAmount);
+        if (loaded.transferDate) setTransferDate(loaded.transferDate);
+        if (loaded.transferRemarks) setTransferRemarks(loaded.transferRemarks);
+        if (loaded.transferTypeMode) setTransferTypeMode(loaded.transferTypeMode);
+        if (loaded.buyerTransferFrom) setBuyerTransferFrom(loaded.buyerTransferFrom);
+        if (loaded.buyerTransferTo) setBuyerTransferTo(loaded.buyerTransferTo);
+        if (loaded.selectedSaleId) setSelectedSaleId(loaded.selectedSaleId);
+        if (loaded.buyerTransferAmount) setBuyerTransferAmount(loaded.buyerTransferAmount);
+        if (loaded.buyerTransferDate) setBuyerTransferDate(loaded.buyerTransferDate);
+        if (loaded.buyerTransferRemarks) setBuyerTransferRemarks(loaded.buyerTransferRemarks);
+      }
+      setHasLoadedPersistedState(true);
+    }
+  }, [coldStorageId, hasLoadedPersistedState]);
 
   const { data: buyersWithDues = [], isLoading: loadingBuyers } = useQuery<BuyerWithDue[]>({
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
@@ -185,6 +350,7 @@ export default function CashManagement() {
       setBuyerTransferAmount("");
       setBuyerTransferDate(format(new Date(), "yyyy-MM-dd"));
       setBuyerTransferRemarks("");
+      clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
@@ -215,6 +381,7 @@ export default function CashManagement() {
       setInwardAmount("");
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
       setInwardRemarks("");
+      clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/sales-goods-buyers"] });
@@ -246,6 +413,7 @@ export default function CashManagement() {
       setExpenseAmount("");
       setExpenseDate(format(new Date(), "yyyy-MM-dd"));
       setExpenseRemarks("");
+      clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/receiver-names"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
@@ -320,6 +488,7 @@ export default function CashManagement() {
       setTransferAmount("");
       setTransferDate(format(new Date(), "yyyy-MM-dd"));
       setTransferRemarks("");
+      clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
     },
