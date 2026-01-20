@@ -73,18 +73,13 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     },
   });
 
-  const handleSaveAndPrint = () => {
+  const handleSave = () => {
     const bags = parseInt(bagsToExit);
     if (isNaN(bags) || bags <= 0 || bags > remainingToExit) {
       toast({ title: t("error"), description: `Max bags: ${remainingToExit}`, variant: "destructive" });
       return;
     }
-    createExitMutation.mutate(bags, {
-      onSuccess: (data: ExitHistory) => {
-        setLastExit(data);
-        setShowPrintReceipt(true);
-      },
-    });
+    createExitMutation.mutate(bags);
   };
 
   const handlePrint = () => {
@@ -204,7 +199,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   return (
     <>
       <Dialog open={open && !showPrintReceipt} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <LogOut className="h-5 w-5" />
@@ -277,11 +272,25 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                           </Badge>
                           <strong>{exit.bagsExited}</strong> bags - {format(new Date(exit.exitDate), "dd/MM HH:mm")}
                         </span>
-                        {exit.isReversed === 1 && (
-                          <Badge variant="outline" className="text-destructive text-[10px] px-1 py-0">
-                            Rev
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {exit.isReversed === 1 && (
+                            <Badge variant="outline" className="text-destructive text-[10px] px-1 py-0">
+                              Rev
+                            </Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setLastExit(exit);
+                              setShowPrintReceipt(true);
+                            }}
+                            data-testid={`button-print-exit-${exit.id}`}
+                          >
+                            <Printer className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -302,13 +311,12 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             {remainingToExit > 0 && (
               <Button
                 size="sm"
-                onClick={handleSaveAndPrint}
+                onClick={handleSave}
                 disabled={createExitMutation.isPending}
-                data-testid="button-save-print-exit"
+                data-testid="button-save-exit"
               >
-                <Save className="h-3 w-3" />
-                <Printer className="h-3 w-3 mr-1" />
-                Save & Print
+                <Save className="h-3 w-3 mr-1" />
+                Save
               </Button>
             )}
           </DialogFooter>
