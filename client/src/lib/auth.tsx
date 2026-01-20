@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { queryClient } from "./queryClient";
 
 interface User {
   id: string;
@@ -90,6 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshSession]);
 
   const login = (user: User, coldStorage: ColdStorage, token: string) => {
+    // Clear all cached queries to prevent data leakage between cold storages
+    queryClient.clear();
     localStorage.setItem(AUTH_TOKEN_KEY, token);
     setUser(user);
     setColdStorage(coldStorage);
@@ -110,6 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("Logout error:", error);
       }
     }
+    // Clear all cached queries to prevent data leakage between cold storages
+    queryClient.clear();
     localStorage.removeItem(AUTH_TOKEN_KEY);
     setUser(null);
     setColdStorage(null);
