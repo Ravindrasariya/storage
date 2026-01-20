@@ -252,34 +252,35 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     ? (sale.remainingSizeAtSale || sale.quantitySold) 
     : sale.quantitySold;
   
-  // Determine charge unit
-  const chargeUnit = sale.chargeUnitAtSale || "bag";
+  // Determine charge unit - check chargeUnitAtSale first, then fallback to cold storage setting
+  const chargeUnit = sale.chargeUnitAtSale || coldStorage?.chargeUnit || "bag";
   const isQuintalBased = chargeUnit === "quintal";
   
-  // Calculate cold storage charge and hammali based on charge unit
+  // Calculate base charges (total minus extras) from stored values
+  const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+  const baseChargesTotal = (sale.coldStorageCharge || 0) - extras;
+  
+  // Split base charges proportionally between cold charge and hammali based on their rates
   let coldChargeAmount = 0;
   let hammaliAmount = 0;
   
-  if (hasSeparateCharges) {
-    if (isQuintalBased) {
-      // Quintal formula: (initialNetWeightKg × bagsToUse × rate) / (100 × originalLotSize)
-      const initialNetWeight = sale.initialNetWeightKg || 0;
-      const originalLotSize = sale.originalLotSize || 1;
-      coldChargeAmount = (initialNetWeight * bagsToUse * (sale.coldCharge || 0)) / (100 * originalLotSize);
-      hammaliAmount = (initialNetWeight * bagsToUse * (sale.hammali || 0)) / (100 * originalLotSize);
+  if (hasSeparateCharges && sale.coldCharge && sale.hammali) {
+    const totalRate = (sale.coldCharge || 0) + (sale.hammali || 0);
+    if (totalRate > 0) {
+      coldChargeAmount = (baseChargesTotal * sale.coldCharge) / totalRate;
+      hammaliAmount = (baseChargesTotal * sale.hammali) / totalRate;
     } else {
-      // Bag formula: bagsToUse × rate
-      coldChargeAmount = (sale.coldCharge || 0) * bagsToUse;
-      hammaliAmount = (sale.hammali || 0) * bagsToUse;
+      coldChargeAmount = baseChargesTotal;
+      hammaliAmount = 0;
     }
   } else {
-    coldChargeAmount = sale.coldStorageCharge || 0;
+    coldChargeAmount = baseChargesTotal;
     hammaliAmount = 0;
   }
   
-  // Calculate quintal value for display
-  const quintalValue = isQuintalBased && sale.initialNetWeightKg && sale.originalLotSize
-    ? ((sale.initialNetWeightKg * bagsToUse) / (100 * sale.originalLotSize)).toFixed(2)
+  // Calculate quintal value for display (derived from stored charges)
+  const quintalValue = isQuintalBased && sale.coldCharge && sale.coldCharge > 0
+    ? (coldChargeAmount / sale.coldCharge).toFixed(2)
     : null;
 
   const renderDeductionBill = () => (
