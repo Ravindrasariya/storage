@@ -159,8 +159,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     return value;
   };
 
+  // Reset form state when dialog opens or sale changes
+  // This ensures unsaved changes are discarded when reopening the dialog
   useEffect(() => {
-    if (sale) {
+    if (sale && open) {
       setBuyerName(sale.buyerName || "");
       setPricePerKg(sale.pricePerKg ? sale.pricePerKg.toString() : "");
       setNetWeight(sale.netWeight ? sale.netWeight.toString() : "");
@@ -182,7 +184,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditExtraDueOtherMerchant(sale.extraDueOtherMerchant?.toString() || "0");
       setChargesOpen(false);
     }
-  }, [sale]);
+  }, [sale, open]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: {
