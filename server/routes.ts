@@ -763,7 +763,7 @@ export async function registerRoutes(
         pricePerBag: rate,
         coldCharge: coldChargeRate,
         hammali: hammaliRate,
-        coldStorageCharge: storageCharge,
+        coldStorageCharge: totalChargeForLot, // Total charge including all extras (base + kata + extraHammali + grading)
         kataCharges: kataCharges || 0,
         extraHammali: extraHammali || 0,
         gradingCharges: gradingCharges || 0,

@@ -1157,7 +1157,7 @@ export class DatabaseStorage implements IStorage {
       pricePerBag: rate,
       coldCharge: coldChargeRate,
       hammali: hammaliRate,
-      coldStorageCharge: saleCharge,
+      coldStorageCharge: totalChargeWithExtras, // Total charge including all extras (base + kata + extraHammali + grading)
       kataCharges: kataCharges || 0,
       extraHammali: extraHammali || 0,
       gradingCharges: gradingCharges || 0,
