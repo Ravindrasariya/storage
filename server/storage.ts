@@ -821,9 +821,25 @@ export class DatabaseStorage implements IStorage {
       // Do NOT add them again to avoid double-counting
       const totalCharges = sale.coldStorageCharge || 0;
       
-      // Sum up hammali (hammali per bag × bags sold + extra hammali) and grading charges
-      // Also include hammali/grading to merchant from edit dialog
-      totalHammali += ((sale.hammali || 0) * (sale.quantitySold || 0)) + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
+      // Calculate base hammali proportionally from coldStorageCharge (same as CSV export)
+      // coldStorageCharge = base charges + extras (kata + extraHammali + grading)
+      const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+      const baseChargesTotal = Math.max(0, (sale.coldStorageCharge || 0) - extras); // Clamp to prevent negative
+      let baseHammali = 0;
+      if (sale.coldCharge && sale.hammali) {
+        // Both rates present - use proportional split
+        const totalRate = sale.coldCharge + sale.hammali;
+        if (totalRate > 0) {
+          baseHammali = (baseChargesTotal * sale.hammali) / totalRate;
+        }
+      } else if (sale.hammali && sale.hammali > 0 && !sale.coldCharge) {
+        // Only hammali rate present (no cold charge) - all base is hammali
+        baseHammali = baseChargesTotal;
+      }
+      // Note: If neither rate present, baseHammali stays 0 (legacy data without rates)
+      
+      // Total hammali = base hammali (from coldStorageCharge) + extra hammali (bilty cut) + hammali to merchant
+      totalHammali += baseHammali + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
       totalGradingCharges += (sale.gradingCharges || 0) + (sale.extraDueGradingMerchant || 0);
       
       // Track extraDueToMerchant (remaining due, already reduced by FIFO payments)
