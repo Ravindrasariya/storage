@@ -22,6 +22,15 @@ import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningRec
 const CASH_MGMT_STATE_KEY_PREFIX = "cashManagementFormState";
 const STATE_EXPIRY_MS = 30000; // 30 seconds
 
+// Helper to display bag type with proper capitalization
+function formatBagType(bagType: string): string {
+  const lower = bagType.toLowerCase();
+  if (lower === "wafer") return "Wafer";
+  if (lower === "seed") return "Seed";
+  if (lower === "ration") return "Ration";
+  return bagType; // fallback to original value
+}
+
 interface PersistedFormState {
   timestamp: number;
   activeTab: "inward" | "expense" | "self";
@@ -1953,7 +1962,7 @@ export default function CashManagement() {
                           <SelectContent>
                             {buyerSalesWithDues.filter(s => (s.dueAmount || 0) > 0).map((sale) => (
                               <SelectItem key={sale.id} value={sale.id}>
-                                {sale.farmerName} - {t("lot")} {sale.lotNo}, {sale.quantitySold} {t("bags")} (₹{sale.dueAmount?.toLocaleString()})
+                                {formatBagType(sale.bagType)}, {t("lot")} {sale.lotNo}, {sale.quantitySold} {t("bags")} (₹{sale.dueAmount?.toLocaleString()})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -2268,8 +2277,10 @@ export default function CashManagement() {
                       <span className="font-medium">{(selectedTransaction.data as SalesHistory).transferToBuyerName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("lot")}:</span>
-                      <span>{(selectedTransaction.data as SalesHistory).lotNo}</span>
+                      <span className="text-muted-foreground">{t("lotInfo")}:</span>
+                      <span>
+                        {formatBagType((selectedTransaction.data as SalesHistory).bagType)}, {t("lot")} {(selectedTransaction.data as SalesHistory).lotNo}, {(selectedTransaction.data as SalesHistory).quantitySold} {t("bags")}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("liabilityTransferred")}:</span>

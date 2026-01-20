@@ -411,6 +411,7 @@ const translations: Translations = {
   fromBuyer: { en: "From Buyer", hi: "किस खरीदार से" },
   toBuyer: { en: "To Buyer", hi: "किस खरीदार को" },
   liabilityTransferred: { en: "Liability Transferred", hi: "स्थानांतरित बकाया" },
+  lotInfo: { en: "Lot Info", hi: "लॉट जानकारी" },
   transferAmount: { en: "Transfer Amount", hi: "स्थानांतरण राशि" },
   transferDebt: { en: "Transfer Debt", hi: "बकाया स्थानांतरित करें" },
   selectSale: { en: "Select Sale", hi: "बिक्री चुनें" },
