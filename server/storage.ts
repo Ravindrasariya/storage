@@ -811,6 +811,7 @@ export class DatabaseStorage implements IStorage {
     let totalDue = 0;
     let totalHammali = 0;
     let totalGradingCharges = 0;
+    let totalExtraDueToMerchant = 0;
     
     // Group sales by lotId to count unique lots, not individual partial sales
     const lotPaymentMap = new Map<string, { paidAmount: number; dueAmount: number }>();
@@ -823,6 +824,9 @@ export class DatabaseStorage implements IStorage {
       // Sum up hammali (hammali per bag × bags sold + extra hammali) and grading charges
       totalHammali += ((sale.hammali || 0) * (sale.quantitySold || 0)) + (sale.extraHammali || 0);
       totalGradingCharges += (sale.gradingCharges || 0);
+      
+      // Track extraDueToMerchant (remaining due, already reduced by FIFO payments)
+      totalExtraDueToMerchant += (sale.extraDueToMerchant || 0);
       
       // Use paidAmount from sale, calculate due as remainder to ensure consistency
       const salePaid = sale.paidAmount || 0;
@@ -837,6 +841,9 @@ export class DatabaseStorage implements IStorage {
       existing.dueAmount += saleDue;
       lotPaymentMap.set(sale.lotId, existing);
     }
+    
+    // Add extraDueToMerchant to totalDue for consistency with Merchant Analysis
+    totalDue += totalExtraDueToMerchant;
     
     // Count unique lots: a lot is "paid" only if all tranches are paid
     let paidCount = 0;
