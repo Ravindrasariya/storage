@@ -1176,6 +1176,7 @@ export class DatabaseStorage implements IStorage {
       saleYear: new Date().getFullYear(),
       // Charge calculation context for edit dialog
       chargeBasis: "actual", // Full sales always use "actual" (selling all remaining)
+      chargeUnitAtSale: coldStorage.chargeUnit || "bag", // Preserve charge unit used at sale time
       initialNetWeightKg: lot.netWeight || null,
       baseChargeAmountAtSale: saleCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
       remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)

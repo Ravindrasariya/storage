@@ -49,8 +49,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editExtraDueGradingMerchant, setEditExtraDueGradingMerchant] = useState("");
   const [editExtraDueOtherMerchant, setEditExtraDueOtherMerchant] = useState("");
 
-  // Get charge unit from cold storage settings
-  const chargeUnit = coldStorage?.chargeUnit || "bag";
+  // Get charge unit from sale record (recorded at time of sale) with fallback to cold storage
+  // This ensures edits use the same calculation method as the original sale
+  const chargeUnit = sale?.chargeUnitAtSale || coldStorage?.chargeUnit || "bag";
   const isQuintalBased = chargeUnit === "quintal";
   
   // Use stored values from sale record (recorded at time of sale)

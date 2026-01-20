@@ -778,6 +778,7 @@ export async function registerRoutes(
         saleYear: new Date().getFullYear(),
         // Charge calculation context for edit dialog
         chargeBasis: chargeBasis || "actual",
+        chargeUnitAtSale: coldStorage?.chargeUnit || "bag", // Preserve charge unit used at sale time
         initialNetWeightKg: lot.netWeight || null,
         baseChargeAmountAtSale: storageCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
         remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
@@ -786,6 +787,7 @@ export async function registerRoutes(
       const updatedLot = await storage.getLot(req.params.id);
       res.json(updatedLot);
     } catch (error) {
+      console.error("Partial sale error:", error);
       res.status(500).json({ error: "Failed to process partial sale" });
     }
   });

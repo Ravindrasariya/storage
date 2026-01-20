@@ -161,6 +161,7 @@ export const salesHistory = pgTable("sales_history", {
   transferRemarks: text("transfer_remarks"), // Notes about the transfer
   // Charge calculation context (recorded at time of sale for edit dialog)
   chargeBasis: text("charge_basis"), // 'actual' or 'totalRemaining' - how charges were calculated
+  chargeUnitAtSale: text("charge_unit_at_sale"), // 'bag' or 'quintal' - charge unit used at time of sale (prevents unit mismatch on edit)
   initialNetWeightKg: real("initial_net_weight_kg"), // Lot's net weight at time of sale (for quintal-based charges)
   baseChargeAmountAtSale: real("base_charge_amount_at_sale"), // Base cold charge (cold+hammali portion) at sale time; if 0, base charges already billed
   remainingSizeAtSale: integer("remaining_size_at_sale"), // Remaining bags before this sale (used for totalRemaining charge basis)
