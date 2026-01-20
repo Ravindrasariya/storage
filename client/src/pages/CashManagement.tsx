@@ -1962,7 +1962,7 @@ export default function CashManagement() {
                           <SelectContent>
                             {buyerSalesWithDues.filter(s => (s.dueAmount || 0) > 0).map((sale) => (
                               <SelectItem key={sale.id} value={sale.id}>
-                                {formatBagType(sale.bagType)}, {t("lot")} {sale.lotNo}, {sale.quantitySold} {t("bags")} (₹{sale.dueAmount?.toLocaleString()})
+                                {sale.farmerName} - {formatBagType(sale.bagType)}, {t("lot")} {sale.lotNo}, {sale.quantitySold} {t("bags")} (₹{sale.dueAmount?.toLocaleString()})
                               </SelectItem>
                             ))}
                           </SelectContent>
