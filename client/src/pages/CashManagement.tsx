@@ -373,6 +373,7 @@ export default function CashManagement() {
       setNewReceivableAmount("");
       setNewReceivableRemarks("");
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -387,6 +388,7 @@ export default function CashManagement() {
     onSuccess: () => {
       toast({ title: t("success"), description: t("receivableDeleted"), variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
