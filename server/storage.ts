@@ -859,27 +859,27 @@ export class DatabaseStorage implements IStorage {
 
     // Subtract expenses already paid for hammali and grading
     // This makes the dropdown show remaining due instead of total
-    let yearFilter = year;
-    if (!yearFilter) {
-      // Default to current year for expenses if no year specified
-      yearFilter = new Date().getFullYear();
-    }
-    
-    const allExpenses = await db.select()
+    // Filter expenses by year only when year filter is provided (consistent with sales filtering)
+    let expenseQuery = db.select()
       .from(expenses)
       .where(and(
         eq(expenses.coldStorageId, coldStorageId),
         eq(expenses.isReversed, 0)
       ));
     
+    const allExpenses = await expenseQuery;
+    
     // Sum expenses by type, optionally filtered by year
     let hammaliExpensesPaid = 0;
     let gradingExpensesPaid = 0;
     
     for (const expense of allExpenses) {
-      const expenseYear = new Date(expense.paidAt).getFullYear();
-      // Only include expenses from the relevant year (or current year if no filter)
-      if (year && expenseYear !== yearFilter) continue;
+      // When year filter is provided, only include expenses from that year
+      // When no year filter, include all expenses (matches sales behavior)
+      if (year) {
+        const expenseYear = new Date(expense.paidAt).getFullYear();
+        if (expenseYear !== year) continue;
+      }
       
       if (expense.expenseType === "hammali") {
         hammaliExpensesPaid += expense.amount;
