@@ -249,7 +249,7 @@ const translations: Translations = {
   optional: { en: "Optional", hi: "वैकल्पिक" },
   
   // Sales History
-  salesHistory: { en: "History of Sales", hi: "बिक्री का इतिहास" },
+  salesHistory: { en: "Sales History", hi: "बिक्री का इतिहास" },
   entryDate: { en: "Entry Date", hi: "प्रवेश तिथि" },
   saleDate: { en: "Sale Date", hi: "बिक्री तिथि" },
   saleType: { en: "Sale Type", hi: "बिक्री प्रकार" },
