@@ -111,7 +111,7 @@ export interface IStorage {
   }): Promise<SalesHistory[]>;
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
-  reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string }>;
+  reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }>;
   updateSalesHistoryForTransfer(saleId: string, updates: {
     clearanceType: string;
     transferToBuyerName: string;
@@ -1427,7 +1427,7 @@ export class DatabaseStorage implements IStorage {
     return uniqueYears;
   }
 
-  async reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string }> {
+  async reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) {
       return { success: false, message: "Sale not found", errorType: "not_found" };
@@ -1469,7 +1469,10 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const [updatedLot] = await db.update(lots).set({
+    // Reset baseColdChargesBilled if this sale was the one that originally billed base charges
+    const shouldResetBaseBilled = (sale.baseChargeAmountAtSale || 0) > 0;
+
+    const lotUpdateData: any = {
       remainingSize: newRemainingSize,
       saleStatus: newSaleStatus,
       upForSale: 0,
@@ -1477,7 +1480,14 @@ export class DatabaseStorage implements IStorage {
       totalPaidCharge: newTotalPaid,
       totalDueCharge: newTotalDue,
       paymentStatus: newPaymentStatus,
-    }).where(eq(lots.id, sale.lotId)).returning();
+    };
+
+    // Reset the baseColdChargesBilled flag if this sale billed the base charges
+    if (shouldResetBaseBilled) {
+      lotUpdateData.baseColdChargesBilled = 0;
+    }
+
+    const [updatedLot] = await db.update(lots).set(lotUpdateData).where(eq(lots.id, sale.lotId)).returning();
 
     if (lot.chamberId) {
       const chamber = await this.getChamber(lot.chamberId);
@@ -1504,7 +1514,17 @@ export class DatabaseStorage implements IStorage {
       }),
     });
 
-    return { success: true, lot: updatedLot };
+    // Return buyer name for FIFO recomputation (use CurrentDueBuyerName logic)
+    const effectiveBuyerName = (sale.transferToBuyerName && sale.transferToBuyerName.trim()) 
+      ? sale.transferToBuyerName.trim() 
+      : (sale.buyerName || "");
+
+    return { 
+      success: true, 
+      lot: updatedLot, 
+      buyerName: effectiveBuyerName,
+      coldStorageId: sale.coldStorageId 
+    };
   }
 
   async getMaintenanceRecords(coldStorageId: string): Promise<MaintenanceRecord[]> {

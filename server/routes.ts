@@ -1246,6 +1246,12 @@ export async function registerRoutes(
         const statusCode = result.errorType === "not_found" ? 404 : 400;
         return res.status(statusCode).json({ error: result.message });
       }
+
+      // Trigger FIFO recomputation for the affected buyer to redistribute payments
+      if (result.buyerName && result.coldStorageId) {
+        await storage.recomputeBuyerPayments(result.buyerName, result.coldStorageId);
+      }
+
       res.json({ success: true, lot: result.lot });
     } catch (error) {
       res.status(500).json({ error: "Failed to reverse sale" });
