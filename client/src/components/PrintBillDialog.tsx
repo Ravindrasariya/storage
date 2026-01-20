@@ -245,8 +245,42 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const netIncome = totalIncome - totalCharges;
   
   const hasSeparateCharges = sale.coldCharge != null && sale.hammali != null;
-  const coldChargeAmount = hasSeparateCharges ? (sale.coldCharge! * sale.quantitySold) : (sale.coldStorageCharge || 0);
-  const hammaliAmount = hasSeparateCharges ? (sale.hammali! * sale.quantitySold) : 0;
+  
+  // Determine bagsToUse based on charge basis
+  const chargeBasis = sale.chargeBasis || "actual";
+  const bagsToUse = chargeBasis === "totalRemaining" 
+    ? (sale.remainingSizeAtSale || sale.quantitySold) 
+    : sale.quantitySold;
+  
+  // Determine charge unit
+  const chargeUnit = sale.chargeUnitAtSale || "bag";
+  const isQuintalBased = chargeUnit === "quintal";
+  
+  // Calculate cold storage charge and hammali based on charge unit
+  let coldChargeAmount = 0;
+  let hammaliAmount = 0;
+  
+  if (hasSeparateCharges) {
+    if (isQuintalBased) {
+      // Quintal formula: (initialNetWeightKg × bagsToUse × rate) / (100 × originalLotSize)
+      const initialNetWeight = sale.initialNetWeightKg || 0;
+      const originalLotSize = sale.originalLotSize || 1;
+      coldChargeAmount = (initialNetWeight * bagsToUse * (sale.coldCharge || 0)) / (100 * originalLotSize);
+      hammaliAmount = (initialNetWeight * bagsToUse * (sale.hammali || 0)) / (100 * originalLotSize);
+    } else {
+      // Bag formula: bagsToUse × rate
+      coldChargeAmount = (sale.coldCharge || 0) * bagsToUse;
+      hammaliAmount = (sale.hammali || 0) * bagsToUse;
+    }
+  } else {
+    coldChargeAmount = sale.coldStorageCharge || 0;
+    hammaliAmount = 0;
+  }
+  
+  // Calculate quintal value for display
+  const quintalValue = isQuintalBased && sale.initialNetWeightKg && sale.originalLotSize
+    ? ((sale.initialNetWeightKg * bagsToUse) / (100 * sale.originalLotSize)).toFixed(2)
+    : null;
 
   const renderDeductionBill = () => (
     <div ref={printRef}>
@@ -313,17 +347,26 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             {hasSeparateCharges ? (
               <>
                 <tr>
-                  <td>शीत भण्डार शुल्क ({sale.coldCharge} रु./बोरी × {sale.quantitySold} बोरी)</td>
-                  <td className="amount">{coldChargeAmount.toLocaleString()}</td>
+                  <td>
+                    शीत भण्डार शुल्क {isQuintalBased 
+                      ? `(${sale.coldCharge} रु./क्विंटल × ${quintalValue} क्विंटल)` 
+                      : `(${sale.coldCharge} रु./बोरी × ${bagsToUse} बोरी)`}
+                    {chargeBasis === "totalRemaining" && <span style={{fontSize: "10px", color: "#666"}}> [कुल शेष आधार]</span>}
+                  </td>
+                  <td className="amount">{Math.round(coldChargeAmount).toLocaleString()}</td>
                 </tr>
                 <tr>
-                  <td>हम्माली ({sale.hammali} रु./बोरी × {sale.quantitySold} बोरी)</td>
-                  <td className="amount">{hammaliAmount.toLocaleString()}</td>
+                  <td>
+                    हम्माली {isQuintalBased 
+                      ? `(${sale.hammali} रु./क्विंटल × ${quintalValue} क्विंटल)` 
+                      : `(${sale.hammali} रु./बोरी × ${bagsToUse} बोरी)`}
+                  </td>
+                  <td className="amount">{Math.round(hammaliAmount).toLocaleString()}</td>
                 </tr>
               </>
             ) : (
               <tr>
-                <td>शीत भण्डार शुल्क + हम्माली ({sale.pricePerBag} रु./बोरी × {sale.quantitySold} बोरी)</td>
+                <td>शीत भण्डार शुल्क + हम्माली ({sale.pricePerBag} रु./बोरी × {bagsToUse} बोरी)</td>
                 <td className="amount">{(sale.coldStorageCharge || 0).toLocaleString()}</td>
               </tr>
             )}
@@ -438,17 +481,26 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             {hasSeparateCharges ? (
               <>
                 <tr>
-                  <td>शीत भण्डार शुल्क ({sale.coldCharge} रु./बोरी × {sale.quantitySold} बोरी)</td>
-                  <td className="amount">{coldChargeAmount.toLocaleString()}</td>
+                  <td>
+                    शीत भण्डार शुल्क {isQuintalBased 
+                      ? `(${sale.coldCharge} रु./क्विंटल × ${quintalValue} क्विंटल)` 
+                      : `(${sale.coldCharge} रु./बोरी × ${bagsToUse} बोरी)`}
+                    {chargeBasis === "totalRemaining" && <span style={{fontSize: "10px", color: "#666"}}> [कुल शेष आधार]</span>}
+                  </td>
+                  <td className="amount">{Math.round(coldChargeAmount).toLocaleString()}</td>
                 </tr>
                 <tr>
-                  <td>हम्माली ({sale.hammali} रु./बोरी × {sale.quantitySold} बोरी)</td>
-                  <td className="amount">{hammaliAmount.toLocaleString()}</td>
+                  <td>
+                    हम्माली {isQuintalBased 
+                      ? `(${sale.hammali} रु./क्विंटल × ${quintalValue} क्विंटल)` 
+                      : `(${sale.hammali} रु./बोरी × ${bagsToUse} बोरी)`}
+                  </td>
+                  <td className="amount">{Math.round(hammaliAmount).toLocaleString()}</td>
                 </tr>
               </>
             ) : (
               <tr>
-                <td>शीत भण्डार शुल्क + हम्माली ({sale.pricePerBag} रु./बोरी × {sale.quantitySold} बोरी)</td>
+                <td>शीत भण्डार शुल्क + हम्माली ({sale.pricePerBag} रु./बोरी × {bagsToUse} बोरी)</td>
                 <td className="amount">{(sale.coldStorageCharge || 0).toLocaleString()}</td>
               </tr>
             )}
