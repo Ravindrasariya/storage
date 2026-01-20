@@ -313,10 +313,10 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                 size="sm"
                 onClick={handleSave}
                 disabled={createExitMutation.isPending}
-                data-testid="button-save-exit"
+                data-testid="button-submit-exit"
               >
                 <Save className="h-3 w-3 mr-1" />
-                Save
+                Submit
               </Button>
             )}
           </DialogFooter>
