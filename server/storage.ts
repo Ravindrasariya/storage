@@ -19,6 +19,7 @@ import {
   cashOpeningBalances,
   openingReceivables,
   openingPayables,
+  dailyIdCounters,
   type ColdStorage,
   type InsertColdStorage,
   type ColdStorageUser,
@@ -57,6 +58,43 @@ import {
   type PaymentStats,
   type MerchantStats,
 } from "@shared/schema";
+
+// Entity type prefixes for sequential IDs
+type EntityType = 'cold_storage' | 'lot' | 'sales';
+const ENTITY_PREFIXES: Record<EntityType, string> = {
+  cold_storage: 'CS',
+  lot: 'LT',
+  sales: 'SL',
+};
+
+// Generate a sequential ID in format: PREFIX + YYYYMMDD + counter (no zero-padding)
+// Example: LT202601251, LT202601252, ... LT20260125100
+async function generateSequentialId(entityType: EntityType): Promise<string> {
+  const now = new Date();
+  const dateKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const rowId = `${entityType}_${dateKey}`;
+  const prefix = ENTITY_PREFIXES[entityType];
+
+  // Use upsert with atomic increment to get next counter value
+  const result = await db
+    .insert(dailyIdCounters)
+    .values({
+      id: rowId,
+      entityType,
+      dateKey,
+      counter: 1,
+    })
+    .onConflictDoUpdate({
+      target: dailyIdCounters.id,
+      set: {
+        counter: sql`${dailyIdCounters.counter} + 1`,
+      },
+    })
+    .returning({ counter: dailyIdCounters.counter });
+
+  const counter = result[0]?.counter || 1;
+  return `${prefix}${dateKey}${counter}`;
+}
 
 export interface IStorage {
   initializeDefaultData(): Promise<void>;
@@ -322,7 +360,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLot(insertLot: InsertLot): Promise<Lot> {
-    const id = randomUUID();
+    const id = await generateSequentialId('lot');
     const lotData = {
       ...insertLot,
       id,
@@ -388,7 +426,7 @@ export class DatabaseStorage implements IStorage {
     const createdLots: Lot[] = [];
     
     for (const insertLot of insertLots) {
-      const id = randomUUID();
+      const id = await generateSequentialId('lot');
       const lotData = {
         ...insertLot,
         id,
@@ -1238,7 +1276,7 @@ export class DatabaseStorage implements IStorage {
 
   // Sales History Methods
   async createSalesHistory(data: InsertSalesHistory): Promise<SalesHistory> {
-    const id = randomUUID();
+    const id = await generateSequentialId('sales');
     const [sale] = await db.insert(salesHistory).values({
       ...data,
       id,
@@ -2724,7 +2762,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createColdStorage(data: InsertColdStorage): Promise<ColdStorage> {
-    const id = `cs-${randomUUID()}`;
+    const id = await generateSequentialId('cold_storage');
     const [newStorage] = await db.insert(coldStorages)
       .values({ ...data, id })
       .returning();
