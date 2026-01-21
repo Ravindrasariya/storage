@@ -1761,7 +1761,8 @@ export class DatabaseStorage implements IStorage {
   async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
     // Get all sales with due or partial payment status that have a buyer name
     // Include sales where either buyerName or transferToBuyerName is set
-    // Using raw SQL for reliable coldStorageId filtering
+    // NOTE: Using raw SQL instead of Drizzle ORM's eq() because eq() combined with sql`` 
+    // template literals in and() clauses was not reliably filtering by coldStorageId
     const rawResult = await db.execute(sql`
       SELECT * FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
