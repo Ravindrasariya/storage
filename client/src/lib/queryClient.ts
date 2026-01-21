@@ -27,8 +27,12 @@ async function throwIfResNotOk(res: Response) {
       if (json.error) {
         throw new Error(json.error);
       }
-    } catch {
-      // Not JSON or no error field, use text as-is
+    } catch (e) {
+      // Re-throw if it's our Error with the error code
+      if (e instanceof Error && e.message && !e.message.includes("JSON")) {
+        throw e;
+      }
+      // Not JSON or no error field, fall through
     }
     throw new Error(`${res.status}: ${text}`);
   }
