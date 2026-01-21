@@ -1765,7 +1765,7 @@ export class DatabaseStorage implements IStorage {
     const sales = await db.select()
       .from(salesHistory)
       .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`${salesHistory.coldStorageId} = ${coldStorageId}`,
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
         sql`(${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != '') OR (${salesHistory.transferToBuyerName} IS NOT NULL AND ${salesHistory.transferToBuyerName} != '')`
       ));
