@@ -1762,16 +1762,17 @@ export class DatabaseStorage implements IStorage {
     console.log("[DEBUG] getBuyersWithDues: coldStorageId param =", coldStorageId);
     // Get all sales with due or partial payment status that have a buyer name
     // Include sales where either buyerName or transferToBuyerName is set
-    const sales = await db.select()
-      .from(salesHistory)
-      .where(and(
-        sql`${salesHistory.coldStorageId} = ${coldStorageId}`,
-        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
-        sql`(${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != '') OR (${salesHistory.transferToBuyerName} IS NOT NULL AND ${salesHistory.transferToBuyerName} != '')`
-      ));
-    console.log("[DEBUG] getBuyersWithDues: sales query returned", sales.length, "records");
+    // Using raw SQL to debug
+    const rawResult = await db.execute(sql`
+      SELECT * FROM sales_history
+      WHERE cold_storage_id = ${coldStorageId}
+      AND payment_status IN ('due', 'partial')
+      AND ((buyer_name IS NOT NULL AND buyer_name != '') OR (transfer_to_buyer_name IS NOT NULL AND transfer_to_buyer_name != ''))
+    `);
+    const sales = rawResult.rows as typeof salesHistory.$inferSelect[];
+    console.log("[DEBUG] getBuyersWithDues: raw SQL returned", sales.length, "records");
     if (sales.length > 0) {
-      console.log("[DEBUG] getBuyersWithDues: first sale coldStorageId =", sales[0].coldStorageId);
+      console.log("[DEBUG] getBuyersWithDues: first sale cold_storage_id =", (sales[0] as any).cold_storage_id);
     }
 
     // Group by CurrentDueBuyerName (transferToBuyerName if set, else buyerName) and sum the due amounts
@@ -1781,17 +1782,19 @@ export class DatabaseStorage implements IStorage {
     const extraDueByOriginalBuyer = new Map<string, number>();
     
     for (const sale of sales) {
+      // Raw SQL returns snake_case - access via any cast
+      const saleRow = sale as any;
       // CurrentDueBuyerName logic: use transferToBuyerName if not blank, else buyerName
-      const transferTo = (sale.transferToBuyerName || "").trim();
-      const buyer = (sale.buyerName || "").trim();
+      const transferTo = (saleRow.transfer_to_buyer_name || saleRow.transferToBuyerName || "").trim();
+      const buyer = (saleRow.buyer_name || saleRow.buyerName || "").trim();
       const currentDueBuyerName = transferTo || buyer;
       if (!currentDueBuyerName) continue;
       const normalizedKey = currentDueBuyerName.toLowerCase();
       
       // coldStorageCharge already includes base + kata + extraHammali + grading
       // Do NOT add them again to avoid double-counting
-      const totalCharges = sale.coldStorageCharge || 0;
-      const dueAmount = totalCharges - (sale.paidAmount || 0);
+      const totalCharges = saleRow.cold_storage_charge || saleRow.coldStorageCharge || 0;
+      const dueAmount = totalCharges - (saleRow.paid_amount || saleRow.paidAmount || 0);
       if (dueAmount > 0) {
         const existing = buyerDues.get(normalizedKey);
         if (existing) {
@@ -1802,10 +1805,11 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Track extraDueToMerchant separately by ORIGINAL buyerName (not affected by transfers)
-      if (sale.extraDueToMerchant && sale.extraDueToMerchant > 0 && buyer) {
+      const extraDueToMerchant = saleRow.extra_due_to_merchant || saleRow.extraDueToMerchant || 0;
+      if (extraDueToMerchant > 0 && buyer) {
         const originalKey = buyer.toLowerCase();
         const currentExtra = extraDueByOriginalBuyer.get(originalKey) || 0;
-        extraDueByOriginalBuyer.set(originalKey, currentExtra + sale.extraDueToMerchant);
+        extraDueByOriginalBuyer.set(originalKey, currentExtra + extraDueToMerchant);
       }
     }
     
