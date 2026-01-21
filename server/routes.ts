@@ -1241,6 +1241,21 @@ export async function registerRoutes(
       if (!sale) {
         return res.status(404).json({ error: "Sale not found" });
       }
+
+      // Check if reversal is blocked due to later sales (for totalRemaining charge basis)
+      if (sale.chargeBasis === "totalRemaining" && sale.remainingSizeAtSale != null) {
+        const lot = await storage.getLot(sale.lotId);
+        if (lot) {
+          const expectedRemaining = sale.remainingSizeAtSale - sale.quantitySold;
+          if (lot.remainingSize < expectedRemaining) {
+            return res.status(400).json({ 
+              error: "LATER_SALE_EXISTS",
+              message: "There is a sale record which was made post this and billed in this sale record. Please reverse that first in order to reverse this particular sale entry."
+            });
+          }
+        }
+      }
+
       const result = await storage.reverseSale(req.params.id);
       if (!result.success) {
         const statusCode = result.errorType === "not_found" ? 404 : 400;

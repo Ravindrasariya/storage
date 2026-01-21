@@ -37,6 +37,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [customAmount, setCustomAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
   const [showReverseConfirm, setShowReverseConfirm] = useState(false);
+  const [showLaterSaleExistsError, setShowLaterSaleExistsError] = useState(false);
   const [chargesOpen, setChargesOpen] = useState(false);
   
   const [editColdCharge, setEditColdCharge] = useState("");
@@ -232,7 +233,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const reverseMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/reverse`);
-      return response.json();
+      const data = await response.json();
+      if (!response.ok) {
+        throw data;
+      }
+      return data;
     },
     onSuccess: () => {
       toast({ title: t("success"), description: t("saleReversed"), variant: "success" });
@@ -248,9 +253,14 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setShowReverseConfirm(false);
       onOpenChange(false);
     },
-    onError: () => {
-      toast({ title: t("error"), description: t("failedToReverseSale"), variant: "destructive" });
+    onError: (error: unknown) => {
       setShowReverseConfirm(false);
+      const errorObj = error as { error?: string };
+      if (errorObj?.error === "LATER_SALE_EXISTS") {
+        setShowLaterSaleExistsError(true);
+      } else {
+        toast({ title: t("error"), description: t("failedToReverseSale"), variant: "destructive" });
+      }
     },
   });
 
@@ -796,6 +806,25 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
               data-testid="button-confirm-reverse"
             >
               {reverseMutation.isPending ? t("reversing") : t("yesReverse")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showLaterSaleExistsError} onOpenChange={setShowLaterSaleExistsError}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("laterSaleExistsTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("laterSaleExistsMessage")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction 
+              onClick={() => setShowLaterSaleExistsError(false)}
+              data-testid="button-ok-later-sale-exists"
+            >
+              {t("ok")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
