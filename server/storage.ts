@@ -75,25 +75,37 @@ async function generateSequentialId(entityType: EntityType): Promise<string> {
   const rowId = `${entityType}_${dateKey}`;
   const prefix = ENTITY_PREFIXES[entityType];
 
-  // Use upsert with atomic increment to get next counter value
-  const result = await db
+  // Atomic increment pattern: Try UPDATE first, then INSERT if no row exists
+  // This ensures unique counters even under concurrent access
+  const updateResult = await db
+    .update(dailyIdCounters)
+    .set({ counter: sql`${dailyIdCounters.counter} + 1` })
+    .where(eq(dailyIdCounters.id, rowId))
+    .returning({ counter: dailyIdCounters.counter });
+
+  if (updateResult.length > 0) {
+    return `${prefix}${dateKey}${updateResult[0].counter}`;
+  }
+
+  // No existing row - try to insert (use onConflictDoNothing in case of race)
+  await db
     .insert(dailyIdCounters)
     .values({
       id: rowId,
       entityType,
       dateKey,
-      counter: 1,
+      counter: 0, // Start at 0, first update will make it 1
     })
-    .onConflictDoUpdate({
-      target: dailyIdCounters.id,
-      set: {
-        counter: sql`${dailyIdCounters.counter} + 1`,
-      },
-    })
+    .onConflictDoNothing();
+
+  // Now do the atomic update to get the counter
+  const finalResult = await db
+    .update(dailyIdCounters)
+    .set({ counter: sql`${dailyIdCounters.counter} + 1` })
+    .where(eq(dailyIdCounters.id, rowId))
     .returning({ counter: dailyIdCounters.counter });
 
-  const counter = result[0]?.counter || 1;
-  return `${prefix}${dateKey}${counter}`;
+  return `${prefix}${dateKey}${finalResult[0]?.counter || 1}`;
 }
 
 export interface IStorage {
