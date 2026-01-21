@@ -1484,9 +1484,7 @@ export async function registerRoutes(
   app.get("/api/cash-receipts/buyers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      console.log("[DEBUG] buyers-with-dues: coldStorageId =", coldStorageId);
       const buyers = await storage.getBuyersWithDues(coldStorageId);
-      console.log("[DEBUG] buyers-with-dues: result =", JSON.stringify(buyers));
       res.json(buyers);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch buyers with dues" });

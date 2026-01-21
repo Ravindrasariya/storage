@@ -1759,21 +1759,16 @@ export class DatabaseStorage implements IStorage {
 
   // Cash Receipts methods
   async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
-    console.log("[DEBUG] getBuyersWithDues: coldStorageId param =", coldStorageId);
     // Get all sales with due or partial payment status that have a buyer name
     // Include sales where either buyerName or transferToBuyerName is set
-    // Using raw SQL to debug
+    // Using raw SQL for reliable coldStorageId filtering
     const rawResult = await db.execute(sql`
       SELECT * FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
       AND payment_status IN ('due', 'partial')
       AND ((buyer_name IS NOT NULL AND buyer_name != '') OR (transfer_to_buyer_name IS NOT NULL AND transfer_to_buyer_name != ''))
     `);
-    const sales = rawResult.rows as typeof salesHistory.$inferSelect[];
-    console.log("[DEBUG] getBuyersWithDues: raw SQL returned", sales.length, "records");
-    if (sales.length > 0) {
-      console.log("[DEBUG] getBuyersWithDues: first sale cold_storage_id =", (sales[0] as any).cold_storage_id);
-    }
+    const sales = rawResult.rows as any[];
 
     // Group by CurrentDueBuyerName (transferToBuyerName if set, else buyerName) and sum the due amounts
     const buyerDues = new Map<string, { displayName: string; totalDue: number }>();
@@ -1815,22 +1810,22 @@ export class DatabaseStorage implements IStorage {
     
     // Also get extraDueToMerchant from ALL sales (not just due/partial) by original buyer
     // since this is a separate charge that may exist even when cold charges are paid
-    const allSalesForExtraDue = await db.select()
-      .from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        sql`${salesHistory.extraDueToMerchant} > 0`,
-        sql`${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != ''`
-      ));
+    const extraDueResult = await db.execute(sql`
+      SELECT * FROM sales_history
+      WHERE cold_storage_id = ${coldStorageId}
+      AND extra_due_to_merchant > 0
+      AND buyer_name IS NOT NULL AND buyer_name != ''
+    `);
+    const allSalesForExtraDue = extraDueResult.rows as any[];
     
     for (const sale of allSalesForExtraDue) {
-      const buyer = (sale.buyerName || "").trim();
+      const buyer = (sale.buyer_name || "").trim();
       if (!buyer) continue;
       const originalKey = buyer.toLowerCase();
       // Check if not already added (avoid double counting)
       if (!sales.some(s => s.id === sale.id)) {
         const currentExtra = extraDueByOriginalBuyer.get(originalKey) || 0;
-        extraDueByOriginalBuyer.set(originalKey, currentExtra + (sale.extraDueToMerchant || 0));
+        extraDueByOriginalBuyer.set(originalKey, currentExtra + (sale.extra_due_to_merchant || 0));
       }
     }
     
@@ -1841,9 +1836,9 @@ export class DatabaseStorage implements IStorage {
         existing.totalDue += extraDue;
       } else {
         // Find display name from sales
-        const sale = allSalesForExtraDue.find(s => (s.buyerName?.trim().toLowerCase()) === normalizedKey) ||
-                     sales.find(s => (s.buyerName?.trim().toLowerCase()) === normalizedKey);
-        const displayName = sale?.buyerName?.trim() || normalizedKey;
+        const sale = allSalesForExtraDue.find(s => (s.buyer_name?.trim().toLowerCase()) === normalizedKey) ||
+                     sales.find(s => (s.buyer_name?.trim().toLowerCase()) === normalizedKey);
+        const displayName = sale?.buyer_name?.trim() || normalizedKey;
         buyerDues.set(normalizedKey, { displayName, totalDue: extraDue });
       }
     }
