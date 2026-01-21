@@ -255,8 +255,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
     onError: (error: unknown) => {
       setShowReverseConfirm(false);
-      const errorObj = error as { error?: string };
-      if (errorObj?.error === "LATER_SALE_EXISTS") {
+      const errorMessage = error instanceof Error ? error.message : "";
+      if (errorMessage === "LATER_SALE_EXISTS") {
         setShowLaterSaleExistsError(true);
       } else {
         toast({ title: t("error"), description: t("failedToReverseSale"), variant: "destructive" });
