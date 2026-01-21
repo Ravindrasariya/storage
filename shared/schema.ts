@@ -312,6 +312,14 @@ export const openingPayables = pgTable("opening_payables", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Daily ID Counters - tracks sequential counters per entity type per day (globally unique)
+export const dailyIdCounters = pgTable("daily_id_counters", {
+  id: varchar("id").primaryKey(), // Format: entityType_YYYYMMDD (e.g., "cold_storage_20260125")
+  entityType: text("entity_type").notNull(), // 'cold_storage', 'lot', 'sales'
+  dateKey: text("date_key").notNull(), // YYYYMMDD format
+  counter: integer("counter").notNull().default(0), // Current counter value
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
@@ -364,6 +372,7 @@ export type OpeningReceivable = typeof openingReceivables.$inferSelect;
 export type InsertOpeningReceivable = z.infer<typeof insertOpeningReceivableSchema>;
 export type OpeningPayable = typeof openingPayables.$inferSelect;
 export type InsertOpeningPayable = z.infer<typeof insertOpeningPayableSchema>;
+export type DailyIdCounter = typeof dailyIdCounters.$inferSelect;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({
