@@ -1759,6 +1759,7 @@ export class DatabaseStorage implements IStorage {
 
   // Cash Receipts methods
   async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
+    console.log("[DEBUG] getBuyersWithDues: coldStorageId param =", coldStorageId);
     // Get all sales with due or partial payment status that have a buyer name
     // Include sales where either buyerName or transferToBuyerName is set
     const sales = await db.select()
@@ -1768,6 +1769,10 @@ export class DatabaseStorage implements IStorage {
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
         sql`(${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != '') OR (${salesHistory.transferToBuyerName} IS NOT NULL AND ${salesHistory.transferToBuyerName} != '')`
       ));
+    console.log("[DEBUG] getBuyersWithDues: sales query returned", sales.length, "records");
+    if (sales.length > 0) {
+      console.log("[DEBUG] getBuyersWithDues: first sale coldStorageId =", sales[0].coldStorageId);
+    }
 
     // Group by CurrentDueBuyerName (transferToBuyerName if set, else buyerName) and sum the due amounts
     const buyerDues = new Map<string, { displayName: string; totalDue: number }>();
