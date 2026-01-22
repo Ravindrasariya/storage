@@ -17,7 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount } from "@shared/schema";
 
 const CASH_MGMT_STATE_KEY_PREFIX = "cashManagementFormState";
 const STATE_EXPIRY_MS = 30000; // 30 seconds
@@ -97,7 +97,8 @@ type TransactionItem =
   | { type: "inflow"; data: CashReceipt; timestamp: number }
   | { type: "outflow"; data: Expense; timestamp: number }
   | { type: "transfer"; data: CashTransfer; timestamp: number }
-  | { type: "buyerTransfer"; data: SalesHistory; timestamp: number };
+  | { type: "buyerTransfer"; data: SalesHistory; timestamp: number }
+  | { type: "discount"; data: Discount; timestamp: number };
 
 export default function CashManagement() {
   const { t } = useI18n();
@@ -418,7 +419,7 @@ export default function CashManagement() {
   }, [discountAmount, buyerDuesForFarmer]);
 
   // Discounts list
-  const { data: discountsList = [] } = useQuery<any[]>({
+  const { data: discountsList = [], isLoading: loadingDiscounts } = useQuery<Discount[]>({
     queryKey: ["/api/discounts"],
   });
 
@@ -1079,6 +1080,7 @@ export default function CashManagement() {
     const includeExpense = filterTransactionType === "all" || filterTransactionType === "expense";
     const includeTransfer = filterTransactionType === "all" || filterTransactionType === "self";
     const includeBuyerTransfer = filterTransactionType === "all" || filterTransactionType === "buyerTransfer";
+    const includeDiscount = filterTransactionType === "all" || filterTransactionType === "expense"; // Show discounts with expenses
 
     // Apply filters to buyer transfers
     let filteredBuyerTransfers = buyerTransfers;
@@ -1128,11 +1130,17 @@ export default function CashManagement() {
         data: bt, 
         timestamp: getTimestamp(bt.transferDate || bt.soldAt)
       })) : []),
+      ...(includeDiscount ? discountsList.filter(d => d.isReversed !== 1).map(d => ({ 
+        type: "discount" as const, 
+        data: d, 
+        timestamp: getTimestamp(d.discountDate)
+      })) : []),
     ].sort((a, b) => {
       // Sort by transactionId descending (CF + YYYYMMDD + natural number)
       // For items without transactionId (buyerTransfer), fallback to timestamp
       const getTransactionId = (item: TransactionItem): string | null => {
         if (item.type === "buyerTransfer") return null;
+        if (item.type === "discount") return (item.data as Discount).transactionId || null;
         return (item.data as CashReceipt | Expense | CashTransfer).transactionId || null;
       };
 
@@ -1168,9 +1176,9 @@ export default function CashManagement() {
       if (timeDiff !== 0) return timeDiff;
       return String(b.data.id).localeCompare(String(a.data.id));
     });
-  }, [receipts, expensesList, transfers, buyerTransfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
+  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
 
-  const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers;
+  const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers || loadingDiscounts;
 
   const uniqueBuyers = useMemo(() => {
     // Aggregate buyers case-insensitively with trimming
@@ -2565,7 +2573,9 @@ export default function CashManagement() {
                                 ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900"
                                 : transaction.type === "buyerTransfer"
                                   ? "bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900"
-                                  : "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900"
+                                  : transaction.type === "discount"
+                                    ? "bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900"
+                                    : "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900"
                         }`}
                         onClick={() => setSelectedTransaction(transaction)}
                         data-testid={`transaction-${transaction.type}-${index}`}
@@ -2579,6 +2589,8 @@ export default function CashManagement() {
                               <ArrowUpRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-red-600"}`} />
                             ) : transaction.type === "buyerTransfer" ? (
                               <ArrowLeftRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-purple-600"}`} />
+                            ) : transaction.type === "discount" ? (
+                              <ArrowUpRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-amber-600"}`} />
                             ) : (
                               <ArrowLeftRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-blue-600"}`} />
                             )}
@@ -2589,7 +2601,9 @@ export default function CashManagement() {
                                   ? getExpenseTypeLabel((transaction.data as Expense).expenseType)
                                   : transaction.type === "buyerTransfer"
                                     ? `${(transaction.data as SalesHistory).buyerName} → ${(transaction.data as SalesHistory).transferToBuyerName}`
-                                    : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`
+                                    : transaction.type === "discount"
+                                      ? `${t("discount") || "Discount"}: ${(transaction.data as Discount).farmerName}`
+                                      : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`
                               }
                             </span>
                           </div>
@@ -2597,12 +2611,18 @@ export default function CashManagement() {
                             <span className={`font-semibold text-sm whitespace-nowrap ${
                               isReversed 
                                 ? "text-gray-400" 
-                                : transaction.type === "inflow" ? "text-green-600" : transaction.type === "outflow" ? "text-red-600" : transaction.type === "buyerTransfer" ? "text-purple-600" : "text-blue-600"
+                                : transaction.type === "inflow" ? "text-green-600" 
+                                : transaction.type === "outflow" ? "text-red-600" 
+                                : transaction.type === "buyerTransfer" ? "text-purple-600" 
+                                : transaction.type === "discount" ? "text-amber-600"
+                                : "text-blue-600"
                             }`}>
-                              {transaction.type === "inflow" ? "+" : transaction.type === "outflow" ? "-" : ""}₹{
+                              {transaction.type === "inflow" ? "+" : transaction.type === "outflow" || transaction.type === "discount" ? "-" : ""}₹{
                                 transaction.type === "buyerTransfer" 
                                   ? ((transaction.data as SalesHistory).dueAmount || 0).toLocaleString()
-                                  : transaction.data.amount.toLocaleString()
+                                  : transaction.type === "discount"
+                                  ? (transaction.data as Discount).totalAmount.toLocaleString()
+                                  : (transaction.data as CashReceipt | Expense | CashTransfer).amount.toLocaleString()
                               }
                             </span>
                             {isReversed ? (
@@ -2610,9 +2630,14 @@ export default function CashManagement() {
                             ) : (
                               <Badge 
                                 variant={transaction.type === "inflow" ? "default" : transaction.type === "outflow" ? "destructive" : "outline"} 
-                                className={`text-xs ${transaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : transaction.type === "buyerTransfer" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" : ""}`}
+                                className={`text-xs ${
+                                  transaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" 
+                                  : transaction.type === "buyerTransfer" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" 
+                                  : transaction.type === "discount" ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" 
+                                  : ""
+                                }`}
                               >
-                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : transaction.type === "buyerTransfer" ? t("buyerToBuyer") : t("transfer")}
+                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : transaction.type === "buyerTransfer" ? t("buyerToBuyer") : transaction.type === "discount" ? t("discount") || "Discount" : t("transfer")}
                               </Badge>
                             )}
                           </div>
@@ -2620,7 +2645,7 @@ export default function CashManagement() {
                         {/* Row 2: Date + Payment Mode */}
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
-                          {transaction.type !== "transfer" && transaction.type !== "buyerTransfer" && (
+                          {transaction.type !== "transfer" && transaction.type !== "buyerTransfer" && transaction.type !== "discount" && (
                             <Badge variant="outline" className="text-xs py-0 h-5">
                               {transaction.type === "inflow" 
                                 ? ((transaction.data as CashReceipt).receiptType === "cash" 
@@ -2635,6 +2660,11 @@ export default function CashManagement() {
                           {transaction.type === "buyerTransfer" && (
                             <span className="text-purple-600">
                               {t("lot")} {(transaction.data as SalesHistory).lotNo}
+                            </span>
+                          )}
+                          {transaction.type === "discount" && (
+                            <span className="text-amber-600">
+                              {(transaction.data as Discount).village}
                             </span>
                           )}
                         </div>
@@ -2668,6 +2698,11 @@ export default function CashManagement() {
                   <ArrowLeftRight className="h-5 w-5 text-purple-600" />
                   {t("buyerToBuyer")}
                 </>
+              ) : selectedTransaction?.type === "discount" ? (
+                <>
+                  <ArrowUpRight className="h-5 w-5 text-amber-600" />
+                  {t("discount") || "Discount"} {t("details") || "Details"}
+                </>
               ) : (
                 <>
                   <ArrowLeftRight className="h-5 w-5 text-blue-600" />
@@ -2684,7 +2719,7 @@ export default function CashManagement() {
             <div className="space-y-4">
               {/* Status Badge */}
               <div className="flex flex-col items-center gap-1">
-                {selectedTransaction.type !== "buyerTransfer" && (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1 ? (
+                {selectedTransaction.type !== "buyerTransfer" && selectedTransaction.type !== "discount" && (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1 ? (
                   <>
                     <Badge variant="secondary" className="text-base px-4 py-1">
                       {t("reversed")}
@@ -2698,7 +2733,12 @@ export default function CashManagement() {
                 ) : (
                   <Badge 
                     variant={selectedTransaction.type === "inflow" ? "default" : selectedTransaction.type === "outflow" ? "destructive" : "outline"}
-                    className={`text-base px-4 py-1 ${selectedTransaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : selectedTransaction.type === "buyerTransfer" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" : ""}`}
+                    className={`text-base px-4 py-1 ${
+                      selectedTransaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" 
+                      : selectedTransaction.type === "buyerTransfer" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" 
+                      : selectedTransaction.type === "discount" ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" 
+                      : ""
+                    }`}
                   >
                     {t("active")}
                   </Badge>
@@ -2791,6 +2831,50 @@ export default function CashManagement() {
                       <div className="pt-2 border-t">
                         <span className="text-muted-foreground text-sm">{t("remarks")}:</span>
                         <p className="text-sm mt-1">{(selectedTransaction.data as SalesHistory).transferRemarks}</p>
+                      </div>
+                    )}
+                  </>
+                ) : selectedTransaction.type === "discount" ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("farmerName")}:</span>
+                      <span className="font-medium">{(selectedTransaction.data as Discount).farmerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("village")}:</span>
+                      <span className="font-medium">{(selectedTransaction.data as Discount).village}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("amount")}:</span>
+                      <span className="font-bold text-amber-600">₹{(selectedTransaction.data as Discount).totalAmount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date:</span>
+                      <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
+                    </div>
+                    {/* Buyer Allocations */}
+                    <div className="pt-2 border-t">
+                      <span className="text-muted-foreground text-sm">{t("buyerAllocations") || "Buyer Allocations"}:</span>
+                      <div className="mt-2 space-y-1">
+                        {(() => {
+                          try {
+                            const allocations = JSON.parse((selectedTransaction.data as Discount).buyerAllocations);
+                            return allocations.map((alloc: { buyerName: string; amount: number }, idx: number) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span>{alloc.buyerName}</span>
+                                <span className="font-medium text-amber-600">₹{alloc.amount.toLocaleString()}</span>
+                              </div>
+                            ));
+                          } catch {
+                            return null;
+                          }
+                        })()}
+                      </div>
+                    </div>
+                    {(selectedTransaction.data as Discount).remarks && (
+                      <div className="pt-2 border-t">
+                        <span className="text-muted-foreground text-sm">{t("remarks")}:</span>
+                        <p className="text-sm mt-1">{(selectedTransaction.data as Discount).remarks}</p>
                       </div>
                     )}
                   </>
