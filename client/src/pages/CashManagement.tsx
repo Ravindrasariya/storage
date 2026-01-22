@@ -2602,7 +2602,7 @@ export default function CashManagement() {
                                   : transaction.type === "buyerTransfer"
                                     ? `${(transaction.data as SalesHistory).buyerName} → ${(transaction.data as SalesHistory).transferToBuyerName}`
                                     : transaction.type === "discount"
-                                      ? `${t("discount") || "Discount"}: ${(transaction.data as Discount).farmerName}`
+                                      ? (transaction.data as Discount).farmerName
                                       : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`
                               }
                             </span>
@@ -2637,7 +2637,7 @@ export default function CashManagement() {
                                   : ""
                                 }`}
                               >
-                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : transaction.type === "buyerTransfer" ? t("buyerToBuyer") : transaction.type === "discount" ? t("discount") || "Discount" : t("transfer")}
+                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : transaction.type === "buyerTransfer" ? t("buyerToBuyer") : transaction.type === "discount" ? (t("discount") || "Discount") : t("transfer")}
                               </Badge>
                             )}
                           </div>
@@ -2701,7 +2701,7 @@ export default function CashManagement() {
               ) : selectedTransaction?.type === "discount" ? (
                 <>
                   <ArrowUpRight className="h-5 w-5 text-amber-600" />
-                  {t("discount") || "Discount"} {t("details") || "Details"}
+                  {t("discountDetails") || "Discount Details"}
                 </>
               ) : (
                 <>
@@ -2849,20 +2849,20 @@ export default function CashManagement() {
                       <span className="font-bold text-amber-600">₹{(selectedTransaction.data as Discount).totalAmount.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Date:</span>
+                      <span className="text-muted-foreground">{t("date")}:</span>
                       <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
                     </div>
                     {/* Buyer Allocations */}
                     <div className="pt-2 border-t">
-                      <span className="text-muted-foreground text-sm">{t("buyerAllocations") || "Buyer Allocations"}:</span>
-                      <div className="mt-2 space-y-1">
+                      <span className="font-medium text-sm">{t("buyerAllocations")}:</span>
+                      <div className="mt-2 space-y-2 bg-amber-50 dark:bg-amber-900/20 rounded-md p-2">
                         {(() => {
                           try {
                             const allocations = JSON.parse((selectedTransaction.data as Discount).buyerAllocations);
                             return allocations.map((alloc: { buyerName: string; amount: number }, idx: number) => (
-                              <div key={idx} className="flex justify-between text-sm">
-                                <span>{alloc.buyerName}</span>
-                                <span className="font-medium text-amber-600">₹{alloc.amount.toLocaleString()}</span>
+                              <div key={idx} className="flex justify-between text-sm py-1 border-b border-amber-200 dark:border-amber-800 last:border-0">
+                                <span className="font-medium">{alloc.buyerName}</span>
+                                <span className="font-bold text-amber-700 dark:text-amber-400">₹{alloc.amount.toLocaleString()}</span>
                               </div>
                             ));
                           } catch {

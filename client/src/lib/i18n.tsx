@@ -251,6 +251,7 @@ const translations: Translations = {
   
   // Sales History
   salesHistory: { en: "Sales History", hi: "बिक्री का इतिहास" },
+  date: { en: "Date", hi: "तिथि" },
   entryDate: { en: "Entry Date", hi: "प्रवेश तिथि" },
   saleDate: { en: "Sale Date", hi: "बिक्री तिथि" },
   saleType: { en: "Sale Type", hi: "बिक्री प्रकार" },
@@ -401,6 +402,9 @@ const translations: Translations = {
   selfTransfers: { en: "Self Transfers", hi: "स्वयं स्थानांतरण" },
   transfer: { en: "Transfer", hi: "स्थानांतरण" },
   transferDetails: { en: "Transfer Details", hi: "स्थानांतरण विवरण" },
+  discount: { en: "Discount", hi: "छूट" },
+  discountDetails: { en: "Discount Details", hi: "छूट विवरण" },
+  buyerAllocations: { en: "Buyer Allocations", hi: "खरीदार आवंटन" },
   transactionDetailsDescription: { en: "Complete details of this transaction", hi: "इस लेनदेन का पूर्ण विवरण" },
   fromAccount: { en: "From Account", hi: "किस खाते से" },
   toAccount: { en: "To Account", hi: "किस खाते में" },
