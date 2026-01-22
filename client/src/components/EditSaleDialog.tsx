@@ -504,7 +504,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{t("hammali")}/{isQuintalBased ? t("quintal") : t("bag")}</Label>
+                      <Label className="text-xs">{t("hammali")}/{t("bag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input

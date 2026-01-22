@@ -555,10 +555,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
-                <div className="text-sm font-medium">{t("rateBreakdown")} ({selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")})</div>
+                <div className="text-sm font-medium">{t("rateBreakdown")}</div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")}</Label>
+                    <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")} {selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")}</Label>
                     <div className="flex items-center gap-1">
                       <Currency amount="" showIcon={true} className="text-muted-foreground" />
                       <Input
@@ -572,7 +572,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">{t("hammali")}</Label>
+                    <Label className="text-xs text-muted-foreground">{t("hammali")} {t("perBag")}</Label>
                     <div className="flex items-center gap-1">
                       <Currency amount="" showIcon={true} className="text-muted-foreground" />
                       <Input
@@ -588,7 +588,13 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
                 <div className="border-t pt-2 flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold"><Currency amount={getEditableRate(selectedLot)} />{selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")}</span>
+                  <span className="font-bold">
+                    {selectedLot.chargeUnit === "quintal" ? (
+                      <><Currency amount={getEditableColdCharge(selectedLot)} />{t("perQuintal")} + <Currency amount={getEditableHammali(selectedLot)} />{t("perBag")}</>
+                    ) : (
+                      <><Currency amount={getEditableRate(selectedLot)} />{t("perBag")}</>
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -826,10 +832,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
-                <div className="text-sm font-medium">{t("rateBreakdown")} ({selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")})</div>
+                <div className="text-sm font-medium">{t("rateBreakdown")}</div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")}</Label>
+                    <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")} {selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")}</Label>
                     <div className="flex items-center gap-1">
                       <Currency amount="" showIcon={true} className="text-muted-foreground" />
                       <Input
@@ -843,7 +849,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">{t("hammali")}</Label>
+                    <Label className="text-xs text-muted-foreground">{t("hammali")} {t("perBag")}</Label>
                     <div className="flex items-center gap-1">
                       <Currency amount="" showIcon={true} className="text-muted-foreground" />
                       <Input
@@ -859,7 +865,13 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
                 <div className="border-t pt-2 flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold"><Currency amount={getEditableRate(selectedLot)} />{selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")}</span>
+                  <span className="font-bold">
+                    {selectedLot.chargeUnit === "quintal" ? (
+                      <><Currency amount={getEditableColdCharge(selectedLot)} />{t("perQuintal")} + <Currency amount={getEditableHammali(selectedLot)} />{t("perBag")}</>
+                    ) : (
+                      <><Currency amount={getEditableRate(selectedLot)} />{t("perBag")}</>
+                    )}
+                  </span>
                 </div>
               </div>
 

@@ -641,7 +641,10 @@ export function SettingsDialog() {
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {t("total")}: Rs {(settings?.waferColdCharge || 0) + (settings?.waferHammali || 0)} / {settings?.chargeUnit === "quintal" ? t("quintal") : t("bag")}
+                  {settings?.chargeUnit === "quintal" 
+                    ? <>Rs {settings?.waferColdCharge || 0}/{t("quintal")} + Rs {settings?.waferHammali || 0}/{t("bag")}</>
+                    : <>{t("total")}: Rs {(settings?.waferColdCharge || 0) + (settings?.waferHammali || 0)} / {t("bag")}</>
+                  }
                 </p>
               </div>
 
@@ -676,7 +679,10 @@ export function SettingsDialog() {
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {t("total")}: Rs {(settings?.seedColdCharge || 0) + (settings?.seedHammali || 0)} / {settings?.chargeUnit === "quintal" ? t("quintal") : t("bag")}
+                  {settings?.chargeUnit === "quintal" 
+                    ? <>Rs {settings?.seedColdCharge || 0}/{t("quintal")} + Rs {settings?.seedHammali || 0}/{t("bag")}</>
+                    : <>{t("total")}: Rs {(settings?.seedColdCharge || 0) + (settings?.seedHammali || 0)} / {t("bag")}</>
+                  }
                 </p>
               </div>
             </div>
