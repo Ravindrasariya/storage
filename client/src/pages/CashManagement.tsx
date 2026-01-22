@@ -1074,7 +1074,7 @@ export default function CashManagement() {
       </div>
 
       {/* Balance Cards - Row 1: Account Balances */}
-      <div className="grid grid-cols-3 gap-2 mb-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
         <Card data-testid="stat-cash-in-hand">
           <CardContent className="p-2">
             <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
@@ -1188,7 +1188,7 @@ export default function CashManagement() {
           </div>
 
           {/* Row 1: Transaction Type, Payment Mode, Month */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("transactionType")}</Label>
               <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense" | "self" | "buyerTransfer")}>
@@ -2052,8 +2052,8 @@ export default function CashManagement() {
             ) : allTransactions.length === 0 ? (
               <div className="text-sm text-muted-foreground text-center py-8 px-4">{t("noTransactions")}</div>
             ) : (
-              <div className="h-[520px] overflow-y-auto overflow-x-auto">
-                <div className="space-y-2 px-4 py-2 min-w-[360px]">
+              <div className="h-[520px] overflow-y-auto">
+                <div className="space-y-2 px-4 py-2">
                   {allTransactions.map((transaction, index) => {
                     const isReversed = transaction.type !== "buyerTransfer" && (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1;
                     return (
