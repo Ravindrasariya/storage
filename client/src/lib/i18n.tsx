@@ -69,6 +69,8 @@ const translations: Translations = {
   qualityAssessment: { en: "Quality Assessment", hi: "गुणवत्ता मूल्यांकन" },
   type: { en: "Potato Variety", hi: "आलू की किस्म" },
   bagType: { en: "Potato Type", hi: "आलू का प्रकार" },
+  bagTypeLabel: { en: "Bag type", hi: "बैग प्रकार" },
+  enterBagType: { en: "e.g., 50kg, Jute", hi: "जैसे: 50kg, जूट" },
   quality: { en: "Quality", hi: "गुणवत्ता" },
   selectQuality: { en: "Select Quality", hi: "गुणवत्ता चुनें" },
   assayingType: { en: "Assaying Type", hi: "परख प्रकार" },

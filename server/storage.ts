@@ -238,6 +238,8 @@ export interface IStorage {
   getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]>;
   // Buyer lookup for auto-complete (last 2 years)
   getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string }[]>;
+  // Bag type label lookup for auto-complete
+  getBagTypeLabels(coldStorageId: string): Promise<{ label: string }[]>;
   // Opening Balances
   getOpeningBalance(coldStorageId: string, year: number): Promise<CashOpeningBalance | undefined>;
   upsertOpeningBalance(data: InsertCashOpeningBalance): Promise<CashOpeningBalance>;
@@ -1267,6 +1269,7 @@ export class DatabaseStorage implements IStorage {
       position: lot.position,
       potatoType: lot.type,
       bagType: lot.bagType,
+      bagTypeLabel: lot.bagTypeLabel || null,
       quality: lot.quality,
       originalLotSize: lot.size,
       saleType: "full",
@@ -3049,6 +3052,33 @@ export class DatabaseStorage implements IStorage {
     }
 
     return Array.from(seen.values()).sort((a, b) => a.buyerName.localeCompare(b.buyerName));
+  }
+
+  // Bag type label lookup
+  async getBagTypeLabels(coldStorageId: string): Promise<{ label: string }[]> {
+    const allLots = await db.select({
+      bagTypeLabel: lots.bagTypeLabel,
+    })
+      .from(lots)
+      .where(
+        and(
+          eq(lots.coldStorageId, coldStorageId),
+          sql`${lots.bagTypeLabel} IS NOT NULL AND ${lots.bagTypeLabel} != ''`
+        )
+      );
+
+    // Deduplicate by normalized label
+    const seen = new Map<string, { label: string }>();
+    for (const lot of allLots) {
+      if (lot.bagTypeLabel) {
+        const key = lot.bagTypeLabel.trim().toLowerCase();
+        if (!seen.has(key)) {
+          seen.set(key, { label: lot.bagTypeLabel.trim() });
+        }
+      }
+    }
+
+    return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
   }
 
   // Opening Balances

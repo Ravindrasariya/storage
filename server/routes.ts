@@ -293,6 +293,7 @@ export async function registerRoutes(
       netWeight: z.number().optional(),
       type: z.string().min(1),
       bagType: z.enum(["wafer", "seed", "Ration"]),
+      bagTypeLabel: z.string().optional().default(""),
       chamberId: z.string().optional().default(""),
       floor: z.number().int().min(0).optional().default(0),
       position: z.string().optional().default(""),
@@ -379,6 +380,17 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Buyer lookup error:", error);
       res.status(500).json({ error: "Failed to fetch buyer records" });
+    }
+  });
+
+  app.get("/api/bag-type-labels/lookup", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const labels = await storage.getBagTypeLabels(coldStorageId);
+      res.json(labels);
+    } catch (error) {
+      console.error("Bag type label lookup error:", error);
+      res.status(500).json({ error: "Failed to fetch bag type labels" });
     }
   });
 
@@ -758,6 +770,7 @@ export async function registerRoutes(
         position: lot.position,
         potatoType: lot.type,
         bagType: lot.bagType,
+        bagTypeLabel: lot.bagTypeLabel || null,
         quality: lot.quality,
         originalLotSize: lot.size,
         saleType: "partial",

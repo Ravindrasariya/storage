@@ -137,6 +137,12 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
               <span className="text-muted-foreground">{t("type")}: </span>
               <span className="font-medium">{lot.type}</span>
             </div>
+            {lot.bagTypeLabel && (
+              <div>
+                <span className="text-muted-foreground">{t("bagTypeLabel") || "Bag type"}: </span>
+                <span className="font-medium">{lot.bagTypeLabel}</span>
+              </div>
+            )}
             <div>
               <span className="text-muted-foreground">{t("originalSize")}: </span>
               <span className="font-medium">{lot.size} {t("bags")}</span>

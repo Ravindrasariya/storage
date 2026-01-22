@@ -69,6 +69,7 @@ interface LotData {
   netWeight?: number;
   type: string;
   bagType: "wafer" | "seed" | "Ration";
+  bagTypeLabel: string;
   chamberId: string;
   floor: number;
   position: string;
@@ -86,6 +87,7 @@ const defaultLotData: LotData = {
   netWeight: undefined,
   type: "",
   bagType: "wafer",
+  bagTypeLabel: "",
   chamberId: "",
   floor: 0,
   position: "",
@@ -139,10 +141,17 @@ export default function LotEntry() {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
+  // Fetch bag type labels for autocomplete
+  const { data: bagTypeLabels } = useQuery<{ label: string }[]>({
+    queryKey: ["/api/bag-type-labels/lookup"],
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
   // State for autocomplete suggestions
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [showVillageSuggestions, setShowVillageSuggestions] = useState(false);
   const [showMobileSuggestions, setShowMobileSuggestions] = useState(false);
+  const [showBagTypeLabelSuggestions, setShowBagTypeLabelSuggestions] = useState<Record<number, boolean>>({});
   
   // State for tracking auto-filled fields (for visual highlight)
   const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set());
@@ -820,6 +829,33 @@ export default function LotEntry() {
                           <SelectItem value="Ration">{t("ration") || "Ration"}</SelectItem>
                         </SelectContent>
                       </Select>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <label className="text-sm font-medium">{t("bagTypeLabel") || "Bag type"}</label>
+                    <Input
+                      value={lot.bagTypeLabel}
+                      onChange={(e) => updateLot(index, "bagTypeLabel", e.target.value)}
+                      onFocus={() => setShowBagTypeLabelSuggestions(prev => ({ ...prev, [index]: true }))}
+                      onBlur={() => setTimeout(() => setShowBagTypeLabelSuggestions(prev => ({ ...prev, [index]: false })), 200)}
+                      placeholder={t("enterBagType") || "e.g., 50kg, Jute"}
+                      data-testid={`input-bag-type-label-${index}`}
+                    />
+                    {showBagTypeLabelSuggestions[index] && bagTypeLabels && bagTypeLabels.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                        {bagTypeLabels
+                          .filter(b => !lot.bagTypeLabel || b.label.toLowerCase().includes(lot.bagTypeLabel.toLowerCase()))
+                          .slice(0, 8)
+                          .map((b, i) => (
+                            <div
+                              key={i}
+                              className="px-3 py-2 hover-elevate cursor-pointer text-sm"
+                              onMouseDown={() => updateLot(index, "bagTypeLabel", b.label)}
+                            >
+                              {b.label}
+                            </div>
+                          ))}
+                      </div>
                     )}
                   </div>
                 </div>

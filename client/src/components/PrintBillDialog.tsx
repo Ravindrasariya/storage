@@ -350,7 +350,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </div>
           <div className="info-row">
             <span className="info-label">बेची गई:</span>
-            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}</span>
+            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
           </div>
           <div className="info-row">
             <span className="info-label">खरीदार:</span>
@@ -470,7 +470,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </div>
           <div className="info-row">
             <span className="info-label">बेची गई:</span>
-            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}</span>
+            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
           </div>
           <div className="info-row">
             <span className="info-label">खरीदार:</span>

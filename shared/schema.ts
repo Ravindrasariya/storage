@@ -87,6 +87,7 @@ export const lots = pgTable("lots", {
   position: text("position").notNull(), // Position like "12/5", "12A/5"
   type: text("type").notNull(), // Jyoti, SC3, etc.
   bagType: text("bag_type").notNull(), // wafer or seed
+  bagTypeLabel: text("bag_type_label"), // Custom label like "50kg", "Jute", etc.
   quality: text("quality").notNull(), // poor, medium, good
   potatoSize: text("potato_size").notNull().default("large"), // large or small
   assayingType: text("assaying_type").notNull(), // Quality Check, Visual
@@ -124,6 +125,7 @@ export const salesHistory = pgTable("sales_history", {
   position: text("position").notNull(),
   potatoType: text("potato_type").notNull(),
   bagType: text("bag_type").notNull(),
+  bagTypeLabel: text("bag_type_label"), // Custom label like "50kg", "Jute", etc. (copied from lot)
   quality: text("quality").notNull(),
   originalLotSize: integer("original_lot_size").notNull(),
   // Sale details

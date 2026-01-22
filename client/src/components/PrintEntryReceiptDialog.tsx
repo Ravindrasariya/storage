@@ -279,6 +279,7 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
                       <th style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left", background: "#f5f5f5", fontWeight: "600" }}>{t("type")}</th>
                       <th style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left", background: "#f5f5f5", fontWeight: "600" }}>{t("bags")}</th>
                       <th style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left", background: "#f5f5f5", fontWeight: "600" }}>{t("bagType")}</th>
+                      <th style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left", background: "#f5f5f5", fontWeight: "600" }}>{t("bagTypeLabel")}</th>
                       <th style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left", background: "#f5f5f5", fontWeight: "600" }}>{t("chamber")}</th>
                       <th style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left", background: "#f5f5f5", fontWeight: "600" }}>{t("floor")}</th>
                       <th style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left", background: "#f5f5f5", fontWeight: "600" }}>{t("position")}</th>
@@ -297,6 +298,7 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
                         <td style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left" }}>
                           {lotItem.bagType === "wafer" ? t("wafer") : lotItem.bagType === "seed" ? t("seed") : "Ration"}
                         </td>
+                        <td style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left" }}>{lotItem.bagTypeLabel || "-"}</td>
                         <td style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left" }}>{getChamberName(lotItem.chamberId)}</td>
                         <td style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left" }}>{lotItem.floor}</td>
                         <td style={{ border: "1px solid #ccc", padding: "4px 6px", textAlign: "left" }}>{lotItem.position}</td>
