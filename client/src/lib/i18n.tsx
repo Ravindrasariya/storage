@@ -353,6 +353,7 @@ const translations: Translations = {
   failedToCreateExit: { en: "Failed to record exit", hi: "निकासी दर्ज करने में विफल" },
   coldStorageManagerSignature: { en: "Cold Store Manager Signature", hi: "शीत भंडार प्रबंधक हस्ताक्षर" },
   reversed: { en: "Reversed", hi: "वापस" },
+  reverseEntry: { en: "Reverse Entry", hi: "प्रविष्टि वापस करें" },
   active: { en: "Active", hi: "सक्रिय" },
   downloadCSV: { en: "Download CSV", hi: "CSV डाउनलोड करें" },
   downloadSuccess: { en: "Download successful", hi: "डाउनलोड सफल" },

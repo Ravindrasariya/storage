@@ -2934,6 +2934,8 @@ export default function CashManagement() {
                             reverseReceiptMutation.mutate(selectedTransaction.data.id);
                           } else if (selectedTransaction.type === "outflow") {
                             reverseExpenseMutation.mutate(selectedTransaction.data.id);
+                          } else if (selectedTransaction.type === "discount") {
+                            reverseDiscountMutation.mutate(selectedTransaction.data.id);
                           } else {
                             reverseTransferMutation.mutate(selectedTransaction.data.id);
                           }
