@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2 } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -698,6 +698,112 @@ export default function CashManagement() {
       case "others": return t("others");
       default: return type;
     }
+  };
+
+  const handleExportCashFlowCSV = (transactions: TransactionItem[]) => {
+    if (transactions.length === 0) {
+      toast({
+        title: t("noTransactions"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const headers = [
+      "Transaction ID",
+      "Date",
+      "Type",
+      "Name/Description",
+      "Amount",
+      "Payment Mode",
+      "Account Type",
+      "Payer Type",
+      "Remarks",
+      "Status",
+    ];
+
+    const rows = transactions.map(transaction => {
+      const isReversed = transaction.type !== "buyerTransfer" && (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1;
+      const dateStr = format(new Date(transaction.timestamp), "dd/MM/yyyy");
+      
+      if (transaction.type === "inflow") {
+        const r = transaction.data as CashReceipt;
+        return [
+          r.transactionId || "",
+          dateStr,
+          t("inflow"),
+          r.buyerName || getPayerTypeLabel(r.payerType),
+          r.amount.toString(),
+          r.receiptType === "cash" ? t("cash") : t("account"),
+          r.receiptType === "account" ? (r.accountType === "limit" ? t("limitAccount") : t("currentAccount")) : "",
+          getPayerTypeLabel(r.payerType),
+          r.notes || "",
+          isReversed ? t("reversed") : t("active"),
+        ];
+      } else if (transaction.type === "outflow") {
+        const e = transaction.data as Expense;
+        return [
+          e.transactionId || "",
+          dateStr,
+          t("outflow"),
+          getExpenseTypeLabel(e.expenseType) + (e.receiverName ? ` - ${e.receiverName}` : ""),
+          e.amount.toString(),
+          e.paymentMode === "cash" ? t("cash") : t("account"),
+          e.paymentMode === "account" ? (e.accountType === "limit" ? t("limitAccount") : t("currentAccount")) : "",
+          "",
+          e.remarks || "",
+          isReversed ? t("reversed") : t("active"),
+        ];
+      } else if (transaction.type === "transfer") {
+        const tr = transaction.data as CashTransfer;
+        return [
+          tr.transactionId || "",
+          dateStr,
+          t("transfer"),
+          `${getAccountLabel(tr.fromAccountType)} → ${getAccountLabel(tr.toAccountType)}`,
+          tr.amount.toString(),
+          t("transfer"),
+          "",
+          "",
+          tr.remarks || "",
+          isReversed ? t("reversed") : t("active"),
+        ];
+      } else {
+        const bt = transaction.data as SalesHistory;
+        return [
+          "",
+          dateStr,
+          t("buyerToBuyer"),
+          `${bt.buyerName} → ${bt.transferToBuyerName}`,
+          (bt.dueAmount || 0).toString(),
+          t("liabilityTransfer"),
+          "",
+          "",
+          bt.transferRemarks || "",
+          t("active"),
+        ];
+      }
+    });
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `cash_flow_history_${format(new Date(), "yyyy-MM-dd")}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: t("downloadSuccess") || "Download successful",
+      description: `${transactions.length} ${t("entries")} exported`,
+    });
   };
 
   // Filter and sort transactions for display (latest first)
@@ -2078,8 +2184,17 @@ export default function CashManagement() {
         </Card>
 
         <Card className="flex flex-col overflow-hidden">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-lg">{t("cashFlowHistory")}</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleExportCashFlowCSV(allTransactions)}
+              title={t("downloadCSV") || "Download CSV"}
+              data-testid="button-download-cash-flow-csv"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
           </CardHeader>
           <CardContent className="p-0 overflow-hidden">
             {isLoading ? (

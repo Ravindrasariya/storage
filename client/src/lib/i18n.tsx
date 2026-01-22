@@ -352,6 +352,10 @@ const translations: Translations = {
   failedToCreateExit: { en: "Failed to record exit", hi: "निकासी दर्ज करने में विफल" },
   coldStorageManagerSignature: { en: "Cold Store Manager Signature", hi: "शीत भंडार प्रबंधक हस्ताक्षर" },
   reversed: { en: "Reversed", hi: "वापस" },
+  active: { en: "Active", hi: "सक्रिय" },
+  downloadCSV: { en: "Download CSV", hi: "CSV डाउनलोड करें" },
+  downloadSuccess: { en: "Download successful", hi: "डाउनलोड सफल" },
+  liabilityTransfer: { en: "Liability Transfer", hi: "देनदारी हस्तांतरण" },
 
   // Cash Management
   cashManagement: { en: "Cash Management", hi: "नकद प्रबंधन" },
