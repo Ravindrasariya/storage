@@ -107,7 +107,7 @@ function Navigation() {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-64">
+            <SheetContent side="right" className="w-[280px] max-w-[85vw]">
               <div className="flex flex-col gap-2 mt-6">
                 <NavLinks onClick={() => setMobileMenuOpen(false)} />
               </div>
