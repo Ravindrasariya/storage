@@ -1113,7 +1113,7 @@ export default function CashManagement() {
       </div>
 
       {/* Summary Cards - Row 2: Received & Expenses */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
         <Card data-testid="stat-total-cash-received">
           <CardContent className="p-2">
             <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
