@@ -9,6 +9,21 @@ import type { SalesHistory, ColdStorage } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
+// Format amount showing decimals only when present (e.g., 72.5 → "72.5", 72 → "72")
+const formatAmount = (value: number): string => {
+  if (value === 0) return "0";
+  // Check if number has decimal part
+  if (Number.isInteger(value)) {
+    return value.toLocaleString();
+  }
+  // Show up to 2 decimal places, removing trailing zeros
+  const formatted = value.toFixed(2).replace(/\.?0+$/, "");
+  // Add thousand separators to the integer part
+  const [intPart, decPart] = formatted.split(".");
+  const intFormatted = parseInt(intPart).toLocaleString();
+  return decPart ? `${intFormatted}.${decPart}` : intFormatted;
+};
+
 interface PrintBillDialogProps {
   sale: SalesHistory;
   open: boolean;
@@ -363,36 +378,36 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                       : `(${sale.coldCharge} रु./बोरी × ${bagsToUse} बोरी)`}
                     {chargeBasis === "totalRemaining" && <span style={{fontSize: "10px", color: "#666"}}> [कुल शेष आधार]</span>}
                   </td>
-                  <td className="amount">{Math.round(coldChargeAmount).toLocaleString()}</td>
+                  <td className="amount">{formatAmount(coldChargeAmount)}</td>
                 </tr>
                 <tr>
                   <td>
                     हम्माली ({sale.hammali} रु./बोरी × {bagsToUse} बोरी)
                   </td>
-                  <td className="amount">{Math.round(hammaliAmount).toLocaleString()}</td>
+                  <td className="amount">{formatAmount(hammaliAmount)}</td>
                 </tr>
               </>
             ) : (
               <tr>
                 <td>शीत भण्डार शुल्क + हम्माली ({sale.pricePerBag} रु./बोरी × {bagsToUse} बोरी)</td>
-                <td className="amount">{(sale.coldStorageCharge || 0).toLocaleString()}</td>
+                <td className="amount">{formatAmount(sale.coldStorageCharge || 0)}</td>
               </tr>
             )}
             <tr>
               <td>काटा (तौल शुल्क)</td>
-              <td className="amount">{(sale.kataCharges || 0) > 0 ? (sale.kataCharges || 0).toLocaleString() : "-"}</td>
+              <td className="amount">{(sale.kataCharges || 0) > 0 ? formatAmount(sale.kataCharges || 0) : "-"}</td>
             </tr>
             <tr>
               <td>अतिरिक्त हम्माली</td>
-              <td className="amount">{(sale.extraHammali || 0) > 0 ? (sale.extraHammali || 0).toLocaleString() : "-"}</td>
+              <td className="amount">{(sale.extraHammali || 0) > 0 ? formatAmount(sale.extraHammali || 0) : "-"}</td>
             </tr>
             <tr>
               <td>ग्रेडिंग शुल्क</td>
-              <td className="amount">{(sale.gradingCharges || 0) > 0 ? (sale.gradingCharges || 0).toLocaleString() : "-"}</td>
+              <td className="amount">{(sale.gradingCharges || 0) > 0 ? formatAmount(sale.gradingCharges || 0) : "-"}</td>
             </tr>
             <tr className="total-row">
               <td><strong>कुल शीत भण्डार शुल्क</strong></td>
-              <td className="amount"><strong>रु. {totalCharges.toLocaleString()}</strong></td>
+              <td className="amount"><strong>रु. {formatAmount(totalCharges)}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -402,8 +417,8 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         भुगतान स्थिति: {sale.paymentStatus === "paid" 
           ? "भुगतान हो गया" 
           : sale.paymentStatus === "partial" 
-            ? `आंशिक भुगतान (भुगतान: रु. ${(sale.paidAmount || 0).toLocaleString()}, बकाया: रु. ${(sale.dueAmount || 0).toLocaleString()})` 
-            : `बकाया (रु. ${totalCharges.toLocaleString()})`}
+            ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})` 
+            : `बकाया (रु. ${formatAmount(totalCharges)})`}
       </div>
 
       <div className="footer-note">
@@ -470,7 +485,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           <tbody>
             <tr className="total-row income">
               <td><strong>कुल आय</strong> ({sale.netWeight || 0} कि.ग्रा. × रु. {sale.pricePerKg || 0}/कि.ग्रा.)</td>
-              <td className="amount"><strong>रु. {totalIncome.toLocaleString()}</strong></td>
+              <td className="amount"><strong>रु. {formatAmount(totalIncome)}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -495,36 +510,36 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                       : `(${sale.coldCharge} रु./बोरी × ${bagsToUse} बोरी)`}
                     {chargeBasis === "totalRemaining" && <span style={{fontSize: "10px", color: "#666"}}> [कुल शेष आधार]</span>}
                   </td>
-                  <td className="amount">{Math.round(coldChargeAmount).toLocaleString()}</td>
+                  <td className="amount">{formatAmount(coldChargeAmount)}</td>
                 </tr>
                 <tr>
                   <td>
                     हम्माली ({sale.hammali} रु./बोरी × {bagsToUse} बोरी)
                   </td>
-                  <td className="amount">{Math.round(hammaliAmount).toLocaleString()}</td>
+                  <td className="amount">{formatAmount(hammaliAmount)}</td>
                 </tr>
               </>
             ) : (
               <tr>
                 <td>शीत भण्डार शुल्क + हम्माली ({sale.pricePerBag} रु./बोरी × {bagsToUse} बोरी)</td>
-                <td className="amount">{(sale.coldStorageCharge || 0).toLocaleString()}</td>
+                <td className="amount">{formatAmount(sale.coldStorageCharge || 0)}</td>
               </tr>
             )}
             <tr>
               <td>काटा (तौल शुल्क)</td>
-              <td className="amount">{(sale.kataCharges || 0) > 0 ? (sale.kataCharges || 0).toLocaleString() : "-"}</td>
+              <td className="amount">{(sale.kataCharges || 0) > 0 ? formatAmount(sale.kataCharges || 0) : "-"}</td>
             </tr>
             <tr>
               <td>अतिरिक्त हम्माली</td>
-              <td className="amount">{(sale.extraHammali || 0) > 0 ? (sale.extraHammali || 0).toLocaleString() : "-"}</td>
+              <td className="amount">{(sale.extraHammali || 0) > 0 ? formatAmount(sale.extraHammali || 0) : "-"}</td>
             </tr>
             <tr>
               <td>ग्रेडिंग शुल्क</td>
-              <td className="amount">{(sale.gradingCharges || 0) > 0 ? (sale.gradingCharges || 0).toLocaleString() : "-"}</td>
+              <td className="amount">{(sale.gradingCharges || 0) > 0 ? formatAmount(sale.gradingCharges || 0) : "-"}</td>
             </tr>
             <tr className="total-row">
               <td><strong>कुल शीत भण्डार शुल्क</strong></td>
-              <td className="amount"><strong>रु. {totalCharges.toLocaleString()}</strong></td>
+              <td className="amount"><strong>रु. {formatAmount(totalCharges)}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -535,7 +550,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           <tbody>
             <tr className="total-row net-income">
               <td><strong>शुद्ध आय (कुल आय - कुल शुल्क)</strong></td>
-              <td className="amount"><strong>रु. {netIncome.toLocaleString()}</strong></td>
+              <td className="amount"><strong>रु. {formatAmount(netIncome)}</strong></td>
             </tr>
           </tbody>
         </table>
