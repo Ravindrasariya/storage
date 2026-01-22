@@ -425,26 +425,49 @@ export default function StockRegister() {
       "Original Size",
       "Remaining Size",
       "Sale Status",
+      "Expected Cold Charges",
+      "Total Billed Charges",
+      "Paid Cold Charges",
+      "Due Cold Charges",
     ];
 
-    const rows = lots.map(lot => [
-      lot.lotNo,
-      lot.farmerName,
-      lot.contactNumber,
-      lot.village,
-      lot.tehsil,
-      lot.district,
-      chamberMap[lot.chamberId] || lot.chamberId,
-      lot.floor,
-      lot.position,
-      lot.bagType,
-      lot.type,
-      lot.quality,
-      lot.potatoSize,
-      lot.size,
-      lot.remainingSize,
-      lot.saleStatus || "stored",
-    ]);
+    const rows = lots.map(lot => {
+      // Calculate expected cold charge based on charge unit mode
+      const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
+      const rate = useWaferRate 
+        ? (coldStorage?.waferRate || 0) 
+        : (coldStorage?.seedRate || 0);
+      const expectedColdCharge = coldStorage?.chargeUnit === "quintal"
+        ? (lot.netWeight ? (lot.netWeight * rate) / 100 : 0)
+        : lot.size * rate;
+      
+      const paidCharge = lot.totalPaidCharge || 0;
+      const dueCharge = lot.totalDueCharge || 0;
+      const totalBilledCharge = paidCharge + dueCharge;
+      
+      return [
+        lot.lotNo,
+        lot.farmerName,
+        lot.contactNumber,
+        lot.village,
+        lot.tehsil,
+        lot.district,
+        chamberMap[lot.chamberId] || lot.chamberId,
+        lot.floor,
+        lot.position,
+        lot.bagType,
+        lot.type,
+        lot.quality,
+        lot.potatoSize,
+        lot.size,
+        lot.remainingSize,
+        lot.saleStatus || "stored",
+        expectedColdCharge.toFixed(2),
+        totalBilledCharge.toFixed(2),
+        paidCharge.toFixed(2),
+        dueCharge.toFixed(2),
+      ];
+    });
 
     const csvContent = [
       headers.join(","),
