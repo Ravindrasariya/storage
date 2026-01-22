@@ -1813,6 +1813,123 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== DISCOUNT ROUTES ====================
+
+  // Get farmers with outstanding dues
+  app.get("/api/farmers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const farmers = await storage.getFarmersWithDues(coldStorageId);
+      res.json(farmers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch farmers with dues" });
+    }
+  });
+
+  // Get buyer dues for a specific farmer
+  app.get("/api/buyer-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { farmerName, village, contactNumber } = req.query;
+      
+      if (!farmerName || !village || !contactNumber) {
+        return res.status(400).json({ error: "farmerName, village, and contactNumber are required" });
+      }
+      
+      const buyers = await storage.getBuyerDuesForFarmer(
+        coldStorageId,
+        farmerName as string,
+        village as string,
+        contactNumber as string
+      );
+      res.json(buyers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch buyer dues" });
+    }
+  });
+
+  // Get all discounts
+  app.get("/api/discounts", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const discountList = await storage.getDiscounts(coldStorageId);
+      res.json(discountList);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch discounts" });
+    }
+  });
+
+  // Create discount validation schema
+  const createDiscountSchema = z.object({
+    farmerName: z.string().min(1),
+    village: z.string().min(1),
+    contactNumber: z.string().min(1),
+    totalAmount: z.number().positive(),
+    discountDate: z.string().transform((val) => new Date(val)),
+    remarks: z.string().optional(),
+    buyerAllocations: z.array(z.object({
+      buyerName: z.string().min(1),
+      amount: z.number().positive(),
+    })).min(1),
+  });
+
+  // Create discount
+  app.post("/api/discounts", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const validatedData = createDiscountSchema.parse(req.body);
+      
+      // Validate that allocations sum to totalAmount
+      const allocationTotal = validatedData.buyerAllocations.reduce((sum, a) => sum + a.amount, 0);
+      if (Math.abs(allocationTotal - validatedData.totalAmount) > 0.01) {
+        return res.status(400).json({ 
+          error: "Buyer allocations must sum to total discount amount",
+          allocationTotal,
+          expectedTotal: validatedData.totalAmount
+        });
+      }
+      
+      const result = await storage.createDiscountWithFIFO({
+        coldStorageId,
+        farmerName: validatedData.farmerName,
+        village: validatedData.village,
+        contactNumber: validatedData.contactNumber,
+        totalAmount: validatedData.totalAmount,
+        discountDate: validatedData.discountDate,
+        remarks: validatedData.remarks || null,
+        buyerAllocations: JSON.stringify(validatedData.buyerAllocations),
+      });
+      
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid discount data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create discount" });
+    }
+  });
+
+  // Reverse discount
+  app.post("/api/discounts/:id/reverse", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { id } = req.params;
+      // Verify ownership
+      const discountList = await storage.getDiscounts(coldStorageId);
+      const discount = discountList.find(d => d.id === id);
+      if (!discount) {
+        return res.status(404).json({ error: "Discount not found" });
+      }
+      const result = await storage.reverseDiscount(id);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reverse discount" });
+    }
+  });
+
   // ==================== OPENING SETTINGS ROUTES ====================
 
   // Get opening balance for a specific year

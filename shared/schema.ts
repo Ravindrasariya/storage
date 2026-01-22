@@ -323,6 +323,27 @@ export const dailyIdCounters = pgTable("daily_id_counters", {
   counter: integer("counter").notNull().default(0), // Current counter value
 });
 
+// Discounts - tracks discount entries to reduce farmer dues via buyer adjustments
+export const discounts = pgTable("discounts", {
+  id: varchar("id").primaryKey(),
+  transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (same as other cash flow entries)
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  // Farmer info
+  farmerName: text("farmer_name").notNull(),
+  village: text("village").notNull(),
+  contactNumber: text("contact_number").notNull(),
+  // Discount details
+  totalAmount: real("total_amount").notNull(), // Total discount amount
+  discountDate: timestamp("discount_date").notNull(),
+  remarks: text("remarks"),
+  // Buyer allocations stored as JSON array: [{buyerName, amount}]
+  buyerAllocations: text("buyer_allocations").notNull(), // JSON string of allocations
+  // Status tracking
+  isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
+  reversedAt: timestamp("reversed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
@@ -340,6 +361,7 @@ export const insertCashTransferSchema = createInsertSchema(cashTransfers).omit({
 export const insertCashOpeningBalanceSchema = createInsertSchema(cashOpeningBalances).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertOpeningReceivableSchema = createInsertSchema(openingReceivables).omit({ id: true, createdAt: true });
 export const insertOpeningPayableSchema = createInsertSchema(openingPayables).omit({ id: true, createdAt: true });
+export const insertDiscountSchema = createInsertSchema(discounts).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -376,6 +398,8 @@ export type InsertOpeningReceivable = z.infer<typeof insertOpeningReceivableSche
 export type OpeningPayable = typeof openingPayables.$inferSelect;
 export type InsertOpeningPayable = z.infer<typeof insertOpeningPayableSchema>;
 export type DailyIdCounter = typeof dailyIdCounters.$inferSelect;
+export type Discount = typeof discounts.$inferSelect;
+export type InsertDiscount = z.infer<typeof insertDiscountSchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({

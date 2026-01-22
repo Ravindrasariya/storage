@@ -134,11 +134,18 @@ export default function CashManagement() {
   const [expenseType, setExpenseType] = useState<string>(persistedState?.expenseType || "");
   const [expenseReceiverName, setExpenseReceiverName] = useState(persistedState?.expenseReceiverName || "");
   const [showReceiverSuggestions, setShowReceiverSuggestions] = useState(false);
-  const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account">((persistedState?.expensePaymentMode as "cash" | "account") || "cash");
+  const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account" | "discount">((persistedState?.expensePaymentMode as "cash" | "account" | "discount") || "cash");
   const [expenseAccountType, setExpenseAccountType] = useState<"limit" | "current">((persistedState?.expenseAccountType as "limit" | "current") || "limit");
   const [expenseAmount, setExpenseAmount] = useState(persistedState?.expenseAmount || "");
   const [expenseDate, setExpenseDate] = useState(persistedState?.expenseDate || todayDate);
   const [expenseRemarks, setExpenseRemarks] = useState(persistedState?.expenseRemarks || "");
+  
+  // Discount state
+  const [discountFarmerKey, setDiscountFarmerKey] = useState("");
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountDate, setDiscountDate] = useState(todayDate);
+  const [discountRemarks, setDiscountRemarks] = useState("");
+  const [discountBuyerAllocations, setDiscountBuyerAllocations] = useState<{ buyerName: string; amount: string; maxAmount: number }[]>([]);
 
   const [transferFromAccount, setTransferFromAccount] = useState<"cash" | "limit" | "current">((persistedState?.transferFromAccount as "cash" | "limit" | "current") || "cash");
   const [transferToAccount, setTransferToAccount] = useState<"cash" | "limit" | "current">((persistedState?.transferToAccount as "cash" | "limit" | "current") || "limit");
@@ -337,6 +344,43 @@ export default function CashManagement() {
     },
   });
 
+  // Discount queries - farmers with dues
+  const { data: farmersWithDues = [] } = useQuery<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]>({
+    queryKey: ["/api/farmers-with-dues"],
+    enabled: expensePaymentMode === "discount",
+  });
+
+  // Parse selected farmer key to get details
+  const selectedFarmerDetails = useMemo(() => {
+    if (!discountFarmerKey) return null;
+    const farmer = farmersWithDues.find(f => 
+      `${f.farmerName}|${f.village}|${f.contactNumber}` === discountFarmerKey
+    );
+    return farmer || null;
+  }, [discountFarmerKey, farmersWithDues]);
+
+  // Buyer dues for selected farmer
+  const { data: buyerDuesForFarmer = [] } = useQuery<{ buyerName: string; totalDue: number; latestSaleDate: string }[]>({
+    queryKey: ["/api/buyer-dues", discountFarmerKey],
+    queryFn: async () => {
+      if (!selectedFarmerDetails) return [];
+      const params = new URLSearchParams({
+        farmerName: selectedFarmerDetails.farmerName,
+        village: selectedFarmerDetails.village,
+        contactNumber: selectedFarmerDetails.contactNumber,
+      });
+      const response = await authFetch(`/api/buyer-dues?${params}`);
+      if (!response.ok) throw new Error("Failed to fetch buyer dues");
+      return response.json();
+    },
+    enabled: !!selectedFarmerDetails && expensePaymentMode === "discount",
+  });
+
+  // Discounts list
+  const { data: discountsList = [] } = useQuery<any[]>({
+    queryKey: ["/api/discounts"],
+  });
+
   // Buyer-to-buyer transfers for cash flow history
   const { data: buyerTransfers = [], isLoading: loadingBuyerTransfers } = useQuery<SalesHistory[]>({
     queryKey: ["/api/sales-history/buyer-transfers"],
@@ -474,6 +518,64 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
+    },
+  });
+
+  // Discount mutations
+  const createDiscountMutation = useMutation({
+    mutationFn: async (data: { farmerName: string; village: string; contactNumber: string; totalAmount: number; discountDate: string; remarks?: string; buyerAllocations: { buyerName: string; amount: number }[] }) => {
+      const response = await apiRequest("POST", "/api/discounts", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: "Discount recorded successfully",
+        variant: "success",
+      });
+      setDiscountFarmerKey("");
+      setDiscountAmount("");
+      setDiscountDate(format(new Date(), "yyyy-MM-dd"));
+      setDiscountRemarks("");
+      setDiscountBuyerAllocations([]);
+      clearPersistedState(coldStorageId);
+      queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    },
+    onError: (error: any) => {
+      const errorMsg = error?.message || "Failed to record discount";
+      toast({ title: t("error"), description: errorMsg, variant: "destructive" });
+    },
+  });
+
+  const reverseDiscountMutation = useMutation({
+    mutationFn: async (discountId: string) => {
+      const response = await apiRequest("POST", `/api/discounts/${discountId}/reverse`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: t("entryReversed"),
+        variant: "success",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
     onError: () => {
@@ -625,6 +727,44 @@ export default function CashManagement() {
       amount: parseFloat(expenseAmount),
       paidAt: new Date(expenseDate).toISOString(),
       remarks: expenseRemarks || undefined,
+    });
+  };
+
+  const handleDiscountSubmit = () => {
+    if (!selectedFarmerDetails || !discountAmount || parseFloat(discountAmount) <= 0) {
+      toast({ title: t("error"), description: "Please select a farmer and enter discount amount", variant: "destructive" });
+      return;
+    }
+
+    // Validate allocations sum
+    const allocationsWithAmounts = discountBuyerAllocations.filter(a => parseFloat(a.amount) > 0);
+    if (allocationsWithAmounts.length === 0) {
+      toast({ title: t("error"), description: "Please allocate discount to at least one buyer", variant: "destructive" });
+      return;
+    }
+
+    const allocationSum = allocationsWithAmounts.reduce((sum, a) => sum + parseFloat(a.amount || "0"), 0);
+    const totalDiscount = parseFloat(discountAmount);
+    if (Math.abs(allocationSum - totalDiscount) > 0.01) {
+      toast({ 
+        title: t("error"), 
+        description: `Allocation total (₹${allocationSum.toLocaleString()}) must equal discount amount (₹${totalDiscount.toLocaleString()})`, 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    createDiscountMutation.mutate({
+      farmerName: selectedFarmerDetails.farmerName,
+      village: selectedFarmerDetails.village,
+      contactNumber: selectedFarmerDetails.contactNumber,
+      totalAmount: totalDiscount,
+      discountDate: new Date(discountDate).toISOString(),
+      remarks: discountRemarks || undefined,
+      buyerAllocations: allocationsWithAmounts.map(a => ({
+        buyerName: a.buyerName,
+        amount: parseFloat(a.amount),
+      })),
     });
   };
 
@@ -1773,7 +1913,14 @@ export default function CashManagement() {
               <>
                 <div className="space-y-2">
                   <Label>{t("paymentMode")} *</Label>
-                  <Select value={expensePaymentMode} onValueChange={(v) => setExpensePaymentMode(v as "cash" | "account")}>
+                  <Select value={expensePaymentMode} onValueChange={(v) => {
+                    setExpensePaymentMode(v as "cash" | "account" | "discount");
+                    if (v === "discount") {
+                      setDiscountFarmerKey("");
+                      setDiscountAmount("");
+                      setDiscountBuyerAllocations([]);
+                    }
+                  }}>
                     <SelectTrigger data-testid="select-expense-payment-mode">
                       <SelectValue />
                     </SelectTrigger>
@@ -1790,34 +1937,191 @@ export default function CashManagement() {
                           {t("account")}
                         </span>
                       </SelectItem>
+                      <SelectItem value="discount">
+                        <span className="flex items-center gap-2">
+                          <ArrowDownLeft className="h-4 w-4" />
+                          Discount
+                        </span>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                {expensePaymentMode === "account" && (
-                  <div className="space-y-2">
-                    <Label>{t("accountType")} *</Label>
-                    <Select value={expenseAccountType} onValueChange={(v) => setExpenseAccountType(v as "limit" | "current")}>
-                      <SelectTrigger data-testid="select-expense-account-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                      <SelectItem value="limit">
-                        <span className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4" />
-                          {t("limitAccount")}
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="current">
-                        <span className="flex items-center gap-2">
-                          <Wallet className="h-4 w-4" />
-                          {t("currentAccount")}
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                {expensePaymentMode === "discount" ? (
+                  <>
+                    {/* Discount Form */}
+                    <div className="space-y-2">
+                      <Label>Farmer *</Label>
+                      <Select 
+                        value={discountFarmerKey} 
+                        onValueChange={(v) => {
+                          setDiscountFarmerKey(v);
+                          setDiscountBuyerAllocations([]);
+                        }}
+                      >
+                        <SelectTrigger data-testid="select-discount-farmer">
+                          <SelectValue placeholder="Select farmer..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {farmersWithDues.map((f) => (
+                            <SelectItem 
+                              key={`${f.farmerName}|${f.village}|${f.contactNumber}`}
+                              value={`${f.farmerName}|${f.village}|${f.contactNumber}`}
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-medium">{f.farmerName}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {f.village} | {f.contactNumber} | Due: ₹{f.totalDue.toLocaleString()}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Discount Amount (₹) *</Label>
+                      <Input
+                        type="number"
+                        value={discountAmount}
+                        onChange={(e) => setDiscountAmount(e.target.value)}
+                        placeholder="0"
+                        min={1}
+                        max={selectedFarmerDetails?.totalDue || undefined}
+                        data-testid="input-discount-amount"
+                      />
+                      {selectedFarmerDetails && (
+                        <p className="text-xs text-muted-foreground">
+                          Max: ₹{selectedFarmerDetails.totalDue.toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+
+                    {selectedFarmerDetails && buyerDuesForFarmer.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Allocate to Buyers *</Label>
+                        <div className="border rounded-md p-3 space-y-3 max-h-60 overflow-y-auto">
+                          {buyerDuesForFarmer.map((buyer, idx) => {
+                            const allocationItem = discountBuyerAllocations.find(a => a.buyerName === buyer.buyerName);
+                            return (
+                              <div key={buyer.buyerName} className="flex items-center gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm truncate">{buyer.buyerName}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Due: ₹{buyer.totalDue.toLocaleString()}
+                                  </p>
+                                </div>
+                                <Input
+                                  type="number"
+                                  className="w-28"
+                                  placeholder="0"
+                                  min={0}
+                                  max={buyer.totalDue}
+                                  value={allocationItem?.amount || ""}
+                                  onChange={(e) => {
+                                    const newAllocations = [...discountBuyerAllocations];
+                                    const existingIdx = newAllocations.findIndex(a => a.buyerName === buyer.buyerName);
+                                    if (existingIdx >= 0) {
+                                      newAllocations[existingIdx] = { 
+                                        buyerName: buyer.buyerName, 
+                                        amount: e.target.value,
+                                        maxAmount: buyer.totalDue
+                                      };
+                                    } else {
+                                      newAllocations.push({ 
+                                        buyerName: buyer.buyerName, 
+                                        amount: e.target.value,
+                                        maxAmount: buyer.totalDue
+                                      });
+                                    }
+                                    setDiscountBuyerAllocations(newAllocations);
+                                  }}
+                                  data-testid={`input-allocation-${idx}`}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {discountAmount && (
+                          <p className={`text-xs ${
+                            Math.abs(
+                              discountBuyerAllocations.reduce((sum, a) => sum + parseFloat(a.amount || "0"), 0) - 
+                              parseFloat(discountAmount || "0")
+                            ) < 0.01 ? "text-green-600" : "text-amber-600"
+                          }`}>
+                            Allocated: ₹{discountBuyerAllocations.reduce((sum, a) => sum + parseFloat(a.amount || "0"), 0).toLocaleString()} 
+                            / ₹{parseFloat(discountAmount || "0").toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        Discount Date
+                      </Label>
+                      <Input
+                        type="date"
+                        value={discountDate}
+                        onChange={(e) => setDiscountDate(e.target.value)}
+                        data-testid="input-discount-date"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t("remarks")}</Label>
+                      <Input
+                        value={discountRemarks}
+                        onChange={(e) => setDiscountRemarks(e.target.value)}
+                        placeholder={t("remarks")}
+                        data-testid="input-discount-remarks"
+                      />
+                    </div>
+
+                    <Button
+                      onClick={handleDiscountSubmit}
+                      disabled={
+                        !canEdit || 
+                        !selectedFarmerDetails || 
+                        !discountAmount || 
+                        parseFloat(discountAmount) <= 0 ||
+                        createDiscountMutation.isPending
+                      }
+                      className="w-full"
+                      data-testid="button-record-discount"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {createDiscountMutation.isPending ? t("saving") : "Record Discount"}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {expensePaymentMode === "account" && (
+                      <div className="space-y-2">
+                        <Label>{t("accountType")} *</Label>
+                        <Select value={expenseAccountType} onValueChange={(v) => setExpenseAccountType(v as "limit" | "current")}>
+                          <SelectTrigger data-testid="select-expense-account-type">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                          <SelectItem value="limit">
+                            <span className="flex items-center gap-2">
+                              <Building2 className="h-4 w-4" />
+                              {t("limitAccount")}
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="current">
+                            <span className="flex items-center gap-2">
+                              <Wallet className="h-4 w-4" />
+                              {t("currentAccount")}
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
                 <div className="space-y-2">
                   <Label>{t("expenseType")} *</Label>
@@ -1932,6 +2236,8 @@ export default function CashManagement() {
                   <p className="text-xs text-muted-foreground text-center mt-2">
                     {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
                   </p>
+                )}
+                  </>
                 )}
               </>
             ) : activeTab === "self" ? (

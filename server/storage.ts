@@ -20,6 +20,7 @@ import {
   openingReceivables,
   openingPayables,
   dailyIdCounters,
+  discounts,
   type ColdStorage,
   type InsertColdStorage,
   type ColdStorageUser,
@@ -53,6 +54,8 @@ import {
   type InsertOpeningReceivable,
   type OpeningPayable,
   type InsertOpeningPayable,
+  type Discount,
+  type InsertDiscount,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -246,6 +249,12 @@ export interface IStorage {
   getOpeningPayables(coldStorageId: string, year: number): Promise<OpeningPayable[]>;
   createOpeningPayable(data: InsertOpeningPayable): Promise<OpeningPayable>;
   deleteOpeningPayable(id: string): Promise<boolean>;
+  // Discounts
+  getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]>;
+  getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date }[]>;
+  createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }>;
+  getDiscounts(coldStorageId: string): Promise<Discount[]>;
+  reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3146,6 +3155,187 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(openingPayables)
       .where(eq(openingPayables.id, id));
     return true;
+  }
+
+  // Discounts - Get farmers with outstanding dues
+  async getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]> {
+    const result = await db.execute(sql`
+      SELECT 
+        farmer_name as "farmerName",
+        village,
+        contact_number as "contactNumber",
+        COALESCE(SUM(due_amount), 0)::float as "totalDue"
+      FROM sales_history
+      WHERE cold_storage_id = ${coldStorageId}
+        AND due_amount > 0
+      GROUP BY farmer_name, village, contact_number
+      HAVING SUM(due_amount) > 0
+      ORDER BY farmer_name
+    `);
+    return result.rows as { farmerName: string; village: string; contactNumber: string; totalDue: number }[];
+  }
+
+  // Get buyer dues for a specific farmer (sorted by latest sale date)
+  async getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date }[]> {
+    const result = await db.execute(sql`
+      SELECT 
+        COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) as "buyerName",
+        COALESCE(SUM(due_amount), 0)::float as "totalDue",
+        MAX(sold_at) as "latestSaleDate"
+      FROM sales_history
+      WHERE cold_storage_id = ${coldStorageId}
+        AND farmer_name = ${farmerName}
+        AND village = ${village}
+        AND contact_number = ${contactNumber}
+        AND due_amount > 0
+        AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) IS NOT NULL
+      GROUP BY COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name)
+      HAVING SUM(due_amount) > 0
+      ORDER BY MAX(sold_at) DESC
+    `);
+    return result.rows as { buyerName: string; totalDue: number; latestSaleDate: Date }[];
+  }
+
+  // Create discount with FIFO allocation to reduce sales dues
+  async createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }> {
+    const transactionId = await generateSequentialId('cash_flow');
+    const discountId = randomUUID();
+    
+    // Parse buyer allocations
+    const allocations: { buyerName: string; amount: number }[] = JSON.parse(data.buyerAllocations);
+    
+    let totalSalesUpdated = 0;
+    
+    // Apply FIFO discount for each buyer allocation
+    for (const allocation of allocations) {
+      let remainingAmount = allocation.amount;
+      const buyerName = allocation.buyerName;
+      
+      // Get sales for this farmer from this buyer, ordered by oldest first (FIFO)
+      const salesResult = await db.execute(sql`
+        SELECT id, due_amount
+        FROM sales_history
+        WHERE cold_storage_id = ${data.coldStorageId}
+          AND farmer_name = ${data.farmerName}
+          AND village = ${data.village}
+          AND contact_number = ${data.contactNumber}
+          AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) = ${buyerName}
+          AND due_amount > 0
+        ORDER BY sold_at ASC
+      `);
+      
+      for (const row of salesResult.rows as { id: string; due_amount: number }[]) {
+        if (remainingAmount <= 0) break;
+        
+        const saleId = row.id;
+        const currentDue = row.due_amount;
+        const discountToApply = Math.min(remainingAmount, currentDue);
+        
+        // Update the sale's due and paid amounts
+        await db.execute(sql`
+          UPDATE sales_history
+          SET 
+            due_amount = due_amount - ${discountToApply},
+            paid_amount = paid_amount + ${discountToApply},
+            payment_status = CASE 
+              WHEN due_amount - ${discountToApply} <= 0 THEN 'paid'
+              ELSE 'partial'
+            END
+          WHERE id = ${saleId}
+        `);
+        
+        remainingAmount -= discountToApply;
+        totalSalesUpdated++;
+      }
+    }
+    
+    // Insert the discount record
+    const [discount] = await db.insert(discounts)
+      .values({
+        id: discountId,
+        transactionId,
+        ...data,
+      })
+      .returning();
+    
+    return { discount, salesUpdated: totalSalesUpdated };
+  }
+
+  // Get all discounts for a cold storage
+  async getDiscounts(coldStorageId: string): Promise<Discount[]> {
+    return db.select()
+      .from(discounts)
+      .where(eq(discounts.coldStorageId, coldStorageId))
+      .orderBy(desc(discounts.createdAt));
+  }
+
+  // Reverse a discount (add back dues to sales)
+  async reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }> {
+    const [discount] = await db.select()
+      .from(discounts)
+      .where(eq(discounts.id, discountId));
+    
+    if (!discount) {
+      return { success: false, message: "Discount not found" };
+    }
+    
+    if (discount.isReversed === 1) {
+      return { success: false, message: "Discount already reversed" };
+    }
+    
+    // Parse buyer allocations and reverse the discount
+    const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
+    
+    for (const allocation of allocations) {
+      let remainingAmount = allocation.amount;
+      const buyerName = allocation.buyerName;
+      
+      // Get sales for this farmer from this buyer, ordered by newest first (reverse of FIFO)
+      const salesResult = await db.execute(sql`
+        SELECT id, paid_amount
+        FROM sales_history
+        WHERE cold_storage_id = ${discount.coldStorageId}
+          AND farmer_name = ${discount.farmerName}
+          AND village = ${discount.village}
+          AND contact_number = ${discount.contactNumber}
+          AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) = ${buyerName}
+          AND paid_amount > 0
+        ORDER BY sold_at DESC
+      `);
+      
+      for (const row of salesResult.rows as { id: string; paid_amount: number }[]) {
+        if (remainingAmount <= 0) break;
+        
+        const saleId = row.id;
+        const currentPaid = row.paid_amount;
+        const amountToReverse = Math.min(remainingAmount, currentPaid);
+        
+        // Reverse the discount from the sale
+        await db.execute(sql`
+          UPDATE sales_history
+          SET 
+            due_amount = due_amount + ${amountToReverse},
+            paid_amount = paid_amount - ${amountToReverse},
+            payment_status = CASE 
+              WHEN paid_amount - ${amountToReverse} <= 0 THEN 'due'
+              ELSE 'partial'
+            END
+          WHERE id = ${saleId}
+        `);
+        
+        remainingAmount -= amountToReverse;
+      }
+    }
+    
+    // Mark discount as reversed
+    await db.update(discounts)
+      .set({
+        isReversed: 1,
+        reversedAt: new Date(),
+      })
+      .where(eq(discounts.id, discountId));
+    
+    return { success: true };
   }
 }
 
