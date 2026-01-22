@@ -102,7 +102,7 @@ Core entities:
 
 ### Cash Flow Transaction IDs
 - All cash flow entries (receipts, expenses, transfers) receive a unique transactionId
-- Format: CF + YYYYMMDD + natural number starting from 0 (e.g., CF202601220, CF202601221)
+- Format: CF + YYYYMMDD + natural number starting from 1 (e.g., CF202601221, CF202601222)
 - Generated atomically using dailyIdCounters table (entity type: 'cash_flow')
 - IDs are globally unique across all cold storages
 - Cash Management transaction list sorted by transactionId descending

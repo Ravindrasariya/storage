@@ -95,7 +95,7 @@ async function generateSequentialId(entityType: EntityType): Promise<string> {
       id: rowId,
       entityType,
       dateKey,
-      counter: -1, // Start at -1, first update will make it 0
+      counter: 0, // Start at 0, first update will make it 1
     })
     .onConflictDoNothing();
 
@@ -106,7 +106,7 @@ async function generateSequentialId(entityType: EntityType): Promise<string> {
     .where(eq(dailyIdCounters.id, rowId))
     .returning({ counter: dailyIdCounters.counter });
 
-  return `${prefix}${dateKey}${finalResult[0]?.counter ?? 0}`;
+  return `${prefix}${dateKey}${finalResult[0]?.counter || 1}`;
 }
 
 export interface IStorage {
