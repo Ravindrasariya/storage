@@ -376,6 +376,47 @@ export default function CashManagement() {
     enabled: !!selectedFarmerDetails && expensePaymentMode === "discount",
   });
 
+  // Auto-populate discount allocations when discount amount changes
+  useEffect(() => {
+    if (!buyerDuesForFarmer.length || !discountAmount) {
+      // Clear allocations when no discount amount
+      if (!discountAmount && discountBuyerAllocations.length > 0) {
+        setDiscountBuyerAllocations([]);
+      }
+      return;
+    }
+    
+    const totalDiscount = parseFloat(discountAmount);
+    if (isNaN(totalDiscount) || totalDiscount <= 0) {
+      return;
+    }
+    
+    // Auto-allocate from top to bottom until discount is exhausted
+    let remaining = totalDiscount;
+    const newAllocations: { buyerName: string; amount: string; maxAmount: number }[] = [];
+    
+    for (const buyer of buyerDuesForFarmer) {
+      if (remaining <= 0) {
+        // No more discount to allocate, add with 0 amount
+        newAllocations.push({
+          buyerName: buyer.buyerName,
+          amount: "",
+          maxAmount: buyer.totalDue,
+        });
+      } else {
+        const allocation = Math.min(remaining, buyer.totalDue);
+        newAllocations.push({
+          buyerName: buyer.buyerName,
+          amount: allocation > 0 ? allocation.toString() : "",
+          maxAmount: buyer.totalDue,
+        });
+        remaining -= allocation;
+      }
+    }
+    
+    setDiscountBuyerAllocations(newAllocations);
+  }, [discountAmount, buyerDuesForFarmer]);
+
   // Discounts list
   const { data: discountsList = [] } = useQuery<any[]>({
     queryKey: ["/api/discounts"],
