@@ -1055,7 +1055,7 @@ export default function CashManagement() {
   }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
 
   return (
-    <div className="container mx-auto p-4 max-w-4xl">
+    <div className="container mx-auto p-4 max-w-4xl overflow-x-hidden">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Banknote className="h-6 w-6" />
@@ -1389,34 +1389,34 @@ export default function CashManagement() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-2 items-stretch">
-        <Card className="flex flex-col">
+      <div className="grid gap-6 md:grid-cols-2 items-stretch overflow-hidden">
+        <Card className="flex flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "inward" | "expense" | "self")}>
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger 
                   value="inward" 
                   data-testid="tab-inward"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs sm:text-sm px-1 sm:px-3"
                 >
-                  <ArrowDownLeft className="h-4 w-4 mr-1" />
-                  {t("inwardCash")}
+                  <ArrowDownLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-0.5 sm:mr-1 flex-shrink-0" />
+                  <span className="truncate">{t("inwardCash")}</span>
                 </TabsTrigger>
                 <TabsTrigger 
                   value="expense" 
                   data-testid="tab-expense"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs sm:text-sm px-1 sm:px-3"
                 >
-                  <ArrowUpRight className="h-4 w-4 mr-1" />
-                  {t("expense")}
+                  <ArrowUpRight className="h-3 w-3 sm:h-4 sm:w-4 mr-0.5 sm:mr-1 flex-shrink-0" />
+                  <span className="truncate">{t("expense")}</span>
                 </TabsTrigger>
                 <TabsTrigger 
                   value="self" 
                   data-testid="tab-transfer"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-xs sm:text-sm px-1 sm:px-3"
                 >
-                  <ArrowLeftRight className="h-4 w-4 mr-1" />
-                  {t("transfer")}
+                  <ArrowLeftRight className="h-3 w-3 sm:h-4 sm:w-4 mr-0.5 sm:mr-1 flex-shrink-0" />
+                  <span className="truncate">{t("transfer")}</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -2042,11 +2042,11 @@ export default function CashManagement() {
           </CardContent>
         </Card>
 
-        <Card className="flex flex-col">
+        <Card className="flex flex-col overflow-hidden">
           <CardHeader>
             <CardTitle className="text-lg">{t("cashFlowHistory")}</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-hidden">
             {isLoading ? (
               <div className="text-sm text-muted-foreground p-4">{t("loading")}</div>
             ) : allTransactions.length === 0 ? (
