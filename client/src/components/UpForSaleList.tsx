@@ -477,7 +477,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       </span>
                       <span className="text-muted-foreground text-xs ml-1">
                         {lot.chargeUnit === "quintal" && lot.netWeight ? (
-                          <>({lot.netWeight} {t("kg")} × {lot.remainingSize} × <Currency amount={lot.rate} />) / ({lot.originalSize} × 100)</>
+                          <>({lot.netWeight} {t("kg")} × {lot.remainingSize} × <Currency amount={lot.coldCharge} />) / ({lot.originalSize} × 100) + (<Currency amount={lot.hammali} /> × {lot.remainingSize})</>
                         ) : (
                           <>({lot.remainingSize} x <Currency amount={lot.rate} />)</>
                         )}
@@ -777,7 +777,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
                       ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
                         <div>
-                          ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableRate(selectedLot)} />) / ({selectedLot.originalSize} × 100) = <Currency amount={calculateBaseCharge(selectedLot)} />
+                          ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableColdCharge(selectedLot)} />) / ({selectedLot.originalSize} × 100) + (<Currency amount={getEditableHammali(selectedLot)} /> × {getChargeQuantity(selectedLot, selectedLot.remainingSize)}) = <Currency amount={calculateBaseCharge(selectedLot)} />
                         </div>
                       ) : (
                         <div>{getChargeQuantity(selectedLot, selectedLot.remainingSize)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
@@ -1078,7 +1078,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                           <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
                         ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
                           <div>
-                            ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, partialQuantity)} × <Currency amount={getEditableRate(selectedLot)} />) / ({selectedLot.originalSize} × 100) = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} />
+                            ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, partialQuantity)} × <Currency amount={getEditableColdCharge(selectedLot)} />) / ({selectedLot.originalSize} × 100) + (<Currency amount={getEditableHammali(selectedLot)} /> × {getChargeQuantity(selectedLot, partialQuantity)}) = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} />
                           </div>
                         ) : (
                           <div>{getChargeQuantity(selectedLot, partialQuantity)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot, partialQuantity)} /></div>

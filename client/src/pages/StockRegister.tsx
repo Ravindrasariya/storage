@@ -1306,20 +1306,27 @@ export default function StockRegister() {
                     <span className="font-semibold">
                       <Currency 
                         amount={
-                          (editForm.netWeight * (
+                          ((editForm.netWeight * (
                             selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration"
-                              ? (coldStorage.waferColdCharge + coldStorage.waferHammali)
-                              : (coldStorage.seedColdCharge + coldStorage.seedHammali)
-                          )) / 100
+                              ? coldStorage.waferColdCharge
+                              : coldStorage.seedColdCharge
+                          )) / 100) + 
+                          ((selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration"
+                              ? coldStorage.waferHammali
+                              : coldStorage.seedHammali
+                          ) * selectedLot.size)
                         } 
                       />
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    ({editForm.netWeight} {t("kg")} × {selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
-                      ? (coldStorage.waferColdCharge + coldStorage.waferHammali) 
-                      : (coldStorage.seedColdCharge + coldStorage.seedHammali)
-                    }) / 100
+                    ({editForm.netWeight} {t("kg")} × <Currency amount={selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
+                      ? coldStorage.waferColdCharge 
+                      : coldStorage.seedColdCharge
+                    } />) / 100 + (<Currency amount={selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
+                      ? coldStorage.waferHammali 
+                      : coldStorage.seedHammali
+                    } /> × {selectedLot.size} {t("bags")})
                   </p>
                 </div>
               )}
