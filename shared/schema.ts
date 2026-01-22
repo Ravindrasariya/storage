@@ -230,6 +230,7 @@ export const exitHistory = pgTable("exit_history", {
 // Cash Receipts - tracks inward cash/account payments from buyers
 export const cashReceipts = pgTable("cash_receipts", {
   id: varchar("id").primaryKey(),
+  transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (e.g., CF202601220)
   coldStorageId: varchar("cold_storage_id").notNull(),
   payerType: text("payer_type").notNull().default("cold_merchant"), // 'cold_merchant', 'sales_goods', 'kata', 'others'
   buyerName: text("buyer_name"), // Required for cold_merchant, sales_goods, others; null for kata
@@ -248,6 +249,7 @@ export const cashReceipts = pgTable("cash_receipts", {
 // Expenses - tracks outward cash/account payments
 export const expenses = pgTable("expenses", {
   id: varchar("id").primaryKey(),
+  transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (e.g., CF202601220)
   coldStorageId: varchar("cold_storage_id").notNull(),
   expenseType: text("expense_type").notNull(), // 'salary', 'hammali', 'grading_charges', 'general_expenses'
   receiverName: text("receiver_name"), // Name of the person receiving the payment
@@ -264,6 +266,7 @@ export const expenses = pgTable("expenses", {
 // Cash Transfers - internal fund movements between account types (self transfers)
 export const cashTransfers = pgTable("cash_transfers", {
   id: varchar("id").primaryKey(),
+  transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (e.g., CF202601220)
   coldStorageId: varchar("cold_storage_id").notNull(),
   fromAccountType: text("from_account_type").notNull(), // 'cash', 'limit', 'current'
   toAccountType: text("to_account_type").notNull(), // 'cash', 'limit', 'current'
@@ -331,9 +334,9 @@ export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ 
 export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).omit({ id: true, changedAt: true });
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
 export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, billNumber: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
-export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, createdAt: true, appliedAmount: true, unappliedAmount: true, isReversed: true, reversedAt: true });
-export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true });
-export const insertCashTransferSchema = createInsertSchema(cashTransfers).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true });
+export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, transactionId: true, createdAt: true, appliedAmount: true, unappliedAmount: true, isReversed: true, reversedAt: true });
+export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
+export const insertCashTransferSchema = createInsertSchema(cashTransfers).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashOpeningBalanceSchema = createInsertSchema(cashOpeningBalances).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertOpeningReceivableSchema = createInsertSchema(openingReceivables).omit({ id: true, createdAt: true });
 export const insertOpeningPayableSchema = createInsertSchema(openingPayables).omit({ id: true, createdAt: true });

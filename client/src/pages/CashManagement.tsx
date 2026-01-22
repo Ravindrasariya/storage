@@ -842,6 +842,41 @@ export default function CashManagement() {
         timestamp: getTimestamp(bt.transferDate || bt.soldAt)
       })) : []),
     ].sort((a, b) => {
+      // Sort by transactionId descending (CF + YYYYMMDD + natural number)
+      // For items without transactionId (buyerTransfer), fallback to timestamp
+      const getTransactionId = (item: TransactionItem): string | null => {
+        if (item.type === "buyerTransfer") return null;
+        return (item.data as CashReceipt | Expense | CashTransfer).transactionId || null;
+      };
+
+      const aTransId = getTransactionId(a);
+      const bTransId = getTransactionId(b);
+
+      // If both have transactionId, compare them (descending)
+      if (aTransId && bTransId) {
+        // Extract date and counter parts for proper numeric comparison
+        // Format: CF + YYYYMMDD + counter (e.g., CF2026012210)
+        const parseTransactionId = (tid: string) => {
+          const datePart = tid.slice(2, 10); // YYYYMMDD
+          const counterPart = parseInt(tid.slice(10), 10) || 0;
+          return { datePart, counterPart };
+        };
+        const aParsed = parseTransactionId(aTransId);
+        const bParsed = parseTransactionId(bTransId);
+        
+        // Compare date part first
+        if (bParsed.datePart !== aParsed.datePart) {
+          return bParsed.datePart.localeCompare(aParsed.datePart);
+        }
+        // Same date, compare counter (descending)
+        return bParsed.counterPart - aParsed.counterPart;
+      }
+
+      // If only one has transactionId, prioritize it
+      if (aTransId && !bTransId) return -1;
+      if (!aTransId && bTransId) return 1;
+
+      // Fallback to timestamp comparison
       const timeDiff = b.timestamp - a.timestamp;
       if (timeDiff !== 0) return timeDiff;
       return String(b.data.id).localeCompare(String(a.data.id));

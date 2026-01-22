@@ -60,11 +60,12 @@ import {
 } from "@shared/schema";
 
 // Entity type prefixes for sequential IDs
-type EntityType = 'cold_storage' | 'lot' | 'sales';
+type EntityType = 'cold_storage' | 'lot' | 'sales' | 'cash_flow';
 const ENTITY_PREFIXES: Record<EntityType, string> = {
   cold_storage: 'CS',
   lot: 'LT',
   sales: 'SL',
+  cash_flow: 'CF',
 };
 
 // Generate a sequential ID in format: PREFIX + YYYYMMDD + counter (no zero-padding)
@@ -94,7 +95,7 @@ async function generateSequentialId(entityType: EntityType): Promise<string> {
       id: rowId,
       entityType,
       dateKey,
-      counter: 0, // Start at 0, first update will make it 1
+      counter: -1, // Start at -1, first update will make it 0
     })
     .onConflictDoNothing();
 
@@ -105,7 +106,7 @@ async function generateSequentialId(entityType: EntityType): Promise<string> {
     .where(eq(dailyIdCounters.id, rowId))
     .returning({ counter: dailyIdCounters.counter });
 
-  return `${prefix}${dateKey}${finalResult[0]?.counter || 1}`;
+  return `${prefix}${dateKey}${finalResult[0]?.counter ?? 0}`;
 }
 
 export interface IStorage {
@@ -2057,10 +2058,14 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Generate transaction ID (CF + YYYYMMDD + natural number)
+    const transactionId = await generateSequentialId('cash_flow');
+
     // Create the receipt record
     const [receipt] = await db.insert(cashReceipts)
       .values({
         id: randomUUID(),
+        transactionId,
         ...data,
         appliedAmount: appliedAmount,
         unappliedAmount: remainingAmount,
@@ -2129,9 +2134,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExpense(data: InsertExpense): Promise<Expense> {
+    // Generate transaction ID (CF + YYYYMMDD + natural number)
+    const transactionId = await generateSequentialId('cash_flow');
+
     const [expense] = await db.insert(expenses)
       .values({
         id: randomUUID(),
+        transactionId,
         ...data,
       })
       .returning();
@@ -2151,9 +2160,13 @@ export class DatabaseStorage implements IStorage {
     if (data.amount <= 0) {
       throw new Error("Transfer amount must be greater than 0");
     }
+    // Generate transaction ID (CF + YYYYMMDD + natural number)
+    const transactionId = await generateSequentialId('cash_flow');
+
     const [transfer] = await db.insert(cashTransfers)
       .values({
         id: randomUUID(),
+        transactionId,
         ...data,
       })
       .returning();

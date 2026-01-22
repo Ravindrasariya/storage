@@ -100,6 +100,15 @@ Core entities:
 - All counters reset to 1 during season reset
 - Lot entry bill numbers stored in lots.entryBillNumber, assigned when Print is clicked in receipt dialog
 
+### Cash Flow Transaction IDs
+- All cash flow entries (receipts, expenses, transfers) receive a unique transactionId
+- Format: CF + YYYYMMDD + natural number starting from 0 (e.g., CF202601220, CF202601221)
+- Generated atomically using dailyIdCounters table (entity type: 'cash_flow')
+- IDs are globally unique across all cold storages
+- Cash Management transaction list sorted by transactionId descending
+- CSV export includes transactionId as first column
+- Database fields: cashReceipts.transactionId, expenses.transactionId, cashTransfers.transactionId
+
 ### Start-of-Year Settings
 - Settings button in Cash Management header (edit access only)
 - Two tabs: Opening Balances and Receivables

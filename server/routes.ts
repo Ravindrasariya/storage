@@ -2623,10 +2623,10 @@ export async function registerRoutes(
 
       const { receipts, expenses, transfers } = await storage.getCashDataForExport(coldStorageId, from, to);
 
-      // Headers with all columns for all types
+      // Headers with all columns for all types (Transaction ID first)
       const headers = language === "hi"
-        ? ["तारीख", "प्रकार", "भुगतानकर्ता प्रकार", "खरीदार/प्राप्तकर्ता का नाम", "खर्च प्रकार", "भुगतान मोड", "खाता प्रकार", "से खाता", "में खाता", "राशि", "नोट्स/टिप्पणी", "स्थिति", "रद्द तारीख"]
-        : ["Date", "Type", "Payer Type", "Buyer/Receiver Name", "Expense Type", "Payment Mode", "Account Type", "From Account", "To Account", "Amount", "Notes/Remarks", "Status", "Reversal Date"];
+        ? ["ट्रांज़ैक्शन आईडी", "तारीख", "प्रकार", "भुगतानकर्ता प्रकार", "खरीदार/प्राप्तकर्ता का नाम", "खर्च प्रकार", "भुगतान मोड", "खाता प्रकार", "से खाता", "में खाता", "राशि", "नोट्स/टिप्पणी", "स्थिति", "रद्द तारीख"]
+        : ["Transaction ID", "Date", "Type", "Payer Type", "Buyer/Receiver Name", "Expense Type", "Payment Mode", "Account Type", "From Account", "To Account", "Amount", "Notes/Remarks", "Status", "Reversal Date"];
 
       // Payer type labels
       const payerTypeMap: Record<string, { en: string; hi: string }> = {
@@ -2651,8 +2651,9 @@ export async function registerRoutes(
         current: { en: "Current Account", hi: "चालू खाता" },
       };
 
-      // Combine and sort by date (latest first)
+      // Combine and sort by transactionId descending
       interface CashEntry {
+        transactionId: string;
         date: Date;
         type: string;
         payerType: string;
@@ -2678,6 +2679,7 @@ export async function registerRoutes(
           : { en: "", hi: "" };
         
         allEntries.push({
+          transactionId: r.transactionId || "",
           date: new Date(r.receivedAt),
           type: language === "hi" ? "आवक" : "Inward",
           payerType: language === "hi" ? payerLabel.hi : payerLabel.en,
@@ -2703,6 +2705,7 @@ export async function registerRoutes(
           : { en: "", hi: "" };
         
         allEntries.push({
+          transactionId: e.transactionId || "",
           date: new Date(e.paidAt),
           type: language === "hi" ? "खर्च" : "Expense",
           payerType: "",
@@ -2726,6 +2729,7 @@ export async function registerRoutes(
         const toLabel = accountTypeMap[t.toAccountType] || { en: t.toAccountType, hi: t.toAccountType };
         
         allEntries.push({
+          transactionId: t.transactionId || "",
           date: new Date(t.transferredAt),
           type: language === "hi" ? "स्व-स्थानांतरण" : "Self Transfer",
           payerType: "",
@@ -2742,13 +2746,38 @@ export async function registerRoutes(
         });
       }
 
-      // Sort by date descending (latest first)
-      allEntries.sort((a, b) => b.date.getTime() - a.date.getTime());
+      // Sort by transactionId descending (latest first)
+      // Format: CF + YYYYMMDD + natural number (e.g., CF2026012210)
+      allEntries.sort((a, b) => {
+        const aId = a.transactionId || "";
+        const bId = b.transactionId || "";
+        
+        // If both have transactionId, compare them properly
+        if (aId && bId) {
+          const aDatePart = aId.slice(2, 10);
+          const bDatePart = bId.slice(2, 10);
+          if (bDatePart !== aDatePart) {
+            return bDatePart.localeCompare(aDatePart);
+          }
+          // Same date, compare counter (descending)
+          const aCounter = parseInt(aId.slice(10), 10) || 0;
+          const bCounter = parseInt(bId.slice(10), 10) || 0;
+          return bCounter - aCounter;
+        }
+        
+        // If only one has transactionId, prioritize it
+        if (aId && !bId) return -1;
+        if (!aId && bId) return 1;
+        
+        // Fallback to date comparison
+        return b.date.getTime() - a.date.getTime();
+      });
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
       for (const entry of allEntries) {
         const row = [
+          entry.transactionId,
           formatDateForExport(entry.date),
           entry.type,
           entry.payerType,
