@@ -611,7 +611,7 @@ export function SettingsDialog() {
 
             <div className="space-y-4">
               <div>
-                <h5 className="text-sm font-medium mb-2">{t("wafer")}/{t("ration")} {t("rate")}</h5>
+                <h5 className="text-sm font-medium mb-2">{t("wafer")} {t("rate")}</h5>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>{t("coldStorageCharge")}</Label>
@@ -649,7 +649,7 @@ export function SettingsDialog() {
               </div>
 
               <div className="border-t pt-4">
-                <h5 className="text-sm font-medium mb-2">{t("seed")} {t("rate")}</h5>
+                <h5 className="text-sm font-medium mb-2">{t("seed")}/{t("ration")} {t("rate")}</h5>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>{t("coldStorageCharge")}</Label>

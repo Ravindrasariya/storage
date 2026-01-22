@@ -635,8 +635,8 @@ export class DatabaseStorage implements IStorage {
     const saleLots = allLots
       .filter((lot) => lot.upForSale === 1 && lot.remainingSize > 0 && lot.saleStatus !== "sold")
       .map((lot) => {
-        // Wafer and Ration use wafer rates, Seed uses seed rates
-        const useWaferRates = lot.bagType === "wafer" || lot.bagType === "Ration";
+        // Wafer uses wafer rates, Seed and Ration use seed rates
+        const useWaferRates = lot.bagType === "wafer";
         const coldCharge = useWaferRates 
           ? (coldStorage?.waferColdCharge || coldStorage?.waferRate || 0) 
           : (coldStorage?.seedColdCharge || coldStorage?.seedRate || 0);
@@ -1162,8 +1162,8 @@ export class DatabaseStorage implements IStorage {
     const coldStorage = await this.getColdStorage(lot.coldStorageId);
     if (!coldStorage) return undefined;
 
-    // Wafer and Ration bags use wafer rates, Seed bags use seed rates
-    const useWaferRates = lot.bagType === "wafer" || lot.bagType === "Ration";
+    // Wafer uses wafer rates, Seed and Ration bags use seed rates
+    const useWaferRates = lot.bagType === "wafer";
     
     // Use custom rates if provided, otherwise use cold storage defaults
     const defaultRate = useWaferRates ? coldStorage.waferRate : coldStorage.seedRate;

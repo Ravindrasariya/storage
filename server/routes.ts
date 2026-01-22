@@ -642,9 +642,9 @@ export async function registerRoutes(
       const totalPrice = quantitySold * pricePerBag;
 
       // Get cold storage to calculate storage charge and rate breakdown
-      // Wafer and Ration bags use wafer rates, Seed bags use seed rates
+      // Wafer uses wafer rates, Seed and Ration bags use seed rates
       const coldStorage = await storage.getColdStorage(lot.coldStorageId);
-      const useWaferRates = lot.bagType === "wafer" || lot.bagType === "Ration";
+      const useWaferRates = lot.bagType === "wafer";
       
       // Use custom rates if provided, otherwise use cold storage defaults
       const defaultRate = coldStorage ? (useWaferRates ? coldStorage.waferRate : coldStorage.seedRate) : 0;
@@ -2460,11 +2460,11 @@ export async function registerRoutes(
       const chamberMap = new Map(chambers.map(c => [c.id, c.name]));
 
       // Calculate expected cold charge based on bag type and charge unit
-      // Note: "Ration" bagType uses wafer rates (same as UI logic)
+      // Note: "Ration" bagType uses seed rates (same as UI logic)
       const calculateExpectedCharge = (lot: typeof lots[0]) => {
         if (!coldStorage) return 0;
-        const coldChargeRate = (lot.bagType === "seed" ? coldStorage.seedColdCharge : coldStorage.waferColdCharge) || 0;
-        const hammaliRate = (lot.bagType === "seed" ? coldStorage.seedHammali : coldStorage.waferHammali) || 0;
+        const coldChargeRate = (lot.bagType === "wafer" ? coldStorage.waferColdCharge : coldStorage.seedColdCharge) || 0;
+        const hammaliRate = (lot.bagType === "wafer" ? coldStorage.waferHammali : coldStorage.seedHammali) || 0;
         // For quintal mode: cold charge (per quintal) + hammali (per bag)
         // For bag mode: (coldCharge + hammali) × lot.size
         if (coldStorage.chargeUnit === "quintal") {

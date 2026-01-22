@@ -43,7 +43,7 @@ export function RatesCard({
               {formatRate(waferColdCharge, waferHammali, waferRate)}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">{t("wafer")}/{t("ration")}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("wafer")}</p>
           {hasSplitRates(waferColdCharge, waferHammali) && (
             <p className="text-xs text-muted-foreground mt-0.5">
               ({t("total")}: {waferRate})
@@ -57,7 +57,7 @@ export function RatesCard({
               {formatRate(seedColdCharge, seedHammali, seedRate)}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">{t("seed")}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("seed")}/{t("ration")}</p>
           {hasSplitRates(seedColdCharge, seedHammali) && (
             <p className="text-xs text-muted-foreground mt-0.5">
               ({t("total")}: {seedRate})

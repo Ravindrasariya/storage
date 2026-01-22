@@ -313,10 +313,10 @@ export default function StockRegister() {
     setShowFarmerNameSuggestions(false);
   };
 
-  // Helper to get rate for a lot based on bag type (Ration uses wafer rates)
+  // Helper to get rate for a lot based on bag type (Ration uses seed rates)
   const getRateForLot = (lot: Lot) => {
     if (!coldStorage) return 0;
-    const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
+    const useWaferRate = lot.bagType === "wafer";
     return useWaferRate ? coldStorage.waferRate : coldStorage.seedRate;
   };
 
@@ -360,7 +360,7 @@ export default function StockRegister() {
     
     // Calculate expected cold charges based on charge unit mode
     const expectedColdCharges = filteredResults.reduce((sum, lot) => {
-      const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
+      const useWaferRate = lot.bagType === "wafer";
       const coldChargeRate = useWaferRate 
         ? (coldStorage?.waferColdCharge || 0) 
         : (coldStorage?.seedColdCharge || 0);
@@ -441,7 +441,7 @@ export default function StockRegister() {
 
     const rows = lots.map(lot => {
       // Calculate expected cold charge based on charge unit mode
-      const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
+      const useWaferRate = lot.bagType === "wafer";
       const coldChargeRate = useWaferRate 
         ? (coldStorage?.waferColdCharge || 0) 
         : (coldStorage?.seedColdCharge || 0);
@@ -1062,7 +1062,7 @@ export default function StockRegister() {
               }
             }
             // Calculate expected cold charge based on charge unit mode
-            const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
+            const useWaferRate = lot.bagType === "wafer";
             const coldChargeRate = useWaferRate 
               ? (coldStorage?.waferColdCharge || 0) 
               : (coldStorage?.seedColdCharge || 0);
@@ -1307,11 +1307,11 @@ export default function StockRegister() {
                       <Currency 
                         amount={
                           ((editForm.netWeight * (
-                            selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration"
+                            selectedLot.bagType === "wafer"
                               ? coldStorage.waferColdCharge
                               : coldStorage.seedColdCharge
                           )) / 100) + 
-                          ((selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration"
+                          ((selectedLot.bagType === "wafer"
                               ? coldStorage.waferHammali
                               : coldStorage.seedHammali
                           ) * selectedLot.size)
@@ -1320,10 +1320,10 @@ export default function StockRegister() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    ({editForm.netWeight} {t("kg")} × <Currency amount={selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
+                    ({editForm.netWeight} {t("kg")} × <Currency amount={selectedLot.bagType === "wafer" 
                       ? coldStorage.waferColdCharge 
                       : coldStorage.seedColdCharge
-                    } />) / 100 + (<Currency amount={selectedLot.bagType === "wafer" || selectedLot.bagType === "Ration" 
+                    } />) / 100 + (<Currency amount={selectedLot.bagType === "wafer" 
                       ? coldStorage.waferHammali 
                       : coldStorage.seedHammali
                     } /> × {selectedLot.size} {t("bags")})
