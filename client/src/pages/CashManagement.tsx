@@ -950,6 +950,27 @@ export default function CashManagement() {
           tr.remarks || "",
           isReversed ? t("reversed") : t("active"),
         ];
+      } else if (transaction.type === "discount") {
+        const d = transaction.data as Discount;
+        const discountIsReversed = d.isReversed === 1;
+        // Parse buyer allocations for CSV
+        let allocationsStr = "";
+        try {
+          const allocations = JSON.parse(d.buyerAllocations);
+          allocationsStr = allocations.map((a: { buyerName: string; amount: number }) => `${a.buyerName}: ₹${a.amount}`).join("; ");
+        } catch { /* ignore */ }
+        return [
+          d.transactionId || "",
+          dateStr,
+          t("discount"),
+          `${d.farmerName} - ${d.village}`,
+          d.totalAmount.toString(),
+          t("discount"),
+          "",
+          "",
+          `${allocationsStr}${d.remarks ? ` | ${d.remarks}` : ""}`,
+          discountIsReversed ? t("reversed") : t("active"),
+        ];
       } else {
         const bt = transaction.data as SalesHistory;
         return [
