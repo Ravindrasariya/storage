@@ -361,14 +361,22 @@ export default function StockRegister() {
     // Calculate expected cold charges based on charge unit mode
     const expectedColdCharges = filteredResults.reduce((sum, lot) => {
       const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
-      const rate = useWaferRate 
-        ? (coldStorage?.waferRate || 0) 
-        : (coldStorage?.seedRate || 0);
-      // For quintal mode: use (netWeight × rate) / 100 since weight is in Kg and rate is per quintal
-      // For bag mode: use lot.size × rate
-      const lotCharge = coldStorage?.chargeUnit === "quintal"
-        ? (lot.netWeight ? (lot.netWeight * rate) / 100 : 0)
-        : lot.size * rate;
+      const coldChargeRate = useWaferRate 
+        ? (coldStorage?.waferColdCharge || 0) 
+        : (coldStorage?.seedColdCharge || 0);
+      const hammaliRate = useWaferRate
+        ? (coldStorage?.waferHammali || 0)
+        : (coldStorage?.seedHammali || 0);
+      // For quintal mode: cold charge (per quintal) + hammali (per bag)
+      // For bag mode: (coldCharge + hammali) × lot.size
+      let lotCharge: number;
+      if (coldStorage?.chargeUnit === "quintal") {
+        const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
+        const hammaliPerBag = lot.size * hammaliRate;
+        lotCharge = coldChargeQuintal + hammaliPerBag;
+      } else {
+        lotCharge = lot.size * (coldChargeRate + hammaliRate);
+      }
       return sum + lotCharge;
     }, 0);
     
@@ -434,12 +442,22 @@ export default function StockRegister() {
     const rows = lots.map(lot => {
       // Calculate expected cold charge based on charge unit mode
       const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
-      const rate = useWaferRate 
-        ? (coldStorage?.waferRate || 0) 
-        : (coldStorage?.seedRate || 0);
-      const expectedColdCharge = coldStorage?.chargeUnit === "quintal"
-        ? (lot.netWeight ? (lot.netWeight * rate) / 100 : 0)
-        : lot.size * rate;
+      const coldChargeRate = useWaferRate 
+        ? (coldStorage?.waferColdCharge || 0) 
+        : (coldStorage?.seedColdCharge || 0);
+      const hammaliRate = useWaferRate
+        ? (coldStorage?.waferHammali || 0)
+        : (coldStorage?.seedHammali || 0);
+      // For quintal mode: cold charge (per quintal) + hammali (per bag)
+      // For bag mode: (coldCharge + hammali) × lot.size
+      let expectedColdCharge: number;
+      if (coldStorage?.chargeUnit === "quintal") {
+        const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
+        const hammaliPerBag = lot.size * hammaliRate;
+        expectedColdCharge = coldChargeQuintal + hammaliPerBag;
+      } else {
+        expectedColdCharge = lot.size * (coldChargeRate + hammaliRate);
+      }
       
       const paidCharge = lot.totalPaidCharge || 0;
       const dueCharge = lot.totalDueCharge || 0;
@@ -1045,14 +1063,22 @@ export default function StockRegister() {
             }
             // Calculate expected cold charge based on charge unit mode
             const useWaferRate = lot.bagType === "wafer" || lot.bagType === "Ration";
-            const rate = useWaferRate 
-              ? (coldStorage?.waferRate || 0) 
-              : (coldStorage?.seedRate || 0);
-            // For quintal mode: use (netWeight × rate) / 100 since weight is in Kg and rate is per quintal
-            // For bag mode: use lot.size × rate
-            const expectedColdCharge = coldStorage?.chargeUnit === "quintal"
-              ? (lot.netWeight ? (lot.netWeight * rate) / 100 : 0)
-              : lot.size * rate;
+            const coldChargeRate = useWaferRate 
+              ? (coldStorage?.waferColdCharge || 0) 
+              : (coldStorage?.seedColdCharge || 0);
+            const hammaliRate = useWaferRate
+              ? (coldStorage?.waferHammali || 0)
+              : (coldStorage?.seedHammali || 0);
+            // For quintal mode: cold charge (per quintal) + hammali (per bag)
+            // For bag mode: (coldCharge + hammali) × lot.size
+            let expectedColdCharge: number;
+            if (coldStorage?.chargeUnit === "quintal") {
+              const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
+              const hammaliPerBag = lot.size * hammaliRate;
+              expectedColdCharge = coldChargeQuintal + hammaliPerBag;
+            } else {
+              expectedColdCharge = lot.size * (coldChargeRate + hammaliRate);
+            }
             return { lot, lotPaidCharge, lotDueCharge, expectedColdCharge };
           });
           

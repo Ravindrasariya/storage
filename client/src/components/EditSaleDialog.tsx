@@ -73,7 +73,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     
     const coldCharge = getEditableChargeValue(editColdCharge, sale.coldCharge || 0);
     const hammali = getEditableChargeValue(editHammali, sale.hammali || 0);
-    const ratePerUnit = coldCharge + hammali;
     
     const initialNetWeight = storedInitialNetWeightKg || 0;
     const actualBags = sale.quantitySold || 0;
@@ -82,19 +81,16 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     // Remaining bags at time of sale (stored when sale was recorded)
     // Falls back to originalLotSize for legacy records
     const remainingBags = sale.remainingSizeAtSale || sale.originalLotSize || 0;
+    const bagsToUse = storedChargeBasis === "totalRemaining" ? remainingBags : actualBags;
     
     if (isQuintalBased) {
-      // Quintal-based formulas:
-      // Actual: (Initial Net Weight (Kg) × Actual # Bags × rate) / (100 × Original # of bags)
-      // Remaining: (Initial Net Weight (Kg) × Remaining # Bags × rate) / (100 × Original # of bags)
-      const bagsToUse = storedChargeBasis === "totalRemaining" ? remainingBags : actualBags;
-      return (initialNetWeight * bagsToUse * ratePerUnit) / (100 * originalBags);
+      // Quintal-based formulas: cold charge (per quintal) + hammali (per bag)
+      const coldChargeQuintal = (initialNetWeight * bagsToUse * coldCharge) / (100 * originalBags);
+      const hammaliPerBag = hammali * bagsToUse;
+      return coldChargeQuintal + hammaliPerBag;
     } else {
-      // Bag-based formulas:
-      // Actual: Actual # of bags × rate
-      // Remaining: Remaining # of bags × rate
-      const bagsToUse = storedChargeBasis === "totalRemaining" ? remainingBags : actualBags;
-      return bagsToUse * ratePerUnit;
+      // Bag-based formulas: (coldCharge + hammali) × bagsToUse
+      return bagsToUse * (coldCharge + hammali);
     }
   };
 

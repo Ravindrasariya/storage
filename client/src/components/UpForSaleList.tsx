@@ -309,6 +309,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     return coldCharge + hammali;
   };
 
+  const getEditableColdCharge = (lot: SaleLotInfo) => {
+    const parsedColdCharge = parseFloat(editableColdCharge);
+    return Number.isFinite(parsedColdCharge) ? parsedColdCharge : lot.coldCharge;
+  };
+
+  const getEditableHammali = (lot: SaleLotInfo) => {
+    const parsedHammali = parseFloat(editableHammali);
+    return Number.isFinite(parsedHammali) ? parsedHammali : lot.hammali;
+  };
+
   // Get the quantity to use for charge calculation based on chargeBasis selection
   const getChargeQuantity = (lot: SaleLotInfo, actualQty?: number) => {
     if (chargeBasis === "totalRemaining") {
@@ -325,28 +335,40 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     
     const actualQty = quantity ?? lot.remainingSize;
     const chargeQty = useChargeBasis ? getChargeQuantity(lot, actualQty) : actualQty;
-    const rate = getEditableRate(lot);
+    const coldChargeRate = getEditableColdCharge(lot);
+    const hammaliRate = getEditableHammali(lot);
     
-    // For quintal mode: (Initial Net Weight (Kg) × Charge Qty × Rate per quintal) / (Original Bags × 100)
-    // For bag mode: Charge Qty × Rate
+    // For quintal mode: cold charge (per quintal) + hammali (per bag)
+    // For bag mode: (coldCharge + hammali) × chargeQty
     if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
-      return (lot.netWeight * chargeQty * rate) / (lot.originalSize * 100);
+      const coldChargeQuintal = (lot.netWeight * chargeQty * coldChargeRate) / (lot.originalSize * 100);
+      const hammaliPerBag = hammaliRate * chargeQty;
+      return coldChargeQuintal + hammaliPerBag;
     }
-    return rate * chargeQty;
+    return (coldChargeRate + hammaliRate) * chargeQty;
   };
 
   const calculateTotalCharge = (lot: SaleLotInfo, quantity?: number, customRate?: number) => {
     const actualQty = quantity ?? lot.remainingSize;
     const chargeQty = getChargeQuantity(lot, actualQty);
-    const rate = customRate ?? getEditableRate(lot);
+    const coldChargeRate = getEditableColdCharge(lot);
+    const hammaliRate = getEditableHammali(lot);
+    const rate = customRate ?? (coldChargeRate + hammaliRate);
     
     // Skip base charge if already paid (only extras apply)
     let baseCharge: number = 0;
     if (lot.baseColdChargesBilled !== 1) {
-      // For quintal mode: (Initial Net Weight (Kg) × Charge Qty × Rate per quintal) / (Original Bags × 100)
-      // For bag mode: Charge Qty × Rate
+      // For quintal mode: cold charge (per quintal) + hammali (per bag)
+      // For bag mode: (coldCharge + hammali) × chargeQty
       if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
-        baseCharge = (lot.netWeight * chargeQty * rate) / (lot.originalSize * 100);
+        // When customRate is provided, use it as combined rate for backward compatibility
+        if (customRate !== undefined) {
+          baseCharge = (lot.netWeight * chargeQty * rate) / (lot.originalSize * 100);
+        } else {
+          const coldChargeQuintal = (lot.netWeight * chargeQty * coldChargeRate) / (lot.originalSize * 100);
+          const hammaliPerBag = hammaliRate * chargeQty;
+          baseCharge = coldChargeQuintal + hammaliPerBag;
+        }
       } else {
         baseCharge = rate * chargeQty;
       }

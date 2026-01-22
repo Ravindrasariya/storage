@@ -260,25 +260,34 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
   const baseChargesTotal = (sale.coldStorageCharge || 0) - extras;
   
-  // Split base charges proportionally between cold charge and hammali based on their rates
+  // Split base charges between cold charge and hammali
+  // For quintal mode: cold charge is per quintal, hammali is per bag
+  // For bag mode: both are per bag
   let coldChargeAmount = 0;
   let hammaliAmount = 0;
   
-  if (hasSeparateCharges && sale.coldCharge && sale.hammali) {
-    const totalRate = (sale.coldCharge || 0) + (sale.hammali || 0);
-    if (totalRate > 0) {
-      coldChargeAmount = (baseChargesTotal * sale.coldCharge) / totalRate;
-      hammaliAmount = (baseChargesTotal * sale.hammali) / totalRate;
+  if (hasSeparateCharges && sale.coldCharge != null && sale.hammali != null) {
+    if (isQuintalBased) {
+      // In quintal mode: hammali = rate × bags, cold charge = total - hammali
+      hammaliAmount = (sale.hammali || 0) * bagsToUse;
+      coldChargeAmount = Math.max(0, baseChargesTotal - hammaliAmount);
     } else {
-      coldChargeAmount = baseChargesTotal;
-      hammaliAmount = 0;
+      // In bag mode: both calculated proportionally
+      const totalRate = (sale.coldCharge || 0) + (sale.hammali || 0);
+      if (totalRate > 0) {
+        coldChargeAmount = (baseChargesTotal * sale.coldCharge) / totalRate;
+        hammaliAmount = (baseChargesTotal * sale.hammali) / totalRate;
+      } else {
+        coldChargeAmount = baseChargesTotal;
+        hammaliAmount = 0;
+      }
     }
   } else {
     coldChargeAmount = baseChargesTotal;
     hammaliAmount = 0;
   }
   
-  // Calculate quintal value for display (derived from stored charges)
+  // Calculate quintal value for cold charges display (derived from stored charges)
   const quintalValue = isQuintalBased && sale.coldCharge && sale.coldCharge > 0
     ? (coldChargeAmount / sale.coldCharge).toFixed(2)
     : null;
@@ -358,9 +367,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 </tr>
                 <tr>
                   <td>
-                    हम्माली {isQuintalBased 
-                      ? `(${sale.hammali} रु./क्विंटल × ${quintalValue} क्विंटल)` 
-                      : `(${sale.hammali} रु./बोरी × ${bagsToUse} बोरी)`}
+                    हम्माली ({sale.hammali} रु./बोरी × {bagsToUse} बोरी)
                   </td>
                   <td className="amount">{Math.round(hammaliAmount).toLocaleString()}</td>
                 </tr>
@@ -492,9 +499,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 </tr>
                 <tr>
                   <td>
-                    हम्माली {isQuintalBased 
-                      ? `(${sale.hammali} रु./क्विंटल × ${quintalValue} क्विंटल)` 
-                      : `(${sale.hammali} रु./बोरी × ${bagsToUse} बोरी)`}
+                    हम्माली ({sale.hammali} रु./बोरी × {bagsToUse} बोरी)
                   </td>
                   <td className="amount">{Math.round(hammaliAmount).toLocaleString()}</td>
                 </tr>

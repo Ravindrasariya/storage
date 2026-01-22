@@ -665,8 +665,10 @@ export async function registerRoutes(
         // Base charges already billed in a previous sale, don't charge again
         storageCharge = 0;
       } else if (coldStorage?.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
-        // Quintal mode: (netWeight (Kg) × chargeQuantity × rate per quintal) / (originalSize × 100)
-        storageCharge = (lot.netWeight * chargeQuantity * rate) / (lot.size * 100);
+        // Quintal mode: cold charges (per quintal) + hammali (per bag)
+        const coldChargeQuintal = (lot.netWeight * chargeQuantity * coldChargeRate) / (lot.size * 100);
+        const hammaliPerBag = hammaliRate * chargeQuantity;
+        storageCharge = coldChargeQuintal + hammaliPerBag;
       } else {
         // Bag mode: chargeQuantity × rate
         storageCharge = chargeQuantity * rate;
@@ -2461,11 +2463,16 @@ export async function registerRoutes(
       // Note: "Ration" bagType uses wafer rates (same as UI logic)
       const calculateExpectedCharge = (lot: typeof lots[0]) => {
         if (!coldStorage) return 0;
-        const rate = (lot.bagType === "seed" ? coldStorage.seedColdCharge : coldStorage.waferColdCharge) || 0;
+        const coldChargeRate = (lot.bagType === "seed" ? coldStorage.seedColdCharge : coldStorage.waferColdCharge) || 0;
+        const hammaliRate = (lot.bagType === "seed" ? coldStorage.seedHammali : coldStorage.waferHammali) || 0;
+        // For quintal mode: cold charge (per quintal) + hammali (per bag)
+        // For bag mode: (coldCharge + hammali) × lot.size
         if (coldStorage.chargeUnit === "quintal") {
-          return lot.netWeight ? (lot.netWeight * rate) / 100 : 0;
+          const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
+          const hammaliPerBag = lot.size * hammaliRate;
+          return coldChargeQuintal + hammaliPerBag;
         }
-        return lot.size * rate;
+        return lot.size * (coldChargeRate + hammaliRate);
       };
 
       // Column headers (English / Hindi)

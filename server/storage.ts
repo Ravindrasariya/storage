@@ -1179,8 +1179,10 @@ export class DatabaseStorage implements IStorage {
     if (lot.baseColdChargesBilled === 1) {
       saleCharge = 0;
     } else if (coldStorage.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
-      // Quintal mode: (netWeight × remainingSize × rate) / (originalSize × 100)
-      saleCharge = (lot.netWeight * lot.remainingSize * rate) / (lot.size * 100);
+      // Quintal mode: cold charges (per quintal) + hammali (per bag)
+      const coldChargeQuintal = (lot.netWeight * lot.remainingSize * coldChargeRate) / (lot.size * 100);
+      const hammaliPerBag = hammaliRate * lot.remainingSize;
+      saleCharge = coldChargeQuintal + hammaliPerBag;
     } else {
       // Bag mode
       saleCharge = rate * lot.remainingSize;

@@ -72,12 +72,16 @@ Core entities:
 - Context fields recorded at sale time and shown as non-editable: chargeBasis, initialNetWeightKg, remainingSizeAtSale
 - If baseChargeAmountAtSale = 0, base charge fields are disabled (already billed) with "Already Billed" badge
 - Charge formulas use stored context:
-  - Quintal mode: (initialNetWeightKg × bagsToUse × rate) / (100 × originalLotSize)
-  - Bag mode: bagsToUse × rate
+  - **Quintal mode** (split calculation):
+    - Cold charges (per quintal): (initialNetWeightKg × bagsToUse × coldChargeRate) / (100 × originalLotSize)
+    - Hammali (per bag): hammaliRate × bagsToUse
+    - Total base charge: sum of cold charges + hammali
+  - **Bag mode**: (coldChargeRate + hammaliRate) × bagsToUse
   - bagsToUse = quantitySold (actual basis) or remainingSizeAtSale (totalRemaining basis)
 - Extras (Kata, Extra Hammali, Grading) always added on top of base charge calculation
 - FIFO recalculation triggered after charge edits using CurrentDueBuyerName logic
 - Note: lots.netWeight is stored in KG (not quintals)
+- Print bills display cold charges and hammali as separate line items (hammali always shows per bag unit)
 
 ### Extra Due to Merchant (extraDueToMerchant)
 - Separate field for buyer-specific surcharges charged by merchant
