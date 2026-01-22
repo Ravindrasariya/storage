@@ -42,7 +42,7 @@ Core entities:
 - **coldStorages**: Configuration for each cold storage facility (includes bill number counters, address fields: address, tehsil, district, state, pincode)
 - **coldStorageUsers**: Users who can access a cold storage (name, mobileNumber, password, accessType: view/edit)
 - **chambers**: Storage chambers within a facility with capacity tracking
-- **lots**: Farmer lot entries with location, quality, and bag information
+- **lots**: Farmer lot entries with location, quality, bag information, and optional bagTypeLabel for custom bag descriptions (e.g., "50kg", "Jute")
 - **lotEditHistory**: Audit trail for lot modifications and partial sales
 - **salesHistory**: Complete sales records with unique bill numbers (coldStorageBillNumber, salesBillNumber)
 - **exitEntries**: Exit/Nikasi entries with unique bill numbers
