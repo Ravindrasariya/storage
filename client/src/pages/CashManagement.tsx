@@ -1074,7 +1074,7 @@ export default function CashManagement() {
       </div>
 
       {/* Balance Cards - Row 1: Account Balances */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
         <Card data-testid="stat-cash-in-hand">
           <CardContent className="p-2">
             <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
