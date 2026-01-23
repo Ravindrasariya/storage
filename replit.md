@@ -113,6 +113,18 @@ Core entities:
 - CSV export includes transactionId as first column
 - Database fields: cashReceipts.transactionId, expenses.transactionId, cashTransfers.transactionId
 
+### Due After Tracking
+- Tracks remaining buyer/farmer dues after each cash receipt or discount transaction
+- Database fields: cashReceipts.dueBalanceAfter, discounts.dueBalanceAfter
+- Calculation method (for cold_merchant receipts):
+  - salesHistory dues using CurrentDueBuyerName logic (COALESCE(transferToBuyerName, buyerName))
+  - extraDueToMerchant by original buyerName
+  - openingReceivables for cold_merchant type in current year
+- For discounts: tracks remaining farmer dues after discount allocation
+- Display: Badge in transaction list, row in payment details dialog
+- CSV export: "Due After" column included between "Payer Type" and "Remarks"
+- Note: Existing records (created before feature) have dueBalanceAfter=null; only new transactions populate this field
+
 ### Start-of-Year Settings
 - Settings button in Cash Management header (edit access only)
 - Two tabs: Opening Balances and Receivables
