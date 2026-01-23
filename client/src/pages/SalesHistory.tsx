@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut, ArrowLeftRight } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut, ArrowLeftRight, Download, Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 import { EditSaleDialog } from "@/components/EditSaleDialog";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { ExitDialog } from "@/components/ExitDialog";
@@ -41,7 +43,10 @@ function loadSavedFilters() {
 }
 
 export default function SalesHistoryPage() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const [isExporting, setIsExporting] = useState(false);
   
   // Load persisted filters or use defaults
   const savedFilters = loadSavedFilters();
@@ -189,6 +194,76 @@ export default function SalesHistoryPage() {
 
   const hasActiveFilters = yearFilter || farmerFilter || selectedFarmerVillage || mobileFilter || paymentFilter || buyerFilter;
 
+  // Download function for sales export
+  const getDownloadToken = async (): Promise<string | null> => {
+    if (!token) return null;
+    try {
+      const response = await fetch("/api/export/token", {
+        method: "POST",
+        headers: { "x-auth-token": token },
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.downloadToken;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleExportSales = async () => {
+    setIsExporting(true);
+    try {
+      const downloadToken = await getDownloadToken();
+      if (!downloadToken) {
+        toast({
+          title: language === "hi" ? "डाउनलोड विफल" : "Download Failed",
+          description: language === "hi" ? "कृपया पुनः प्रयास करें" : "Please try again",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Use selected year for date range, or wide range (2000-2099) if no year filter
+      let fromDate: string;
+      let toDate: string;
+      if (yearFilter && yearFilter !== "all") {
+        const selectedYear = parseInt(yearFilter, 10);
+        fromDate = format(new Date(selectedYear, 0, 1), "yyyy-MM-dd");
+        toDate = format(new Date(selectedYear, 11, 31), "yyyy-MM-dd");
+      } else {
+        // No year filter - use wide date range to export all years
+        fromDate = "2000-01-01";
+        toDate = "2099-12-31";
+      }
+      
+      // Build URL with all filters
+      const params = new URLSearchParams();
+      params.append("fromDate", fromDate);
+      params.append("toDate", toDate);
+      params.append("language", language);
+      params.append("downloadToken", downloadToken);
+      
+      // Add filter parameters
+      if (yearFilter && yearFilter !== "all") params.append("year", yearFilter);
+      if (farmerFilter) params.append("farmerName", farmerFilter);
+      if (selectedFarmerVillage) params.append("village", selectedFarmerVillage);
+      if (selectedFarmerMobile) params.append("contactNumber", selectedFarmerMobile);
+      else if (mobileFilter) params.append("contactNumber", mobileFilter);
+      if (buyerFilter) params.append("buyerName", buyerFilter);
+      if (paymentFilter && paymentFilter !== "all") params.append("paymentStatus", paymentFilter);
+      
+      const url = `/api/export/sales?${params.toString()}`;
+      window.open(url, "_blank");
+      
+      toast({
+        title: language === "hi" ? "डाउनलोड शुरू" : "Download Started",
+        description: language === "hi" ? "बिक्री इतिहास" : "Sales History",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Calculate summary totals from filtered data
   // Use paidAmount from sale, calculate due as remainder to ensure consistency
   // Fetch exits summary for the year filter
@@ -224,10 +299,25 @@ export default function SalesHistoryPage() {
 
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            {t("filters")}
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              {t("filters")}
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleExportSales}
+              disabled={isExporting}
+              data-testid="button-export-sales"
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">

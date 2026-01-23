@@ -7,7 +7,6 @@ import { RatesCard } from "@/components/RatesCard";
 import { UpForSaleList } from "@/components/UpForSaleList";
 import { Warehouse, BarChart3, Users, Package, Boxes } from "lucide-react";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { ExportDialog } from "@/components/ExportDialog";
 import type { DashboardStats, ColdStorage } from "@shared/schema";
 
 export default function Dashboard() {
@@ -53,7 +52,6 @@ export default function Dashboard() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <ExportDialog />
           <SettingsDialog />
         </div>
       </div>

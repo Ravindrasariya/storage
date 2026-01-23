@@ -2694,11 +2694,26 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const { fromDate, toDate, language } = exportQuerySchema.parse(req.query);
       
+      // Parse additional optional filter parameters
+      const year = req.query.year as string | undefined;
+      const farmerName = req.query.farmerName as string | undefined;
+      const village = req.query.village as string | undefined;
+      const contactNumber = req.query.contactNumber as string | undefined;
+      const buyerName = req.query.buyerName as string | undefined;
+      const paymentStatus = req.query.paymentStatus as string | undefined;
+      
       const from = new Date(fromDate);
       const to = new Date(toDate);
       to.setHours(23, 59, 59, 999);
 
-      const sales = await storage.getSalesForExport(coldStorageId, from, to);
+      const sales = await storage.getSalesForExport(coldStorageId, from, to, {
+        year,
+        farmerName,
+        village,
+        contactNumber,
+        buyerName,
+        paymentStatus,
+      });
 
       // "Potato Type" = wafer/seed/Ration classification, "Bag Type" = custom label (bagTypeLabel)
       const headers = language === "hi"

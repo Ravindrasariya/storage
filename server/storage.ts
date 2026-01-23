@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, or, like, ilike, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, or, like, ilike, desc, sql, gte, lte, type SQL } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -232,7 +232,7 @@ export interface IStorage {
   updateSessionLastAccess(token: string): Promise<void>;
   // Export
   getLotsForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<Lot[]>;
-  getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<SalesHistory[]>;
+  getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date, filters?: { year?: string; farmerName?: string; village?: string; contactNumber?: string; buyerName?: string; paymentStatus?: string }): Promise<SalesHistory[]>;
   getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[]; transfers: CashTransfer[] }>;
   // Farmer lookup for auto-complete
   getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]>;
@@ -3010,16 +3010,47 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(lots.createdAt));
   }
 
-  async getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<SalesHistory[]> {
+  async getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date, filters?: { year?: string; farmerName?: string; village?: string; contactNumber?: string; buyerName?: string; paymentStatus?: string }): Promise<SalesHistory[]> {
+    const conditions: SQL[] = [eq(salesHistory.coldStorageId, coldStorageId)];
+    
+    // If year filter is provided and not "all", filter by year instead of date range
+    if (filters?.year && filters.year !== "all") {
+      const yearNum = parseInt(filters.year, 10);
+      const yearStart = new Date(yearNum, 0, 1);
+      const yearEnd = new Date(yearNum, 11, 31, 23, 59, 59, 999);
+      conditions.push(gte(salesHistory.soldAt, yearStart));
+      conditions.push(lte(salesHistory.soldAt, yearEnd));
+    } else {
+      // Use date range filter
+      conditions.push(gte(salesHistory.soldAt, fromDate));
+      conditions.push(lte(salesHistory.soldAt, toDate));
+    }
+    
+    // Apply optional filters
+    if (filters?.farmerName) {
+      conditions.push(ilike(salesHistory.farmerName, `%${filters.farmerName}%`));
+    }
+    if (filters?.village) {
+      conditions.push(eq(salesHistory.village, filters.village));
+    }
+    if (filters?.contactNumber) {
+      conditions.push(eq(salesHistory.contactNumber, filters.contactNumber));
+    }
+    if (filters?.buyerName) {
+      conditions.push(ilike(salesHistory.buyerName, `%${filters.buyerName}%`));
+    }
+    if (filters?.paymentStatus) {
+      if (filters.paymentStatus === "paid") {
+        conditions.push(eq(salesHistory.paymentStatus, "paid"));
+      } else if (filters.paymentStatus === "due") {
+        const dueCondition = or(eq(salesHistory.paymentStatus, "due"), eq(salesHistory.paymentStatus, "partial"));
+        if (dueCondition) conditions.push(dueCondition);
+      }
+    }
+    
     return db.select()
       .from(salesHistory)
-      .where(
-        and(
-          eq(salesHistory.coldStorageId, coldStorageId),
-          gte(salesHistory.soldAt, fromDate),
-          lte(salesHistory.soldAt, toDate)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(desc(salesHistory.soldAt));
   }
 
