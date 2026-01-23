@@ -1615,8 +1615,8 @@ export default function CashManagement() {
             )}
           </div>
 
-          {/* Row 1: Transaction Type, Payment Mode, Month */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Row 1: Transaction Type, Payment Mode, Month, Year */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("transactionType")}</Label>
               <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense" | "self" | "buyerTransfer")}>
