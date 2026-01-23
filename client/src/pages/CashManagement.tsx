@@ -3305,6 +3305,9 @@ export default function CashManagement() {
                             {r.buyerName && <span className="text-sm font-medium">{r.buyerName}</span>}
                           </div>
                           {r.remarks && <p className="text-xs text-muted-foreground">{r.remarks}</p>}
+                          <p className="text-xs text-muted-foreground">
+                            {t("addedOn")}: {format(new Date(r.createdAt), "dd/MM/yyyy")}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-green-600">₹{r.dueAmount.toLocaleString()}</span>
