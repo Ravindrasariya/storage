@@ -2606,9 +2606,10 @@ export async function registerRoutes(
       };
 
       // Column headers (English / Hindi)
+      // "Potato Type" = wafer/seed/Ration classification, "Potato Variety" = CS1/CS3/etc., "Bag Type" = custom label (bagTypeLabel)
       const headers = language === "hi" 
-        ? ["तारीख", "लॉट नंबर", "किसान का नाम", "मोबाइल", "गाँव", "तहसील", "जिला", "राज्य", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "कुल बोरे", "बचे हुए बोरे", "आलू का प्रकार", "गुणवत्ता", "आलू का आकार", "प्रारंभिक नेट वजन (Kg)", "अपेक्षित कोल्ड शुल्क", "भुगतान किया गया शुल्क", "बकाया शुल्क", "बेस कोल्ड चार्ज बिल्ड", "टिप्पणी", "स्थिति"]
-        : ["Date", "Lot #", "Farmer Name", "Mobile", "Village", "Tehsil", "District", "State", "Chamber", "Floor", "Position", "Bag Type", "Total Bags", "Remaining Bags", "Potato Type", "Quality", "Potato Size", "Initial Net Weight (Kg)", "Expected Cold Charges", "Charges Paid", "Charges Due", "Base Cold Charges Billed", "Remarks", "Status"];
+        ? ["तारीख", "लॉट नंबर", "किसान का नाम", "मोबाइल", "गाँव", "तहसील", "जिला", "राज्य", "चैम्बर", "फ्लोर", "पोजीशन", "आलू प्रकार", "बैग का प्रकार", "कुल बोरे", "बचे हुए बोरे", "आलू किस्म", "गुणवत्ता", "आलू का आकार", "प्रारंभिक नेट वजन (Kg)", "अपेक्षित कोल्ड शुल्क", "भुगतान किया गया शुल्क", "बकाया शुल्क", "बेस कोल्ड चार्ज बिल्ड", "टिप्पणी", "स्थिति"]
+        : ["Date", "Lot #", "Farmer Name", "Mobile", "Village", "Tehsil", "District", "State", "Chamber", "Floor", "Position", "Potato Type", "Bag Type", "Total Bags", "Remaining Bags", "Potato Variety", "Quality", "Potato Size", "Initial Net Weight (Kg)", "Expected Cold Charges", "Charges Paid", "Charges Due", "Base Cold Charges Billed", "Remarks", "Status"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
@@ -2633,6 +2634,7 @@ export async function registerRoutes(
           lot.floor,
           lot.position,
           lot.bagType,
+          lot.bagTypeLabel || "",
           lot.size,
           lot.remainingSize,
           lot.type,
@@ -2674,9 +2676,10 @@ export async function registerRoutes(
 
       const sales = await storage.getSalesForExport(coldStorageId, from, to);
 
+      // "Potato Type" = wafer/seed/Ration classification, "Bag Type" = custom label (bagTypeLabel)
       const headers = language === "hi"
-        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "ट्रांसफर टू खरीदार", "चैम्बर", "फ्लोर", "पोजीशन", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "कुल हम्माली", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "व्यापारी को हम्माली", "व्यापारी को ग्रेडिंग", "व्यापारी को अन्य", "व्यापारी अतिरिक्त बकाया", "नेट वजन (Kg)", "दर/Kg"]
-        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Transfer To Buyer", "Chamber", "Floor", "Position", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Total Hammali", "Payment Status", "Paid Amount", "Due Amount", "Hammali To Merchant", "Grading To Merchant", "Other To Merchant", "Total Extra Due To Merchant", "Net Weight (Kg)", "Rate/Kg"];
+        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "ट्रांसफर टू खरीदार", "चैम्बर", "फ्लोर", "पोजीशन", "आलू प्रकार", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कोल्ड स्टोरेज चार्ज", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "कुल चार्ज", "कुल हम्माली", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "व्यापारी को हम्माली", "व्यापारी को ग्रेडिंग", "व्यापारी को अन्य", "व्यापारी अतिरिक्त बकाया", "नेट वजन (Kg)", "दर/Kg"]
+        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Transfer To Buyer", "Chamber", "Floor", "Position", "Potato Type", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Cold Storage Charge", "Kata Charges", "Extra Hammali", "Grading Charges", "Total Charges", "Total Hammali", "Payment Status", "Paid Amount", "Due Amount", "Hammali To Merchant", "Grading To Merchant", "Other To Merchant", "Total Extra Due To Merchant", "Net Weight (Kg)", "Rate/Kg"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
@@ -2711,6 +2714,7 @@ export async function registerRoutes(
           sale.floor,
           sale.position,
           sale.bagType,
+          sale.bagTypeLabel || "",
           sale.originalLotSize,
           sale.quantitySold,
           sale.coldCharge || "",
