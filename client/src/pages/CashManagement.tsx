@@ -173,6 +173,7 @@ export default function CashManagement() {
   const [filterExpenseType, setFilterExpenseType] = useState<string>("");
   const [filterRemarks, setFilterRemarks] = useState<string>("");
   const [filterMonth, setFilterMonth] = useState<string>("");
+  const [filterYear, setFilterYear] = useState<string>("");
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionItem | null>(null);
 
   // Settings dialog state
@@ -1042,6 +1043,14 @@ export default function CashManagement() {
       });
     }
     
+    // Year filter for receipts
+    if (filterYear) {
+      filteredReceipts = filteredReceipts.filter(r => {
+        const date = new Date(r.receivedAt);
+        return format(date, "yyyy") === filterYear;
+      });
+    }
+    
     // Remarks filter for receipts
     if (filterRemarks) {
       const searchKey = filterRemarks.trim().toLowerCase();
@@ -1073,6 +1082,14 @@ export default function CashManagement() {
       });
     }
     
+    // Year filter for expenses
+    if (filterYear) {
+      filteredExpenses = filteredExpenses.filter(e => {
+        const date = new Date(e.paidAt);
+        return format(date, "yyyy") === filterYear;
+      });
+    }
+    
     // Remarks filter for expenses
     if (filterRemarks) {
       const searchKey = filterRemarks.trim().toLowerCase();
@@ -1090,6 +1107,14 @@ export default function CashManagement() {
       });
     }
     
+    // Year filter for transfers
+    if (filterYear) {
+      filteredTransfers = filteredTransfers.filter(t => {
+        const date = new Date(t.transferredAt);
+        return format(date, "yyyy") === filterYear;
+      });
+    }
+    
     // Remarks filter for transfers
     if (filterRemarks) {
       const searchKey = filterRemarks.trim().toLowerCase();
@@ -1097,11 +1122,13 @@ export default function CashManagement() {
     }
 
     // Apply transaction type filter
-    const includeInward = filterTransactionType === "all" || filterTransactionType === "inward";
-    const includeExpense = filterTransactionType === "all" || filterTransactionType === "expense";
-    const includeTransfer = filterTransactionType === "all" || filterTransactionType === "self";
-    const includeBuyerTransfer = filterTransactionType === "all" || filterTransactionType === "buyerTransfer";
-    const includeDiscount = filterTransactionType === "all" || filterTransactionType === "expense"; // Show discounts with expenses
+    // When filterPaymentMode is "discount", only show discounts
+    const isDiscountFilterOnly = filterPaymentMode === "discount";
+    const includeInward = !isDiscountFilterOnly && (filterTransactionType === "all" || filterTransactionType === "inward");
+    const includeExpense = !isDiscountFilterOnly && (filterTransactionType === "all" || filterTransactionType === "expense");
+    const includeTransfer = !isDiscountFilterOnly && (filterTransactionType === "all" || filterTransactionType === "self");
+    const includeBuyerTransfer = !isDiscountFilterOnly && (filterTransactionType === "all" || filterTransactionType === "buyerTransfer");
+    const includeDiscount = isDiscountFilterOnly || filterTransactionType === "all" || filterTransactionType === "expense"; // Show discounts with expenses or when discount filter selected
 
     // Apply filters to buyer transfers
     let filteredBuyerTransfers = buyerTransfers;
@@ -1111,6 +1138,14 @@ export default function CashManagement() {
       filteredBuyerTransfers = filteredBuyerTransfers.filter(bt => {
         const date = new Date(bt.transferDate || bt.soldAt);
         return format(date, "yyyy-MM") === filterMonth;
+      });
+    }
+    
+    // Year filter for buyer transfers
+    if (filterYear) {
+      filteredBuyerTransfers = filteredBuyerTransfers.filter(bt => {
+        const date = new Date(bt.transferDate || bt.soldAt);
+        return format(date, "yyyy") === filterYear;
       });
     }
     
@@ -1151,7 +1186,20 @@ export default function CashManagement() {
         data: bt, 
         timestamp: getTimestamp(bt.transferDate || bt.soldAt)
       })) : []),
-      ...(includeDiscount ? discountsList.filter(d => d.isReversed !== 1).map(d => ({ 
+      ...(includeDiscount ? discountsList.filter(d => {
+        if (d.isReversed === 1) return false;
+        // Apply month filter
+        if (filterMonth) {
+          const date = new Date(d.discountDate);
+          if (format(date, "yyyy-MM") !== filterMonth) return false;
+        }
+        // Apply year filter
+        if (filterYear) {
+          const date = new Date(d.discountDate);
+          if (format(date, "yyyy") !== filterYear) return false;
+        }
+        return true;
+      }).map(d => ({ 
         type: "discount" as const, 
         data: d, 
         timestamp: getTimestamp(d.discountDate)
@@ -1197,7 +1245,7 @@ export default function CashManagement() {
       if (timeDiff !== 0) return timeDiff;
       return String(b.data.id).localeCompare(String(a.data.id));
     });
-  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
+  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
 
   const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers || loadingDiscounts;
 
@@ -1230,7 +1278,20 @@ export default function CashManagement() {
     return Array.from(months).sort().reverse();
   }, [receipts, expensesList]);
 
-  const hasActiveFilters = filterTransactionType !== "all" || filterPaymentMode || filterPayerType || filterBuyer || filterExpenseType || filterRemarks || filterMonth;
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    receipts.forEach(r => {
+      const date = new Date(r.receivedAt);
+      years.add(format(date, "yyyy"));
+    });
+    expensesList.forEach(e => {
+      const date = new Date(e.paidAt);
+      years.add(format(date, "yyyy"));
+    });
+    return Array.from(years).sort().reverse();
+  }, [receipts, expensesList]);
+
+  const hasActiveFilters = filterTransactionType !== "all" || filterPaymentMode || filterPayerType || filterBuyer || filterExpenseType || filterRemarks || filterMonth || filterYear;
 
   const clearFilters = () => {
     setFilterTransactionType("all");
@@ -1241,6 +1302,7 @@ export default function CashManagement() {
     setFilterExpenseType("");
     setFilterRemarks("");
     setFilterMonth("");
+    setFilterYear("");
   };
 
   const filteredBuyerOptions = useMemo(() => {
@@ -1382,6 +1444,21 @@ export default function CashManagement() {
       });
     }
 
+    if (filterYear) {
+      filteredReceipts = filteredReceipts.filter(r => {
+        const date = new Date(r.receivedAt);
+        return format(date, "yyyy") === filterYear;
+      });
+      filteredExpenses = filteredExpenses.filter(e => {
+        const date = new Date(e.paidAt);
+        return format(date, "yyyy") === filterYear;
+      });
+      filteredTransfers = filteredTransfers.filter(t => {
+        const date = new Date(t.transferredAt);
+        return format(date, "yyyy") === filterYear;
+      });
+    }
+
     if (filterRemarks) {
       const searchKey = filterRemarks.trim().toLowerCase();
       filteredReceipts = filteredReceipts.filter(r => r.notes && r.notes.toLowerCase().includes(searchKey));
@@ -1403,7 +1480,7 @@ export default function CashManagement() {
       totalExpense,
       totalTransfer,
     };
-  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth]);
+  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
 
   return (
     <div className="container mx-auto p-4 max-w-4xl overflow-x-hidden">
@@ -1567,6 +1644,7 @@ export default function CashManagement() {
                   <SelectItem value="cash">{t("cash")}</SelectItem>
                   <SelectItem value="limit">{t("limitAccount")}</SelectItem>
                   <SelectItem value="current">{t("currentAccount")}</SelectItem>
+                  <SelectItem value="discount">{t("discount")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1582,6 +1660,23 @@ export default function CashManagement() {
                   {availableMonths.map((month) => (
                     <SelectItem key={month} value={month}>
                       {format(new Date(month + "-01"), "MMM yyyy")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{t("filterByYear")}</Label>
+              <Select value={filterYear || "all"} onValueChange={(v) => setFilterYear(v === "all" ? "" : v)}>
+                <SelectTrigger data-testid="select-filter-year" className="h-8 text-sm">
+                  <SelectValue placeholder={t("allYears")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allYears")}</SelectItem>
+                  {availableYears.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1776,7 +1871,7 @@ export default function CashManagement() {
             {activeTab === "inward" ? (
               <>
                 <div className="space-y-2">
-                  <Label>{t("receiptType")} *</Label>
+                  <Label>{t("paymentMode")} *</Label>
                   <Select value={receiptType} onValueChange={(v) => setReceiptType(v as "cash" | "account")}>
                     <SelectTrigger data-testid="select-receipt-type">
                       <SelectValue />
