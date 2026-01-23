@@ -901,6 +901,7 @@ export default function CashManagement() {
       "Payment Mode",
       "Account Type",
       "Payer Type",
+      "Due After",
       "Remarks",
       "Status",
     ];
@@ -911,6 +912,9 @@ export default function CashManagement() {
       
       if (transaction.type === "inflow") {
         const r = transaction.data as CashReceipt;
+        const dueAfterStr = r.payerType === "cold_merchant" && r.dueBalanceAfter !== null && r.dueBalanceAfter !== undefined 
+          ? r.dueBalanceAfter.toString() 
+          : "";
         return [
           r.transactionId || "",
           dateStr,
@@ -920,6 +924,7 @@ export default function CashManagement() {
           r.receiptType === "cash" ? t("cash") : t("account"),
           r.receiptType === "account" ? (r.accountType === "limit" ? t("limitAccount") : t("currentAccount")) : "",
           getPayerTypeLabel(r.payerType),
+          dueAfterStr,
           r.notes || "",
           isReversed ? t("reversed") : t("active"),
         ];
@@ -933,6 +938,7 @@ export default function CashManagement() {
           e.amount.toString(),
           e.paymentMode === "cash" ? t("cash") : t("account"),
           e.paymentMode === "account" ? (e.accountType === "limit" ? t("limitAccount") : t("currentAccount")) : "",
+          "",
           "",
           e.remarks || "",
           isReversed ? t("reversed") : t("active"),
@@ -948,12 +954,16 @@ export default function CashManagement() {
           t("transfer"),
           "",
           "",
+          "",
           tr.remarks || "",
           isReversed ? t("reversed") : t("active"),
         ];
       } else if (transaction.type === "discount") {
         const d = transaction.data as Discount;
         const discountIsReversed = d.isReversed === 1;
+        const dueAfterStr = d.dueBalanceAfter !== null && d.dueBalanceAfter !== undefined 
+          ? d.dueBalanceAfter.toString() 
+          : "";
         // Parse buyer allocations for CSV
         let allocationsStr = "";
         try {
@@ -969,6 +979,7 @@ export default function CashManagement() {
           t("discount"),
           "",
           "",
+          dueAfterStr,
           `${allocationsStr}${d.remarks ? ` | ${d.remarks}` : ""}`,
           discountIsReversed ? t("reversed") : t("active"),
         ];
@@ -981,6 +992,7 @@ export default function CashManagement() {
           `${bt.buyerName} → ${bt.transferToBuyerName}`,
           (bt.dueAmount || 0).toString(),
           t("liabilityTransfer"),
+          "",
           "",
           "",
           bt.transferRemarks || "",
@@ -2758,7 +2770,7 @@ export default function CashManagement() {
                             )}
                           </div>
                         </div>
-                        {/* Row 2: Date + Payment Mode */}
+                        {/* Row 2: Date + Payment Mode + Due After */}
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
                           {transaction.type !== "transfer" && transaction.type !== "buyerTransfer" && transaction.type !== "discount" && (
@@ -2782,6 +2794,17 @@ export default function CashManagement() {
                             <span className="text-amber-600">
                               {(transaction.data as Discount).village}
                             </span>
+                          )}
+                          {/* Due After for cold_merchant receipts and discounts */}
+                          {transaction.type === "inflow" && (transaction.data as CashReceipt).payerType === "cold_merchant" && (transaction.data as CashReceipt).dueBalanceAfter !== null && (transaction.data as CashReceipt).dueBalanceAfter !== undefined && (
+                            <Badge variant="outline" className="text-xs py-0 h-5 ml-auto bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300">
+                              {t("dueAfter") || "Due After"}: ₹{((transaction.data as CashReceipt).dueBalanceAfter || 0).toLocaleString()}
+                            </Badge>
+                          )}
+                          {transaction.type === "discount" && (transaction.data as Discount).dueBalanceAfter !== null && (transaction.data as Discount).dueBalanceAfter !== undefined && (
+                            <Badge variant="outline" className="text-xs py-0 h-5 ml-auto bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300">
+                              {t("dueAfter") || "Due After"}: ₹{((transaction.data as Discount).dueBalanceAfter || 0).toLocaleString()}
+                            </Badge>
                           )}
                         </div>
                       </div>
@@ -2883,6 +2906,13 @@ export default function CashManagement() {
                       <span className="text-muted-foreground">Date:</span>
                       <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
                     </div>
+                    {/* Due After for cold_merchant receipts */}
+                    {(selectedTransaction.data as CashReceipt).payerType === "cold_merchant" && (selectedTransaction.data as CashReceipt).dueBalanceAfter !== null && (selectedTransaction.data as CashReceipt).dueBalanceAfter !== undefined && (
+                      <div className="flex justify-between bg-orange-50 dark:bg-orange-950/30 rounded px-2 py-1 -mx-2">
+                        <span className="text-orange-700 dark:text-orange-300 font-medium">{t("dueAfter")}:</span>
+                        <span className="font-bold text-orange-700 dark:text-orange-300">₹{((selectedTransaction.data as CashReceipt).dueBalanceAfter || 0).toLocaleString()}</span>
+                      </div>
+                    )}
                     {(selectedTransaction.data as CashReceipt).notes && (
                       <div className="pt-2 border-t">
                         <span className="text-muted-foreground text-sm">{t("notes")}:</span>
@@ -2987,6 +3017,13 @@ export default function CashManagement() {
                         })()}
                       </div>
                     </div>
+                    {/* Due After for discounts */}
+                    {(selectedTransaction.data as Discount).dueBalanceAfter !== null && (selectedTransaction.data as Discount).dueBalanceAfter !== undefined && (
+                      <div className="flex justify-between bg-orange-50 dark:bg-orange-950/30 rounded px-2 py-1 -mx-2">
+                        <span className="text-orange-700 dark:text-orange-300 font-medium">{t("dueAfter")}:</span>
+                        <span className="font-bold text-orange-700 dark:text-orange-300">₹{((selectedTransaction.data as Discount).dueBalanceAfter || 0).toLocaleString()}</span>
+                      </div>
+                    )}
                     {(selectedTransaction.data as Discount).remarks && (
                       <div className="pt-2 border-t">
                         <span className="text-muted-foreground text-sm">{t("remarks")}:</span>

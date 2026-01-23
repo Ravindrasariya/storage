@@ -450,6 +450,7 @@ const translations: Translations = {
   receivableAdded: { en: "Receivable added successfully", hi: "प्राप्य सफलतापूर्वक जोड़ा गया" },
   receivableDeleted: { en: "Receivable deleted", hi: "प्राप्य हटाया गया" },
   addedOn: { en: "Added on", hi: "जोड़ा गया" },
+  dueAfter: { en: "Due After", hi: "बाद में बकाया" },
   payableAdded: { en: "Payable added successfully", hi: "देय सफलतापूर्वक जोड़ा गया" },
   payableDeleted: { en: "Payable deleted", hi: "देय हटाया गया" },
   noReceivables: { en: "No receivables added for this year", hi: "इस वर्ष के लिए कोई प्राप्य नहीं जोड़ा गया" },

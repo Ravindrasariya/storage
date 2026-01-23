@@ -242,6 +242,7 @@ export const cashReceipts = pgTable("cash_receipts", {
   receivedAt: timestamp("received_at").notNull(),
   appliedAmount: real("applied_amount").notNull().default(0), // Amount applied to sales
   unappliedAmount: real("unapplied_amount").notNull().default(0), // Remaining amount not yet applied
+  dueBalanceAfter: real("due_balance_after"), // Remaining dues for this buyer after this transaction (for cold_merchant type)
   notes: text("notes"),
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),
@@ -340,6 +341,7 @@ export const discounts = pgTable("discounts", {
   remarks: text("remarks"),
   // Buyer allocations stored as JSON array: [{buyerName, amount}]
   buyerAllocations: text("buyer_allocations").notNull(), // JSON string of allocations
+  dueBalanceAfter: real("due_balance_after"), // Remaining farmer dues after this discount
   // Status tracking
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),

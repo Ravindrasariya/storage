@@ -2085,6 +2085,12 @@ export class DatabaseStorage implements IStorage {
     // Generate transaction ID (CF + YYYYMMDD + natural number)
     const transactionId = await generateSequentialId('cash_flow');
 
+    // Calculate remaining dues for this buyer after transaction (for cold_merchant type)
+    let dueBalanceAfter: number | null = null;
+    if (data.payerType === "cold_merchant" && data.buyerName) {
+      dueBalanceAfter = await this.getBuyerDueBalance(data.coldStorageId, data.buyerName);
+    }
+
     // Create the receipt record
     const [receipt] = await db.insert(cashReceipts)
       .values({
@@ -2093,6 +2099,7 @@ export class DatabaseStorage implements IStorage {
         ...data,
         appliedAmount: appliedAmount,
         unappliedAmount: remainingAmount,
+        dueBalanceAfter: dueBalanceAfter,
       })
       .returning();
 
@@ -2103,6 +2110,68 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { receipt, salesUpdated };
+  }
+
+  // Helper function to get total remaining dues for a specific buyer
+  private async getBuyerDueBalance(coldStorageId: string, buyerName: string): Promise<number> {
+    const normalizedBuyer = buyerName.trim().toLowerCase();
+    let totalDue = 0;
+    const currentYear = new Date().getFullYear();
+
+    // 1. Get cold storage dues from salesHistory (using CurrentDueBuyerName logic)
+    const salesResult = await db.execute(sql`
+      SELECT 
+        COALESCE(cold_storage_charge, 0) as cold_storage_charge,
+        COALESCE(paid_amount, 0) as paid_amount,
+        COALESCE(extra_due_to_merchant, 0) as extra_due_to_merchant,
+        buyer_name,
+        transfer_to_buyer_name
+      FROM sales_history
+      WHERE cold_storage_id = ${coldStorageId}
+      AND payment_status IN ('due', 'partial')
+      AND LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = ${normalizedBuyer}
+    `);
+    
+    for (const row of salesResult.rows as any[]) {
+      const charges = row.cold_storage_charge || 0;
+      const paid = row.paid_amount || 0;
+      const dueAmount = charges - paid;
+      if (dueAmount > 0) {
+        totalDue += dueAmount;
+      }
+    }
+
+    // 2. Get extraDueToMerchant from salesHistory (by ORIGINAL buyerName only)
+    const extraDueResult = await db.execute(sql`
+      SELECT COALESCE(extra_due_to_merchant, 0) as extra_due_to_merchant
+      FROM sales_history
+      WHERE cold_storage_id = ${coldStorageId}
+      AND extra_due_to_merchant > 0
+      AND LOWER(TRIM(buyer_name)) = ${normalizedBuyer}
+    `);
+    
+    for (const row of extraDueResult.rows as any[]) {
+      totalDue += row.extra_due_to_merchant || 0;
+    }
+
+    // 3. Get opening receivables for this buyer (current year, cold_merchant type)
+    const receivables = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.year, currentYear),
+        eq(openingReceivables.payerType, "cold_merchant"),
+        sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${normalizedBuyer}`
+      ));
+
+    for (const receivable of receivables) {
+      const remaining = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+      if (remaining > 0) {
+        totalDue += remaining;
+      }
+    }
+
+    return totalDue;
   }
 
   private async recalculateLotTotals(lotId: string): Promise<void> {
@@ -3289,12 +3358,25 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
+    // Calculate remaining farmer dues after discount
+    const remainingDuesResult = await db.execute(sql`
+      SELECT COALESCE(SUM(due_amount), 0) as total_due
+      FROM sales_history
+      WHERE cold_storage_id = ${data.coldStorageId}
+        AND farmer_name = ${data.farmerName}
+        AND village = ${data.village}
+        AND contact_number = ${data.contactNumber}
+        AND due_amount > 0
+    `);
+    const dueBalanceAfter = (remainingDuesResult.rows[0] as any)?.total_due || 0;
+
     // Insert the discount record
     const [discount] = await db.insert(discounts)
       .values({
         id: discountId,
         transactionId,
         ...data,
+        dueBalanceAfter: dueBalanceAfter,
       })
       .returning();
     
