@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { Printer, FileText, Receipt } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 
 // Format amount showing decimals only when present (e.g., 72.5 → "72.5", 72 → "72")
 const formatAmount = (value: number): string => {
@@ -39,6 +39,25 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
   });
+
+  // Fetch discount amount allocated for this farmer+buyer combination
+  const currentBuyerName = sale.transferToBuyerName || sale.buyerName || "";
+  const hasRequiredFields = !!(sale.id && sale.farmerName && sale.village && sale.contactNumber && currentBuyerName);
+  const { data: discountData } = useQuery<{ discountAmount: number }>({
+    queryKey: ["/api/discounts/farmer-buyer", sale.farmerName, sale.village, sale.contactNumber, currentBuyerName],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        farmerName: sale.farmerName,
+        village: sale.village,
+        contactNumber: sale.contactNumber,
+        buyerName: currentBuyerName,
+      });
+      const response = await authFetch(`/api/discounts/farmer-buyer?${params}`);
+      return response.json();
+    },
+    enabled: open && hasRequiredFields,
+  });
+  const allocatedDiscount = discountData?.discountAmount || 0;
 
   // Mutation to assign bill number
   const assignBillNumberMutation = useMutation({
@@ -415,10 +434,16 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
       <div className="payment-status">
         भुगतान स्थिति: {sale.paymentStatus === "paid" 
-          ? "भुगतान हो गया" 
+          ? (allocatedDiscount > 0 
+              ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, छूट: रु. ${formatAmount(allocatedDiscount)})`
+              : "भुगतान हो गया")
           : sale.paymentStatus === "partial" 
-            ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})` 
-            : `बकाया (रु. ${formatAmount(totalCharges)})`}
+            ? (allocatedDiscount > 0
+                ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, छूट: रु. ${formatAmount(allocatedDiscount)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
+                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
+            : (allocatedDiscount > 0
+                ? `बकाया (छूट: रु. ${formatAmount(allocatedDiscount)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
+                : `बकाया (रु. ${formatAmount(sale.dueAmount || 0)})`)}
       </div>
 
       <div className="footer-note">
@@ -554,6 +579,20 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div className="payment-status">
+        भुगतान स्थिति: {sale.paymentStatus === "paid" 
+          ? (allocatedDiscount > 0 
+              ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, छूट: रु. ${formatAmount(allocatedDiscount)})`
+              : "भुगतान हो गया")
+          : sale.paymentStatus === "partial" 
+            ? (allocatedDiscount > 0
+                ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, छूट: रु. ${formatAmount(allocatedDiscount)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
+                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
+            : (allocatedDiscount > 0
+                ? `बकाया (छूट: रु. ${formatAmount(allocatedDiscount)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
+                : `बकाया (रु. ${formatAmount(sale.dueAmount || 0)})`)}
       </div>
 
       <div className="footer-note">

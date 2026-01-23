@@ -1943,6 +1943,30 @@ export async function registerRoutes(
     }
   });
 
+  // Get discount allocated for a specific farmer+buyer combination
+  app.get("/api/discounts/farmer-buyer", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { farmerName, village, contactNumber, buyerName } = req.query;
+      
+      if (!farmerName || !village || !contactNumber || !buyerName) {
+        return res.status(400).json({ error: "Missing required parameters" });
+      }
+      
+      const discountAmount = await storage.getDiscountForFarmerBuyer(
+        coldStorageId,
+        farmerName as string,
+        village as string,
+        contactNumber as string,
+        buyerName as string
+      );
+      
+      res.json({ discountAmount });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get discount" });
+    }
+  });
+
   // ==================== OPENING SETTINGS ROUTES ====================
 
   // Get opening balance for a specific year

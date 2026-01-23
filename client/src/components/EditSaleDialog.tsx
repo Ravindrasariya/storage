@@ -122,6 +122,27 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     enabled: !!sale?.id && open,
   });
 
+  // Fetch discount amount allocated for this farmer+buyer combination
+  const currentBuyerName = sale?.transferToBuyerName || sale?.buyerName || "";
+  const { data: discountData } = useQuery<{ discountAmount: number }>({
+    queryKey: ["/api/discounts/farmer-buyer", sale?.farmerName, sale?.village, sale?.contactNumber, currentBuyerName],
+    queryFn: async () => {
+      if (!sale?.farmerName || !sale?.village || !sale?.contactNumber || !currentBuyerName) {
+        return { discountAmount: 0 };
+      }
+      const params = new URLSearchParams({
+        farmerName: sale.farmerName,
+        village: sale.village,
+        contactNumber: sale.contactNumber,
+        buyerName: currentBuyerName,
+      });
+      const response = await authFetch(`/api/discounts/farmer-buyer?${params}`);
+      return response.json();
+    },
+    enabled: !!sale?.id && open && !!currentBuyerName,
+  });
+  const allocatedDiscount = discountData?.discountAmount || 0;
+
   const getFieldLabel = (field: string): string => {
     const labels: Record<string, string> = {
       buyerName: t("buyerName"),
@@ -702,6 +723,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     <span className="text-green-600">{t("paid")}:</span>
                     <span className="font-medium"><Currency amount={sale.paidAmount || 0} /></span>
                   </div>
+                  {allocatedDiscount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-blue-600">{t("discount")}:</span>
+                      <span className="font-medium"><Currency amount={allocatedDiscount} /></span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-amber-600">{t("remaining")}:</span>
                     <span className="font-medium"><Currency amount={sale.dueAmount || 0} /></span>
@@ -709,19 +736,31 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 </div>
               )}
               {currentStatus === "due" && (
-                <div className="text-sm">
+                <div className="text-sm space-y-1">
+                  {allocatedDiscount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-blue-600">{t("discount")}:</span>
+                      <span className="font-medium"><Currency amount={allocatedDiscount} /></span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-amber-600">{t("totalDue")}:</span>
-                    <span className="font-medium"><Currency amount={totalCharge} /></span>
+                    <span className="font-medium"><Currency amount={sale.dueAmount || 0} /></span>
                   </div>
                 </div>
               )}
               {currentStatus === "paid" && (
-                <div className="text-sm">
+                <div className="text-sm space-y-1">
                   <div className="flex justify-between">
                     <span className="text-green-600">{t("totalPaid")}:</span>
-                    <span className="font-medium"><Currency amount={totalCharge} /></span>
+                    <span className="font-medium"><Currency amount={sale.paidAmount || 0} /></span>
                   </div>
+                  {allocatedDiscount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-blue-600">{t("discount")}:</span>
+                      <span className="font-medium"><Currency amount={allocatedDiscount} /></span>
+                    </div>
+                  )}
                 </div>
               )}
               <p className="text-xs text-muted-foreground mt-2">

@@ -257,6 +257,7 @@ export interface IStorage {
   createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }>;
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
+  getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3458,6 +3459,45 @@ export class DatabaseStorage implements IStorage {
       .where(eq(discounts.id, discountId));
     
     return { success: true };
+  }
+
+  // Get total discount allocated for a specific farmer+buyer combination
+  async getDiscountForFarmerBuyer(
+    coldStorageId: string, 
+    farmerName: string, 
+    village: string, 
+    contactNumber: string, 
+    buyerName: string
+  ): Promise<number> {
+    // Get all active (non-reversed) discounts for this farmer
+    const discountRows = await db.select()
+      .from(discounts)
+      .where(and(
+        eq(discounts.coldStorageId, coldStorageId),
+        eq(discounts.farmerName, farmerName),
+        eq(discounts.village, village),
+        eq(discounts.contactNumber, contactNumber),
+        eq(discounts.isReversed, 0)
+      ));
+    
+    let totalDiscountForBuyer = 0;
+    const normalizedBuyer = buyerName.trim().toLowerCase();
+    
+    for (const discount of discountRows) {
+      try {
+        const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
+        for (const allocation of allocations) {
+          // Match buyer name (case-insensitive)
+          if (allocation.buyerName.trim().toLowerCase() === normalizedBuyer) {
+            totalDiscountForBuyer += allocation.amount;
+          }
+        }
+      } catch {
+        // Skip invalid JSON
+      }
+    }
+    
+    return totalDiscountForBuyer;
   }
 }
 
