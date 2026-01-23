@@ -1135,6 +1135,16 @@ export class DatabaseStorage implements IStorage {
     // Delete all lots for the cold storage
     await db.delete(lots).where(eq(lots.coldStorageId, coldStorageId));
     
+    // NOTE: The following data is intentionally PRESERVED across season resets:
+    // - salesHistory (sale records)
+    // - cashReceipts (payment receipts)
+    // - expenses (expense records)
+    // - cashTransfers (cash transfer records)
+    // - discounts (discount records)
+    // - openingReceivables (receivables from settings)
+    // - openingPayables (payables from settings)
+    // - cashOpeningBalances (opening balance records)
+    
     // Get all chambers for this cold storage to delete their floors
     const allChambers = await this.getChambers(coldStorageId);
     
