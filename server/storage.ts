@@ -258,7 +258,6 @@ export interface IStorage {
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
   getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
-  backfillDiscountAllocated(coldStorageId: string): Promise<{ salesUpdated: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -289,12 +288,6 @@ export class DatabaseStorage implements IStorage {
       for (const ch of chamberData) {
         await db.insert(chambers).values(ch);
       }
-    }
-    
-    // Run one-time backfill for discountAllocated field on all cold storages
-    const allColdStorages = await db.select().from(coldStorages);
-    for (const cs of allColdStorages) {
-      await this.backfillDiscountAllocated(cs.id);
     }
   }
 
@@ -3507,82 +3500,6 @@ export class DatabaseStorage implements IStorage {
     }
     
     return totalDiscountForBuyer;
-  }
-
-  // Backfill discountAllocated for existing sales by replaying all non-reversed discounts
-  async backfillDiscountAllocated(coldStorageId: string): Promise<{ salesUpdated: number }> {
-    // Step 1: Reset all discountAllocated to 0 for this cold storage
-    await db.execute(sql`
-      UPDATE sales_history
-      SET discount_allocated = 0
-      WHERE cold_storage_id = ${coldStorageId}
-    `);
-
-    // Step 2: Get all non-reversed discounts for this cold storage, ordered by creation date
-    const discountRows = await db.select()
-      .from(discounts)
-      .where(and(
-        eq(discounts.coldStorageId, coldStorageId),
-        eq(discounts.isReversed, 0)
-      ))
-      .orderBy(discounts.createdAt);
-
-    let totalSalesUpdated = 0;
-
-    // Step 3: For each discount, replay the FIFO allocation to calculate discountAllocated
-    for (const discount of discountRows) {
-      try {
-        const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
-        
-        for (const allocation of allocations) {
-          let remainingAmount = allocation.amount;
-          const buyerName = allocation.buyerName;
-          
-          // Get sales for this farmer from this buyer, ordered by oldest first (FIFO)
-          // We need to find sales that had dues at the time of discount, which means paidAmount > 0 now
-          const salesResult = await db.execute(sql`
-            SELECT id, paid_amount, discount_allocated
-            FROM sales_history
-            WHERE cold_storage_id = ${coldStorageId}
-              AND farmer_name = ${discount.farmerName}
-              AND village = ${discount.village}
-              AND contact_number = ${discount.contactNumber}
-              AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) = ${buyerName}
-              AND paid_amount > 0
-            ORDER BY sold_at ASC
-          `);
-          
-          for (const row of salesResult.rows as { id: string; paid_amount: number; discount_allocated: number }[]) {
-            if (remainingAmount <= 0) break;
-            
-            const saleId = row.id;
-            const currentPaid = row.paid_amount;
-            const currentDiscountAllocated = row.discount_allocated || 0;
-            
-            // The maximum discount that could have been applied to this sale
-            // is the paid amount minus any discount already tracked
-            const availableForDiscount = currentPaid - currentDiscountAllocated;
-            if (availableForDiscount <= 0) continue;
-            
-            const discountToAllocate = Math.min(remainingAmount, availableForDiscount);
-            
-            // Update discountAllocated on this sale
-            await db.execute(sql`
-              UPDATE sales_history
-              SET discount_allocated = COALESCE(discount_allocated, 0) + ${discountToAllocate}
-              WHERE id = ${saleId}
-            `);
-            
-            remainingAmount -= discountToAllocate;
-            totalSalesUpdated++;
-          }
-        }
-      } catch {
-        // Skip invalid JSON
-      }
-    }
-
-    return { salesUpdated: totalSalesUpdated };
   }
 }
 

@@ -1967,17 +1967,6 @@ export async function registerRoutes(
     }
   });
 
-  // Backfill discountAllocated for existing sales (one-time migration)
-  app.post("/api/discounts/backfill-allocated", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
-    try {
-      const coldStorageId = getColdStorageId(req);
-      const result = await storage.backfillDiscountAllocated(coldStorageId);
-      res.json({ success: true, salesUpdated: result.salesUpdated });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to backfill discount allocations" });
-    }
-  });
-
   // ==================== OPENING SETTINGS ROUTES ====================
 
   // Get opening balance for a specific year
