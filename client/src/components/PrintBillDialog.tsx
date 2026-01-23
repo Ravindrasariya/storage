@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { Printer, FileText, Receipt } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
-import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 // Format amount showing decimals only when present (e.g., 72.5 → "72.5", 72 → "72")
 const formatAmount = (value: number): string => {
@@ -40,24 +40,10 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     queryKey: ["/api/cold-storage"],
   });
 
-  // Fetch discount amount allocated for this farmer+buyer combination
-  const currentBuyerName = sale.transferToBuyerName || sale.buyerName || "";
-  const hasRequiredFields = !!(sale.id && sale.farmerName && sale.village && sale.contactNumber && currentBuyerName);
-  const { data: discountData } = useQuery<{ discountAmount: number }>({
-    queryKey: ["/api/discounts/farmer-buyer", sale.farmerName, sale.village, sale.contactNumber, currentBuyerName],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        farmerName: sale.farmerName,
-        village: sale.village,
-        contactNumber: sale.contactNumber,
-        buyerName: currentBuyerName,
-      });
-      const response = await authFetch(`/api/discounts/farmer-buyer?${params}`);
-      return response.json();
-    },
-    enabled: open && hasRequiredFields,
-  });
-  const allocatedDiscount = discountData?.discountAmount || 0;
+  // Get discount allocated to this specific sale (tracked directly on salesHistory)
+  const discountAllocated = sale.discountAllocated || 0;
+  // Actual cash paid = paidAmount - discountAllocated
+  const actualCashPaid = Math.max(0, (sale.paidAmount || 0) - discountAllocated);
 
   // Mutation to assign bill number
   const assignBillNumberMutation = useMutation({
@@ -434,15 +420,19 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
       <div className="payment-status">
         भुगतान स्थिति: {sale.paymentStatus === "paid" 
-          ? (allocatedDiscount > 0 
-              ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, छूट: रु. ${formatAmount(allocatedDiscount)})`
+          ? (discountAllocated > 0 
+              ? (actualCashPaid > 0 
+                  ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(actualCashPaid)}, छूट: रु. ${formatAmount(discountAllocated)})`
+                  : `भुगतान हो गया (छूट: रु. ${formatAmount(discountAllocated)})`)
               : "भुगतान हो गया")
           : sale.paymentStatus === "partial" 
-            ? (allocatedDiscount > 0
-                ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, छूट: रु. ${formatAmount(allocatedDiscount)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
-                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
-            : (allocatedDiscount > 0
-                ? `बकाया (छूट: रु. ${formatAmount(allocatedDiscount)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
+            ? (discountAllocated > 0
+                ? (actualCashPaid > 0
+                    ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(actualCashPaid)}, छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
+                    : `आंशिक भुगतान (छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
+                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(actualCashPaid)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
+            : (discountAllocated > 0
+                ? `बकाया (छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
                 : `बकाया (रु. ${formatAmount(sale.dueAmount || 0)})`)}
       </div>
 
@@ -583,15 +573,19 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
       <div className="payment-status">
         भुगतान स्थिति: {sale.paymentStatus === "paid" 
-          ? (allocatedDiscount > 0 
-              ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, छूट: रु. ${formatAmount(allocatedDiscount)})`
+          ? (discountAllocated > 0 
+              ? (actualCashPaid > 0 
+                  ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(actualCashPaid)}, छूट: रु. ${formatAmount(discountAllocated)})`
+                  : `भुगतान हो गया (छूट: रु. ${formatAmount(discountAllocated)})`)
               : "भुगतान हो गया")
           : sale.paymentStatus === "partial" 
-            ? (allocatedDiscount > 0
-                ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, छूट: रु. ${formatAmount(allocatedDiscount)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
-                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(sale.paidAmount || 0)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
-            : (allocatedDiscount > 0
-                ? `बकाया (छूट: रु. ${formatAmount(allocatedDiscount)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
+            ? (discountAllocated > 0
+                ? (actualCashPaid > 0
+                    ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(actualCashPaid)}, छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
+                    : `आंशिक भुगतान (छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
+                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(actualCashPaid)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
+            : (discountAllocated > 0
+                ? `बकाया (छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
                 : `बकाया (रु. ${formatAmount(sale.dueAmount || 0)})`)}
       </div>
 

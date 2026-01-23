@@ -3341,12 +3341,13 @@ export class DatabaseStorage implements IStorage {
         const currentDue = row.due_amount;
         const discountToApply = Math.min(remainingAmount, currentDue);
         
-        // Update the sale's due and paid amounts
+        // Update the sale's due and paid amounts, and track discount allocation
         await db.execute(sql`
           UPDATE sales_history
           SET 
             due_amount = due_amount - ${discountToApply},
             paid_amount = paid_amount + ${discountToApply},
+            discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
             payment_status = CASE 
               WHEN due_amount - ${discountToApply} <= 0 THEN 'paid'
               ELSE 'partial'
@@ -3433,12 +3434,13 @@ export class DatabaseStorage implements IStorage {
         const currentPaid = row.paid_amount;
         const amountToReverse = Math.min(remainingAmount, currentPaid);
         
-        // Reverse the discount from the sale
+        // Reverse the discount from the sale, also decrement discountAllocated
         await db.execute(sql`
           UPDATE sales_history
           SET 
             due_amount = due_amount + ${amountToReverse},
             paid_amount = paid_amount - ${amountToReverse},
+            discount_allocated = GREATEST(0, COALESCE(discount_allocated, 0) - ${amountToReverse}),
             payment_status = CASE 
               WHEN paid_amount - ${amountToReverse} <= 0 THEN 'due'
               ELSE 'partial'
