@@ -573,18 +573,18 @@ export default function SalesHistoryPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("saleDate")}</TableHead>
-                    <TableHead>{t("farmerName")}</TableHead>
-                    <TableHead>{t("contactNumber")}</TableHead>
-                    <TableHead>{t("lotNo")}</TableHead>
-                    <TableHead className="text-right">{t("originalBags")}</TableHead>
-                    <TableHead>{t("bagType")}</TableHead>
-                    <TableHead>{t("saleType")}</TableHead>
-                    <TableHead className="text-right">{t("quantitySold")}</TableHead>
-                    <TableHead className="text-right">{t("totalColdStorageCharges")}</TableHead>
-                    <TableHead>{t("buyerName")}</TableHead>
-                    <TableHead className="text-right">{t("pricePerKg")}</TableHead>
-                    <TableHead>{t("paymentStatus")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("saleDate")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("farmerName")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("contactNumber")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("lotNo")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">{t("originalBags")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("bagType")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("saleType")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">{t("quantitySold")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">{t("totalColdStorageCharges")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("buyerName")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">{t("pricePerKg")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("paymentStatus")}</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -594,7 +594,7 @@ export default function SalesHistoryPage() {
                       <TableCell className="whitespace-nowrap">
                         {format(new Date(sale.soldAt), "dd MMM yyyy")}
                       </TableCell>
-                      <TableCell className="font-medium">{sale.farmerName}</TableCell>
+                      <TableCell className="text-sm font-semibold">{sale.farmerName}</TableCell>
                       <TableCell>{sale.contactNumber}</TableCell>
                       <TableCell>{sale.lotNo}</TableCell>
                       <TableCell className="text-right">{sale.originalLotSize}</TableCell>
