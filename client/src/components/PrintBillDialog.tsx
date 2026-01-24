@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { Printer, FileText, Receipt } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
-import { calculateTotalColdCharges } from "@shared/schema";
+import { calculateTotalColdCharges, calculateProportionalEntryDeductions } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 // Format amount: round to 1 decimal if fractional, show integer if whole (e.g., 72.54 → "72.5", 72 → "72")
@@ -20,6 +20,19 @@ const formatAmount = (value: number): string => {
     return rounded.toLocaleString("en-IN");
   }
   return rounded.toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+};
+
+// Calculate proportional entry deductions for a sale (uses shared helper)
+const calculateProportionalDeduction = (sale: SalesHistory, deductionAmount: number): number => {
+  if (deductionAmount <= 0) return 0;
+  // For individual deduction fields, calculate proportionally
+  return calculateProportionalEntryDeductions({
+    quantitySold: sale.quantitySold || 0,
+    originalLotSize: sale.originalLotSize || 1,
+    advanceDeduction: deductionAmount,
+    freightDeduction: 0,
+    otherDeduction: 0,
+  });
 };
 
 interface PrintBillDialogProps {
@@ -420,33 +433,33 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </tbody>
         </table>
         
-        {/* Entry Deductions Section */}
+        {/* Entry Deductions Section - Proportional to bags sold */}
         {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (
           <>
-            <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती</div>
+            <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती ({sale.quantitySold}/{sale.originalLotSize} बोरी)</div>
             <table className="charges-table">
               <tbody>
                 {(sale.advanceDeduction || 0) > 0 && (
                   <tr>
                     <td>अग्रिम</td>
-                    <td className="amount">{formatAmount(sale.advanceDeduction || 0)}</td>
+                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.advanceDeduction || 0))}</td>
                   </tr>
                 )}
                 {(sale.freightDeduction || 0) > 0 && (
                   <tr>
                     <td>भाड़ा (गाड़ी भाड़ा)</td>
-                    <td className="amount">{formatAmount(sale.freightDeduction || 0)}</td>
+                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.freightDeduction || 0))}</td>
                   </tr>
                 )}
                 {(sale.otherDeduction || 0) > 0 && (
                   <tr>
                     <td>अन्य शुल्क</td>
-                    <td className="amount">{formatAmount(sale.otherDeduction || 0)}</td>
+                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.otherDeduction || 0))}</td>
                   </tr>
                 )}
                 <tr className="total-row">
                   <td><strong>कुल प्रवेश कटौती</strong></td>
-                  <td className="amount"><strong>रु. {formatAmount((sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0))}</strong></td>
+                  <td className="amount"><strong>रु. {formatAmount(calculateProportionalDeduction(sale, (sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0)))}</strong></td>
                 </tr>
               </tbody>
             </table>
@@ -595,33 +608,33 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </tbody>
         </table>
         
-        {/* Entry Deductions Section */}
+        {/* Entry Deductions Section - Proportional to bags sold */}
         {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (
           <>
-            <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती</div>
+            <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती ({sale.quantitySold}/{sale.originalLotSize} बोरी)</div>
             <table className="charges-table">
               <tbody>
                 {(sale.advanceDeduction || 0) > 0 && (
                   <tr>
                     <td>अग्रिम</td>
-                    <td className="amount">{formatAmount(sale.advanceDeduction || 0)}</td>
+                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.advanceDeduction || 0))}</td>
                   </tr>
                 )}
                 {(sale.freightDeduction || 0) > 0 && (
                   <tr>
                     <td>भाड़ा (गाड़ी भाड़ा)</td>
-                    <td className="amount">{formatAmount(sale.freightDeduction || 0)}</td>
+                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.freightDeduction || 0))}</td>
                   </tr>
                 )}
                 {(sale.otherDeduction || 0) > 0 && (
                   <tr>
                     <td>अन्य शुल्क</td>
-                    <td className="amount">{formatAmount(sale.otherDeduction || 0)}</td>
+                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.otherDeduction || 0))}</td>
                   </tr>
                 )}
                 <tr className="total-row">
                   <td><strong>कुल प्रवेश कटौती</strong></td>
-                  <td className="amount"><strong>रु. {formatAmount((sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0))}</strong></td>
+                  <td className="amount"><strong>रु. {formatAmount(calculateProportionalDeduction(sale, (sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0)))}</strong></td>
                 </tr>
               </tbody>
             </table>

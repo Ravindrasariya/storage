@@ -78,7 +78,12 @@ Core entities:
     - Total base charge: sum of cold charges + hammali
   - **Bag mode**: (coldChargeRate + hammaliRate) × bagsToUse
   - bagsToUse = quantitySold (actual basis) or remainingSizeAtSale (totalRemaining basis)
-- Extras (Kata, Extra Hammali, Grading) always added on top of base charge calculation
+- Extras (Kata, Extra Hammali, Grading, Entry Deductions) always added on top of base charge calculation
+- **Proportional Entry Deductions**: Automatically calculated as (quantitySold / originalLotSize) × totalDeductions
+  - Entry deductions (Advance, Freight, Other) are set at lot entry time and stored in both lots and salesHistory tables
+  - When a partial or full sale is made, proportional deductions are included in "Total Billed Charges"
+  - Display: Sale dialogs, Print bills, EditSaleDialog all show proportional amounts with (bagsSold/originalBags) formula
+  - CSV exports include "Entry Deductions" column with proportional amounts for both Stock Register and Sales History
 - FIFO recalculation triggered after charge edits using CurrentDueBuyerName logic
 - Note: lots.netWeight is stored in KG (not quintals)
 - Print bills display cold charges and hammali as separate line items (hammali always shows per bag unit)

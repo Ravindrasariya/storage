@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage } from "./storage";
-import { lotFormSchema, insertChamberFloorSchema } from "@shared/schema";
+import { lotFormSchema, insertChamberFloorSchema, calculateProportionalEntryDeductions } from "@shared/schema";
 import { z } from "zod";
 
 // CAPTCHA verification helper
@@ -723,7 +723,15 @@ export async function registerRoutes(
       const kata = kataCharges || 0;
       const extraHammaliTotal = extraHammali || 0;
       const grading = gradingCharges || 0;
-      const totalChargeForLot = storageCharge + kata + extraHammaliTotal + grading;
+      // Proportional entry deductions using shared helper
+      const proportionalDeductions = calculateProportionalEntryDeductions({
+        quantitySold,
+        originalLotSize: lot.size,
+        advanceDeduction: lot.advanceDeduction || 0,
+        freightDeduction: lot.freightDeduction || 0,
+        otherDeduction: lot.otherDeduction || 0,
+      });
+      const totalChargeForLot = storageCharge + kata + extraHammaliTotal + grading + proportionalDeductions;
 
       const updateData: { 
         remainingSize: number; 
@@ -2754,8 +2762,8 @@ export async function registerRoutes(
 
       // "Potato Type" = wafer/seed/Ration classification, "Bag Type" = custom label (bagTypeLabel)
       const headers = language === "hi"
-        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "ट्रांसफर टू खरीदार", "चैम्बर", "फ्लोर", "पोजीशन", "आलू प्रकार", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कुल बिल शुल्क", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "आधार कोल्ड शुल्क", "कुल हम्माली", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "व्यापारी को हम्माली", "व्यापारी को ग्रेडिंग", "व्यापारी को अन्य", "व्यापारी अतिरिक्त बकाया", "नेट वजन (Kg)", "दर/Kg"]
-        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Transfer To Buyer", "Chamber", "Floor", "Position", "Potato Type", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Total Billed Charges", "Kata Charges", "Extra Hammali", "Grading Charges", "Base Cold Charges", "Total Hammali", "Payment Status", "Paid Amount", "Due Amount", "Hammali To Merchant", "Grading To Merchant", "Other To Merchant", "Total Extra Due To Merchant", "Net Weight (Kg)", "Rate/Kg"];
+        ? ["बिक्री तिथि", "प्रवेश तिथि", "लॉट नंबर", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "ट्रांसफर टू खरीदार", "चैम्बर", "फ्लोर", "पोजीशन", "आलू प्रकार", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कुल बिल शुल्क", "प्रवेश कटौती", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "आधार कोल्ड शुल्क", "कुल हम्माली", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "व्यापारी को हम्माली", "व्यापारी को ग्रेडिंग", "व्यापारी को अन्य", "व्यापारी अतिरिक्त बकाया", "नेट वजन (Kg)", "दर/Kg"]
+        : ["Sale Date", "Entry Date", "Lot #", "CS Bill #", "Sales Bill #", "Farmer Name", "Mobile", "Village", "Buyer Name", "Transfer To Buyer", "Chamber", "Floor", "Position", "Potato Type", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Total Billed Charges", "Entry Deductions", "Kata Charges", "Extra Hammali", "Grading Charges", "Base Cold Charges", "Total Hammali", "Payment Status", "Paid Amount", "Due Amount", "Hammali To Merchant", "Grading To Merchant", "Other To Merchant", "Total Extra Due To Merchant", "Net Weight (Kg)", "Rate/Kg"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
@@ -2774,6 +2782,15 @@ export async function registerRoutes(
           }
         }
         const totalHammali = baseHammali + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
+        
+        // Proportional entry deductions using shared helper
+        const proportionalDeductions = calculateProportionalEntryDeductions({
+          quantitySold: sale.quantitySold,
+          originalLotSize: sale.originalLotSize || 1,
+          advanceDeduction: sale.advanceDeduction || 0,
+          freightDeduction: sale.freightDeduction || 0,
+          otherDeduction: sale.otherDeduction || 0,
+        });
         
         const row = [
           formatDateForExport(sale.soldAt),
@@ -2797,6 +2814,7 @@ export async function registerRoutes(
           sale.hammali || "",
           sale.pricePerBag,
           sale.coldStorageCharge,
+          proportionalDeductions > 0 ? proportionalDeductions.toFixed(1) : "",
           sale.kataCharges || 0,
           sale.extraHammali || 0,
           sale.gradingCharges || 0,

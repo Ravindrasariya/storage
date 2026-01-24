@@ -92,6 +92,7 @@ const translations: Translations = {
   totalDeductions: { en: "Total Deductions", hi: "कुल कटौती" },
   deductions: { en: "Deductions", hi: "कटौती" },
   entryDeductions: { en: "Entry Deductions", hi: "प्रवेश कटौती" },
+  proportionalForSale: { en: "Proportional for sale", hi: "बिक्री हेतु आनुपातिक" },
   cancel: { en: "Cancel", hi: "रद्द करें" },
   ok: { en: "OK", hi: "ठीक है" },
   back: { en: "Back to Dashboard", hi: "डैशबोर्ड पर वापस" },

@@ -437,6 +437,7 @@ export default function StockRegister() {
       "Original Size",
       "Remaining Size",
       "Sale Status",
+      "Entry Deductions",
       "Expected Cold Charges",
       "Total Billed Charges",
       "Paid Cold Charges",
@@ -466,6 +467,8 @@ export default function StockRegister() {
       const paidCharge = lot.totalPaidCharge || 0;
       const dueCharge = lot.totalDueCharge || 0;
       const totalBilledCharge = paidCharge + dueCharge;
+      // Total entry deductions for the lot
+      const entryDeductions = (lot.advanceDeduction || 0) + (lot.freightDeduction || 0) + (lot.otherDeduction || 0);
       
       return [
         lot.lotNo,
@@ -485,6 +488,7 @@ export default function StockRegister() {
         lot.size,
         lot.remainingSize,
         lot.saleStatus || "stored",
+        entryDeductions > 0 ? entryDeductions.toFixed(1) : "",
         expectedColdCharge.toFixed(1),
         totalBilledCharge.toFixed(1),
         paidCharge.toFixed(1),

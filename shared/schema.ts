@@ -462,6 +462,10 @@ export interface SaleLotInfo {
   netWeight: number | null; // Net weight in kg (for quintal-based charging)
   chargeUnit: string; // "bag" or "quintal"
   baseColdChargesBilled: number; // 0 = not billed, 1 = billed (base cold charges already billed)
+  // Entry-time deductions from lot
+  advanceDeduction: number;
+  freightDeduction: number;
+  otherDeduction: number;
 }
 
 // Dashboard stats type
@@ -558,4 +562,18 @@ export function calculateTotalColdCharges(sale: {
   // coldStorageCharge already includes base charges + all extras (kata, extraHammali, grading)
   // Just return it directly - don't add extras again
   return sale.coldStorageCharge || 0;
+}
+
+// Canonical helper function to calculate proportional entry deductions
+// Formula: (quantitySold / originalLotSize) × totalDeductions
+export function calculateProportionalEntryDeductions(params: {
+  quantitySold: number;
+  originalLotSize: number;
+  advanceDeduction: number;
+  freightDeduction: number;
+  otherDeduction: number;
+}): number {
+  const totalDeductions = params.advanceDeduction + params.freightDeduction + params.otherDeduction;
+  if (params.originalLotSize <= 0 || totalDeductions <= 0) return 0;
+  return (params.quantitySold / params.originalLotSize) * totalDeductions;
 }
