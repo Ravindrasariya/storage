@@ -264,7 +264,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/chambers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/up-for-sale"] });
       setShowReverseConfirm(false);
       onOpenChange(false);
