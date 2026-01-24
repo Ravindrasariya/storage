@@ -579,7 +579,6 @@ export default function SalesHistoryPage() {
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("originalBags")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("bagType")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("saleType")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("quantitySold")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("totalColdStorageCharges")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("buyerName")}</TableHead>
@@ -601,11 +600,6 @@ export default function SalesHistoryPage() {
                       <TableCell>
                         <Badge variant="outline">
                           {t(sale.bagType)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={sale.originalLotSize === sale.quantitySold ? "default" : "secondary"}>
-                          {sale.originalLotSize === sale.quantitySold ? t("fullSale") : t("partialSale")}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
