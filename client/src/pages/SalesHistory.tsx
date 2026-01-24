@@ -611,10 +611,10 @@ export default function SalesHistoryPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-xs">
                         {sale.transferToBuyerName && sale.transferToBuyerName.trim() ? (
                           <div className="flex flex-col">
-                            <span className="line-through text-muted-foreground text-sm">{sale.buyerName || "-"}</span>
+                            <span className="line-through text-muted-foreground">{sale.buyerName || "-"}</span>
                             <span className="text-purple-600 font-medium">{sale.transferToBuyerName}</span>
                           </div>
                         ) : (
