@@ -443,6 +443,24 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 <span className="text-muted-foreground">{t("buyerName")}:</span>
                 <p className="font-medium">{sale.buyerName || "-"}</p>
               </div>
+              {/* Entry Deductions (read-only, set at lot entry time) */}
+              {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (
+                <div className="col-span-2 pt-2 border-t">
+                  <span className="text-muted-foreground text-sm">{t("entryDeductions")}:</span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {(sale.advanceDeduction || 0) > 0 && (
+                      <Badge variant="secondary">{t("advance")}: <Currency amount={sale.advanceDeduction || 0} /></Badge>
+                    )}
+                    {(sale.freightDeduction || 0) > 0 && (
+                      <Badge variant="secondary">{t("freightCharges")}: <Currency amount={sale.freightDeduction || 0} /></Badge>
+                    )}
+                    {(sale.otherDeduction || 0) > 0 && (
+                      <Badge variant="secondary">{t("otherCharges")}: <Currency amount={sale.otherDeduction || 0} /></Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{t("totalDeductions")}: <Currency amount={(sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0)} /></p>
+                </div>
+              )}
             </div>
           </div>
 

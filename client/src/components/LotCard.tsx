@@ -171,6 +171,15 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
                 <Currency amount={dueCharge} />
               </span>
             </div>
+            {/* Entry Deductions */}
+            {((lot.advanceDeduction || 0) > 0 || (lot.freightDeduction || 0) > 0 || (lot.otherDeduction || 0) > 0) && (
+              <div>
+                <span className="text-muted-foreground">{t("entryDeductions")}: </span>
+                <span className="font-bold text-purple-600 dark:text-purple-400">
+                  <Currency amount={(lot.advanceDeduction || 0) + (lot.freightDeduction || 0) + (lot.otherDeduction || 0)} />
+                </span>
+              </div>
+            )}
           </div>
 
           {lot.remarks && (

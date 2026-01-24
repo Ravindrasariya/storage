@@ -81,6 +81,17 @@ const translations: Translations = {
   dm: { en: "DM (Dry Matter)", hi: "डीएम (सूखा पदार्थ)" },
   remarks: { en: "Remarks", hi: "टिप्पणियाँ" },
   submit: { en: "Submit", hi: "जमा करें" },
+  
+  // Entry-time deductions
+  addDeductions: { en: "Add Deductions", hi: "कटौती जोड़ें" },
+  addCharges: { en: "Add Charges", hi: "शुल्क जोड़ें" },
+  deductionType: { en: "Type of Charges", hi: "शुल्क का प्रकार" },
+  advance: { en: "Advance", hi: "अग्रिम" },
+  freightCharges: { en: "Freight (Gadi Bhada)", hi: "भाड़ा (गाड़ी भाड़ा)" },
+  otherCharges: { en: "Other Charges", hi: "अन्य शुल्क" },
+  totalDeductions: { en: "Total Deductions", hi: "कुल कटौती" },
+  deductions: { en: "Deductions", hi: "कटौती" },
+  entryDeductions: { en: "Entry Deductions", hi: "प्रवेश कटौती" },
   cancel: { en: "Cancel", hi: "रद्द करें" },
   ok: { en: "OK", hi: "ठीक है" },
   back: { en: "Back to Dashboard", hi: "डैशबोर्ड पर वापस" },

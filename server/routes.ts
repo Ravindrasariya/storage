@@ -304,6 +304,10 @@ export async function registerRoutes(
       reducingSugar: z.number().optional(),
       dm: z.number().optional(),
       remarks: z.string().optional(),
+      deductions: z.array(z.object({
+        type: z.enum(["advance", "freight", "other"]),
+        amount: z.number().min(0),
+      })).optional().default([]),
     })).min(1),
     bagTypeCategory: z.enum(["wafer", "rationSeed"]).optional(), // Category for lot number counter
   });
@@ -314,13 +318,38 @@ export async function registerRoutes(
       const { farmer, lots: lotDataArray, bagTypeCategory } = batchLotSchema.parse(req.body);
       
       // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
-      const lotsToCreate = lotDataArray.map(lotData => ({
-        ...farmer,
-        ...lotData,
-        lotNo: "", // Will be set by createBatchLots
-        coldStorageId: coldStorageId,
-        remainingSize: lotData.size,
-      }));
+      const lotsToCreate = lotDataArray.map(lotData => {
+        // Convert deductions array to separate fields
+        let advanceDeduction = 0;
+        let freightDeduction = 0;
+        let otherDeduction = 0;
+        
+        if (lotData.deductions) {
+          for (const deduction of lotData.deductions) {
+            if (deduction.type === "advance") {
+              advanceDeduction += deduction.amount;
+            } else if (deduction.type === "freight") {
+              freightDeduction += deduction.amount;
+            } else if (deduction.type === "other") {
+              otherDeduction += deduction.amount;
+            }
+          }
+        }
+        
+        // Destructure to remove deductions from the spread
+        const { deductions, ...lotDataWithoutDeductions } = lotData;
+        
+        return {
+          ...farmer,
+          ...lotDataWithoutDeductions,
+          lotNo: "", // Will be set by createBatchLots
+          coldStorageId: coldStorageId,
+          remainingSize: lotData.size,
+          advanceDeduction,
+          freightDeduction,
+          otherDeduction,
+        };
+      });
       
       const result = await storage.createBatchLots(lotsToCreate, coldStorageId, bagTypeCategory);
       
@@ -504,6 +533,10 @@ export async function registerRoutes(
     upForSale: z.number().int().min(0).max(1).optional(),
     // Net weight for quintal-based charging
     netWeight: z.number().optional(),
+    // Entry-time deductions
+    advanceDeduction: z.number().min(0).optional(),
+    freightDeduction: z.number().min(0).optional(),
+    otherDeduction: z.number().min(0).optional(),
   });
 
   app.patch("/api/lots/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -797,6 +830,10 @@ export async function registerRoutes(
         initialNetWeightKg: lot.netWeight || null,
         baseChargeAmountAtSale: storageCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
         remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
+        // Entry-time deductions (copy from lot)
+        advanceDeduction: lot.advanceDeduction || 0,
+        freightDeduction: lot.freightDeduction || 0,
+        otherDeduction: lot.otherDeduction || 0,
       });
 
       const updatedLot = await storage.getLot(req.params.id);

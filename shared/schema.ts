@@ -105,6 +105,10 @@ export const lots = pgTable("lots", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   entryBillNumber: integer("entry_bill_number"), // DEPRECATED: Use entrySequence instead
   baseColdChargesBilled: integer("base_cold_charges_billed").notNull().default(0), // 0 = not billed, 1 = billed (set when partial sale uses totalRemaining charge basis)
+  // Entry-time deductions (Advance, Freight/Gadi Bhada, Other)
+  advanceDeduction: real("advance_deduction").default(0), // Advance paid to farmer
+  freightDeduction: real("freight_deduction").default(0), // Freight / Gadi Bhada charges
+  otherDeduction: real("other_deduction").default(0), // Other miscellaneous deductions
 });
 
 // Sales History - permanent record of all sales
@@ -175,6 +179,10 @@ export const salesHistory = pgTable("sales_history", {
   extraDueHammaliMerchant: real("extra_due_hammali_merchant").default(0), // Hammali to Merchant
   extraDueGradingMerchant: real("extra_due_grading_merchant").default(0), // Grading Charges to Merchant
   extraDueOtherMerchant: real("extra_due_other_merchant").default(0), // Other Extra to Merchant
+  // Entry-time deductions copied from lot at sale time (Advance, Freight/Gadi Bhada, Other)
+  advanceDeduction: real("advance_deduction").default(0), // Advance paid to farmer
+  freightDeduction: real("freight_deduction").default(0), // Freight / Gadi Bhada charges
+  otherDeduction: real("other_deduction").default(0), // Other miscellaneous deductions
 });
 
 // Edit history for tracking changes

@@ -64,6 +64,11 @@ const farmerSchema = z.object({
 
 type FarmerData = z.infer<typeof farmerSchema>;
 
+interface DeductionItem {
+  type: "advance" | "freight" | "other";
+  amount: number;
+}
+
 interface LotData {
   size: number;
   netWeight?: number;
@@ -80,6 +85,7 @@ interface LotData {
   reducingSugar?: number;
   dm?: number;
   remarks: string;
+  deductions: DeductionItem[];
 }
 
 const defaultLotData: LotData = {
@@ -98,6 +104,7 @@ const defaultLotData: LotData = {
   reducingSugar: undefined,
   dm: undefined,
   remarks: "",
+  deductions: [],
 };
 
 const STORAGE_KEY = "lotEntryFormData";
@@ -1032,6 +1039,103 @@ export default function LotEntry() {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Deductions Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">{t("addDeductions")}</h3>
+                  {lot.deductions.length === 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newDeductions = [...lot.deductions, { type: "advance" as const, amount: 0 }];
+                        updateLot(index, "deductions", newDeductions);
+                      }}
+                      data-testid={`button-add-deduction-${index}`}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      {t("addCharges")}
+                    </Button>
+                  )}
+                </div>
+                
+                {lot.deductions.length > 0 && (
+                  <div className="space-y-3">
+                    {lot.deductions.map((deduction, deductionIndex) => (
+                      <div key={deductionIndex} className="flex items-center gap-3">
+                        <Select
+                          value={deduction.type}
+                          onValueChange={(v) => {
+                            const newDeductions = [...lot.deductions];
+                            newDeductions[deductionIndex] = { ...deduction, type: v as "advance" | "freight" | "other" };
+                            updateLot(index, "deductions", newDeductions);
+                          }}
+                        >
+                          <SelectTrigger className="w-[180px]" data-testid={`select-deduction-type-${index}-${deductionIndex}`}>
+                            <SelectValue placeholder={t("deductionType")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="advance">{t("advance")}</SelectItem>
+                            <SelectItem value="freight">{t("freightCharges")}</SelectItem>
+                            <SelectItem value="other">{t("otherCharges")}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder={t("amount")}
+                          value={deduction.amount || ""}
+                          onChange={(e) => {
+                            const newDeductions = [...lot.deductions];
+                            newDeductions[deductionIndex] = { ...deduction, amount: parseFloat(e.target.value) || 0 };
+                            updateLot(index, "deductions", newDeductions);
+                          }}
+                          className="w-[120px]"
+                          data-testid={`input-deduction-amount-${index}-${deductionIndex}`}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const newDeductions = lot.deductions.filter((_, i) => i !== deductionIndex);
+                            updateLot(index, "deductions", newDeductions);
+                          }}
+                          data-testid={`button-delete-deduction-${index}-${deductionIndex}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                    
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newDeductions = [...lot.deductions, { type: "advance" as const, amount: 0 }];
+                        updateLot(index, "deductions", newDeductions);
+                      }}
+                      data-testid={`button-add-more-deduction-${index}`}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      {t("addCharges")}
+                    </Button>
+                    
+                    {lot.deductions.length > 0 && (
+                      <div className="pt-2 border-t">
+                        <div className="flex justify-between text-sm font-medium">
+                          <span>{t("totalDeductions")}:</span>
+                          <span>₹{lot.deductions.reduce((sum, d) => sum + (d.amount || 0), 0).toLocaleString("en-IN")}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </Card>
           ))}

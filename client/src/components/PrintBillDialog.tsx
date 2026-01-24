@@ -419,6 +419,39 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </tr>
           </tbody>
         </table>
+        
+        {/* Entry Deductions Section */}
+        {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (
+          <>
+            <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती</div>
+            <table className="charges-table">
+              <tbody>
+                {(sale.advanceDeduction || 0) > 0 && (
+                  <tr>
+                    <td>अग्रिम</td>
+                    <td className="amount">{formatAmount(sale.advanceDeduction || 0)}</td>
+                  </tr>
+                )}
+                {(sale.freightDeduction || 0) > 0 && (
+                  <tr>
+                    <td>भाड़ा (गाड़ी भाड़ा)</td>
+                    <td className="amount">{formatAmount(sale.freightDeduction || 0)}</td>
+                  </tr>
+                )}
+                {(sale.otherDeduction || 0) > 0 && (
+                  <tr>
+                    <td>अन्य शुल्क</td>
+                    <td className="amount">{formatAmount(sale.otherDeduction || 0)}</td>
+                  </tr>
+                )}
+                <tr className="total-row">
+                  <td><strong>कुल प्रवेश कटौती</strong></td>
+                  <td className="amount"><strong>रु. {formatAmount((sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0))}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
 
       <div className="payment-status">
@@ -561,6 +594,39 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </tr>
           </tbody>
         </table>
+        
+        {/* Entry Deductions Section */}
+        {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (
+          <>
+            <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती</div>
+            <table className="charges-table">
+              <tbody>
+                {(sale.advanceDeduction || 0) > 0 && (
+                  <tr>
+                    <td>अग्रिम</td>
+                    <td className="amount">{formatAmount(sale.advanceDeduction || 0)}</td>
+                  </tr>
+                )}
+                {(sale.freightDeduction || 0) > 0 && (
+                  <tr>
+                    <td>भाड़ा (गाड़ी भाड़ा)</td>
+                    <td className="amount">{formatAmount(sale.freightDeduction || 0)}</td>
+                  </tr>
+                )}
+                {(sale.otherDeduction || 0) > 0 && (
+                  <tr>
+                    <td>अन्य शुल्क</td>
+                    <td className="amount">{formatAmount(sale.otherDeduction || 0)}</td>
+                  </tr>
+                )}
+                <tr className="total-row">
+                  <td><strong>कुल प्रवेश कटौती</strong></td>
+                  <td className="amount"><strong>रु. {formatAmount((sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0))}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
 
       <div className="section">
