@@ -598,7 +598,7 @@ export default function SalesHistoryPage() {
                       <TableCell>{sale.lotNo}</TableCell>
                       <TableCell className="text-right">{sale.originalLotSize}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">
+                        <Badge variant="outline" className={sale.bagType === "wafer" ? "bg-chart-1/10 text-chart-1" : "bg-chart-2/10 text-chart-2"}>
                           {t(sale.bagType)}
                         </Badge>
                       </TableCell>
