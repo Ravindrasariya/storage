@@ -2912,22 +2912,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async archiveColdStorage(id: string): Promise<boolean> {
-    // Just set status to archived - no data deletion
-    await db.update(coldStorages)
-      .set({ status: 'archived' })
-      .where(eq(coldStorages.id, id));
-    return true;
+    // Use updateColdStorageStatus to ensure session invalidation happens
+    return this.updateColdStorageStatus(id, 'archived');
   }
 
   async updateColdStorageStatus(id: string, status: 'active' | 'inactive' | 'archived'): Promise<boolean> {
     await db.update(coldStorages)
       .set({ status })
       .where(eq(coldStorages.id, id));
+    
+    // If status is inactive or archived, invalidate all user sessions for this cold storage
+    // This forces all logged-in users to re-authenticate and see the appropriate error
+    if (status === 'inactive' || status === 'archived') {
+      await db.delete(userSessions).where(eq(userSessions.coldStorageId, id));
+    }
+    
     return true;
   }
 
   async resetColdStorage(id: string): Promise<boolean> {
     // Delete all data for this cold storage (factory reset)
+    
+    // First, invalidate all user sessions to force logout
+    await db.delete(userSessions).where(eq(userSessions.coldStorageId, id));
+    
     // Delete lots and related data
     const lotsToDelete = await db.select({ id: lots.id }).from(lots).where(eq(lots.coldStorageId, id));
     const lotIds = lotsToDelete.map(l => l.id);
@@ -2935,11 +2943,18 @@ export class DatabaseStorage implements IStorage {
     if (lotIds.length > 0) {
       // Delete lot edit history
       await db.delete(lotEditHistory).where(inArray(lotEditHistory.lotId, lotIds));
+      // Get sales history IDs to delete sale edit history first
+      const salesToDelete = await db.select({ id: salesHistory.id }).from(salesHistory).where(inArray(salesHistory.lotId, lotIds));
+      const saleIds = salesToDelete.map(s => s.id);
+      if (saleIds.length > 0) {
+        // Delete sale edit history (changes to sales records)
+        await db.delete(saleEditHistory).where(inArray(saleEditHistory.saleId, saleIds));
+      }
       // Delete sales history
       await db.delete(salesHistory).where(inArray(salesHistory.lotId, lotIds));
-      // Delete exit history
-      await db.delete(exitHistory).where(inArray(exitHistory.lotId, lotIds));
     }
+    // Delete exit history (by coldStorageId to catch all records)
+    await db.delete(exitHistory).where(eq(exitHistory.coldStorageId, id));
     // Delete lots
     await db.delete(lots).where(eq(lots.coldStorageId, id));
     
@@ -2950,15 +2965,20 @@ export class DatabaseStorage implements IStorage {
     await db.delete(discounts).where(eq(discounts.coldStorageId, id));
     await db.delete(cashOpeningBalances).where(eq(cashOpeningBalances.coldStorageId, id));
     await db.delete(openingReceivables).where(eq(openingReceivables.coldStorageId, id));
+    await db.delete(openingPayables).where(eq(openingPayables.coldStorageId, id));
+    
+    // Delete maintenance records
+    await db.delete(maintenanceRecords).where(eq(maintenanceRecords.coldStorageId, id));
     
     // Delete chambers and their floors
-    const chambersToDelete = await db.select().from(chambers).where(eq(chambers.coldStorageId, id));
-    for (const chamber of chambersToDelete) {
-      await db.delete(chamberFloors).where(eq(chamberFloors.chamberId, chamber.id));
+    const chambersToDelete = await db.select({ id: chambers.id }).from(chambers).where(eq(chambers.coldStorageId, id));
+    const chamberIds = chambersToDelete.map(c => c.id);
+    if (chamberIds.length > 0) {
+      await db.delete(chamberFloors).where(inArray(chamberFloors.chamberId, chamberIds));
     }
     await db.delete(chambers).where(eq(chambers.coldStorageId, id));
     
-    // Reset bill number counters
+    // Reset bill number counters and set status to active
     await db.update(coldStorages)
       .set({
         nextExitBillNumber: 1,
@@ -2969,6 +2989,7 @@ export class DatabaseStorage implements IStorage {
         nextRationSeedLotNumber: 1,
         startingWaferLotNumber: 1,
         startingRationSeedLotNumber: 1,
+        status: 'active',
       })
       .where(eq(coldStorages.id, id));
     
