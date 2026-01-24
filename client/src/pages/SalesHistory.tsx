@@ -591,11 +591,11 @@ export default function SalesHistoryPage() {
                 <TableBody>
                   {salesHistory.map((sale) => (
                     <TableRow key={sale.id} data-testid={`row-sale-${sale.id}`}>
-                      <TableCell className="whitespace-nowrap">
+                      <TableCell className="whitespace-nowrap text-xs">
                         {format(new Date(sale.soldAt), "dd MMM yyyy")}
                       </TableCell>
                       <TableCell className="text-xs font-medium">{sale.farmerName}</TableCell>
-                      <TableCell>{sale.contactNumber}</TableCell>
+                      <TableCell className="text-xs">{sale.contactNumber}</TableCell>
                       <TableCell>{sale.lotNo}</TableCell>
                       <TableCell className="text-right">{sale.originalLotSize}</TableCell>
                       <TableCell>
@@ -628,7 +628,7 @@ export default function SalesHistoryPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {sale.pricePerKg ? <><Currency amount={sale.pricePerKg} />/kg</> : "-"}
+                        {sale.pricePerKg ? <Currency amount={sale.pricePerKg} /> : "-"}
                       </TableCell>
                       <TableCell>
                         <Badge 
