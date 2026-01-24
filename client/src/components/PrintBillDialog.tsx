@@ -273,7 +273,21 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
   const totalCharges = calculateTotalColdCharges(sale);
   const totalIncome = (sale.netWeight || 0) * (sale.pricePerKg || 0);
-  const netIncome = totalIncome - totalCharges;
+  
+  // Calculate proportional entry deductions for this sale
+  const proportionalEntryDeductions = calculateProportionalEntryDeductions({
+    quantitySold: sale.quantitySold || 0,
+    originalLotSize: sale.originalLotSize || 1,
+    advanceDeduction: sale.advanceDeduction || 0,
+    freightDeduction: sale.freightDeduction || 0,
+    otherDeduction: sale.otherDeduction || 0,
+  });
+  
+  // Total Deductions = cold charges + proportional entry deductions
+  const totalDeductions = totalCharges + proportionalEntryDeductions;
+  
+  // Net Payable = Total Income - Total Deductions
+  const netPayable = totalIncome - totalDeductions;
   
   const hasSeparateCharges = sale.coldCharge != null && sale.hammali != null;
   
@@ -323,9 +337,10 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     hammaliAmount = 0;
   }
   
-  // Calculate quintal value for cold charges display (derived from stored charges)
-  const quintalValue = isQuintalBased && sale.coldCharge && sale.coldCharge > 0
-    ? (coldChargeAmount / sale.coldCharge).toFixed(2)
+  // Calculate quintal value for cold charges display from stored net weight (not reverse-calculated)
+  // Formula: (initialNetWeightKg × bagsToUse) / (originalLotSize × 100)
+  const quintalValue = isQuintalBased && sale.initialNetWeightKg && sale.originalLotSize && sale.originalLotSize > 0
+    ? ((sale.initialNetWeightKg * bagsToUse) / (sale.originalLotSize * 100)).toFixed(2)
     : null;
 
   const renderDeductionBill = () => (
@@ -434,7 +449,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         </table>
         
         {/* Entry Deductions Section - Proportional to bags sold */}
-        {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (
+        {proportionalEntryDeductions > 0 && (
           <>
             <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती ({sale.quantitySold}/{sale.originalLotSize} बोरी)</div>
             <table className="charges-table">
@@ -459,11 +474,23 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 )}
                 <tr className="total-row">
                   <td><strong>कुल प्रवेश कटौती</strong></td>
-                  <td className="amount"><strong>रु. {formatAmount(calculateProportionalDeduction(sale, (sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0)))}</strong></td>
+                  <td className="amount"><strong>रु. {formatAmount(proportionalEntryDeductions)}</strong></td>
                 </tr>
               </tbody>
             </table>
           </>
+        )}
+        
+        {/* Total Deductions Section - Cold charges + Entry deductions */}
+        {proportionalEntryDeductions > 0 && (
+          <table className="charges-table" style={{ marginTop: "16px" }}>
+            <tbody>
+              <tr className="total-row" style={{ backgroundColor: "#f0f0f0" }}>
+                <td><strong>कुल कटौती</strong> (शीत भण्डार शुल्क + प्रवेश कटौती)</td>
+                <td className="amount"><strong>रु. {formatAmount(totalDeductions)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
         )}
       </div>
 
@@ -609,7 +636,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         </table>
         
         {/* Entry Deductions Section - Proportional to bags sold */}
-        {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (
+        {proportionalEntryDeductions > 0 && (
           <>
             <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती ({sale.quantitySold}/{sale.originalLotSize} बोरी)</div>
             <table className="charges-table">
@@ -634,11 +661,23 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 )}
                 <tr className="total-row">
                   <td><strong>कुल प्रवेश कटौती</strong></td>
-                  <td className="amount"><strong>रु. {formatAmount(calculateProportionalDeduction(sale, (sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0)))}</strong></td>
+                  <td className="amount"><strong>रु. {formatAmount(proportionalEntryDeductions)}</strong></td>
                 </tr>
               </tbody>
             </table>
           </>
+        )}
+        
+        {/* Total Deductions Section - Cold charges + Entry deductions */}
+        {proportionalEntryDeductions > 0 && (
+          <table className="charges-table" style={{ marginTop: "16px" }}>
+            <tbody>
+              <tr className="total-row" style={{ backgroundColor: "#f0f0f0" }}>
+                <td><strong>कुल कटौती</strong> (शीत भण्डार शुल्क + प्रवेश कटौती)</td>
+                <td className="amount"><strong>रु. {formatAmount(totalDeductions)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
         )}
       </div>
 
@@ -646,8 +685,8 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         <table className="charges-table">
           <tbody>
             <tr className="total-row net-income">
-              <td><strong>शुद्ध आय (कुल आय - कुल शुल्क)</strong></td>
-              <td className="amount"><strong>रु. {formatAmount(netIncome)}</strong></td>
+              <td><strong>शुद्ध देय (कुल आय - कुल कटौती)</strong></td>
+              <td className="amount"><strong>रु. {formatAmount(netPayable)}</strong></td>
             </tr>
           </tbody>
         </table>
