@@ -257,6 +257,67 @@ export async function registerRoutes(
     }
   });
 
+  // Get summary totals for all lots (for Stock Register summary when no filter applied)
+  app.get("/api/lots/summary", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const coldStorage = await storage.getColdStorage(coldStorageId);
+      const allLots = await storage.getAllLots(coldStorageId);
+      const allSalesHistory = await storage.getSalesHistory(coldStorageId);
+      
+      // Calculate summary totals for all lots
+      let totalBags = 0;
+      let remainingBags = 0;
+      let chargesPaid = 0;
+      let chargesDue = 0;
+      let expectedColdCharges = 0;
+      
+      const lotIds = new Set(allLots.map(lot => lot.id));
+      
+      // Get paid and due amounts from sales history for these lots
+      for (const sale of allSalesHistory) {
+        if (lotIds.has(sale.lotId)) {
+          chargesPaid += sale.paidAmount || 0;
+          chargesDue += sale.dueAmount || 0;
+        }
+      }
+      
+      // Calculate expected cold charges and bag totals
+      for (const lot of allLots) {
+        totalBags += lot.size;
+        remainingBags += lot.remainingSize;
+        
+        // Calculate expected cold charges based on charge unit
+        const coldChargeRate = lot.bagType === "wafer" 
+          ? (coldStorage?.waferColdCharge || 0)
+          : (coldStorage?.seedColdCharge || 0);
+        const hammaliRate = lot.bagType === "wafer"
+          ? (coldStorage?.waferHammali || 0)
+          : (coldStorage?.seedHammali || 0);
+        
+        let lotCharge: number;
+        if (coldStorage?.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
+          const coldChargeQuintal = (lot.netWeight * coldChargeRate) / 100;
+          const hammaliTotal = hammaliRate * lot.size;
+          lotCharge = coldChargeQuintal + hammaliTotal;
+        } else {
+          lotCharge = lot.size * (coldChargeRate + hammaliRate);
+        }
+        expectedColdCharges += lotCharge;
+      }
+      
+      res.json({
+        totalBags,
+        remainingBags,
+        chargesPaid,
+        chargesDue,
+        expectedColdCharges,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch lots summary" });
+    }
+  });
+
   app.post("/api/lots", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

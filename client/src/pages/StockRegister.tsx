@@ -147,6 +147,17 @@ export default function StockRegister() {
     queryKey: ["/api/sales-history"],
   });
 
+  // Fetch summary totals for ALL lots (used when no filter is applied)
+  const { data: allLotsSummary } = useQuery<{
+    totalBags: number;
+    remainingBags: number;
+    chargesPaid: number;
+    chargesDue: number;
+    expectedColdCharges: number;
+  }>({
+    queryKey: ["/api/lots/summary"],
+  });
+
   // Calculate charges for selected lot from sales history (same calculation as Analytics)
   const selectedLotCharges = useMemo(() => {
     if (!selectedLot || !allSalesHistory) return { totalPaid: 0, totalDue: 0 };
@@ -325,6 +336,12 @@ export default function StockRegister() {
 
   // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
+    // When no filter is active (no search, bagType = all), use the API summary for ALL lots
+    const noFilterActive = !hasSearched && bagTypeFilter === "all";
+    if (noFilterActive && allLotsSummary) {
+      return allLotsSummary;
+    }
+    
     // Use search results if searched, otherwise use initial lots
     const baseLots = hasSearched ? searchResults : (initialLots || []);
     if (baseLots.length === 0) return null;
@@ -341,23 +358,12 @@ export default function StockRegister() {
     let chargesPaid = 0;
     let chargesDue = 0;
     
-    // Calculate from sales history if available
+    // Calculate from sales history using persisted values (same as API summary endpoint)
     if (allSalesHistory) {
       for (const sale of allSalesHistory) {
         if (!lotIds.has(sale.lotId)) continue;
-        
-        const totalCharges = calculateTotalColdCharges(sale);
-        
-        if (sale.paymentStatus === "paid") {
-          chargesPaid += totalCharges;
-        } else if (sale.paymentStatus === "due") {
-          chargesDue += totalCharges;
-        } else if (sale.paymentStatus === "partial") {
-          // Use paidAmount from sale, calculate due as remainder to ensure consistency
-          const paidAmount = sale.paidAmount || 0;
-          chargesPaid += paidAmount;
-          chargesDue += Math.max(0, totalCharges - paidAmount);
-        }
+        chargesPaid += sale.paidAmount || 0;
+        chargesDue += sale.dueAmount || 0;
       }
     }
     
@@ -390,7 +396,7 @@ export default function StockRegister() {
       chargesDue,
       expectedColdCharges,
     };
-  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, coldStorage]);
+  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, coldStorage, allLotsSummary]);
 
   // Detect if any filter/search is active
   const isFilterActive = useMemo(() => {
