@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ShoppingCart, Phone, MapPin, Package, Minus, X } from "lucide-react";
+import { ShoppingCart, Phone, MapPin, Package, Minus, X, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -56,9 +56,25 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   const [isSelfBuyer, setIsSelfBuyer] = useState(false);
+  
+  // Farmer filter state
+  const [farmerFilterQuery, setFarmerFilterQuery] = useState("");
+  const [showFarmerFilterSuggestions, setShowFarmerFilterSuggestions] = useState(false);
+  const [selectedFarmerFilter, setSelectedFarmerFilter] = useState<{ name: string; phone: string; village: string } | null>(null);
+  const farmerFilterRef = useRef<HTMLDivElement>(null);
 
   const { data: buyersData } = useQuery<{ buyerName: string }[]>({
     queryKey: ["/api/buyers/lookup"],
+  });
+  
+  type FarmerRecord = {
+    farmerName: string;
+    contactNumber: string;
+    village: string;
+  };
+  
+  const { data: farmerRecords } = useQuery<FarmerRecord[]>({
+    queryKey: ["/api/farmers/lookup"],
   });
 
   const buyerSuggestions = useMemo(() => {
@@ -73,6 +89,45 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setBuyerName(buyer.buyerName);
     setShowBuyerSuggestions(false);
   };
+  
+  // Farmer filter suggestions
+  const farmerFilterSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0 || !farmerFilterQuery.trim()) return [];
+    const query = farmerFilterQuery.toLowerCase().trim();
+    return farmerRecords
+      .filter(farmer => 
+        farmer.farmerName.toLowerCase().includes(query) ||
+        farmer.contactNumber.includes(query) ||
+        farmer.village.toLowerCase().includes(query)
+      )
+      .slice(0, 8);
+  }, [farmerRecords, farmerFilterQuery]);
+  
+  const selectFarmerFilter = (farmer: FarmerRecord) => {
+    setFarmerFilterQuery(`${farmer.farmerName} - ${farmer.contactNumber}`);
+    setSelectedFarmerFilter({
+      name: farmer.farmerName,
+      phone: farmer.contactNumber,
+      village: farmer.village
+    });
+    setShowFarmerFilterSuggestions(false);
+  };
+  
+  const clearFarmerFilter = () => {
+    setFarmerFilterQuery("");
+    setSelectedFarmerFilter(null);
+  };
+  
+  // Filter saleLots based on selected farmer (normalize for trailing spaces)
+  const filteredSaleLots = useMemo(() => {
+    if (!selectedFarmerFilter) return saleLots;
+    const filterName = selectedFarmerFilter.name.trim().toLowerCase();
+    const filterPhone = selectedFarmerFilter.phone.trim();
+    return saleLots.filter(lot => 
+      lot.farmerName.trim().toLowerCase() === filterName &&
+      lot.contactNumber.trim() === filterPhone
+    );
+  }, [saleLots, selectedFarmerFilter]);
 
   const partialSaleMutation = useMutation({
     mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining" }) => {
@@ -362,13 +417,76 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   return (
     <>
       <Card className="p-6">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
           <ShoppingCart className="h-5 w-5 text-chart-3" />
           <h3 className="text-lg font-semibold">{t("upForSale") || "Up for Sale"}</h3>
-          <Badge variant="secondary" className="ml-auto">{saleLots.length}</Badge>
+          
+          {/* Farmer Filter */}
+          <div className="relative ml-auto" ref={farmerFilterRef}>
+            <div className="flex items-center gap-1">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder={t("filterByFarmer")}
+                  value={farmerFilterQuery}
+                  onChange={(e) => {
+                    setFarmerFilterQuery(e.target.value);
+                    setShowFarmerFilterSuggestions(true);
+                    if (!e.target.value.trim()) {
+                      setSelectedFarmerFilter(null);
+                    }
+                  }}
+                  onFocus={() => setShowFarmerFilterSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowFarmerFilterSuggestions(false), 200)}
+                  className="pl-7 h-8 w-48 text-sm"
+                  data-testid="input-upforsale-farmer-filter"
+                />
+                {selectedFarmerFilter && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-8 w-8"
+                    onClick={clearFarmerFilter}
+                    data-testid="button-clear-farmer-filter"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+            {showFarmerFilterSuggestions && farmerFilterSuggestions.length > 0 && farmerFilterQuery && !selectedFarmerFilter && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                {farmerFilterSuggestions.map((farmer, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover-elevate text-sm"
+                    onClick={() => selectFarmerFilter(farmer)}
+                    data-testid={`farmer-filter-suggestion-${idx}`}
+                  >
+                    <div className="font-medium">{farmer.farmerName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {farmer.contactNumber} - {farmer.village}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <Badge variant="secondary">
+            {selectedFarmerFilter ? `${filteredSaleLots.length}/${saleLots.length}` : saleLots.length}
+          </Badge>
         </div>
         <div className="space-y-3 max-h-96 overflow-y-auto">
-          {saleLots.map((lot) => (
+          {filteredSaleLots.length === 0 && selectedFarmerFilter && (
+            <div className="text-center py-4 text-muted-foreground" data-testid="no-filtered-results">
+              {t("noResults")}
+            </div>
+          )}
+          {filteredSaleLots.map((lot) => (
             <div
               key={lot.id}
               className="p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-card"
