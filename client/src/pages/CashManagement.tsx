@@ -870,6 +870,7 @@ export default function CashManagement() {
       case "hammali": return t("hammali");
       case "grading_charges": return t("gradingCharges");
       case "general_expenses": return t("generalExpenses");
+      case "cost_of_goods_sold": return t("costOfGoodsSold");
       default: return type;
     }
   };
