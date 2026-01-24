@@ -7,13 +7,26 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -39,6 +52,11 @@ import {
   Save,
   X,
   LogOut,
+  Archive,
+  RotateCcw,
+  Power,
+  PowerOff,
+  Undo2,
 } from "lucide-react";
 import type { ColdStorage, ColdStorageUser } from "@shared/schema";
 
@@ -188,20 +206,45 @@ function AdminDashboard() {
     },
   });
 
-  // Delete cold storage mutation
-  const deleteStorageMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await adminApiRequest("DELETE", `/api/admin/cold-storages/${id}`);
+  // Update cold storage status mutation (with password verification)
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status, adminPassword }: { id: string; status: string; adminPassword: string }) => {
+      const response = await adminApiRequest("POST", `/api/admin/cold-storages/${id}/status`, { status, adminPassword });
+      return response.json();
+    },
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/cold-storages"] });
+      const statusMessages: Record<string, string> = {
+        active: "Cold storage activated successfully",
+        inactive: "Cold storage made inactive successfully",
+        archived: "Cold storage archived successfully",
+      };
+      toast({ title: "Success", description: statusMessages[status] || "Status updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update status", variant: "destructive" });
+    },
+  });
+
+  // Reset cold storage mutation (factory reset with password verification)
+  const resetStorageMutation = useMutation({
+    mutationFn: async ({ id, adminPassword }: { id: string; adminPassword: string }) => {
+      const response = await adminApiRequest("POST", `/api/admin/cold-storages/${id}/reset`, { adminPassword });
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/cold-storages"] });
-      toast({ title: "Success", description: "Cold storage deleted successfully" });
+      toast({ title: "Success", description: "Cold storage reset successfully. All data has been deleted." });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to delete cold storage", variant: "destructive" });
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to reset cold storage", variant: "destructive" });
     },
   });
+
+  // Separate storages by status
+  const activeStorages = coldStorages.filter(s => s.status === 'active' || !s.status);
+  const inactiveStorages = coldStorages.filter(s => s.status === 'inactive');
+  const archivedStorages = coldStorages.filter(s => s.status === 'archived');
 
   const toggleExpand = (id: string) => {
     setExpandedStorages((prev) => {
@@ -271,32 +314,95 @@ function AdminDashboard() {
         </div>
       </div>
 
-      <div className="space-y-3">
-        {coldStorages.map((storage) => (
-          <ColdStorageRow
-            key={storage.id}
-            storage={storage}
-            isExpanded={expandedStorages.has(storage.id)}
-            isEditing={editingStorage === storage.id}
-            onToggleExpand={() => toggleExpand(storage.id)}
-            onEdit={() => setEditingStorage(storage.id)}
-            onCancelEdit={() => setEditingStorage(null)}
-            onSave={(data) => updateStorageMutation.mutate({ id: storage.id, data })}
-            onDelete={() => {
-              if (confirm("Are you sure you want to delete this cold storage? This will also delete all associated users.")) {
-                deleteStorageMutation.mutate(storage.id);
-              }
-            }}
-            isSaving={updateStorageMutation.isPending}
-          />
-        ))}
+      {/* Active Cold Storages */}
+      {activeStorages.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Power className="h-5 w-5 text-green-600" />
+            Active Cold Storages ({activeStorages.length})
+          </h2>
+          {activeStorages.map((storage) => (
+            <ColdStorageRow
+              key={storage.id}
+              storage={storage}
+              isExpanded={expandedStorages.has(storage.id)}
+              isEditing={editingStorage === storage.id}
+              onToggleExpand={() => toggleExpand(storage.id)}
+              onEdit={() => setEditingStorage(storage.id)}
+              onCancelEdit={() => setEditingStorage(null)}
+              onSave={(data) => updateStorageMutation.mutate({ id: storage.id, data })}
+              onStatusChange={(status, password) => updateStatusMutation.mutate({ id: storage.id, status, adminPassword: password })}
+              onReset={(password) => resetStorageMutation.mutate({ id: storage.id, adminPassword: password })}
+              isSaving={updateStorageMutation.isPending}
+              isStatusChanging={updateStatusMutation.isPending}
+              isResetting={resetStorageMutation.isPending}
+            />
+          ))}
+        </div>
+      )}
 
-        {coldStorages.length === 0 && (
-          <Card className="p-8 text-center text-muted-foreground">
-            No cold storages found. Click "Add Cold Storage" to create one.
-          </Card>
-        )}
-      </div>
+      {/* Inactive Cold Storages */}
+      {inactiveStorages.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <PowerOff className="h-5 w-5 text-yellow-600" />
+            Inactive Cold Storages ({inactiveStorages.length})
+          </h2>
+          {inactiveStorages.map((storage) => (
+            <ColdStorageRow
+              key={storage.id}
+              storage={storage}
+              isExpanded={expandedStorages.has(storage.id)}
+              isEditing={editingStorage === storage.id}
+              onToggleExpand={() => toggleExpand(storage.id)}
+              onEdit={() => setEditingStorage(storage.id)}
+              onCancelEdit={() => setEditingStorage(null)}
+              onSave={(data) => updateStorageMutation.mutate({ id: storage.id, data })}
+              onStatusChange={(status, password) => updateStatusMutation.mutate({ id: storage.id, status, adminPassword: password })}
+              onReset={(password) => resetStorageMutation.mutate({ id: storage.id, adminPassword: password })}
+              isSaving={updateStorageMutation.isPending}
+              isStatusChanging={updateStatusMutation.isPending}
+              isResetting={resetStorageMutation.isPending}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Archived Cold Storages */}
+      {archivedStorages.length > 0 && (
+        <div className="space-y-3 border-t pt-6 mt-6">
+          <h2 className="text-lg font-semibold flex items-center gap-2 text-muted-foreground">
+            <Archive className="h-5 w-5" />
+            Archived Cold Storages ({archivedStorages.length})
+          </h2>
+          <p className="text-sm text-muted-foreground mb-3">
+            These cold storages have been archived. Users cannot log in until they are reinstated.
+          </p>
+          {archivedStorages.map((storage) => (
+            <ColdStorageRow
+              key={storage.id}
+              storage={storage}
+              isExpanded={expandedStorages.has(storage.id)}
+              isEditing={editingStorage === storage.id}
+              onToggleExpand={() => toggleExpand(storage.id)}
+              onEdit={() => setEditingStorage(storage.id)}
+              onCancelEdit={() => setEditingStorage(null)}
+              onSave={(data) => updateStorageMutation.mutate({ id: storage.id, data })}
+              onStatusChange={(status, password) => updateStatusMutation.mutate({ id: storage.id, status, adminPassword: password })}
+              onReset={(password) => resetStorageMutation.mutate({ id: storage.id, adminPassword: password })}
+              isSaving={updateStorageMutation.isPending}
+              isStatusChanging={updateStatusMutation.isPending}
+              isResetting={resetStorageMutation.isPending}
+            />
+          ))}
+        </div>
+      )}
+
+      {coldStorages.length === 0 && (
+        <Card className="p-8 text-center text-muted-foreground">
+          No cold storages found. Click "Add Cold Storage" to create one.
+        </Card>
+      )}
     </div>
   );
 }
@@ -309,8 +415,11 @@ interface ColdStorageRowProps {
   onEdit: () => void;
   onCancelEdit: () => void;
   onSave: (data: Partial<ColdStorage>) => void;
-  onDelete: () => void;
+  onStatusChange: (status: string, password: string) => void;
+  onReset: (password: string) => void;
   isSaving: boolean;
+  isStatusChanging: boolean;
+  isResetting: boolean;
 }
 
 function ColdStorageRow({
@@ -321,8 +430,11 @@ function ColdStorageRow({
   onEdit,
   onCancelEdit,
   onSave,
-  onDelete,
+  onStatusChange,
+  onReset,
   isSaving,
+  isStatusChanging,
+  isResetting,
 }: ColdStorageRowProps) {
   const [formData, setFormData] = useState({
     name: storage.name,
@@ -333,12 +445,57 @@ function ColdStorageRow({
     pincode: storage.pincode || "",
   });
 
+  // Dialog states
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [showInactiveDialog, setShowInactiveDialog] = useState(false);
+  const [showActiveDialog, setShowActiveDialog] = useState(false);
+  const [showReinstateDialog, setShowReinstateDialog] = useState(false);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+
   const handleSave = () => {
     onSave(formData);
   };
 
+  const handleResetConfirm = () => {
+    if (!adminPassword) {
+      setPasswordError("Password is required");
+      return;
+    }
+    onReset(adminPassword);
+    setShowResetDialog(false);
+    setAdminPassword("");
+    setPasswordError("");
+  };
+
+  const handleStatusConfirm = (newStatus: string) => {
+    if (!adminPassword) {
+      setPasswordError("Password is required");
+      return;
+    }
+    onStatusChange(newStatus, adminPassword);
+    setShowInactiveDialog(false);
+    setShowActiveDialog(false);
+    setShowReinstateDialog(false);
+    setShowArchiveDialog(false);
+    setAdminPassword("");
+    setPasswordError("");
+  };
+
+  const status = storage.status || 'active';
+  const isArchived = status === 'archived';
+  const isInactive = status === 'inactive';
+  const isActive = status === 'active';
+
+  const getStatusBadge = () => {
+    if (isArchived) return <Badge variant="secondary" className="bg-gray-500 text-white">Archived</Badge>;
+    if (isInactive) return <Badge variant="secondary" className="bg-yellow-600 text-white">Inactive</Badge>;
+    return <Badge variant="secondary" className="bg-green-600 text-white">Active</Badge>;
+  };
+
   return (
-    <Card className="overflow-hidden">
+    <Card className={`overflow-hidden ${isArchived ? 'opacity-70' : ''}`}>
       <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
         <div className="flex items-center justify-between p-4">
           <CollapsibleTrigger asChild>
@@ -348,24 +505,101 @@ function ColdStorageRow({
               ) : (
                 <ChevronRight className="h-5 w-5 text-muted-foreground" />
               )}
-              <div>
-                <h3 className="font-semibold">{storage.name}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {storage.address ? `${storage.address}, ` : ""}
-                  {storage.district || "No address"}, {storage.state || ""}
-                </p>
+              <div className="flex items-center gap-2">
+                <div>
+                  <h3 className="font-semibold">{storage.name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {storage.address ? `${storage.address}, ` : ""}
+                    {storage.district || "No address"}, {storage.state || ""}
+                  </p>
+                </div>
+                {getStatusBadge()}
               </div>
             </button>
           </CollapsibleTrigger>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 flex-wrap">
             {!isEditing ? (
               <>
+                {/* Edit button - always available */}
                 <Button variant="ghost" size="icon" onClick={onEdit} data-testid={`button-edit-storage-${storage.id}`}>
                   <Edit className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={onDelete} data-testid={`button-delete-storage-${storage.id}`}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+
+                {/* Active storage actions */}
+                {isActive && (
+                  <>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowResetDialog(true)}
+                      className="text-red-600 hover:text-red-700"
+                      data-testid={`button-reset-storage-${storage.id}`}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      Reset
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowInactiveDialog(true)}
+                      className="text-yellow-600 hover:text-yellow-700"
+                      data-testid={`button-inactive-storage-${storage.id}`}
+                    >
+                      <PowerOff className="h-4 w-4 mr-1" />
+                      Inactive
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowArchiveDialog(true)}
+                      className="text-gray-600 hover:text-gray-700"
+                      data-testid={`button-archive-storage-${storage.id}`}
+                    >
+                      <Archive className="h-4 w-4 mr-1" />
+                      Archive
+                    </Button>
+                  </>
+                )}
+
+                {/* Inactive storage actions */}
+                {isInactive && (
+                  <>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowActiveDialog(true)}
+                      className="text-green-600 hover:text-green-700"
+                      data-testid={`button-activate-storage-${storage.id}`}
+                    >
+                      <Power className="h-4 w-4 mr-1" />
+                      Activate
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowArchiveDialog(true)}
+                      className="text-gray-600 hover:text-gray-700"
+                      data-testid={`button-archive-storage-${storage.id}`}
+                    >
+                      <Archive className="h-4 w-4 mr-1" />
+                      Archive
+                    </Button>
+                  </>
+                )}
+
+                {/* Archived storage actions */}
+                {isArchived && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowReinstateDialog(true)}
+                    className="text-green-600 hover:text-green-700"
+                    data-testid={`button-reinstate-storage-${storage.id}`}
+                  >
+                    <Undo2 className="h-4 w-4 mr-1" />
+                    Reinstate
+                  </Button>
+                )}
               </>
             ) : (
               <>
@@ -379,6 +613,179 @@ function ColdStorageRow({
             )}
           </div>
         </div>
+
+        {/* Reset Confirmation Dialog */}
+        <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-red-600">Factory Reset - {storage.name}</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete ALL data for this cold storage including:
+                <ul className="list-disc ml-6 mt-2 space-y-1">
+                  <li>All lots and their history</li>
+                  <li>All sales records</li>
+                  <li>All chambers and floors</li>
+                  <li>All cash flow records</li>
+                  <li>All bill number counters (reset to 1)</li>
+                </ul>
+                <p className="mt-3 font-semibold text-red-600">This action cannot be undone!</p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2 mt-2">
+              <Label>Enter Admin Password to confirm</Label>
+              <Input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => { setAdminPassword(e.target.value); setPasswordError(""); }}
+                placeholder="Admin password"
+              />
+              {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setAdminPassword(""); setPasswordError(""); }}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleResetConfirm} 
+                className="bg-red-600 hover:bg-red-700"
+                disabled={isResetting}
+              >
+                {isResetting ? "Resetting..." : "Reset All Data"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Make Inactive Confirmation Dialog */}
+        <AlertDialog open={showInactiveDialog} onOpenChange={setShowInactiveDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Make Inactive - {storage.name}</AlertDialogTitle>
+              <AlertDialogDescription>
+                Making this cold storage inactive will prevent all users from logging in and using the account.
+                All data will be preserved and can be accessed once the account is activated again.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2 mt-2">
+              <Label>Enter Admin Password to confirm</Label>
+              <Input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => { setAdminPassword(e.target.value); setPasswordError(""); }}
+                placeholder="Admin password"
+              />
+              {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setAdminPassword(""); setPasswordError(""); }}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => handleStatusConfirm('inactive')} 
+                className="bg-yellow-600 hover:bg-yellow-700"
+                disabled={isStatusChanging}
+              >
+                {isStatusChanging ? "Processing..." : "Make Inactive"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Activate Confirmation Dialog */}
+        <AlertDialog open={showActiveDialog} onOpenChange={setShowActiveDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Activate - {storage.name}</AlertDialogTitle>
+              <AlertDialogDescription>
+                Activating this cold storage will allow users to log in and use the account.
+                All existing data will be available.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2 mt-2">
+              <Label>Enter Admin Password to confirm</Label>
+              <Input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => { setAdminPassword(e.target.value); setPasswordError(""); }}
+                placeholder="Admin password"
+              />
+              {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setAdminPassword(""); setPasswordError(""); }}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => handleStatusConfirm('active')} 
+                className="bg-green-600 hover:bg-green-700"
+                disabled={isStatusChanging}
+              >
+                {isStatusChanging ? "Processing..." : "Activate"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Reinstate Confirmation Dialog */}
+        <AlertDialog open={showReinstateDialog} onOpenChange={setShowReinstateDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reinstate - {storage.name}</AlertDialogTitle>
+              <AlertDialogDescription>
+                Reinstating this cold storage will restore it to active status. 
+                All existing data will be available and users will be able to log in again.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2 mt-2">
+              <Label>Enter Admin Password to confirm</Label>
+              <Input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => { setAdminPassword(e.target.value); setPasswordError(""); }}
+                placeholder="Admin password"
+              />
+              {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setAdminPassword(""); setPasswordError(""); }}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => handleStatusConfirm('active')} 
+                className="bg-green-600 hover:bg-green-700"
+                disabled={isStatusChanging}
+              >
+                {isStatusChanging ? "Processing..." : "Reinstate"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Archive Confirmation Dialog */}
+        <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Archive - {storage.name}</AlertDialogTitle>
+              <AlertDialogDescription>
+                Archiving this cold storage will prevent all users from logging in.
+                All data will be preserved and the storage will appear in the Archived section.
+                You can reinstate it later if needed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2 mt-2">
+              <Label>Enter Admin Password to confirm</Label>
+              <Input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => { setAdminPassword(e.target.value); setPasswordError(""); }}
+                placeholder="Admin password"
+              />
+              {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setAdminPassword(""); setPasswordError(""); }}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => handleStatusConfirm('archived')} 
+                className="bg-gray-600 hover:bg-gray-700"
+                disabled={isStatusChanging}
+              >
+                {isStatusChanging ? "Processing..." : "Archive"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <CollapsibleContent>
           <div className="border-t p-4 space-y-6">

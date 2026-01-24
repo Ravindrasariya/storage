@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, or, like, ilike, desc, sql, gte, lte, type SQL } from "drizzle-orm";
+import { eq, and, or, like, ilike, desc, sql, gte, lte, inArray, type SQL } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -216,7 +216,9 @@ export interface IStorage {
   // Admin - Cold Storage Management
   getAllColdStorages(): Promise<ColdStorage[]>;
   createColdStorage(data: InsertColdStorage): Promise<ColdStorage>;
-  deleteColdStorage(id: string): Promise<boolean>;
+  archiveColdStorage(id: string): Promise<boolean>;
+  updateColdStorageStatus(id: string, status: 'active' | 'inactive' | 'archived'): Promise<boolean>;
+  resetColdStorage(id: string): Promise<boolean>;
   // Cold Storage Users
   getColdStorageUsers(coldStorageId: string): Promise<ColdStorageUser[]>;
   createColdStorageUser(data: InsertColdStorageUser): Promise<ColdStorageUser>;
@@ -224,7 +226,7 @@ export interface IStorage {
   deleteColdStorageUser(id: string): Promise<boolean>;
   resetUserPassword(userId: string, newPassword: string): Promise<boolean>;
   // Authentication
-  authenticateUser(mobileNumber: string, password: string): Promise<{ user: ColdStorageUser; coldStorage: ColdStorage } | null>;
+  authenticateUser(mobileNumber: string, password: string): Promise<{ user: ColdStorageUser; coldStorage: ColdStorage; blocked?: string } | null>;
   getUserById(userId: string): Promise<ColdStorageUser | undefined>;
   // Session Management
   createSession(token: string, userId: string, coldStorageId: string): Promise<UserSession>;
@@ -2909,17 +2911,67 @@ export class DatabaseStorage implements IStorage {
     return newStorage;
   }
 
-  async deleteColdStorage(id: string): Promise<boolean> {
-    // First delete all users for this cold storage
-    await db.delete(coldStorageUsers).where(eq(coldStorageUsers.coldStorageId, id));
-    // Then delete chambers and their floors
+  async archiveColdStorage(id: string): Promise<boolean> {
+    // Just set status to archived - no data deletion
+    await db.update(coldStorages)
+      .set({ status: 'archived' })
+      .where(eq(coldStorages.id, id));
+    return true;
+  }
+
+  async updateColdStorageStatus(id: string, status: 'active' | 'inactive' | 'archived'): Promise<boolean> {
+    await db.update(coldStorages)
+      .set({ status })
+      .where(eq(coldStorages.id, id));
+    return true;
+  }
+
+  async resetColdStorage(id: string): Promise<boolean> {
+    // Delete all data for this cold storage (factory reset)
+    // Delete lots and related data
+    const lotsToDelete = await db.select({ id: lots.id }).from(lots).where(eq(lots.coldStorageId, id));
+    const lotIds = lotsToDelete.map(l => l.id);
+    
+    if (lotIds.length > 0) {
+      // Delete lot edit history
+      await db.delete(lotEditHistory).where(inArray(lotEditHistory.lotId, lotIds));
+      // Delete sales history
+      await db.delete(salesHistory).where(inArray(salesHistory.lotId, lotIds));
+      // Delete exit history
+      await db.delete(exitHistory).where(inArray(exitHistory.lotId, lotIds));
+    }
+    // Delete lots
+    await db.delete(lots).where(eq(lots.coldStorageId, id));
+    
+    // Delete cash flow data
+    await db.delete(cashReceipts).where(eq(cashReceipts.coldStorageId, id));
+    await db.delete(expenses).where(eq(expenses.coldStorageId, id));
+    await db.delete(cashTransfers).where(eq(cashTransfers.coldStorageId, id));
+    await db.delete(discounts).where(eq(discounts.coldStorageId, id));
+    await db.delete(cashOpeningBalances).where(eq(cashOpeningBalances.coldStorageId, id));
+    await db.delete(openingReceivables).where(eq(openingReceivables.coldStorageId, id));
+    
+    // Delete chambers and their floors
     const chambersToDelete = await db.select().from(chambers).where(eq(chambers.coldStorageId, id));
     for (const chamber of chambersToDelete) {
       await db.delete(chamberFloors).where(eq(chamberFloors.chamberId, chamber.id));
     }
     await db.delete(chambers).where(eq(chambers.coldStorageId, id));
-    // Delete the cold storage
-    const result = await db.delete(coldStorages).where(eq(coldStorages.id, id));
+    
+    // Reset bill number counters
+    await db.update(coldStorages)
+      .set({
+        nextExitBillNumber: 1,
+        nextColdStorageBillNumber: 1,
+        nextSalesBillNumber: 1,
+        nextEntryBillNumber: 1,
+        nextWaferLotNumber: 1,
+        nextRationSeedLotNumber: 1,
+        startingWaferLotNumber: 1,
+        startingRationSeedLotNumber: 1,
+      })
+      .where(eq(coldStorages.id, id));
+    
     return true;
   }
 
@@ -2960,7 +3012,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Authentication
-  async authenticateUser(mobileNumber: string, password: string): Promise<{ user: ColdStorageUser; coldStorage: ColdStorage } | null> {
+  async authenticateUser(mobileNumber: string, password: string): Promise<{ user: ColdStorageUser; coldStorage: ColdStorage; blocked?: string } | null> {
     const [user] = await db.select()
       .from(coldStorageUsers)
       .where(eq(coldStorageUsers.mobileNumber, mobileNumber));
@@ -2975,6 +3027,14 @@ export class DatabaseStorage implements IStorage {
 
     if (!coldStorage) {
       return null;
+    }
+
+    // Block login for inactive or archived cold stores
+    if (coldStorage.status === 'inactive') {
+      return { user, coldStorage, blocked: 'inactive' };
+    }
+    if (coldStorage.status === 'archived') {
+      return { user, coldStorage, blocked: 'archived' };
     }
 
     return { user, coldStorage };

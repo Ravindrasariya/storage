@@ -2279,6 +2279,14 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Invalid mobile number or password" });
       }
 
+      // Check if cold storage is blocked (inactive or archived)
+      if (result.blocked === 'inactive') {
+        return res.status(403).json({ error: "This cold storage account is currently inactive. Please contact the administrator." });
+      }
+      if (result.blocked === 'archived') {
+        return res.status(403).json({ error: "This cold storage account has been archived. Please contact the administrator." });
+      }
+
       const token = generateUserToken();
       // Store session in database for persistence across server restarts
       await storage.createSession(token, result.user.id, result.coldStorage.id);
@@ -2508,13 +2516,48 @@ export async function registerRoutes(
     }
   });
 
-  // Delete cold storage (protected)
+  // Archive cold storage (protected) - no data deletion
   app.delete("/api/admin/cold-storages/:id", verifyAdminSession, async (req, res) => {
     try {
-      await storage.deleteColdStorage(req.params.id);
+      await storage.archiveColdStorage(req.params.id);
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ error: "Failed to delete cold storage" });
+      res.status(500).json({ error: "Failed to archive cold storage" });
+    }
+  });
+
+  // Update cold storage status (inactive/active/archived)
+  app.post("/api/admin/cold-storages/:id/status", verifyAdminSession, async (req, res) => {
+    try {
+      const { status, adminPassword } = req.body;
+      if (!['active', 'inactive', 'archived'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+      // Verify admin password
+      const expectedPassword = process.env.ADMIN_PASSWORD || "admin123";
+      if (adminPassword !== expectedPassword) {
+        return res.status(401).json({ error: "Invalid admin password" });
+      }
+      await storage.updateColdStorageStatus(req.params.id, status);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update cold storage status" });
+    }
+  });
+
+  // Reset cold storage (factory reset - deletes all data)
+  app.post("/api/admin/cold-storages/:id/reset", verifyAdminSession, async (req, res) => {
+    try {
+      const { adminPassword } = req.body;
+      // Verify admin password
+      const expectedPassword = process.env.ADMIN_PASSWORD || "admin123";
+      if (adminPassword !== expectedPassword) {
+        return res.status(401).json({ error: "Invalid admin password" });
+      }
+      await storage.resetColdStorage(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reset cold storage" });
     }
   });
 
