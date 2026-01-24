@@ -271,7 +271,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     }
   };
 
-  const totalCharges = calculateTotalColdCharges(sale);
   const totalIncome = (sale.netWeight || 0) * (sale.pricePerKg || 0);
   
   // Calculate proportional entry deductions for this sale
@@ -282,12 +281,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     freightDeduction: sale.freightDeduction || 0,
     otherDeduction: sale.otherDeduction || 0,
   });
-  
-  // Total Deductions = cold charges + proportional entry deductions
-  const totalDeductions = totalCharges + proportionalEntryDeductions;
-  
-  // Net Payable = Total Income - Total Deductions
-  const netPayable = totalIncome - totalDeductions;
   
   const hasSeparateCharges = sale.coldCharge != null && sale.hammali != null;
   
@@ -301,16 +294,17 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const chargeUnit = sale.chargeUnitAtSale || coldStorage?.chargeUnit || "bag";
   const isQuintalBased = chargeUnit === "quintal";
   
-  // Calculate base charges (total minus extras) from stored values
-  const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
-  const baseChargesTotal = (sale.coldStorageCharge || 0) - extras;
-  
-  // Split base charges between cold charge and hammali
-  // For quintal mode: cold charge is per quintal, hammali is per bag
-  // For bag mode: both are per bag
+  // Calculate quintal value for cold charges display from stored net weight (not reverse-calculated)
+  // Formula: (initialNetWeightKg × bagsToUse) / (originalLotSize × 100)
+  const quintalValueNum = isQuintalBased && sale.initialNetWeightKg && sale.originalLotSize && sale.originalLotSize > 0
+    ? (sale.initialNetWeightKg * bagsToUse) / (sale.originalLotSize * 100)
+    : 0;
+  const quintalValue = quintalValueNum > 0 ? quintalValueNum.toFixed(2) : null;
+
+  // Calculate cold charge and hammali amounts directly from rates (not reverse-calculated from totals)
   let coldChargeAmount = 0;
   let hammaliAmount = 0;
-  
+
   // When base cold charges were already billed in a previous sale, both cold charge and hammali should be 0
   // baseChargeAmountAtSale === 0 indicates base charges were already billed
   if (sale.baseChargeAmountAtSale === 0) {
@@ -318,30 +312,32 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     hammaliAmount = 0;
   } else if (hasSeparateCharges && sale.coldCharge != null && sale.hammali != null) {
     if (isQuintalBased) {
-      // In quintal mode: hammali = rate × bags, cold charge = total - hammali
+      // In quintal mode: 
+      // cold charge = rate × quintals (directly calculated from stored net weight)
+      // hammali = rate × bags
+      coldChargeAmount = (sale.coldCharge || 0) * quintalValueNum;
       hammaliAmount = (sale.hammali || 0) * bagsToUse;
-      coldChargeAmount = Math.max(0, baseChargesTotal - hammaliAmount);
     } else {
-      // In bag mode: both calculated proportionally
-      const totalRate = (sale.coldCharge || 0) + (sale.hammali || 0);
-      if (totalRate > 0) {
-        coldChargeAmount = (baseChargesTotal * sale.coldCharge) / totalRate;
-        hammaliAmount = (baseChargesTotal * sale.hammali) / totalRate;
-      } else {
-        coldChargeAmount = baseChargesTotal;
-        hammaliAmount = 0;
-      }
+      // In bag mode: both calculated as rate × bags
+      coldChargeAmount = (sale.coldCharge || 0) * bagsToUse;
+      hammaliAmount = (sale.hammali || 0) * bagsToUse;
     }
   } else {
-    coldChargeAmount = baseChargesTotal;
+    // Fallback: use stored coldStorageCharge minus extras
+    const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+    coldChargeAmount = (sale.coldStorageCharge || 0) - extras;
     hammaliAmount = 0;
   }
+
+  // Calculate total cold charges from recalculated values
+  const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+  const totalCharges = coldChargeAmount + hammaliAmount + extras;
   
-  // Calculate quintal value for cold charges display from stored net weight (not reverse-calculated)
-  // Formula: (initialNetWeightKg × bagsToUse) / (originalLotSize × 100)
-  const quintalValue = isQuintalBased && sale.initialNetWeightKg && sale.originalLotSize && sale.originalLotSize > 0
-    ? ((sale.initialNetWeightKg * bagsToUse) / (sale.originalLotSize * 100)).toFixed(2)
-    : null;
+  // Total Deductions = cold charges + proportional entry deductions
+  const totalDeductions = totalCharges + proportionalEntryDeductions;
+  
+  // Net Payable = Total Income - Total Deductions
+  const netPayable = totalIncome - totalDeductions;
 
   const renderDeductionBill = () => (
     <div ref={printRef}>
