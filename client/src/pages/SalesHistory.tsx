@@ -593,7 +593,7 @@ export default function SalesHistoryPage() {
                       <TableCell className="whitespace-nowrap text-xs">
                         {format(new Date(sale.soldAt), "dd MMM yyyy")}
                       </TableCell>
-                      <TableCell className="text-xs font-medium">{sale.farmerName}</TableCell>
+                      <TableCell className="text-xs font-medium min-w-[120px]">{sale.farmerName}</TableCell>
                       <TableCell className="text-xs">{sale.contactNumber}</TableCell>
                       <TableCell>{sale.lotNo}</TableCell>
                       <TableCell className="text-right">{sale.originalLotSize}</TableCell>
