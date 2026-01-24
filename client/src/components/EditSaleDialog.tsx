@@ -17,7 +17,7 @@ import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "luc
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
-import { Currency } from "@/components/Currency";
+import { Currency, formatCurrency } from "@/components/Currency";
 
 interface EditSaleDialogProps {
   sale: SalesHistory | null;
@@ -157,7 +157,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     if (field === "paidAmount" || field === "dueAmount" || field === "pricePerKg" || field === "netWeight" ||
         field === "coldCharge" || field === "hammali" || field === "kataCharges" || 
         field === "extraHammali" || field === "gradingCharges" || field === "coldStorageCharge") {
-      return `₹${parseFloat(value).toLocaleString()}`;
+      return `₹${formatCurrency(parseFloat(value))}`;
     }
     return value;
   };

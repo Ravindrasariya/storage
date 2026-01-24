@@ -9,19 +9,17 @@ import type { SalesHistory, ColdStorage } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-// Format amount showing decimals only when present (e.g., 72.5 → "72.5", 72 → "72")
+// Format amount: round to 1 decimal if fractional, show integer if whole (e.g., 72.54 → "72.5", 72 → "72")
 const formatAmount = (value: number): string => {
   if (value === 0) return "0";
-  // Check if number has decimal part
   if (Number.isInteger(value)) {
-    return value.toLocaleString();
+    return value.toLocaleString("en-IN");
   }
-  // Show up to 2 decimal places, removing trailing zeros
-  const formatted = value.toFixed(2).replace(/\.?0+$/, "");
-  // Add thousand separators to the integer part
-  const [intPart, decPart] = formatted.split(".");
-  const intFormatted = parseInt(intPart).toLocaleString();
-  return decPart ? `${intFormatted}.${decPart}` : intFormatted;
+  const rounded = Math.round(value * 10) / 10;
+  if (Number.isInteger(rounded)) {
+    return rounded.toLocaleString("en-IN");
+  }
+  return rounded.toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 };
 
 interface PrintBillDialogProps {

@@ -8,9 +8,20 @@ interface CurrencyProps {
   showIcon?: boolean;
 }
 
+function smartFormatNumber(num: number): string {
+  if (Number.isInteger(num)) {
+    return num.toLocaleString("en-IN");
+  }
+  const rounded = Math.round(num * 10) / 10;
+  if (Number.isInteger(rounded)) {
+    return rounded.toLocaleString("en-IN");
+  }
+  return rounded.toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 export function Currency({ amount, className, iconClassName, showIcon = true }: CurrencyProps) {
   const formattedAmount = typeof amount === "number" 
-    ? amount.toLocaleString("en-IN") 
+    ? smartFormatNumber(amount) 
     : amount;
   
   return (
@@ -22,5 +33,5 @@ export function Currency({ amount, className, iconClassName, showIcon = true }: 
 }
 
 export function formatCurrency(amount: number): string {
-  return amount.toLocaleString("en-IN");
+  return smartFormatNumber(amount);
 }

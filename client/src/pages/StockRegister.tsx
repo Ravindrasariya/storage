@@ -482,10 +482,10 @@ export default function StockRegister() {
         lot.size,
         lot.remainingSize,
         lot.saleStatus || "stored",
-        expectedColdCharge.toFixed(2),
-        totalBilledCharge.toFixed(2),
-        paidCharge.toFixed(2),
-        dueCharge.toFixed(2),
+        expectedColdCharge.toFixed(1),
+        totalBilledCharge.toFixed(1),
+        paidCharge.toFixed(1),
+        dueCharge.toFixed(1),
       ];
     });
 

@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount } from "@shared/schema";
+import { formatCurrency } from "@/components/Currency";
 
 const CASH_MGMT_STATE_KEY_PREFIX = "cashManagementFormState";
 const STATE_EXPIRY_MS = 30000; // 30 seconds
@@ -1972,7 +1973,7 @@ export default function CashManagement() {
                               <span className="flex items-center justify-between gap-4 w-full">
                                 <span>{buyer.buyerName}</span>
                                 <Badge variant="outline" className="text-xs">
-                                  ₹{buyer.totalDue.toLocaleString()}
+                                  ₹{formatCurrency(buyer.totalDue)}
                                 </Badge>
                               </span>
                             </SelectItem>
@@ -1993,7 +1994,7 @@ export default function CashManagement() {
                     )}
                     {buyerName && buyerName !== "__other__" && selectedBuyerDue > 0 && (
                       <p className="text-xs text-muted-foreground">
-                        {t("totalDue")}: ₹{selectedBuyerDue.toLocaleString()}
+                        {t("totalDue")}: ₹{formatCurrency(selectedBuyerDue)}
                       </p>
                     )}
                   </div>
@@ -2148,7 +2149,7 @@ export default function CashManagement() {
                               <div className="flex flex-col">
                                 <span className="font-medium">{f.farmerName}</span>
                                 <span className="text-xs text-muted-foreground">
-                                  {f.village} | {f.contactNumber} | Due: ₹{f.totalDue.toLocaleString()}
+                                  {f.village} | {f.contactNumber} | Due: ₹{formatCurrency(f.totalDue)}
                                 </span>
                               </div>
                             </SelectItem>
@@ -2170,7 +2171,7 @@ export default function CashManagement() {
                       />
                       {selectedFarmerDetails && (
                         <p className="text-xs text-muted-foreground">
-                          Max: ₹{selectedFarmerDetails.totalDue.toLocaleString()}
+                          Max: ₹{formatCurrency(selectedFarmerDetails.totalDue)}
                         </p>
                       )}
                     </div>
@@ -2186,7 +2187,7 @@ export default function CashManagement() {
                                 <div className="flex-1 min-w-0">
                                   <p className="font-medium text-sm truncate">{buyer.buyerName}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    Due: ₹{buyer.totalDue.toLocaleString()}
+                                    Due: ₹{formatCurrency(buyer.totalDue)}
                                   </p>
                                 </div>
                                 <Input
@@ -2563,7 +2564,7 @@ export default function CashManagement() {
                         <SelectContent>
                           {buyersWithDues.filter(b => b.totalDue > 0).map((buyer) => (
                             <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
-                              {buyer.buyerName} (₹{buyer.totalDue.toLocaleString()})
+                              {buyer.buyerName} (₹{formatCurrency(buyer.totalDue)})
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2586,7 +2587,7 @@ export default function CashManagement() {
                           <SelectContent>
                             {buyerSalesWithDues.filter(s => (s.dueAmount || 0) > 0).map((sale) => (
                               <SelectItem key={sale.id} value={sale.id}>
-                                {sale.farmerName} - {formatBagType(sale.bagType)}, {t("lot")} {sale.lotNo}, {sale.quantitySold} {t("bags")} (₹{sale.dueAmount?.toLocaleString()})
+                                {sale.farmerName} - {formatBagType(sale.bagType)}, {t("lot")} {sale.lotNo}, {sale.quantitySold} {t("bags")} (₹{formatCurrency(sale.dueAmount || 0)})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -2747,7 +2748,7 @@ export default function CashManagement() {
                             }`}>
                               {transaction.type === "inflow" ? "+" : transaction.type === "outflow" || transaction.type === "discount" ? "-" : ""}₹{
                                 transaction.type === "buyerTransfer" 
-                                  ? ((transaction.data as SalesHistory).dueAmount || 0).toLocaleString()
+                                  ? formatCurrency((transaction.data as SalesHistory).dueAmount || 0)
                                   : transaction.type === "discount"
                                   ? (transaction.data as Discount).totalAmount.toLocaleString()
                                   : (transaction.data as CashReceipt | Expense | CashTransfer).amount.toLocaleString()
@@ -2798,12 +2799,12 @@ export default function CashManagement() {
                           {/* Due After for cold_merchant receipts and discounts */}
                           {transaction.type === "inflow" && (transaction.data as CashReceipt).payerType === "cold_merchant" && (transaction.data as CashReceipt).dueBalanceAfter !== null && (transaction.data as CashReceipt).dueBalanceAfter !== undefined && (
                             <Badge variant="outline" className="text-xs py-0 h-5 ml-auto bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300">
-                              {t("dueAfter") || "Due After"}: ₹{((transaction.data as CashReceipt).dueBalanceAfter || 0).toLocaleString()}
+                              {t("dueAfter") || "Due After"}: ₹{formatCurrency((transaction.data as CashReceipt).dueBalanceAfter || 0)}
                             </Badge>
                           )}
                           {transaction.type === "discount" && (transaction.data as Discount).dueBalanceAfter !== null && (transaction.data as Discount).dueBalanceAfter !== undefined && (
                             <Badge variant="outline" className="text-xs py-0 h-5 ml-auto bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300">
-                              {t("dueAfter") || "Due After"}: ₹{((transaction.data as Discount).dueBalanceAfter || 0).toLocaleString()}
+                              {t("dueAfter") || "Due After"}: ₹{formatCurrency((transaction.data as Discount).dueBalanceAfter || 0)}
                             </Badge>
                           )}
                         </div>
@@ -2910,7 +2911,7 @@ export default function CashManagement() {
                     {(selectedTransaction.data as CashReceipt).payerType === "cold_merchant" && (selectedTransaction.data as CashReceipt).dueBalanceAfter !== null && (selectedTransaction.data as CashReceipt).dueBalanceAfter !== undefined && (
                       <div className="flex justify-between bg-orange-50 dark:bg-orange-950/30 rounded px-2 py-1 -mx-2">
                         <span className="text-orange-700 dark:text-orange-300 font-medium">{t("dueAfter")}:</span>
-                        <span className="font-bold text-orange-700 dark:text-orange-300">₹{((selectedTransaction.data as CashReceipt).dueBalanceAfter || 0).toLocaleString()}</span>
+                        <span className="font-bold text-orange-700 dark:text-orange-300">₹{formatCurrency((selectedTransaction.data as CashReceipt).dueBalanceAfter || 0)}</span>
                       </div>
                     )}
                     {(selectedTransaction.data as CashReceipt).notes && (
@@ -2967,7 +2968,7 @@ export default function CashManagement() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("liabilityTransferred")}:</span>
-                      <span className="font-bold text-purple-600">₹{((selectedTransaction.data as SalesHistory).dueAmount || 0).toLocaleString()}</span>
+                      <span className="font-bold text-purple-600">₹{formatCurrency((selectedTransaction.data as SalesHistory).dueAmount || 0)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Date:</span>
@@ -3021,7 +3022,7 @@ export default function CashManagement() {
                     {(selectedTransaction.data as Discount).dueBalanceAfter !== null && (selectedTransaction.data as Discount).dueBalanceAfter !== undefined && (
                       <div className="flex justify-between bg-orange-50 dark:bg-orange-950/30 rounded px-2 py-1 -mx-2">
                         <span className="text-orange-700 dark:text-orange-300 font-medium">{t("dueAfter")}:</span>
-                        <span className="font-bold text-orange-700 dark:text-orange-300">₹{((selectedTransaction.data as Discount).dueBalanceAfter || 0).toLocaleString()}</span>
+                        <span className="font-bold text-orange-700 dark:text-orange-300">₹{formatCurrency((selectedTransaction.data as Discount).dueBalanceAfter || 0)}</span>
                       </div>
                     )}
                     {(selectedTransaction.data as Discount).remarks && (
@@ -3347,7 +3348,7 @@ export default function CashManagement() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-green-600">₹{r.dueAmount.toLocaleString()}</span>
+                          <span className="font-bold text-green-600">₹{formatCurrency(r.dueAmount)}</span>
                           <Button
                             size="icon"
                             variant="ghost"
