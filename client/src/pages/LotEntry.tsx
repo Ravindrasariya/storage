@@ -108,13 +108,26 @@ const defaultLotData: LotData = {
 };
 
 const STORAGE_KEY = "lotEntryFormData";
+const BAG_TYPE_PREFERENCE_KEY = "lotEntryBagTypePreference";
 
 export default function LotEntry() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { canEdit } = useAuth();
-  const [bagTypeCategory, setBagTypeCategory] = useState<"wafer" | "rationSeed">("wafer");
+  
+  // Initialize bagTypeCategory from localStorage preference
+  const [bagTypeCategory, setBagTypeCategory] = useState<"wafer" | "rationSeed">(() => {
+    try {
+      const saved = localStorage.getItem(BAG_TYPE_PREFERENCE_KEY);
+      if (saved === "wafer" || saved === "rationSeed") {
+        return saved;
+      }
+    } catch (e) {
+      console.error("Failed to load bag type preference", e);
+    }
+    return "wafer";
+  });
   const [lots, setLots] = useState<LotData[]>([{ ...defaultLotData }]);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -225,6 +238,15 @@ export default function LotEntry() {
       bagType: newBagType as "wafer" | "seed" | "Ration",
     })));
   }, [bagTypeCategory, isInitialized]);
+
+  // Save bagTypeCategory preference separately (persists across logout/login)
+  useEffect(() => {
+    try {
+      localStorage.setItem(BAG_TYPE_PREFERENCE_KEY, bagTypeCategory);
+    } catch (e) {
+      console.error("Failed to save bag type preference", e);
+    }
+  }, [bagTypeCategory]);
 
   const clearSavedData = () => {
     localStorage.removeItem(STORAGE_KEY);
