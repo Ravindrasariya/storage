@@ -1045,13 +1045,13 @@ export default function LotEntry() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold">{t("addDeductions")}</h3>
-                  {lot.deductions.length === 0 && (
+                  {(lot.deductions?.length ?? 0) === 0 && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        const newDeductions = [...lot.deductions, { type: "advance" as const, amount: 0 }];
+                        const newDeductions = [...(lot.deductions || []), { type: "advance" as const, amount: 0 }];
                         updateLot(index, "deductions", newDeductions);
                       }}
                       data-testid={`button-add-deduction-${index}`}
@@ -1062,14 +1062,14 @@ export default function LotEntry() {
                   )}
                 </div>
                 
-                {lot.deductions.length > 0 && (
+                {(lot.deductions?.length ?? 0) > 0 && (
                   <div className="space-y-3">
-                    {lot.deductions.map((deduction, deductionIndex) => (
+                    {(lot.deductions || []).map((deduction, deductionIndex) => (
                       <div key={deductionIndex} className="flex items-center gap-3">
                         <Select
                           value={deduction.type}
                           onValueChange={(v) => {
-                            const newDeductions = [...lot.deductions];
+                            const newDeductions = [...(lot.deductions || [])];
                             newDeductions[deductionIndex] = { ...deduction, type: v as "advance" | "freight" | "other" };
                             updateLot(index, "deductions", newDeductions);
                           }}
@@ -1090,7 +1090,7 @@ export default function LotEntry() {
                           placeholder={t("amount")}
                           value={deduction.amount || ""}
                           onChange={(e) => {
-                            const newDeductions = [...lot.deductions];
+                            const newDeductions = [...(lot.deductions || [])];
                             newDeductions[deductionIndex] = { ...deduction, amount: parseFloat(e.target.value) || 0 };
                             updateLot(index, "deductions", newDeductions);
                           }}
@@ -1102,7 +1102,7 @@ export default function LotEntry() {
                           variant="ghost"
                           size="icon"
                           onClick={() => {
-                            const newDeductions = lot.deductions.filter((_, i) => i !== deductionIndex);
+                            const newDeductions = (lot.deductions || []).filter((_, i) => i !== deductionIndex);
                             updateLot(index, "deductions", newDeductions);
                           }}
                           data-testid={`button-delete-deduction-${index}-${deductionIndex}`}
@@ -1117,7 +1117,7 @@ export default function LotEntry() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        const newDeductions = [...lot.deductions, { type: "advance" as const, amount: 0 }];
+                        const newDeductions = [...(lot.deductions || []), { type: "advance" as const, amount: 0 }];
                         updateLot(index, "deductions", newDeductions);
                       }}
                       data-testid={`button-add-more-deduction-${index}`}
@@ -1126,11 +1126,11 @@ export default function LotEntry() {
                       {t("addCharges")}
                     </Button>
                     
-                    {lot.deductions.length > 0 && (
+                    {(lot.deductions?.length ?? 0) > 0 && (
                       <div className="pt-2 border-t">
                         <div className="flex justify-between text-sm font-medium">
                           <span>{t("totalDeductions")}:</span>
-                          <span>₹{lot.deductions.reduce((sum, d) => sum + (d.amount || 0), 0).toLocaleString("en-IN")}</span>
+                          <span>₹{(lot.deductions || []).reduce((sum, d) => sum + (d.amount || 0), 0).toLocaleString("en-IN")}</span>
                         </div>
                       </div>
                     )}
