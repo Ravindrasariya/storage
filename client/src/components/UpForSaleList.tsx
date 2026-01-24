@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ShoppingCart, Phone, MapPin, Package, Check, Minus, X } from "lucide-react";
+import { ShoppingCart, Phone, MapPin, Package, Minus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -39,7 +39,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const { toast } = useToast();
   const [selectedLot, setSelectedLot] = useState<SaleLotInfo | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "due" | "partial">("due");
-  const [saleMode, setSaleMode] = useState<"full" | "partial">("full");
   const [partialQuantity, setPartialQuantity] = useState<number>(0);
   const [partialPrice, setPartialPrice] = useState<number>(0);
   const [buyerName, setBuyerName] = useState<string>("");
@@ -75,37 +74,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setShowBuyerSuggestions(false);
   };
 
-  const finalizeSaleMutation = useMutation({
-    mutationFn: async ({ lotId, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali }: { lotId: string; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/finalize-sale`, { paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/chambers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/years"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/buyers/lookup"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/up-for-sale"] });
-      toast({
-        title: t("success"),
-        description: "Lot marked as sold successfully",
-        variant: "success",
-      });
-      resetDialog();
-    },
-    onError: () => {
-      toast({
-        title: t("error"),
-        description: "Failed to mark lot as sold",
-        variant: "destructive",
-      });
-    },
-  });
-
   const partialSaleMutation = useMutation({
     mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining" }) => {
       return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis });
@@ -139,7 +107,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
 
   const resetDialog = () => {
     setSelectedLot(null);
-    setSaleMode("full");
     setPartialQuantity(0);
     setPartialPrice(0);
     setPaymentStatus("due");
@@ -159,16 +126,15 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setChargeBasis("actual");
   };
 
-  const openSaleDialog = (lot: SaleLotInfo, mode: "full" | "partial") => {
+  const openSaleDialog = (lot: SaleLotInfo) => {
     setSelectedLot(lot);
-    setSaleMode(mode);
     setPartialQuantity(0);
     setPartialPrice(lot.rate);
     setEditPosition(lot.position);
     setEditableColdCharge(lot.coldCharge.toString());
     setEditableHammali(lot.hammali.toString());
-    // Force chargeBasis to "actual" for full sales or when base charges already billed
-    if (mode === "full" || lot.baseColdChargesBilled === 1) {
+    // Force chargeBasis to "actual" when base charges already billed
+    if (lot.baseColdChargesBilled === 1) {
       setChargeBasis("actual");
     }
   };
@@ -207,8 +173,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         return;
       }
       
-      // Validate quantity for partial sales
-      if (saleMode === "partial" && (!partialQuantity || partialQuantity <= 0)) {
+      // Validate quantity
+      if (!partialQuantity || partialQuantity <= 0) {
         toast({
           title: t("error"),
           description: "Quantity must be greater than zero / मात्रा शून्य से अधिक होनी चाहिए",
@@ -218,7 +184,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       }
       
       const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
-      const actualQty = saleMode === "partial" ? partialQuantity : selectedLot.remainingSize;
+      const actualQty = partialQuantity;
       // Use charge basis quantity for calculating charges (consistent with calculateTotalCharge)
       const chargeQty = getChargeQuantity(selectedLot, actualQty);
       
@@ -229,9 +195,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       const customHammali = Number.isFinite(parsedHammali) ? parsedHammali : undefined;
       const editableRate = (customColdCharge ?? selectedLot.coldCharge) + (customHammali ?? selectedLot.hammali);
       
-      const totalCharge = saleMode === "partial" 
-        ? calculateTotalCharge(selectedLot, partialQuantity) 
-        : calculateTotalCharge(selectedLot);
+      const totalCharge = calculateTotalCharge(selectedLot, partialQuantity);
       
       // Extra hammali and grading always use actual bags being sold (not charge basis)
       const kata = parseFloat(kataCharges) || 0;
@@ -261,44 +225,25 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       // Hardening: force chargeBasis to "actual" when base charges already billed
       const effectiveChargeBasis = selectedLot.baseColdChargesBilled === 1 ? "actual" : chargeBasis;
       
-      if (saleMode === "partial") {
-        partialSaleMutation.mutate({
-          lotId: selectedLot.id,
-          quantity: partialQuantity,
-          pricePerBag: editableRate,
-          paymentStatus,
-          paymentMode: modeToSend,
-          buyerName: buyerName || undefined,
-          pricePerKg: parsedPricePerKg,
-          paidAmount,
-          dueAmount,
-          position: editPosition || undefined,
-          kataCharges: kata > 0 ? kata : undefined,
-          extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
-          gradingCharges: grading > 0 ? grading : undefined,
-          netWeight: parsedNetWeight,
-          customColdCharge,
-          customHammali,
-          chargeBasis: effectiveChargeBasis,
-        });
-      } else {
-        finalizeSaleMutation.mutate({
-          lotId: selectedLot.id,
-          paymentStatus,
-          paymentMode: modeToSend,
-          buyerName: buyerName || undefined,
-          pricePerKg: parsedPricePerKg,
-          paidAmount,
-          dueAmount,
-          position: editPosition || undefined,
-          kataCharges: kata > 0 ? kata : undefined,
-          extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
-          gradingCharges: grading > 0 ? grading : undefined,
-          netWeight: parsedNetWeight,
-          customColdCharge,
-          customHammali,
-        });
-      }
+      partialSaleMutation.mutate({
+        lotId: selectedLot.id,
+        quantity: partialQuantity,
+        pricePerBag: editableRate,
+        paymentStatus,
+        paymentMode: modeToSend,
+        buyerName: buyerName || undefined,
+        pricePerKg: parsedPricePerKg,
+        paidAmount,
+        dueAmount,
+        position: editPosition || undefined,
+        kataCharges: kata > 0 ? kata : undefined,
+        extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
+        gradingCharges: grading > 0 ? grading : undefined,
+        netWeight: parsedNetWeight,
+        customColdCharge,
+        customHammali,
+        chargeBasis: effectiveChargeBasis,
+      });
     }
   };
 
@@ -505,20 +450,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => openSaleDialog(lot, "partial")}
-                    data-testid={`button-partial-${lot.id}`}
+                    onClick={() => openSaleDialog(lot)}
+                    data-testid={`button-sale-${lot.id}`}
                   >
-                    <Minus className="h-4 w-4 mr-1" />
-                    {t("partialSale")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openSaleDialog(lot, "full")}
-                    data-testid={`button-sold-${lot.id}`}
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    {t("sold")}
+                    <ShoppingCart className="h-4 w-4 mr-1" />
+                    {t("sale")}
                   </Button>
                   <Button
                     size="icon"
@@ -540,290 +476,13 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       <Dialog open={!!selectedLot} onOpenChange={(open) => !open && resetDialog()}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{saleMode === "partial" ? t("partialSale") : t("confirmSale")}</DialogTitle>
+            <DialogTitle>{t("sale")}</DialogTitle>
             <DialogDescription>
               {selectedLot && `${selectedLot.farmerName} - ${selectedLot.lotNo}`}
             </DialogDescription>
           </DialogHeader>
           
-          {selectedLot && saleMode === "full" && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/50 border">
-                <div>
-                  <Label className="text-xs text-muted-foreground">{t("chamber")}</Label>
-                  <div className="font-medium">{selectedLot.chamberName}</div>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">{t("floor")}</Label>
-                  <div className="font-medium">{selectedLot.floor}</div>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">{t("position")}</Label>
-                  <Input
-                    type="text"
-                    value={editPosition}
-                    onChange={(e) => setEditPosition(e.target.value)}
-                    className="h-8 mt-0.5"
-                    data-testid="input-edit-position"
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
-                <div className="text-sm font-medium">{t("rateBreakdown")}</div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")} {selectedLot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")}</Label>
-                    <div className="flex items-center gap-1">
-                      <Currency amount="" showIcon={true} className="text-muted-foreground" />
-                      <Input
-                        type="number"
-                        min={0}
-                        value={editableColdCharge}
-                        onChange={(e) => setEditableColdCharge(e.target.value)}
-                        className="h-8 w-20"
-                        data-testid="input-cold-charge"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">{t("hammali")} {t("perBag")}</Label>
-                    <div className="flex items-center gap-1">
-                      <Currency amount="" showIcon={true} className="text-muted-foreground" />
-                      <Input
-                        type="number"
-                        min={0}
-                        value={editableHammali}
-                        onChange={(e) => setEditableHammali(e.target.value)}
-                        className="h-8 w-20"
-                        data-testid="input-hammali"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="border-t pt-2 flex justify-between text-sm">
-                  <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                  <span className="font-bold">
-                    {selectedLot.chargeUnit === "quintal" ? (
-                      <><Currency amount={getEditableColdCharge(selectedLot)} />{t("perQuintal")} + <Currency amount={getEditableHammali(selectedLot)} />{t("perBag")}</>
-                    ) : (
-                      <><Currency amount={getEditableRate(selectedLot)} />{t("perBag")}</>
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t("kataCharges")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={kataCharges}
-                  onChange={(e) => setKataCharges(e.target.value)}
-                  placeholder="0"
-                  data-testid="input-kata-charges"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t("chargeBasis")}</Label>
-                <Select 
-                  value={chargeBasis} 
-                  onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}
-                  disabled={saleMode === "full"}
-                >
-                  <SelectTrigger data-testid="select-charge-basis" className={saleMode === "full" ? "bg-muted cursor-not-allowed" : ""}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="actual">{t("actualBags")}</SelectItem>
-                    <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                {saleMode === "full" && (
-                  <p className="text-xs text-muted-foreground">{t("fullSaleChargeBasisHint") || "Full sale always uses actual bags"}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t("deliveryType")}</Label>
-                <Select value={deliveryType} onValueChange={(value: "gate" | "bilty") => setDeliveryType(value)}>
-                  <SelectTrigger data-testid="select-delivery-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gate">{t("gateCut")}</SelectItem>
-                    <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {deliveryType === "bilty" && (
-                <div className="space-y-4 p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20">
-                  <div className="space-y-2">
-                    <Label>{t("extraHammaliPerBag")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={extraHammaliPerBag}
-                      onChange={(e) => setExtraHammaliPerBag(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-extra-hammali"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("totalGradingCharges")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={totalGradingCharges}
-                      onChange={(e) => setTotalGradingCharges(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-grading-charges"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
-                  <div className="flex items-center gap-2">
-                    <Checkbox 
-                      id="self-buyer-full"
-                      checked={isSelfBuyer}
-                      onCheckedChange={(checked) => {
-                        setIsSelfBuyer(!!checked);
-                        if (checked && selectedLot) {
-                          const compositeName = `${selectedLot.farmerName} - ${selectedLot.contactNumber} - ${selectedLot.village}`;
-                          setBuyerName(compositeName);
-                          setShowBuyerSuggestions(false);
-                        } else {
-                          setBuyerName("");
-                        }
-                      }}
-                      data-testid="checkbox-self-buyer"
-                    />
-                    <Label htmlFor="self-buyer-full" className="text-sm font-normal cursor-pointer">{t("self")}</Label>
-                  </div>
-                </div>
-                <div className="relative">
-                  <Input
-                    type="text"
-                    value={buyerName}
-                    onChange={(e) => {
-                      setBuyerName(capitalizeFirstLetter(e.target.value));
-                      setShowBuyerSuggestions(true);
-                    }}
-                    onFocus={() => setShowBuyerSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 200)}
-                    placeholder={t("buyerName")}
-                    autoComplete="off"
-                    disabled={isSelfBuyer}
-                    className={isSelfBuyer ? "bg-muted" : ""}
-                    data-testid="input-buyer-name"
-                  />
-                  {!isSelfBuyer && showBuyerSuggestions && buyerSuggestions.length > 0 && buyerName && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                      {buyerSuggestions.map((buyer, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          className="w-full px-3 py-2 text-left hover-elevate text-sm"
-                          onClick={() => selectBuyerSuggestion(buyer)}
-                          data-testid={`suggestion-buyer-${idx}`}
-                        >
-                          {buyer.buyerName}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t("pricePerKg")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={pricePerKg}
-                  onChange={(e) => setPricePerKg(e.target.value)}
-                  placeholder={t("pricePerKg")}
-                  data-testid="input-price-per-kg"
-                />
-              </div>
-
-              {selectedLot.chargeUnit === "quintal" && (
-                <div className="space-y-2">
-                  <Label>{t("initialNetWeightFromRegister")}</Label>
-                  <Input
-                    type="number"
-                    value={selectedLot.netWeight || 0}
-                    disabled
-                    className="bg-muted"
-                    data-testid="input-initial-net-weight-readonly"
-                  />
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label>{t("finalNetWeight")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={netWeight}
-                  onChange={(e) => setNetWeight(e.target.value)}
-                  placeholder={t("netWeightKg")}
-                  data-testid="input-net-weight"
-                />
-              </div>
-
-              <div className="p-4 rounded-lg bg-muted">
-                {selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
-                  <div className="text-red-600 dark:text-red-400 font-medium text-center py-2">
-                    {t("addInitialNetWeightWarning")}
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
-                      <span className="text-2xl font-bold text-chart-2">
-                        <Currency amount={calculateCharge(selectedLot)} />
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                      {selectedLot.baseColdChargesBilled === 1 ? (
-                        <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
-                      ) : selectedLot.chargeUnit === "quintal" && selectedLot.netWeight ? (
-                        <div>
-                          ({selectedLot.netWeight} {t("kg")} × {getChargeQuantity(selectedLot, selectedLot.remainingSize)} × <Currency amount={getEditableColdCharge(selectedLot)} />) / ({selectedLot.originalSize} × 100) + (<Currency amount={getEditableHammali(selectedLot)} /> × {getChargeQuantity(selectedLot, selectedLot.remainingSize)}) = <Currency amount={calculateBaseCharge(selectedLot)} />
-                        </div>
-                      ) : (
-                        <div>{getChargeQuantity(selectedLot, selectedLot.remainingSize)} {t("bags")} x <Currency amount={getEditableRate(selectedLot)} /> = <Currency amount={calculateBaseCharge(selectedLot)} /></div>
-                      )}
-                      {chargeBasis === "totalRemaining" && selectedLot.baseColdChargesBilled !== 1 && (
-                        <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")})</div>
-                      )}
-                      {(parseFloat(kataCharges) || 0) > 0 && (
-                        <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
-                      )}
-                      {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                        <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * selectedLot.remainingSize} /> ({selectedLot.remainingSize} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
-                      )}
-                      {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                        <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-
-            </div>
-          )}
-
-          {selectedLot && saleMode === "partial" && (
+          {selectedLot && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/50 border">
                 <div>
@@ -904,7 +563,14 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
 
               <div className="space-y-2">
-                <Label>{t("quantity")} <span className="text-destructive">*</span></Label>
+                <div className="flex items-center gap-2">
+                  <Label>{t("quantity")} <span className="text-destructive">*</span></Label>
+                  {partialQuantity > selectedLot.remainingSize && (
+                    <span className="text-xs text-destructive font-medium">
+                      {t("quantityExceedsRemaining")}
+                    </span>
+                  )}
+                </div>
                 <Input
                   type="number"
                   min={1}
@@ -912,6 +578,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   value={partialQuantity || ""}
                   onChange={(e) => setPartialQuantity(Number(e.target.value))}
                   placeholder={`Max: ${selectedLot.remainingSize}`}
+                  className={partialQuantity > selectedLot.remainingSize ? "border-destructive" : ""}
                   data-testid="input-partial-quantity"
                 />
               </div>
@@ -1146,12 +813,13 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               onClick={handleConfirmSale}
               disabled={
                 (selectedLot?.chargeUnit === "quintal" && !selectedLot?.netWeight) ||
-                (saleMode === "full" && finalizeSaleMutation.isPending) ||
-                (saleMode === "partial" && (partialSaleMutation.isPending || partialQuantity <= 0 || partialQuantity > (selectedLot?.remainingSize || 0)))
+                partialSaleMutation.isPending || 
+                partialQuantity <= 0 || 
+                partialQuantity > (selectedLot?.remainingSize || 0)
               }
               data-testid="button-confirm-sale"
             >
-              {(finalizeSaleMutation.isPending || partialSaleMutation.isPending) ? t("loading") : t("confirm")}
+              {partialSaleMutation.isPending ? t("loading") : t("confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

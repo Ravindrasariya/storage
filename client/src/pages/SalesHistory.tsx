@@ -604,8 +604,8 @@ export default function SalesHistoryPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={sale.saleType === "full" ? "default" : "secondary"}>
-                          {sale.saleType === "full" ? t("fullSale") : t("partialSale")}
+                        <Badge variant={sale.originalLotSize === sale.quantitySold ? "default" : "secondary"}>
+                          {sale.originalLotSize === sale.quantitySold ? t("fullSale") : t("partialSale")}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">{sale.quantitySold}</TableCell>
