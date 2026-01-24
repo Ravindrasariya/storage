@@ -286,7 +286,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   let coldChargeAmount = 0;
   let hammaliAmount = 0;
   
-  if (hasSeparateCharges && sale.coldCharge != null && sale.hammali != null) {
+  // When base cold charges were already billed in a previous sale, both cold charge and hammali should be 0
+  // baseChargeAmountAtSale === 0 indicates base charges were already billed
+  if (sale.baseChargeAmountAtSale === 0) {
+    coldChargeAmount = 0;
+    hammaliAmount = 0;
+  } else if (hasSeparateCharges && sale.coldCharge != null && sale.hammali != null) {
     if (isQuintalBased) {
       // In quintal mode: hammali = rate × bags, cold charge = total - hammali
       hammaliAmount = (sale.hammali || 0) * bagsToUse;
