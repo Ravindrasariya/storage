@@ -434,13 +434,39 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const coldStorage = await storage.getColdStorage(coldStorageId);
       const bagTypeCategory = req.query.bagTypeCategory as string || "wafer";
+      const isWaferCategory = bagTypeCategory === "wafer";
       
-      // Return the appropriate counter based on category
-      let nextSequence: number;
-      if (bagTypeCategory === "wafer") {
-        nextSequence = coldStorage?.nextWaferLotNumber ?? 1;
+      // Get stored counter value
+      let storedCounter: number;
+      if (isWaferCategory) {
+        storedCounter = coldStorage?.nextWaferLotNumber ?? 1;
       } else {
-        nextSequence = coldStorage?.nextRationSeedLotNumber ?? 1;
+        storedCounter = coldStorage?.nextRationSeedLotNumber ?? 1;
+      }
+      
+      // Also calculate actual max lot number from existing lots to ensure counter is valid
+      const allLots = await storage.getAllLots(coldStorageId);
+      let maxLotNo = 0;
+      allLots.forEach((lot: Lot) => {
+        const lotIsWafer = lot.bagType === "wafer";
+        if (lotIsWafer === isWaferCategory) {
+          const num = parseInt(lot.lotNo, 10);
+          if (!isNaN(num) && num > maxLotNo) {
+            maxLotNo = num;
+          }
+        }
+      });
+      
+      // Use whichever is higher: stored counter or (max lot number + 1)
+      const nextSequence = Math.max(storedCounter, maxLotNo + 1);
+      
+      // Update counter if it was out of sync
+      if (nextSequence > storedCounter) {
+        if (isWaferCategory) {
+          await storage.updateColdStorage(coldStorageId, { nextWaferLotNumber: nextSequence });
+        } else {
+          await storage.updateColdStorage(coldStorageId, { nextRationSeedLotNumber: nextSequence });
+        }
       }
       
       res.json({ nextSequence });
