@@ -677,7 +677,7 @@ export async function registerRoutes(
   // Schema for allowed editable fields only (location & quality)
   const lotEditSchema = z.object({
     chamberId: z.string().optional(),
-    floor: z.number().int().positive().optional(),
+    floor: z.number().int().min(0).optional(),
     position: z.string().optional(),
     quality: z.enum(["poor", "medium", "good"]).optional(),
     // Allow upForSale for toggle functionality
