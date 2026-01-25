@@ -488,6 +488,36 @@ export async function registerRoutes(
     }
   });
 
+  // Get unique location names (villages and tehsils) for autocomplete
+  app.get("/api/locations/lookup", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const allLots = await storage.getAllLots(coldStorageId);
+      
+      // Extract unique villages and tehsils
+      const villageSet = new Set<string>();
+      const tehsilSet = new Set<string>();
+      
+      allLots.forEach((lot: Lot) => {
+        if (lot.village && lot.village.trim()) {
+          villageSet.add(lot.village.trim());
+        }
+        if (lot.tehsil && lot.tehsil.trim()) {
+          tehsilSet.add(lot.tehsil.trim());
+        }
+      });
+      
+      // Convert to sorted arrays
+      const villages = Array.from(villageSet).sort((a, b) => a.localeCompare(b, 'hi'));
+      const tehsils = Array.from(tehsilSet).sort((a, b) => a.localeCompare(b, 'hi'));
+      
+      res.json({ villages, tehsils });
+    } catch (error) {
+      console.error("Location lookup error:", error);
+      res.status(500).json({ error: "Failed to fetch location records" });
+    }
+  });
+
   app.get("/api/buyers/lookup", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

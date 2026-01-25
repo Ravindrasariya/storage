@@ -167,9 +167,16 @@ export default function LotEntry() {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
+  // Fetch unique location names (villages and tehsils) from all lots
+  const { data: locationData } = useQuery<{ villages: string[]; tehsils: string[] }>({
+    queryKey: ["/api/locations/lookup"],
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
   // State for autocomplete suggestions
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [showVillageSuggestions, setShowVillageSuggestions] = useState(false);
+  const [showTehsilSuggestions, setShowTehsilSuggestions] = useState(false);
   const [showMobileSuggestions, setShowMobileSuggestions] = useState(false);
   const [showBagTypeLabelSuggestions, setShowBagTypeLabelSuggestions] = useState<Record<number, boolean>>({});
   
@@ -191,6 +198,7 @@ export default function LotEntry() {
   // Watch form values for reactive autocomplete filtering (must be after form initialization)
   const watchedFarmerName = form.watch("farmerName") || "";
   const watchedVillage = form.watch("village") || "";
+  const watchedTehsil = form.watch("tehsil") || "";
   const watchedContactNumber = form.watch("contactNumber") || "";
 
   // Load saved form data from localStorage on mount
@@ -316,6 +324,26 @@ export default function LotEntry() {
     });
     return Array.from(villages.values());
   }, [farmerRecords, watchedFarmerName, watchedVillage, watchedContactNumber]);
+
+  // Get unique village suggestions from all lots (location-only, no farmer data)
+  const getLocationVillageSuggestions = useMemo(() => {
+    if (!locationData?.villages || locationData.villages.length === 0) return [];
+    const villageVal = watchedVillage.toLowerCase().trim();
+    if (!villageVal) return locationData.villages.slice(0, 10);
+    return locationData.villages.filter(v => 
+      v.toLowerCase().includes(villageVal)
+    ).slice(0, 10);
+  }, [locationData, watchedVillage]);
+
+  // Get unique tehsil suggestions from all lots
+  const getTehsilSuggestions = useMemo(() => {
+    if (!locationData?.tehsils || locationData.tehsils.length === 0) return [];
+    const tehsilVal = watchedTehsil.toLowerCase().trim();
+    if (!tehsilVal) return locationData.tehsils.slice(0, 10);
+    return locationData.tehsils.filter(t => 
+      t.toLowerCase().includes(tehsilVal)
+    ).slice(0, 10);
+  }, [locationData, watchedTehsil]);
 
   const getMobileSuggestions = useMemo(() => {
     if (!farmerRecords || farmerRecords.length === 0) return [];
@@ -671,18 +699,38 @@ export default function LotEntry() {
                         data-testid="input-village"
                       />
                     </FormControl>
-                    {showVillageSuggestions && getVillageSuggestions.length > 0 && field.value && (
+                    {showVillageSuggestions && (getVillageSuggestions.length > 0 || getLocationVillageSuggestions.length > 0) && (
                       <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                        {getVillageSuggestions.slice(0, 8).map((farmer, idx) => (
+                        {getVillageSuggestions.length > 0 && (
+                          <>
+                            {getVillageSuggestions.slice(0, 5).map((farmer, idx) => (
+                              <button
+                                key={`farmer-${idx}`}
+                                type="button"
+                                className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                                onClick={() => selectFarmerRecord(farmer)}
+                                data-testid={`suggestion-village-farmer-${idx}`}
+                              >
+                                <span className="font-medium">{farmer.village}</span>
+                                <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.contactNumber}</span>
+                              </button>
+                            ))}
+                          </>
+                        )}
+                        {getLocationVillageSuggestions.filter(v => 
+                          !getVillageSuggestions.some(f => f.village.toLowerCase() === v.toLowerCase())
+                        ).slice(0, 5).map((village, idx) => (
                           <button
-                            key={idx}
+                            key={`loc-${idx}`}
                             type="button"
-                            className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
-                            onClick={() => selectFarmerRecord(farmer)}
-                            data-testid={`suggestion-village-${idx}`}
+                            className="w-full px-3 py-2 text-left hover-elevate text-sm"
+                            onClick={() => {
+                              field.onChange(village);
+                              setShowVillageSuggestions(false);
+                            }}
+                            data-testid={`suggestion-village-loc-${idx}`}
                           >
-                            <span className="font-medium">{farmer.village}</span>
-                            <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.contactNumber}</span>
+                            <span className="font-medium">{village}</span>
                           </button>
                         ))}
                       </div>
@@ -695,17 +743,41 @@ export default function LotEntry() {
                 control={form.control}
                 name="tehsil"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="relative">
                     <FormLabel>{t("tehsil")} *</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
-                        onChange={(e) => field.onChange(capitalizeFirstLetter(e.target.value))}
+                        onChange={(e) => {
+                          field.onChange(capitalizeFirstLetter(e.target.value));
+                          setShowTehsilSuggestions(true);
+                        }}
+                        onFocus={() => setShowTehsilSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowTehsilSuggestions(false), 200)}
                         placeholder="Enter tehsil"
+                        autoComplete="off"
                         className={autoFilledFields.has("tehsil") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
                         data-testid="input-tehsil"
                       />
                     </FormControl>
+                    {showTehsilSuggestions && getTehsilSuggestions.length > 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                        {getTehsilSuggestions.map((tehsil, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className="w-full px-3 py-2 text-left hover-elevate text-sm"
+                            onClick={() => {
+                              field.onChange(tehsil);
+                              setShowTehsilSuggestions(false);
+                            }}
+                            data-testid={`suggestion-tehsil-${idx}`}
+                          >
+                            <span className="font-medium">{tehsil}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
