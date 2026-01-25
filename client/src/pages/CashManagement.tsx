@@ -1151,11 +1151,37 @@ export default function CashManagement() {
     // Apply transaction type filter
     // When filterPaymentMode is "discount", only show discounts
     const isDiscountFilterOnly = filterPaymentMode === "discount";
-    const includeInward = !isDiscountFilterOnly && (filterTransactionType === "all" || filterTransactionType === "inward");
-    const includeExpense = !isDiscountFilterOnly && (filterTransactionType === "all" || filterTransactionType === "expense");
-    const includeTransfer = !isDiscountFilterOnly && (filterTransactionType === "all" || filterTransactionType === "self");
-    const includeBuyerTransfer = !isDiscountFilterOnly && (filterTransactionType === "all" || filterTransactionType === "buyerTransfer");
-    const includeDiscount = isDiscountFilterOnly || filterTransactionType === "all" || filterTransactionType === "expense"; // Show discounts with expenses or when discount filter selected
+    
+    // When filterExpenseType is set, only show expenses (not discounts, inflows, etc.)
+    const isExpenseTypeFilterActive = !!filterExpenseType;
+    
+    // When filterPayerType is set, only show cash receipts/inflows (not expenses, discounts, etc.)
+    const isPayerTypeFilterActive = !!filterPayerType;
+    
+    // Determine what to include based on active filters
+    let includeInward = !isDiscountFilterOnly && !isExpenseTypeFilterActive && (filterTransactionType === "all" || filterTransactionType === "inward");
+    let includeExpense = !isDiscountFilterOnly && !isPayerTypeFilterActive && (filterTransactionType === "all" || filterTransactionType === "expense");
+    let includeTransfer = !isDiscountFilterOnly && !isExpenseTypeFilterActive && !isPayerTypeFilterActive && (filterTransactionType === "all" || filterTransactionType === "self");
+    let includeBuyerTransfer = !isDiscountFilterOnly && !isExpenseTypeFilterActive && !isPayerTypeFilterActive && (filterTransactionType === "all" || filterTransactionType === "buyerTransfer");
+    let includeDiscount = !isExpenseTypeFilterActive && !isPayerTypeFilterActive && (isDiscountFilterOnly || filterTransactionType === "all" || filterTransactionType === "expense");
+    
+    // If payer type filter is active, only show inflows
+    if (isPayerTypeFilterActive) {
+      includeInward = true;
+      includeExpense = false;
+      includeTransfer = false;
+      includeBuyerTransfer = false;
+      includeDiscount = false;
+    }
+    
+    // If expense type filter is active, only show expenses
+    if (isExpenseTypeFilterActive) {
+      includeInward = false;
+      includeExpense = true;
+      includeTransfer = false;
+      includeBuyerTransfer = false;
+      includeDiscount = false;
+    }
 
     // Apply filters to buyer transfers
     let filteredBuyerTransfers = buyerTransfers;
