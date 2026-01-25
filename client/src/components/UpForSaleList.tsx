@@ -144,6 +144,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/years"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyers/lookup"] });
       queryClient.invalidateQueries({ queryKey: ["/api/up-for-sale"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       toast({
         title: t("success"),
         description: "Partial sale recorded successfully",
