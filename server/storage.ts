@@ -429,27 +429,55 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed"): Promise<{ lots: Lot[]; entrySequence: number }> {
-    // Get the current cold storage
-    const coldStorage = await this.getColdStorage(coldStorageId);
-    
     // Determine which lot number counter to use based on bag type category
     // Wafer uses nextWaferLotNumber, Ration/Seed uses nextRationSeedLotNumber
     const isWaferCategory = bagTypeCategory === "wafer";
-    const entrySequence = isWaferCategory 
-      ? (coldStorage?.nextWaferLotNumber ?? 1)
-      : (coldStorage?.nextRationSeedLotNumber ?? 1);
     
-    // Increment the appropriate counter atomically
+    // Atomic read-and-increment pattern using raw SQL with CTE
+    // Counter semantics: nextXLotNumber stores the NEXT number to assign (starts at 1)
+    // CTE atomically: captures pre-increment value, updates to incremented value, returns pre-increment
+    // This prevents race conditions and correctly handles NULL/legacy data
+    let entrySequence: number;
+    
     if (isWaferCategory) {
-      await db
-        .update(coldStorages)
-        .set({ nextWaferLotNumber: sql`COALESCE(${coldStorages.nextWaferLotNumber}, 0) + 1` })
-        .where(eq(coldStorages.id, coldStorageId));
+      // Raw SQL CTE that atomically reads, increments, and returns the PRE-increment value
+      // If counter is NULL, treat as 1 (first lot number)
+      const result = await db.execute(sql`
+        WITH old_value AS (
+          SELECT COALESCE(next_wafer_lot_number, 1) as lot_num
+          FROM cold_storages
+          WHERE id = ${coldStorageId}
+        )
+        UPDATE cold_storages
+        SET next_wafer_lot_number = (SELECT lot_num FROM old_value) + 1
+        WHERE id = ${coldStorageId}
+        RETURNING (SELECT lot_num FROM old_value) as assigned_lot_number
+      `);
+      
+      const rows = result.rows as Array<{ assigned_lot_number: number }>;
+      if (!rows || rows.length === 0) {
+        throw new Error(`Cold storage not found: ${coldStorageId}`);
+      }
+      entrySequence = rows[0].assigned_lot_number;
     } else {
-      await db
-        .update(coldStorages)
-        .set({ nextRationSeedLotNumber: sql`COALESCE(${coldStorages.nextRationSeedLotNumber}, 0) + 1` })
-        .where(eq(coldStorages.id, coldStorageId));
+      // Raw SQL CTE for ration/seed counter
+      const result = await db.execute(sql`
+        WITH old_value AS (
+          SELECT COALESCE(next_ration_seed_lot_number, 1) as lot_num
+          FROM cold_storages
+          WHERE id = ${coldStorageId}
+        )
+        UPDATE cold_storages
+        SET next_ration_seed_lot_number = (SELECT lot_num FROM old_value) + 1
+        WHERE id = ${coldStorageId}
+        RETURNING (SELECT lot_num FROM old_value) as assigned_lot_number
+      `);
+      
+      const rows = result.rows as Array<{ assigned_lot_number: number }>;
+      if (!rows || rows.length === 0) {
+        throw new Error(`Cold storage not found: ${coldStorageId}`);
+      }
+      entrySequence = rows[0].assigned_lot_number;
     }
     
     const createdLots: Lot[] = [];
