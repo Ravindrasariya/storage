@@ -988,7 +988,7 @@ export default function CashManagement() {
       } else {
         const bt = transaction.data as SalesHistory;
         return [
-          "",
+          bt.transferTransactionId || "",
           dateStr,
           t("buyerToBuyer"),
           `${bt.buyerName} → ${bt.transferToBuyerName}`,
@@ -1220,9 +1220,9 @@ export default function CashManagement() {
       })) : []),
     ].sort((a, b) => {
       // Sort by transactionId descending (CF + YYYYMMDD + natural number)
-      // For items without transactionId (buyerTransfer), fallback to timestamp
+      // For buyerTransfer items, use transferTransactionId; fallback to timestamp if no ID
       const getTransactionId = (item: TransactionItem): string | null => {
-        if (item.type === "buyerTransfer") return null;
+        if (item.type === "buyerTransfer") return (item.data as SalesHistory).transferTransactionId || null;
         if (item.type === "discount") return (item.data as Discount).transactionId || null;
         return (item.data as CashReceipt | Expense | CashTransfer).transactionId || null;
       };
@@ -2953,6 +2953,12 @@ export default function CashManagement() {
                   </>
                 ) : selectedTransaction.type === "buyerTransfer" ? (
                   <>
+                    {(selectedTransaction.data as SalesHistory).transferTransactionId && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t("transactionId") || "Transaction ID"}:</span>
+                        <span className="font-mono text-sm">{(selectedTransaction.data as SalesHistory).transferTransactionId}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("fromBuyer")}:</span>
                       <span className="font-medium">{(selectedTransaction.data as SalesHistory).buyerName}</span>

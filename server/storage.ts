@@ -64,7 +64,7 @@ import {
 } from "@shared/schema";
 
 // Entity type prefixes for sequential IDs
-type EntityType = 'cold_storage' | 'lot' | 'sales' | 'cash_flow';
+export type EntityType = 'cold_storage' | 'lot' | 'sales' | 'cash_flow';
 const ENTITY_PREFIXES: Record<EntityType, string> = {
   cold_storage: 'CS',
   lot: 'LT',
@@ -74,7 +74,7 @@ const ENTITY_PREFIXES: Record<EntityType, string> = {
 
 // Generate a sequential ID in format: PREFIX + YYYYMMDD + counter (no zero-padding)
 // Example: LT202601251, LT202601252, ... LT20260125100
-async function generateSequentialId(entityType: EntityType): Promise<string> {
+export async function generateSequentialId(entityType: EntityType): Promise<string> {
   const now = new Date();
   const dateKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
   const rowId = `${entityType}_${dateKey}`;
@@ -173,6 +173,7 @@ export interface IStorage {
     transferGroupId: string;
     transferDate: Date;
     transferRemarks: string | null;
+    transferTransactionId?: string;
     paymentStatus?: string;
     paidAmount?: number;
     dueAmount?: number;
@@ -1410,6 +1411,7 @@ export class DatabaseStorage implements IStorage {
     transferGroupId: string;
     transferDate: Date;
     transferRemarks: string | null;
+    transferTransactionId?: string;
     paymentStatus?: string;
     paidAmount?: number;
     dueAmount?: number;
@@ -1422,6 +1424,11 @@ export class DatabaseStorage implements IStorage {
       transferDate: updates.transferDate,
       transferRemarks: updates.transferRemarks,
     };
+    
+    // Add CF transaction ID for buyer-to-buyer transfers
+    if (updates.transferTransactionId) {
+      updateData.transferTransactionId = updates.transferTransactionId;
+    }
     
     // Only update payment fields if explicitly provided (for liability transfers, we don't update these)
     if (updates.paymentStatus !== undefined) {

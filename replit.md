@@ -110,13 +110,18 @@ Core entities:
 - Lot entry bill numbers stored in lots.entryBillNumber, assigned when Print is clicked in receipt dialog
 
 ### Cash Flow Transaction IDs
-- All cash flow entries (receipts, expenses, transfers) receive a unique transactionId
+- All cash flow entries (receipts, expenses, transfers, discounts, buyer-to-buyer transfers) receive a unique transactionId
 - Format: CF + YYYYMMDD + natural number starting from 1 (e.g., CF202601221, CF202601222)
 - Generated atomically using dailyIdCounters table (entity type: 'cash_flow')
 - IDs are globally unique across all cold storages
 - Cash Management transaction list sorted by transactionId descending
 - CSV export includes transactionId as first column
-- Database fields: cashReceipts.transactionId, expenses.transactionId, cashTransfers.transactionId
+- Database fields: 
+  - cashReceipts.transactionId
+  - expenses.transactionId
+  - cashTransfers.transactionId
+  - discounts.transactionId
+  - salesHistory.transferTransactionId (for buyer-to-buyer transfers)
 
 ### Due After Tracking
 - Tracks remaining buyer/farmer dues after each cash receipt or discount transaction

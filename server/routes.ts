@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
-import { storage } from "./storage";
+import { storage, generateSequentialId } from "./storage";
 import { lotFormSchema, insertChamberFloorSchema, calculateProportionalEntryDeductions } from "@shared/schema";
 import { z } from "zod";
 
@@ -1695,6 +1695,9 @@ export async function registerRoutes(
       // Generate a transfer group ID to link related records
       const transferGroupId = `transfer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
+      // Generate a CF transaction ID for this buyer-to-buyer transfer (same format as other cash flow entries)
+      const transferTransactionId = await generateSequentialId('cash_flow');
+      
       // Update the original sale: record transfer destination (liability transfer only, payment status unchanged)
       // Note: Transfer moves liability from one buyer to another, NOT an actual payment
       await storage.updateSalesHistoryForTransfer(validatedData.saleId, {
@@ -1703,13 +1706,15 @@ export async function registerRoutes(
         transferGroupId: transferGroupId,
         transferDate: validatedData.transferDate,
         transferRemarks: validatedData.remarks || null,
+        transferTransactionId: transferTransactionId,
         // DO NOT update paymentStatus, paidAmount, or dueAmount - transfer is liability move, not payment
       });
       
       res.json({ 
         success: true, 
         message: "Transfer recorded successfully",
-        transferGroupId 
+        transferGroupId,
+        transferTransactionId
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
