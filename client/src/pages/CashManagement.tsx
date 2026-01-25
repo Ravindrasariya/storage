@@ -1088,6 +1088,14 @@ export default function CashManagement() {
       filteredExpenses = filteredExpenses.filter(e => e.expenseType === filterExpenseType);
     }
     
+    // Buyer name filter for expenses - only show if remarks contain buyer name
+    if (filterBuyer) {
+      const filterKey = filterBuyer.trim().toLowerCase();
+      filteredExpenses = filteredExpenses.filter(e => 
+        e.remarks && e.remarks.toLowerCase().includes(filterKey)
+      );
+    }
+    
     // Month filter for expenses
     if (filterMonth) {
       filteredExpenses = filteredExpenses.filter(e => {
@@ -1110,8 +1118,13 @@ export default function CashManagement() {
       filteredExpenses = filteredExpenses.filter(e => e.remarks && e.remarks.toLowerCase().includes(searchKey));
     }
 
-    // Apply filters to transfers
+    // Apply filters to transfers (internal cash transfers between payment modes)
     let filteredTransfers = transfers;
+    
+    // Buyer name filter for internal transfers - exclude all since they don't have buyer association
+    if (filterBuyer) {
+      filteredTransfers = []; // Internal transfers are not buyer-specific
+    }
     
     // Month filter for transfers
     if (filterMonth) {
@@ -1146,6 +1159,16 @@ export default function CashManagement() {
 
     // Apply filters to buyer transfers
     let filteredBuyerTransfers = buyerTransfers;
+    
+    // Buyer name filter for buyer transfers - match either source or destination buyer
+    if (filterBuyer) {
+      const filterKey = filterBuyer.trim().toLowerCase();
+      filteredBuyerTransfers = filteredBuyerTransfers.filter(bt => {
+        const sourceBuyer = bt.buyerName?.trim().toLowerCase() || "";
+        const destBuyer = bt.transferToBuyerName?.trim().toLowerCase() || "";
+        return sourceBuyer === filterKey || destBuyer === filterKey;
+      });
+    }
     
     // Month filter for buyer transfers
     if (filterMonth) {
@@ -1202,6 +1225,20 @@ export default function CashManagement() {
       })) : []),
       ...(includeDiscount ? discountsList.filter(d => {
         if (d.isReversed === 1) return false;
+        // Apply buyer name filter for discounts - match by farmerName or buyers in allocations
+        if (filterBuyer) {
+          const filterKey = filterBuyer.trim().toLowerCase();
+          const farmerName = d.farmerName?.trim().toLowerCase() || "";
+          // Parse buyerAllocations JSON to check if any buyer matches
+          let buyerMatches = false;
+          try {
+            const allocations = JSON.parse(d.buyerAllocations || "[]") as Array<{buyerName: string; amount: number}>;
+            buyerMatches = allocations.some(a => a.buyerName?.trim().toLowerCase() === filterKey);
+          } catch {
+            buyerMatches = false;
+          }
+          if (farmerName !== filterKey && !buyerMatches) return false;
+        }
         // Apply month filter
         if (filterMonth) {
           const date = new Date(d.discountDate);
