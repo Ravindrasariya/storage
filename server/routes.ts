@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
-import { lotFormSchema, insertChamberFloorSchema, calculateProportionalEntryDeductions } from "@shared/schema";
+import { lotFormSchema, insertChamberFloorSchema, calculateProportionalEntryDeductions, Lot } from "@shared/schema";
 import { z } from "zod";
 
 // CAPTCHA verification helper
@@ -552,6 +552,40 @@ export async function registerRoutes(
   });
 
   // Get all lots with the same entry sequence (for printing entry receipt)
+  // Check if a lot number already exists for a given bag type (excluding a specific lot)
+  // This route must come BEFORE /api/lots/:id to avoid matching "check-lot-number" as an id
+  app.get("/api/lots/check-lot-number", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const lotNo = req.query.lotNo as string;
+      const bagType = req.query.bagType as string;
+      const excludeId = req.query.excludeId as string;
+      
+      if (!lotNo || !bagType) {
+        return res.status(400).json({ error: "Missing lotNo or bagType parameter" });
+      }
+      
+      // Determine the bag type category (wafer vs ration/seed)
+      const isWaferCategory = bagType === "wafer";
+      
+      // Check if any lot with this number exists for the same bag type category
+      const allLots = await storage.getAllLots(coldStorageId);
+      const isDuplicate = allLots.some((existingLot: Lot) => {
+        if (existingLot.id === excludeId) return false; // Exclude the current lot being edited
+        if (existingLot.lotNo !== lotNo) return false; // Different lot number
+        
+        // Check if same bag type category
+        const lotIsWafer = existingLot.bagType === "wafer";
+        return lotIsWafer === isWaferCategory;
+      });
+      
+      res.json({ isDuplicate, lotNo, bagType });
+    } catch (error) {
+      console.error("Error checking lot number:", error);
+      res.status(500).json({ error: "Failed to check lot number" });
+    }
+  });
+
   // This route must come BEFORE /api/lots/:id to avoid matching "by-entry-sequence" as an id
   app.get("/api/lots/by-entry-sequence/:entrySequence", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
@@ -598,6 +632,8 @@ export async function registerRoutes(
     advanceDeduction: z.number().min(0).optional(),
     freightDeduction: z.number().min(0).optional(),
     otherDeduction: z.number().min(0).optional(),
+    // Lot number (editable with uniqueness validation)
+    lotNo: z.string().optional(),
   });
 
   app.patch("/api/lots/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -615,20 +651,76 @@ export async function registerRoutes(
       // Validate only allowed fields
       const validated = lotEditSchema.parse(req.body);
       
+      // If lotNo is being changed, validate uniqueness
+      if (validated.lotNo && validated.lotNo !== lot.lotNo) {
+        const isWaferCategory = lot.bagType === "wafer";
+        const allLots = await storage.getAllLots(coldStorageId);
+        const isDuplicate = allLots.some((existingLot: Lot) => {
+          if (existingLot.id === lot.id) return false;
+          if (existingLot.lotNo !== validated.lotNo) return false;
+          const existingIsWafer = existingLot.bagType === "wafer";
+          return existingIsWafer === isWaferCategory;
+        });
+        
+        if (isDuplicate) {
+          return res.status(400).json({ error: "Duplicate lot number for this bag type category" });
+        }
+      }
+      
       // Only create edit history if location/quality fields are being changed (not just upForSale toggle)
       const isLocationOrQualityEdit = validated.chamberId !== undefined || 
                                        validated.floor !== undefined || 
                                        validated.position !== undefined || 
-                                       validated.quality !== undefined;
+                                       validated.quality !== undefined ||
+                                       validated.lotNo !== undefined;
 
       const previousData = {
         chamberId: lot.chamberId,
         floor: lot.floor,
         position: lot.position,
         quality: lot.quality,
+        lotNo: lot.lotNo,
       };
 
-      const updatedLot = await storage.updateLot(req.params.id, validated);
+      // Update the lot (including lotNo and entrySequence if changed)
+      const updateData: Partial<typeof validated & { entrySequence?: number }> = { ...validated };
+      if (validated.lotNo && validated.lotNo !== lot.lotNo) {
+        updateData.entrySequence = parseInt(validated.lotNo, 10);
+      }
+      
+      const updatedLot = await storage.updateLot(req.params.id, updateData);
+
+      // If lotNo changed, recalculate the counter for this bag type category
+      if (validated.lotNo && validated.lotNo !== lot.lotNo) {
+        const isWaferCategory = lot.bagType === "wafer";
+        const allLotsForCounter = await storage.getAllLots(coldStorageId);
+        
+        // Find max lot number for this category (including the one we just updated)
+        let maxLotNo = 0;
+        allLotsForCounter.forEach((existingLot: Lot) => {
+          const existingIsWafer = existingLot.bagType === "wafer";
+          if (existingIsWafer === isWaferCategory) {
+            const num = parseInt(existingLot.lotNo, 10);
+            if (!isNaN(num) && num > maxLotNo) {
+              maxLotNo = num;
+            }
+          }
+        });
+        
+        // Also consider the new lot number we just set
+        const newLotNum = parseInt(validated.lotNo, 10);
+        if (!isNaN(newLotNum) && newLotNum > maxLotNo) {
+          maxLotNo = newLotNum;
+        }
+        
+        // Update the counter to max + 1
+        const newCounterValue = maxLotNo + 1;
+        if (isWaferCategory) {
+          await storage.updateColdStorage(coldStorageId, { nextWaferLotNumber: newCounterValue });
+        } else {
+          await storage.updateColdStorage(coldStorageId, { nextRationSeedLotNumber: newCounterValue });
+        }
+      }
 
       if (isLocationOrQualityEdit) {
         await storage.createEditHistory({
@@ -644,6 +736,7 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Validation error", details: error.errors });
       }
+      console.error("Error updating lot:", error);
       res.status(500).json({ error: "Failed to update lot" });
     }
   });

@@ -93,7 +93,9 @@ export default function StockRegister() {
     advanceDeduction: number;
     freightDeduction: number;
     otherDeduction: number;
+    lotNo: string;
   } | null>(null);
+  const [lotNoError, setLotNoError] = useState<string | null>(null);
 
   // Autocomplete state for search fields
   const [showPhoneSuggestions, setShowPhoneSuggestions] = useState(false);
@@ -591,7 +593,9 @@ export default function StockRegister() {
       advanceDeduction: lot.advanceDeduction || 0,
       freightDeduction: lot.freightDeduction || 0,
       otherDeduction: lot.otherDeduction || 0,
+      lotNo: lot.lotNo,
     });
+    setLotNoError(null);
 
     try {
       const response = await authFetch(`/api/lots/${lot.id}/history`);
@@ -659,8 +663,32 @@ export default function StockRegister() {
     });
   };
 
-  const handleEditSubmit = () => {
+  const handleEditSubmit = async () => {
     if (!selectedLot || !editForm) return;
+    
+    // Validate lot number if it changed
+    if (editForm.lotNo !== selectedLot.lotNo) {
+      const newLotNo = parseInt(editForm.lotNo, 10);
+      if (isNaN(newLotNo) || newLotNo < 1) {
+        setLotNoError(t("invalidLotNumber") || "Invalid lot number");
+        return;
+      }
+      
+      // Check for duplicates - same lot number, same bag type category, different lot
+      try {
+        const response = await authFetch(`/api/lots/check-lot-number?lotNo=${newLotNo}&bagType=${selectedLot.bagType}&excludeId=${selectedLot.id}`);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.isDuplicate) {
+            setLotNoError(t("duplicateLotNumber") || `Lot #${newLotNo} already exists for this bag type`);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error checking lot number:", error);
+      }
+    }
+    
     updateLotMutation.mutate({
       id: selectedLot.id,
       updates: editForm,
@@ -1191,13 +1219,32 @@ export default function StockRegister() {
             </div>
           </div>
 
-          {/* Read-only Lot Information */}
+          {/* Lot Information - Lot No is editable */}
           <div className="space-y-4 border-t pt-4">
             <h4 className="font-semibold text-sm text-muted-foreground">{t("lotInformation")}</h4>
             <div className="grid grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
-              <div>
-                <p className="text-xs text-muted-foreground">{t("lotNo")}</p>
-                <p className="font-medium text-sm">{selectedLot?.lotNo}</p>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">{t("lotNo")}</Label>
+                {editForm && canEdit ? (
+                  <div>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={editForm.lotNo}
+                      onChange={(e) => {
+                        setEditForm({ ...editForm, lotNo: e.target.value });
+                        setLotNoError(null);
+                      }}
+                      className={lotNoError ? "border-destructive" : ""}
+                      data-testid="input-edit-lot-no"
+                    />
+                    {lotNoError && (
+                      <p className="text-xs text-destructive mt-1">{lotNoError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.lotNo}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("originalSize")}</p>
@@ -1442,7 +1489,9 @@ export default function StockRegister() {
                         advanceDeduction: updatedLot.advanceDeduction || 0,
                         freightDeduction: updatedLot.freightDeduction || 0,
                         otherDeduction: updatedLot.otherDeduction || 0,
+                        lotNo: updatedLot.lotNo,
                       });
+                      setLotNoError(null);
                     }
                     const historyResponse = await authFetch(`/api/lots/${selectedLot.id}/history`);
                     if (historyResponse.ok) {

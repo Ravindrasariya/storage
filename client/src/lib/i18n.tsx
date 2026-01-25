@@ -61,6 +61,8 @@ const translations: Translations = {
   lot: { en: "Lot", hi: "लॉट" },
   addMoreLot: { en: "Add More Lot", hi: "और लॉट जोड़ें" },
   lotNo: { en: "Lot No", hi: "लॉट नंबर" },
+  invalidLotNumber: { en: "Invalid lot number", hi: "अमान्य लॉट नंबर" },
+  duplicateLotNumber: { en: "This lot number already exists for this bag type", hi: "इस बैग प्रकार के लिए यह लॉट नंबर पहले से मौजूद है" },
   size: { en: "Size (Bags)", hi: "आकार (बैग)" },
   storageLocation: { en: "Storage Location", hi: "भंडारण स्थान" },
   chamber: { en: "Chamber", hi: "कक्ष" },
