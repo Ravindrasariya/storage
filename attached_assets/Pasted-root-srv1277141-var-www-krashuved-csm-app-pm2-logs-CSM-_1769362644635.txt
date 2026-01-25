@@ -1,0 +1,30 @@
+root@srv1277141:/var/www/krashuved/csm-app# pm2 logs CSM-App
+[TAILING] Tailing last 15 lines for [CSM-App] process (change the value with --lines option)
+/root/.pm2/logs/CSM-App-error.log last 15 lines:
+0|CSM-App  |   detail: undefined,
+0|CSM-App  |   hint: 'Perhaps you meant to reference the column "cold_storages.state".',
+0|CSM-App  |   position: '456',
+0|CSM-App  |   internalPosition: undefined,
+0|CSM-App  |   internalQuery: undefined,
+0|CSM-App  |   where: undefined,
+0|CSM-App  |   schema: undefined,
+0|CSM-App  |   table: undefined,
+0|CSM-App  |   column: undefined,
+0|CSM-App  |   dataType: undefined,
+0|CSM-App  |   constraint: undefined,
+0|CSM-App  |   file: 'parse_relation.c',
+0|CSM-App  |   line: '3729',
+0|CSM-App  |   routine: 'errorMissingColumn'
+0|CSM-App  | }
+
+/root/.pm2/logs/CSM-App-out.log last 15 lines:
+0|CSM-App  | rGroupId":null,"transferDate":null,"transferRemarks":null,"transferTransactionId":null,"chargeBasis":"actual","chargeUnitAtSale":"quintal","initialNetWeightKg":13000,"baseChargeAmountAtSale":0,"remainingSizeAtSale":100,"extraDueToMerchant":0,"extraDueToMerchantOriginal":0,"extraDueHammaliMerchant":0,"extraDueGradingMerchant":0,"extraDueOtherMerchant":0,"advanceDeduction":0,"freightDeduction":0,"otherDeduction":0},{"id":"SL202601251","coldStorageId":"cs-default","farmerName":"Manoj Patidar","village":"Kachnariya","tehsil":"Tarana","district":"Ujjain","state":"Madhya Pradesh","contactNumber":"8882589392","lotNo":"1","lotId":"LT202601254","chamberName":"Chamber 1","floor":3,"position":"12, 13, 14","potatoType":"CS1","bagType":"wafer","bagTypeLabel":"jute","quality":"medium","originalLotSize":200,"saleType":"partial","quantitySold":100,"pricePerBag":165,"coldCharge":145,"hammali":20,"coldStorageCharge":25405,"kataCharges":55,"extraHammali":500,"gradingCharges":2000,"netWeight":null,"buyerName":"Roop Laxmi Traders","pricePerKg":null,"paymentStatus":"paid","paymentMode":null,"paidAmount":25405,"discountAllocated":25405,"dueAmount":0,"paidAt":null,"entryDate":"2026-01-25T14:56:40.677Z","saleYear":2026,"soldAt":"2026-01-25T16:31:32.007Z","coldStorageBillNumber":null,"salesBillNumber":null,"clearanceType":null,"transferredAmount":0,"transferToBuyerName":null,"transferGroupId":null,"transferDate":null,"transferRemarks":null,"transferTransactionId":null,"chargeBasis":"totalRemaining","chargeUnitAtSale":"quintal","initialNetWeightKg":13000,"baseChargeAmountAtSale":22850,"remainingSizeAtSale":200,"extraDueToMerchant":0,"extraDueToMerchantOriginal":0,"extraDueHammaliMerchant":0,"extraDueGradingMerchant":0,"extraDueOtherMerchant":0,"advanceDeduction":0,"freightDeduction":0,"otherDeduction":0}]
+0|CSM-App  | 5:30:10 PM [express] GET /api/lots/summary 200 in 7ms :: {"totalBags":400,"remainingBags":200,"chargesPaid":26000,"chargesDue":12505,"expectedColdCharges":47275}
+0|CSM-App  | 5:30:29 PM [express] GET /api/lots/LT202601255/history 200 in 15ms :: []
+0|CSM-App  | 5:30:35 PM [express] GET /api/lots/check-lot-number 200 in 4ms :: {"isDuplicate":true,"lotNo":"1","bagType":"wafer"}
+0|CSM-App  | 5:30:40 PM [express] GET /api/lots/check-lot-number 200 in 3ms :: {"isDuplicate":false,"lotNo":"3","bagType":"wafer"}
+0|CSM-App  | 5:30:40 PM [express] PATCH /api/lots/LT202601255 400 in 8ms :: {"error":"Validation error","details":[{"code":"too_small","minimum":0,"type":"number","inclusive":false,"exact":false,"message":"Number must be greater than 0","path":["floor"]}]}
+0|CSM-App  | 5:30:48 PM [express] GET /api/lots/check-lot-number 304 in 3ms :: {"isDuplicate":false,"lotNo":"3","bagType":"wafer"}
+0|CSM-App  | 5:30:48 PM [express] PATCH /api/lots/LT202601255 400 in 4ms :: {"error":"Validation error","details":[{"code":"too_small","minimum":0,"type":"number","inclusive":false,"exact":false,"message":"Number must be greater than 0","path":["floor"]}]}
+0|CSM-App  | 5:30:58 PM [express] GET /api/lots/LT202601255/history 304 in 3ms :: []
+0|CSM-App  | 5:36:55 PM [express] serving on port 5001

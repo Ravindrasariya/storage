@@ -1,0 +1,23 @@
+root@srv1277141:/var/www/krashuved/csm-app# pm2 logs CSM-App
+[TAILING] Tailing last 15 lines for [CSM-App] process (change the value with --lines option)
+/root/.pm2/logs/CSM-App-error.log last 15 lines:
+0|CSM-App  |   detail: undefined,
+0|CSM-App  |   hint: 'Perhaps you meant to reference the column "cold_storages.state".',
+0|CSM-App  |   position: '456',
+0|CSM-App  |   internalPosition: undefined,
+0|CSM-App  |   internalQuery: undefined,
+0|CSM-App  |   where: undefined,
+0|CSM-App  |   schema: undefined,
+0|CSM-App  |   table: undefined,
+0|CSM-App  |   column: undefined,
+0|CSM-App  |   dataType: undefined,
+0|CSM-App  |   constraint: undefined,
+0|CSM-App  |   file: 'parse_relation.c',
+0|CSM-App  |   line: '3729',
+0|CSM-App  |   routine: 'errorMissingColumn'
+0|CSM-App  | }
+
+/root/.pm2/logs/CSM-App-out.log last 15 lines:
+0|CSM-App  | ":"large","assayingType":"Visual","assayerImage":"","reducingSugar":null,"dm":null,"remarks":"","upForSale":1,"saleStatus":"available","paymentStatus":null,"saleCharge":null,"totalPaidCharge":null,"totalDueCharge":null,"soldAt":null,"createdAt":"2026-01-25T15:11:11.988Z","entryBillNumber":null,"baseColdChargesBilled":0,"advanceDeduction":0,"freightDeduction":0,"otherDeduction":0},{"id":"LT202601254","coldStorageId":"cs-default","farmerName":"Manoj Patidar","village":"Kachnariya","tehsil":"Tarana","district":"Ujjain","state":"Madhya Pradesh","contactNumber":"8882589392","lotNo":"1","entrySequence":1,"size":200,"netWeight":13000,"remainingSize":0,"chamberId":"ch-3af71b00","floor":3,"position":"12, 13, 14","type":"CS1","bagType":"wafer","bagTypeLabel":"jute","quality":"medium","potatoSize":"large","assayingType":"Visual","assayerImage":"","reducingSugar":null,"dm":null,"remarks":"","upForSale":1,"saleStatus":"partial","paymentStatus":"due","saleCharge":null,"totalPaidCharge":26000,"totalDueCharge":12505,"soldAt":null,"createdAt":"2026-01-25T14:56:40.677Z","entryBillNumber":null,"baseColdChargesBilled":1,"advanceDeduction":0,"freightDeduction":0,"otherDeduction":0},{"id":"LT202601255","coldStorageId":"cs-default","farmerName":"Krashnapal","village":"Kachnariya","tehsil":"Tarana","district":"Ujjain","state":"Madhya Pradesh","contactNumber":"8882589395","lotNo":"3","entrySequence":3,"size":100,"netWeight":6500,"remainingSize":100,"chamberId":"ch-3af71b00","floor":0,"position":"","type":"Torus","bagType":"wafer","bagTypeLabel":"jute","quality":"medium","potatoSize":"large","assayingType":"Visual","assayerImage":"","reducingSugar":null,"dm":null,"remarks":"","upForSale":0,"saleStatus":"available","paymentStatus":null,"saleCharge":null,"totalPaidCharge":null,"totalDueCharge":null,"soldAt":null,"createdAt":"2026-01-25T15:09:22.057Z","entryBillNumber":null,"baseColdChargesBilled":0,"advanceDeduction":0,"freightDeduction":0,"otherDeduction":0}]
+0|CSM-App  | 5:38:44 PM [express] GET /api/lots/LT202601255/history 200 in 5ms :: [{"id":"3cd29089-d735-4029-9259-a0a493e3a135","lotId":"LT202601255","changeType":"edit","previousData":"{\"chamberId\":\"ch-3af71b00\",\"floor\":0,\"position\":\"\",\"quality\":\"medium\",\"lotNo\":\"2\"}","newData":"{\"chamberId\":\"ch-3af71b00\",\"floor\":0,\"position\":\"\",\"quality\":\"medium\",\"netWeight\":6500,\"advanceDeduction\":0,\"freightDeduction\":0,\"otherDeduction\":0,\"lotNo\":\"3\"}","soldQuantity":null,"pricePerBag":null,"coldCharge":null,"hammali":null,"pricePerKg":null,"buyerName":null,"totalPrice":null,"salePaymentStatus":null,"saleCharge":null,"changedAt":"2026-01-25T17:38:44.284Z"}]
+0|CSM-App  | 5:38:44 PM [express] GET /api/farmers/lookup 200 in 4ms :: [{"farmerName":"Manoj Patidar","village":"Kachnariya","tehsil":"Tarana","district":"Ujjain","state":"Madhya Pradesh","contactNumber":"8
