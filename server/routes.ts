@@ -1844,8 +1844,8 @@ export async function registerRoutes(
       // Generate a transfer group ID to link related records
       const transferGroupId = `transfer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
-      // Generate a CF transaction ID for this buyer-to-buyer transfer (same format as other cash flow entries)
-      const transferTransactionId = await generateSequentialId('cash_flow');
+      // Generate a CF transaction ID for this buyer-to-buyer transfer (unique per cold store)
+      const transferTransactionId = await generateSequentialId('cash_flow', coldStorageId);
       
       // Update the original sale: record transfer destination (liability transfer only, payment status unchanged)
       // Note: Transfer moves liability from one buyer to another, NOT an actual payment

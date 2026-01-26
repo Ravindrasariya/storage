@@ -74,10 +74,19 @@ const ENTITY_PREFIXES: Record<EntityType, string> = {
 
 // Generate a sequential ID in format: PREFIX + YYYYMMDD + counter (no zero-padding)
 // Example: LT202601251, LT202601252, ... LT20260125100
-export async function generateSequentialId(entityType: EntityType): Promise<string> {
+// For cash_flow entity type, coldStorageId is required to make IDs unique per cold store
+export async function generateSequentialId(entityType: EntityType, coldStorageId?: string): Promise<string> {
+  // Enforce coldStorageId for cash_flow to prevent accidental global IDs
+  if (entityType === 'cash_flow' && !coldStorageId) {
+    throw new Error('coldStorageId is required for cash_flow entity type');
+  }
+  
   const now = new Date();
   const dateKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const rowId = `${entityType}_${dateKey}`;
+  // For cash_flow, include coldStorageId to make IDs unique per cold store
+  const rowId = entityType === 'cash_flow' && coldStorageId 
+    ? `${entityType}_${coldStorageId}_${dateKey}` 
+    : `${entityType}_${dateKey}`;
   const prefix = ENTITY_PREFIXES[entityType];
 
   // Atomic increment pattern: Try UPDATE first, then INSERT if no row exists
@@ -2136,8 +2145,8 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Generate transaction ID (CF + YYYYMMDD + natural number)
-    const transactionId = await generateSequentialId('cash_flow');
+    // Generate transaction ID (CF + YYYYMMDD + natural number) - unique per cold store
+    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
 
     // Calculate remaining dues for this buyer after transaction (for cold_merchant type)
     let dueBalanceAfter: number | null = null;
@@ -2281,8 +2290,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExpense(data: InsertExpense): Promise<Expense> {
-    // Generate transaction ID (CF + YYYYMMDD + natural number)
-    const transactionId = await generateSequentialId('cash_flow');
+    // Generate transaction ID (CF + YYYYMMDD + natural number) - unique per cold store
+    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
 
     const [expense] = await db.insert(expenses)
       .values({
@@ -2307,8 +2316,8 @@ export class DatabaseStorage implements IStorage {
     if (data.amount <= 0) {
       throw new Error("Transfer amount must be greater than 0");
     }
-    // Generate transaction ID (CF + YYYYMMDD + natural number)
-    const transactionId = await generateSequentialId('cash_flow');
+    // Generate transaction ID (CF + YYYYMMDD + natural number) - unique per cold store
+    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
 
     const [transfer] = await db.insert(cashTransfers)
       .values({
@@ -3571,7 +3580,8 @@ export class DatabaseStorage implements IStorage {
 
   // Create discount with FIFO allocation to reduce sales dues
   async createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }> {
-    const transactionId = await generateSequentialId('cash_flow');
+    // Generate transaction ID unique per cold store
+    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
     const discountId = randomUUID();
     
     // Parse buyer allocations
