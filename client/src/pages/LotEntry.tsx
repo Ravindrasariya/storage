@@ -896,7 +896,7 @@ export default function LotEntry() {
                         data-testid={`input-net-weight-${index}`}
                       />
                       {lot.netWeight && lot.netWeight > 0 && lot.size > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1" data-testid={`avg-weight-${index}`}>
+                        <p className="text-xs font-medium text-orange-600 dark:text-orange-400 mt-1" data-testid={`avg-weight-${index}`}>
                           {t("avgWeight") || "Avg Weight"}: {(lot.netWeight / lot.size).toFixed(2)} {t("qtlPerBag") || "qtl/bag"}
                         </p>
                       )}
