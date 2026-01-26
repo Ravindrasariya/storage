@@ -895,6 +895,11 @@ export default function LotEntry() {
                         onChange={(e) => updateLot(index, "netWeight", e.target.value === "" ? undefined : parseFloat(e.target.value))}
                         data-testid={`input-net-weight-${index}`}
                       />
+                      {lot.netWeight && lot.netWeight > 0 && lot.size > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1" data-testid={`avg-weight-${index}`}>
+                          {t("avgWeight") || "Avg Weight"}: {(lot.netWeight / lot.size).toFixed(2)} {t("qtlPerBag") || "qtl/bag"}
+                        </p>
+                      )}
                     </div>
                   )}
                   <div>

@@ -33,6 +33,8 @@ const translations: Translations = {
   netWeightQtl: { en: "Initial Net Weight (Kg)", hi: "प्रारंभिक शुद्ध वजन (किग्रा)" },
   initialNetWeight: { en: "Initial Net Weight", hi: "प्रारंभिक शुद्ध वजन" },
   kg: { en: "Kg", hi: "किग्रा" },
+  avgWeight: { en: "Avg Weight", hi: "औसत वजन" },
+  qtlPerBag: { en: "Kg/bag", hi: "किग्रा/बोरी" },
   expectedCharge: { en: "Expected Charge", hi: "अनुमानित शुल्क" },
   bag: { en: "bag", hi: "बैग" },
   wafer: { en: "Wafer", hi: "वेफर" },
