@@ -171,6 +171,7 @@ export default function CashManagement() {
   const [filterPayerType, setFilterPayerType] = useState<string>("");
   const [filterBuyer, setFilterBuyer] = useState<string>("");
   const [filterBuyerSearch, setFilterBuyerSearch] = useState<string>("");
+  const [showFilterBuyerSuggestions, setShowFilterBuyerSuggestions] = useState(false);
   const [filterExpenseType, setFilterExpenseType] = useState<string>("");
   const [filterRemarks, setFilterRemarks] = useState<string>("");
   const [filterMonth, setFilterMonth] = useState<string>("");
@@ -1799,16 +1800,21 @@ export default function CashManagement() {
                       else if (uniqueBuyers.includes(e.target.value)) {
                         setFilterBuyer(e.target.value);
                       }
+                      setShowFilterBuyerSuggestions(true);
                     }}
-                    onBlur={(e) => {
-                      const val = e.target.value.trim();
-                      if (val && uniqueBuyers.some(b => b.toLowerCase() === val.toLowerCase())) {
-                        const match = uniqueBuyers.find(b => b.toLowerCase() === val.toLowerCase());
-                        if (match) {
-                          setFilterBuyer(match);
-                          setFilterBuyerSearch(match);
+                    onFocus={() => setShowFilterBuyerSuggestions(true)}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setShowFilterBuyerSuggestions(false);
+                        const val = filterBuyerSearch.trim();
+                        if (val && uniqueBuyers.some(b => b.toLowerCase() === val.toLowerCase())) {
+                          const match = uniqueBuyers.find(b => b.toLowerCase() === val.toLowerCase());
+                          if (match) {
+                            setFilterBuyer(match);
+                            setFilterBuyerSearch(match);
+                          }
                         }
-                      }
+                      }, 150);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
@@ -1820,37 +1826,41 @@ export default function CashManagement() {
                             setFilterBuyerSearch(match);
                           }
                         }
+                        setShowFilterBuyerSuggestions(false);
                       }
                     }}
                     placeholder={t("searchBuyerName")}
                     className="h-8 text-sm"
                     data-testid="input-filter-buyer-search"
-                    list="buyer-suggestions"
                   />
-                  <datalist id="buyer-suggestions">
-                    {filteredBuyerOptions.map((buyer) => (
-                      <option key={buyer} value={buyer} />
-                    ))}
-                  </datalist>
+                  {showFilterBuyerSuggestions && (
+                    <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md" data-testid="filter-buyer-dropdown">
+                      <ScrollArea className="max-h-[200px]">
+                        {filteredBuyerOptions.length === 0 ? (
+                          <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
+                        ) : (
+                          filteredBuyerOptions.map((buyer) => (
+                            <Button
+                              key={buyer}
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start text-left"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setFilterBuyer(buyer);
+                                setFilterBuyerSearch(buyer);
+                                setShowFilterBuyerSuggestions(false);
+                              }}
+                              data-testid={`filter-buyer-suggestion-${buyer}`}
+                            >
+                              {buyer}
+                            </Button>
+                          ))
+                        )}
+                      </ScrollArea>
+                    </div>
+                  )}
                 </div>
-                {filterBuyerSearch.length >= 1 && filteredBuyerOptions.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {filteredBuyerOptions.slice(0, 3).map((buyer, idx) => (
-                      <Badge
-                        key={buyer}
-                        variant={filterBuyer === buyer ? "default" : "outline"}
-                        className="text-xs cursor-pointer"
-                        data-testid={`badge-buyer-suggestion-${idx}`}
-                        onClick={() => {
-                          setFilterBuyer(buyer);
-                          setFilterBuyerSearch(buyer);
-                        }}
-                      >
-                        {buyer}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
