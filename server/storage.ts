@@ -2374,113 +2374,10 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(cashReceipts.id, receiptId));
 
-    // Reset all sales for this buyer to baseline (due status)
-    // Use case-insensitive matching for buyer name
-    await db.update(salesHistory)
-      .set({
-        paymentStatus: "due",
-        paidAmount: 0,
-        dueAmount: sql`${salesHistory.coldStorageCharge}`,
-        paymentMode: null,
-        paidAt: null,
-      })
-      .where(and(
-        eq(salesHistory.coldStorageId, receipt.coldStorageId),
-        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${receipt.buyerName}))`,
-        sql`${salesHistory.paymentStatus} IN ('paid', 'partial')`
-      ));
-
-    // Replay all non-reversed receipts for this buyer in order (FIFO)
-    // Use case-insensitive matching for buyer name
-    const activeReceipts = await db.select()
-      .from(cashReceipts)
-      .where(and(
-        eq(cashReceipts.coldStorageId, receipt.coldStorageId),
-        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${receipt.buyerName}))`,
-        eq(cashReceipts.isReversed, 0)
-      ))
-      .orderBy(cashReceipts.receivedAt);
-
-    // For each active receipt, replay the FIFO allocation
-    for (const activeReceipt of activeReceipts) {
-      // Get all sales for this buyer ordered by sale date (FIFO)
-      // Use case-insensitive matching for buyer name
-      const sales = await db.select()
-        .from(salesHistory)
-        .where(and(
-          eq(salesHistory.coldStorageId, activeReceipt.coldStorageId),
-          sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${activeReceipt.buyerName}))`,
-          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
-        ))
-        .orderBy(salesHistory.soldAt);
-
-      let remainingAmount = activeReceipt.amount;
-      let appliedAmount = 0;
-      const paymentMode = activeReceipt.receiptType as "cash" | "account";
-
-      // Apply payment to each sale in FIFO order
-      for (const sale of sales) {
-        if (remainingAmount <= 0) break;
-
-        // coldStorageCharge already includes base + kata + extraHammali + grading
-        // Do NOT add them again to avoid double-counting
-        const totalCharges = sale.coldStorageCharge || 0;
-        const saleDueAmount = totalCharges - (sale.paidAmount || 0);
-        
-        if (saleDueAmount <= 0) continue;
-
-        if (remainingAmount >= saleDueAmount) {
-          // Can fully pay this sale
-          await db.update(salesHistory)
-            .set({
-              paymentStatus: "paid",
-              paidAmount: totalCharges,
-              dueAmount: 0,
-              paymentMode: paymentMode,
-              paidAt: activeReceipt.receivedAt,
-            })
-            .where(eq(salesHistory.id, sale.id));
-          
-          remainingAmount -= saleDueAmount;
-          appliedAmount += saleDueAmount;
-        } else {
-          // Can only partially pay this sale
-          const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
-          const newDueAmount = totalCharges - newPaidAmount;
-          
-          await db.update(salesHistory)
-            .set({
-              paymentStatus: "partial",
-              paidAmount: newPaidAmount,
-              dueAmount: newDueAmount,
-              paymentMode: paymentMode,
-            })
-            .where(eq(salesHistory.id, sale.id));
-          
-          appliedAmount += remainingAmount;
-          remainingAmount = 0;
-        }
-      }
-
-      // Update the receipt's applied/unapplied amounts
-      await db.update(cashReceipts)
-        .set({
-          appliedAmount: appliedAmount,
-          unappliedAmount: remainingAmount,
-        })
-        .where(eq(cashReceipts.id, activeReceipt.id));
-    }
-
-    // Update lot totals for all affected lots (all sales for this buyer)
-    const affectedSales = await db.select()
-      .from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, receipt.coldStorageId),
-        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${receipt.buyerName}))`
-      ));
-    const affectedLotIds = Array.from(new Set(affectedSales.map(s => s.lotId)));
-    for (const lotId of affectedLotIds) {
-      await this.recalculateLotTotals(lotId);
+    // Use unified recomputeBuyerPayments to properly handle both receipts AND discounts
+    // This replaces the old custom FIFO replay that only considered receipts
+    if (receipt.buyerName && receipt.coldStorageId) {
+      await this.recomputeBuyerPayments(receipt.buyerName, receipt.coldStorageId);
     }
 
     return { success: true, message: "Receipt reversed and payments recalculated" };
@@ -3666,7 +3563,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(discounts.createdAt));
   }
 
-  // Reverse a discount (add back dues to sales)
+  // Reverse a discount (add back dues to sales and recompute FIFO for affected buyers)
   async reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }> {
     const [discount] = await db.select()
       .from(discounts)
@@ -3680,58 +3577,28 @@ export class DatabaseStorage implements IStorage {
       return { success: false, message: "Discount already reversed" };
     }
     
-    // Parse buyer allocations and reverse the discount
-    const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
-    
-    for (const allocation of allocations) {
-      let remainingAmount = allocation.amount;
-      const buyerName = allocation.buyerName;
-      
-      // Get sales for this farmer from this buyer, ordered by newest first (reverse of FIFO)
-      const salesResult = await db.execute(sql`
-        SELECT id, paid_amount
-        FROM sales_history
-        WHERE cold_storage_id = ${discount.coldStorageId}
-          AND farmer_name = ${discount.farmerName}
-          AND village = ${discount.village}
-          AND contact_number = ${discount.contactNumber}
-          AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) = ${buyerName}
-          AND paid_amount > 0
-        ORDER BY sold_at DESC
-      `);
-      
-      for (const row of salesResult.rows as { id: string; paid_amount: number }[]) {
-        if (remainingAmount <= 0) break;
-        
-        const saleId = row.id;
-        const currentPaid = row.paid_amount;
-        const amountToReverse = Math.min(remainingAmount, currentPaid);
-        
-        // Reverse the discount from the sale, also decrement discountAllocated
-        await db.execute(sql`
-          UPDATE sales_history
-          SET 
-            due_amount = due_amount + ${amountToReverse},
-            paid_amount = paid_amount - ${amountToReverse},
-            discount_allocated = GREATEST(0, COALESCE(discount_allocated, 0) - ${amountToReverse}),
-            payment_status = CASE 
-              WHEN paid_amount - ${amountToReverse} <= 0 THEN 'due'
-              ELSE 'partial'
-            END
-          WHERE id = ${saleId}
-        `);
-        
-        remainingAmount -= amountToReverse;
-      }
-    }
-    
-    // Mark discount as reversed
+    // Mark discount as reversed first
     await db.update(discounts)
       .set({
         isReversed: 1,
         reversedAt: new Date(),
       })
       .where(eq(discounts.id, discountId));
+    
+    // Parse buyer allocations to get list of affected buyers
+    const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
+    
+    // Collect unique buyer names (normalized for case-insensitivity)
+    const affectedBuyers = new Set<string>();
+    for (const allocation of allocations) {
+      affectedBuyers.add(allocation.buyerName.trim());
+    }
+    
+    // Trigger FIFO recomputation for each affected buyer
+    // This properly replays both receipts AND remaining discounts in chronological order
+    for (const buyerName of Array.from(affectedBuyers)) {
+      await this.recomputeBuyerPayments(buyerName, discount.coldStorageId);
+    }
     
     return { success: true };
   }

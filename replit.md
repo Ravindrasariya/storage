@@ -102,6 +102,25 @@ Core entities:
   2. Second pass: If surplus remains, apply to extraDueToMerchant (by original buyerName, FIFO order)
 - Recompute behavior: restores extraDueToMerchant to extraDueToMerchantOriginal before reapplying receipts for idempotency
 
+### FIFO Trigger Points
+All FIFO recomputation uses `recomputeBuyerPayments` which handles BOTH receipts AND discounts in a unified timeline:
+- **Creating cash receipt**: Direct FIFO application via `createCashReceiptWithFIFO`
+- **Creating discount**: Direct FIFO application via `createDiscountWithFIFO`
+- **Reversing cash receipt**: Marks receipt as reversed, then calls `recomputeBuyerPayments` for affected buyer
+- **Reversing discount**: Marks discount as reversed, then calls `recomputeBuyerPayments` for all affected buyers in allocations
+- **Editing sale charges**: Calls `recomputeBuyerPayments` for CurrentDueBuyerName after charge update
+- **Reversing sale**: Calls `recomputeBuyerPayments` for affected buyer after restoring bags
+- **Adding opening receivable**: Calls `recomputeBuyerPayments` for cold_merchant with buyer name
+- **Deleting opening receivable**: Calls `recomputeBuyerPayments` for cold_merchant with buyer name
+
+The `recomputeBuyerPayments` function:
+1. Resets all sales for buyer to baseline (dueAmount = coldStorageCharge, paidAmount = 0)
+2. Resets extraDueToMerchant to original values
+3. Resets opening receivables paidAmount to 0
+4. Merges all active receipts + discounts into unified timeline sorted by date
+5. Replays each transaction in chronological order (FIFO)
+6. Recalculates lot totals for affected lots
+
 ### Bill Number System
 - Four independent bill number sequences: Exit, Cold Storage Deduction, Sales, and Lot Entry
 - Bill numbers assigned atomically on first print using UPDATE RETURNING pattern
