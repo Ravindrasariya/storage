@@ -30,7 +30,7 @@ import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
@@ -122,6 +122,7 @@ export default function StockRegister() {
 
   // Fetch cold storage settings to get rates
   type ColdStorageSettings = {
+    name: string;
     waferRate: number;
     seedRate: number;
     waferColdCharge: number;
@@ -526,6 +527,198 @@ export default function StockRegister() {
     });
   };
 
+  const handlePrintFiltered = () => {
+    const lots = getDisplayedLots;
+    if (lots.length === 0 || !summaryTotals) {
+      toast({
+        title: t("noResults"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast({
+        title: "Unable to open print window",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const coldStoreName = coldStorage?.name || "Cold Storage";
+    const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+    const lotCards = lots.map((lot) => {
+      let lotPaidCharge = 0;
+      let lotDueCharge = 0;
+      if (allSalesHistory) {
+        const lotSales = allSalesHistory.filter(s => s.lotId === lot.id);
+        for (const sale of lotSales) {
+          const totalCharges = calculateTotalColdCharges(sale);
+          if (sale.paymentStatus === "paid") {
+            lotPaidCharge += totalCharges;
+          } else if (sale.paymentStatus === "due") {
+            lotDueCharge += totalCharges;
+          } else if (sale.paymentStatus === "partial") {
+            const paidAmount = sale.paidAmount || 0;
+            lotPaidCharge += paidAmount;
+            lotDueCharge += Math.max(0, totalCharges - paidAmount);
+          }
+        }
+      }
+      const useWaferRate = lot.bagType === "wafer";
+      const coldChargeRate = useWaferRate 
+        ? (coldStorage?.waferColdCharge || 0) 
+        : (coldStorage?.seedColdCharge || 0);
+      const hammaliRate = useWaferRate
+        ? (coldStorage?.waferHammali || 0)
+        : (coldStorage?.seedHammali || 0);
+      let expectedColdCharge: number;
+      if (coldStorage?.chargeUnit === "quintal") {
+        const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
+        const hammaliPerBag = lot.size * hammaliRate;
+        expectedColdCharge = coldChargeQuintal + hammaliPerBag;
+      } else {
+        expectedColdCharge = lot.size * (coldChargeRate + hammaliRate);
+      }
+      const chamberName = chamberMap[lot.chamberId] || "Unknown";
+
+      return `
+        <div class="lot-card">
+          <div class="lot-header">
+            <span class="farmer-name">${lot.farmerName}</span>
+            <span class="lot-badges">
+              ${lot.quality ? `<span class="badge quality-${lot.quality}">${t(lot.quality) || lot.quality}</span>` : ''}
+              ${lot.bagType ? `<span class="badge">${lot.bagTypeLabel || t(lot.bagType) || lot.bagType}</span>` : ''}
+              ${lot.potatoSize ? `<span class="badge">${t(lot.potatoSize) || lot.potatoSize}</span>` : ''}
+            </span>
+          </div>
+          <div class="lot-details">
+            <div class="detail-row">
+              <span class="label">${t("lotNo")}:</span>
+              <span class="value">${lot.lotNo}</span>
+              <span class="label">${t("phone")}:</span>
+              <span class="value">${lot.contactNumber || "-"}</span>
+            </div>
+            <div class="detail-row">
+              <span class="label">${t("village")}:</span>
+              <span class="value">${lot.village || "-"}</span>
+              <span class="label">${t("chamber")}:</span>
+              <span class="value">${chamberName} - Floor ${lot.floor}, Pos ${lot.position}</span>
+            </div>
+            <div class="detail-row">
+              <span class="label">${t("potatoVariety")}:</span>
+              <span class="value">${lot.type || "-"}</span>
+              <span class="label">${t("bagType")}:</span>
+              <span class="value">${lot.bagTypeLabel || t(lot.bagType) || lot.bagType || "-"}</span>
+            </div>
+            <div class="detail-row">
+              <span class="label">${t("originalSize")}:</span>
+              <span class="value">${lot.size} ${t("bags")}</span>
+              <span class="label">${t("remainingSize")}:</span>
+              <span class="value">${lot.remainingSize} ${t("bags")}</span>
+            </div>
+            <div class="charges-row">
+              <span><strong>${t("expectedCharges")}:</strong> <span class="blue">${formatCurrency(expectedColdCharge)}</span></span>
+              <span><strong>${t("paid")}:</strong> <span class="green">${formatCurrency(lotPaidCharge)}</span></span>
+              <span><strong>${t("due")}:</strong> <span class="red">${formatCurrency(lotDueCharge)}</span></span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${coldStoreName} - ${t("farmerLotDetails") || "Farmer Lot Details"}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+          .main-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+          .sub-title { font-size: 16px; color: #666; }
+          .print-date { font-size: 12px; color: #999; margin-top: 5px; }
+          .summary-card { background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+          .summary-title { font-weight: bold; margin-bottom: 10px; }
+          .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; text-align: center; }
+          .summary-item { display: flex; flex-direction: column; }
+          .summary-label { font-size: 12px; color: #666; }
+          .summary-value { font-size: 16px; font-weight: bold; }
+          .blue { color: #2563eb; }
+          .green { color: #16a34a; }
+          .red { color: #dc2626; }
+          .lot-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; page-break-inside: avoid; }
+          .lot-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+          .farmer-name { font-size: 16px; font-weight: bold; }
+          .lot-badges { display: flex; gap: 5px; }
+          .badge { background: #e5e7eb; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: capitalize; }
+          .quality-good { background: #dcfce7; color: #166534; }
+          .quality-medium { background: #fef3c7; color: #92400e; }
+          .quality-poor { background: #fee2e2; color: #991b1b; }
+          .lot-details { font-size: 13px; }
+          .detail-row { display: grid; grid-template-columns: 100px 1fr 100px 1fr; gap: 5px; margin-bottom: 5px; }
+          .label { color: #666; }
+          .value { font-weight: 500; }
+          .charges-row { display: flex; gap: 20px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; font-size: 13px; }
+          @media print {
+            body { padding: 10px; }
+            .lot-card { break-inside: avoid; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="main-title">${coldStoreName}</div>
+          <div class="sub-title">${t("farmerLotDetails") || "Farmer Lot Details"}</div>
+          <div class="print-date">${t("printedOn") || "Printed on"}: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}</div>
+        </div>
+        
+        <div class="summary-card">
+          <div class="summary-title">${t("searchSummary") || "Search Summary"}:</div>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <span class="summary-label">${t("totalBags")}</span>
+              <span class="summary-value">${summaryTotals.totalBags.toLocaleString('en-IN')}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">${t("totalRemainingBags")}</span>
+              <span class="summary-value">${summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">${t("totalExpectedColdCharges")}</span>
+              <span class="summary-value blue">${formatCurrency(summaryTotals.expectedColdCharges)}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">${t("totalChargesPaid")}</span>
+              <span class="summary-value green">${formatCurrency(summaryTotals.chargesPaid)}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">${t("totalChargesDue")}</span>
+              <span class="summary-value red">${formatCurrency(summaryTotals.chargesDue)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="lots-container">
+          ${lotCards}
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
     if (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) return;
@@ -834,6 +1027,17 @@ export default function StockRegister() {
                 >
                   <Download className="h-4 w-4" />
                 </Button>
+                {isFilterActive && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handlePrintFiltered}
+                    title={t("print") || "Print"}
+                    data-testid="button-print-filtered"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           ) : searchType === "farmerName" ? (
@@ -914,6 +1118,17 @@ export default function StockRegister() {
                 >
                   <Download className="h-4 w-4" />
                 </Button>
+                {isFilterActive && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handlePrintFiltered}
+                    title={t("print") || "Print"}
+                    data-testid="button-print-filtered"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           ) : searchType === "lotNoSize" ? (
@@ -960,6 +1175,17 @@ export default function StockRegister() {
                 >
                   <Download className="h-4 w-4" />
                 </Button>
+                {isFilterActive && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handlePrintFiltered}
+                    title={t("print") || "Print"}
+                    data-testid="button-print-filtered"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
@@ -1028,6 +1254,17 @@ export default function StockRegister() {
                 >
                   <Download className="h-4 w-4" />
                 </Button>
+                {isFilterActive && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handlePrintFiltered}
+                    title={t("print") || "Print"}
+                    data-testid="button-print-filtered"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           )}
