@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -135,15 +136,82 @@ export default function StockRegister() {
     queryKey: ["/api/cold-storage"],
   });
 
-  // Fetch initial 50 lots sorted by lot number for display before any search
-  const { data: initialLots, isLoading: isLoadingInitial } = useQuery<Lot[]>({
-    queryKey: ["/api/lots", { sort: "lotNo", limit: 50 }],
+  // Infinite scroll state
+  const PAGE_SIZE = 50;
+  const [displayedLots, setDisplayedLots] = useState<Lot[]>([]);
+  const [totalLotCount, setTotalLotCount] = useState<number>(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loaderRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch initial lots sorted by lot number for display before any search
+  const { data: initialLotsData, isLoading: isLoadingInitial } = useQuery<{ lots: Lot[], totalCount: number }>({
+    queryKey: ["/api/lots", { sort: "lotNo", limit: PAGE_SIZE, offset: 0 }],
     queryFn: async () => {
-      const response = await authFetch("/api/lots?sort=lotNo&limit=50");
+      const response = await authFetch(`/api/lots?sort=lotNo&limit=${PAGE_SIZE}&offset=0`);
       if (!response.ok) throw new Error("Failed to fetch initial lots");
       return response.json();
     },
   });
+
+  // Update displayedLots when initial data loads or when search is cleared
+  useEffect(() => {
+    if (initialLotsData && !hasSearched) {
+      // Reset to initial data when not searching
+      setDisplayedLots(initialLotsData.lots);
+      setTotalLotCount(initialLotsData.totalCount);
+    }
+  }, [initialLotsData, hasSearched]);
+
+  // Load more lots for infinite scroll
+  const loadMoreLots = useCallback(async () => {
+    if (isLoadingMore || hasSearched || displayedLots.length >= totalLotCount) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const offset = displayedLots.length;
+      const response = await authFetch(`/api/lots?sort=lotNo&limit=${PAGE_SIZE}&offset=${offset}`);
+      if (!response.ok) throw new Error("Failed to fetch more lots");
+      const data: { lots: Lot[], totalCount: number } = await response.json();
+      setDisplayedLots(prev => [...prev, ...data.lots]);
+      setTotalLotCount(data.totalCount);
+    } catch (error) {
+      console.error("Failed to load more lots:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasSearched, displayedLots.length, totalLotCount]);
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    if (hasSearched) return; // Don't use infinite scroll when search results are shown
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && displayedLots.length < totalLotCount) {
+          loadMoreLots();
+        }
+      },
+      { 
+        threshold: 0.1,
+        root: scrollContainerRef.current // Use scroll container as root for proper detection
+      }
+    );
+
+    const currentLoader = loaderRef.current;
+    if (currentLoader) {
+      observer.observe(currentLoader);
+    }
+
+    return () => {
+      if (currentLoader) {
+        observer.unobserve(currentLoader);
+      }
+    };
+  }, [hasSearched, displayedLots.length, totalLotCount, loadMoreLots]);
+
+  // For backward compatibility - alias to keep existing code working
+  const initialLots = displayedLots;
 
   // Fetch all sales to calculate charges from sales history (same as Analytics)
   const { data: allSalesHistory } = useQuery<SalesHistory[]>({
@@ -417,114 +485,140 @@ export default function StockRegister() {
   }, [hasSearched, searchResults, initialLots, bagTypeFilter]);
 
   // Export filtered results to CSV
-  const handleExportCSV = () => {
-    const lots = getDisplayedLots;
-    if (lots.length === 0) {
-      toast({
-        title: t("noResults"),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Build CSV content
-    const headers = [
-      "Lot No",
-      "Farmer Name",
-      "Contact Number",
-      "Village",
-      "Tehsil",
-      "District",
-      "Chamber",
-      "Floor",
-      "Position",
-      "Potato Type",
-      "Potato Variety",
-      "Bag type",
-      "Quality",
-      "Potato Size",
-      "Original Size",
-      "Remaining Size",
-      "Sale Status",
-      "Entry Deductions",
-      "Expected Cold Charges",
-      "Total Billed Charges",
-      "Paid Cold Charges",
-      "Due Cold Charges",
-    ];
-
-    const rows = lots.map(lot => {
-      // Calculate expected cold charge based on charge unit mode
-      const useWaferRate = lot.bagType === "wafer";
-      const coldChargeRate = useWaferRate 
-        ? (coldStorage?.waferColdCharge || 0) 
-        : (coldStorage?.seedColdCharge || 0);
-      const hammaliRate = useWaferRate
-        ? (coldStorage?.waferHammali || 0)
-        : (coldStorage?.seedHammali || 0);
-      // For quintal mode: cold charge (per quintal) + hammali (per bag)
-      // For bag mode: (coldCharge + hammali) × lot.size
-      let expectedColdCharge: number;
-      if (coldStorage?.chargeUnit === "quintal") {
-        const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
-        const hammaliPerBag = lot.size * hammaliRate;
-        expectedColdCharge = coldChargeQuintal + hammaliPerBag;
+  const [isExporting, setIsExporting] = useState(false);
+  
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      // When no filter is applied, fetch ALL lots for export (not just displayed ones)
+      let lots: Lot[];
+      if (!hasSearched && bagTypeFilter === "all") {
+        // Fetch all lots without limit for export
+        const response = await authFetch("/api/lots?sort=lotNo");
+        if (!response.ok) throw new Error("Failed to fetch lots for export");
+        const data = await response.json();
+        lots = data.lots;
       } else {
-        expectedColdCharge = lot.size * (coldChargeRate + hammaliRate);
+        // Use the displayed/filtered lots
+        lots = getDisplayedLots;
       }
       
-      const paidCharge = lot.totalPaidCharge || 0;
-      const dueCharge = lot.totalDueCharge || 0;
-      const totalBilledCharge = paidCharge + dueCharge;
-      // Total entry deductions for the lot
-      const entryDeductions = (lot.advanceDeduction || 0) + (lot.freightDeduction || 0) + (lot.otherDeduction || 0);
-      
-      return [
-        lot.lotNo,
-        lot.farmerName,
-        lot.contactNumber,
-        lot.village,
-        lot.tehsil,
-        lot.district,
-        chamberMap[lot.chamberId] || lot.chamberId,
-        lot.floor,
-        lot.position,
-        lot.bagType,
-        lot.type,
-        lot.bagTypeLabel || "",
-        lot.quality,
-        lot.potatoSize,
-        lot.size,
-        lot.remainingSize,
-        lot.saleStatus || "stored",
-        entryDeductions > 0 ? entryDeductions.toFixed(1) : "",
-        expectedColdCharge.toFixed(1),
-        totalBilledCharge.toFixed(1),
-        paidCharge.toFixed(1),
-        dueCharge.toFixed(1),
+      if (lots.length === 0) {
+        toast({
+          title: t("noResults"),
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Build CSV content
+      const headers = [
+        "Lot No",
+        "Farmer Name",
+        "Contact Number",
+        "Village",
+        "Tehsil",
+        "District",
+        "Chamber",
+        "Floor",
+        "Position",
+        "Potato Type",
+        "Potato Variety",
+        "Bag type",
+        "Quality",
+        "Potato Size",
+        "Original Size",
+        "Remaining Size",
+        "Sale Status",
+        "Entry Deductions",
+        "Expected Cold Charges",
+        "Total Billed Charges",
+        "Paid Cold Charges",
+        "Due Cold Charges",
       ];
-    });
 
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-    ].join("\n");
+      const rows = lots.map(lot => {
+        // Calculate expected cold charge based on charge unit mode
+        const useWaferRate = lot.bagType === "wafer";
+        const coldChargeRate = useWaferRate 
+          ? (coldStorage?.waferColdCharge || 0) 
+          : (coldStorage?.seedColdCharge || 0);
+        const hammaliRate = useWaferRate
+          ? (coldStorage?.waferHammali || 0)
+          : (coldStorage?.seedHammali || 0);
+        // For quintal mode: cold charge (per quintal) + hammali (per bag)
+        // For bag mode: (coldCharge + hammali) × lot.size
+        let expectedColdCharge: number;
+        if (coldStorage?.chargeUnit === "quintal") {
+          const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
+          const hammaliPerBag = lot.size * hammaliRate;
+          expectedColdCharge = coldChargeQuintal + hammaliPerBag;
+        } else {
+          expectedColdCharge = lot.size * (coldChargeRate + hammaliRate);
+        }
+        
+        const paidCharge = lot.totalPaidCharge || 0;
+        const dueCharge = lot.totalDueCharge || 0;
+        const totalBilledCharge = paidCharge + dueCharge;
+        // Total entry deductions for the lot
+        const entryDeductions = (lot.advanceDeduction || 0) + (lot.freightDeduction || 0) + (lot.otherDeduction || 0);
+        
+        return [
+          lot.lotNo,
+          lot.farmerName,
+          lot.contactNumber,
+          lot.village,
+          lot.tehsil,
+          lot.district,
+          chamberMap[lot.chamberId] || lot.chamberId,
+          lot.floor,
+          lot.position,
+          lot.bagType,
+          lot.type,
+          lot.bagTypeLabel || "",
+          lot.quality,
+          lot.potatoSize,
+          lot.size,
+          lot.remainingSize,
+          lot.saleStatus || "stored",
+          entryDeductions > 0 ? entryDeductions.toFixed(1) : "",
+          expectedColdCharge.toFixed(1),
+          totalBilledCharge.toFixed(1),
+          paidCharge.toFixed(1),
+          dueCharge.toFixed(1),
+        ];
+      });
 
-    // Trigger download
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `stock_register_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      const csvContent = [
+        headers.join(","),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      ].join("\n");
 
-    toast({
-      title: t("downloadSuccess") || "Download successful",
-      description: `${lots.length} ${t("lots")} exported`,
-    });
+      // Trigger download
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `stock_register_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: t("downloadSuccess") || "Download successful",
+        description: `${lots.length} ${t("lots")} exported`,
+      });
+    } catch (error) {
+      console.error("Export failed:", error);
+      toast({
+        title: t("error") || "Error",
+        description: t("exportFailed") || "Failed to export data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handlePrintFiltered = () => {
@@ -1380,12 +1474,7 @@ export default function StockRegister() {
           }
           
           return (
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-              {!hasSearched && (
-                <p className="text-sm text-muted-foreground px-1" data-testid="text-initial-lots-info">
-                  {t("showingFirst50Lots")}
-                </p>
-              )}
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto" ref={scrollContainerRef}>
               {sortedLots.map(({ lot, lotPaidCharge, lotDueCharge, expectedColdCharge }) => (
                   <LotCard
                     key={lot.id}
@@ -1403,6 +1492,19 @@ export default function StockRegister() {
                     canEdit={canEdit}
                   />
                 ))}
+              {/* Infinite scroll loader */}
+              {!hasSearched && displayedLots.length < totalLotCount && (
+                <div ref={loaderRef} className="flex items-center justify-center py-4">
+                  {isLoadingMore ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">{t("loadingMore") || "Loading more..."}</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">{t("scrollForMore") || "Scroll for more"}</span>
+                  )}
+                </div>
+              )}
             </div>
           );
         })()

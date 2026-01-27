@@ -245,13 +245,22 @@ export async function registerRoutes(
         });
       }
       
+      const totalCount = lots.length;
+      
+      // Apply offset if requested (for pagination)
+      const offset = parseInt(req.query.offset as string, 10);
+      if (!isNaN(offset) && offset > 0) {
+        lots = lots.slice(offset);
+      }
+      
       // Limit results if requested
       const limit = parseInt(req.query.limit as string, 10);
       if (!isNaN(limit) && limit > 0) {
         lots = lots.slice(0, limit);
       }
       
-      res.json(lots);
+      // Return with total count for pagination
+      res.json({ lots, totalCount });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch lots" });
     }
