@@ -336,8 +336,11 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   // Total Deductions = cold charges + proportional entry deductions
   const totalDeductions = totalCharges + proportionalEntryDeductions;
   
-  // Net Payable = Total Income - Total Deductions
-  const netPayable = totalIncome - totalDeductions;
+  // Net Cold Bill after discount = Total Deductions - Discount
+  const netColdBill = Math.max(0, totalDeductions - discountAllocated);
+  
+  // Net Payable = Total Income - Net Cold Bill (after discount)
+  const netPayable = totalIncome - netColdBill;
 
   const renderDeductionBill = () => (
     <div ref={printRef}>
@@ -484,6 +487,22 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               <tr className="total-row" style={{ backgroundColor: "#f0f0f0" }}>
                 <td><strong>कुल कटौती</strong> (शीत भण्डार शुल्क + प्रवेश कटौती)</td>
                 <td className="amount"><strong>रु. {formatAmount(totalDeductions)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        
+        {/* Discount Row - Show if discount was allocated */}
+        {discountAllocated > 0 && (
+          <table className="charges-table" style={{ marginTop: "8px" }}>
+            <tbody>
+              <tr style={{ color: "#16a34a" }}>
+                <td><strong>छूट (Discount)</strong></td>
+                <td className="amount" style={{ color: "#16a34a" }}><strong>- रु. {formatAmount(discountAllocated)}</strong></td>
+              </tr>
+              <tr className="total-row" style={{ backgroundColor: "#e6f4ea" }}>
+                <td><strong>शुद्ध शीत भण्डार शुल्क</strong> (कुल कटौती - छूट)</td>
+                <td className="amount"><strong>रु. {formatAmount(netColdBill)}</strong></td>
               </tr>
             </tbody>
           </table>
@@ -675,13 +694,29 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </tbody>
           </table>
         )}
+        
+        {/* Discount Row for Sales Bill - Show if discount was allocated */}
+        {discountAllocated > 0 && (
+          <table className="charges-table" style={{ marginTop: "8px" }}>
+            <tbody>
+              <tr style={{ color: "#16a34a" }}>
+                <td><strong>छूट (Discount)</strong></td>
+                <td className="amount" style={{ color: "#16a34a" }}><strong>- रु. {formatAmount(discountAllocated)}</strong></td>
+              </tr>
+              <tr className="total-row" style={{ backgroundColor: "#e6f4ea" }}>
+                <td><strong>शुद्ध शीत भण्डार शुल्क</strong> (कुल कटौती - छूट)</td>
+                <td className="amount"><strong>रु. {formatAmount(netColdBill)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="section">
         <table className="charges-table">
           <tbody>
             <tr className="total-row net-income">
-              <td><strong>शुद्ध देय (कुल आय - कुल कटौती)</strong></td>
+              <td><strong>शुद्ध देय (कुल आय - {discountAllocated > 0 ? "शुद्ध शीत भण्डार शुल्क" : "कुल कटौती"})</strong></td>
               <td className="amount"><strong>रु. {formatAmount(netPayable)}</strong></td>
             </tr>
           </tbody>
