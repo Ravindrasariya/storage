@@ -596,33 +596,33 @@ export default function StockRegister() {
           </div>
           <div class="lot-details">
             <div class="detail-row">
-              <span class="label">${t("lotNo")}:</span>
+              <span class="label">Lot No:</span>
               <span class="value">${lot.lotNo}</span>
-              <span class="label">${t("phone")}:</span>
+              <span class="label">Phone:</span>
               <span class="value">${lot.contactNumber || "-"}</span>
             </div>
             <div class="detail-row">
-              <span class="label">${t("village")}:</span>
+              <span class="label">Village:</span>
               <span class="value">${lot.village || "-"}</span>
-              <span class="label">${t("chamber")}:</span>
+              <span class="label">Chamber:</span>
               <span class="value">${chamberName} - Floor ${lot.floor}, Pos ${lot.position}</span>
             </div>
             <div class="detail-row">
-              <span class="label">${t("potatoVariety")}:</span>
+              <span class="label">Potato Variety:</span>
               <span class="value">${lot.type || "-"}</span>
-              <span class="label">${t("bagType")}:</span>
-              <span class="value">${lot.bagTypeLabel || t(lot.bagType) || lot.bagType || "-"}</span>
+              <span class="label">Bag Type:</span>
+              <span class="value">${lot.bagTypeLabel || lot.bagType || "-"}</span>
             </div>
             <div class="detail-row">
-              <span class="label">${t("originalSize")}:</span>
-              <span class="value">${lot.size} ${t("bags")}</span>
-              <span class="label">${t("remainingSize")}:</span>
-              <span class="value">${lot.remainingSize} ${t("bags")}</span>
+              <span class="label">Original Size:</span>
+              <span class="value">${lot.size} bags</span>
+              <span class="label">Remaining:</span>
+              <span class="value">${lot.remainingSize} bags</span>
             </div>
             <div class="charges-row">
-              <span><strong>${t("expectedCharges")}:</strong> <span class="blue">${formatCurrency(expectedColdCharge)}</span></span>
-              <span><strong>${t("paid")}:</strong> <span class="green">${formatCurrency(lotPaidCharge)}</span></span>
-              <span><strong>${t("due")}:</strong> <span class="red">${formatCurrency(lotDueCharge)}</span></span>
+              <span><strong>Expected Charges:</strong> <span class="blue">${formatCurrency(expectedColdCharge)}</span></span>
+              <span><strong>Paid:</strong> <span class="green">${formatCurrency(lotPaidCharge)}</span></span>
+              <span><strong>Due:</strong> <span class="red">${formatCurrency(lotDueCharge)}</span></span>
             </div>
           </div>
         </div>
@@ -633,7 +633,7 @@ export default function StockRegister() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${coldStoreName} - ${t("farmerLotDetails") || "Farmer Lot Details"}</title>
+        <title>${coldStoreName} - Farmer Lot Details</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
@@ -672,31 +672,31 @@ export default function StockRegister() {
       <body>
         <div class="header">
           <div class="main-title">${coldStoreName}</div>
-          <div class="sub-title">${t("farmerLotDetails") || "Farmer Lot Details"}</div>
-          <div class="print-date">${t("printedOn") || "Printed on"}: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}</div>
+          <div class="sub-title">Farmer Lot Details</div>
+          <div class="print-date">Printed On: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}</div>
         </div>
         
         <div class="summary-card">
-          <div class="summary-title">${t("searchSummary") || "Search Summary"}:</div>
+          <div class="summary-title">Search Summary:</div>
           <div class="summary-grid">
             <div class="summary-item">
-              <span class="summary-label">${t("totalBags")}</span>
+              <span class="summary-label">Total Bags</span>
               <span class="summary-value">${summaryTotals.totalBags.toLocaleString('en-IN')}</span>
             </div>
             <div class="summary-item">
-              <span class="summary-label">${t("totalRemainingBags")}</span>
+              <span class="summary-label">Remaining Bags</span>
               <span class="summary-value">${summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
             </div>
             <div class="summary-item">
-              <span class="summary-label">${t("totalExpectedColdCharges")}</span>
+              <span class="summary-label">Total Expected Billed Charges</span>
               <span class="summary-value blue">${formatCurrency(summaryTotals.expectedColdCharges)}</span>
             </div>
             <div class="summary-item">
-              <span class="summary-label">${t("totalChargesPaid")}</span>
+              <span class="summary-label">Charges Paid</span>
               <span class="summary-value green">${formatCurrency(summaryTotals.chargesPaid)}</span>
             </div>
             <div class="summary-item">
-              <span class="summary-label">${t("totalChargesDue")}</span>
+              <span class="summary-label">Charges Due</span>
               <span class="summary-value red">${formatCurrency(summaryTotals.chargesDue)}</span>
             </div>
           </div>
