@@ -825,17 +825,15 @@ export default function StockRegister() {
                     <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
-                {isFilterActive && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleExportCSV}
-                    title={t("download") || "Download CSV"}
-                    data-testid="button-export-csv"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleExportCSV}
+                  title={t("download") || "Download CSV"}
+                  data-testid="button-export-csv"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           ) : searchType === "farmerName" ? (
@@ -907,17 +905,15 @@ export default function StockRegister() {
                     <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
-                {isFilterActive && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleExportCSV}
-                    title={t("download") || "Download CSV"}
-                    data-testid="button-export-csv"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleExportCSV}
+                  title={t("download") || "Download CSV"}
+                  data-testid="button-export-csv"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           ) : searchType === "lotNoSize" ? (
@@ -955,17 +951,15 @@ export default function StockRegister() {
                     <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
-                {isFilterActive && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleExportCSV}
-                    title={t("download") || "Download CSV"}
-                    data-testid="button-export-csv"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleExportCSV}
+                  title={t("download") || "Download CSV"}
+                  data-testid="button-export-csv"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           ) : (
@@ -1025,17 +1019,15 @@ export default function StockRegister() {
                     <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
                   </SelectContent>
                 </Select>
-                {isFilterActive && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleExportCSV}
-                    title={t("download") || "Download CSV"}
-                    data-testid="button-export-csv"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleExportCSV}
+                  title={t("download") || "Download CSV"}
+                  data-testid="button-export-csv"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           )}
