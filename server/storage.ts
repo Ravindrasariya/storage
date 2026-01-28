@@ -272,7 +272,12 @@ export interface IStorage {
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
   getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
   // Update farmer details in all salesHistory entries for a given lotId
-  updateSalesHistoryFarmerDetails(lotId: string, updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string }): Promise<number>;
+  // Also updates buyerName if it matches the "self" pattern (farmer as buyer)
+  updateSalesHistoryFarmerDetails(
+    lotId: string, 
+    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string },
+    oldFarmerDetails: { farmerName: string; village: string; contactNumber: string }
+  ): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3646,9 +3651,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateSalesHistoryFarmerDetails(
     lotId: string,
-    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string }
+    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string },
+    oldFarmerDetails: { farmerName: string; village: string; contactNumber: string }
   ): Promise<number> {
-    // Filter out undefined values
+    // Filter out undefined values for farmer detail fields
     const filteredUpdates: Record<string, string> = {};
     if (updates.farmerName !== undefined) filteredUpdates.farmerName = updates.farmerName;
     if (updates.village !== undefined) filteredUpdates.village = updates.village;
@@ -3661,10 +3667,30 @@ export class DatabaseStorage implements IStorage {
       return 0;
     }
 
+    // Build the old "self" buyer pattern: "FarmerName - Phone - Village"
+    const oldSelfPattern = `${oldFarmerDetails.farmerName} - ${oldFarmerDetails.contactNumber} - ${oldFarmerDetails.village}`;
+    
+    // Calculate new values (using updated values where available, old values otherwise)
+    const newFarmerName = updates.farmerName ?? oldFarmerDetails.farmerName;
+    const newContactNumber = updates.contactNumber ?? oldFarmerDetails.contactNumber;
+    const newVillage = updates.village ?? oldFarmerDetails.village;
+    const newSelfPattern = `${newFarmerName} - ${newContactNumber} - ${newVillage}`;
+
+    // First, update all salesHistory entries for this lot with farmer details
     const result = await db.update(salesHistory)
       .set(filteredUpdates)
       .where(eq(salesHistory.lotId, lotId))
       .returning();
+
+    // Then, update buyerName for entries where buyer was "self" (matched old pattern)
+    if (oldSelfPattern !== newSelfPattern) {
+      await db.update(salesHistory)
+        .set({ buyerName: newSelfPattern })
+        .where(and(
+          eq(salesHistory.lotId, lotId),
+          eq(salesHistory.buyerName, oldSelfPattern)
+        ));
+    }
     
     return result.length;
   }

@@ -771,14 +771,23 @@ export async function registerRoutes(
                                    validated.contactNumber !== undefined;
       
       if (farmerFieldsChanged) {
-        await storage.updateSalesHistoryFarmerDetails(req.params.id, {
-          farmerName: validated.farmerName,
-          village: validated.village,
-          tehsil: validated.tehsil,
-          district: validated.district,
-          state: validated.state,
-          contactNumber: validated.contactNumber,
-        });
+        // Pass old farmer details to also update buyerName for "self" sales
+        await storage.updateSalesHistoryFarmerDetails(
+          req.params.id, 
+          {
+            farmerName: validated.farmerName,
+            village: validated.village,
+            tehsil: validated.tehsil,
+            district: validated.district,
+            state: validated.state,
+            contactNumber: validated.contactNumber,
+          },
+          {
+            farmerName: lot.farmerName,
+            village: lot.village,
+            contactNumber: lot.contactNumber,
+          }
+        );
       }
 
       // If lotNo changed, recalculate the counter for this bag type category
