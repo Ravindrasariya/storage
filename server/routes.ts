@@ -699,6 +699,13 @@ export async function registerRoutes(
     otherDeduction: z.number().min(0).optional(),
     // Lot number (editable with uniqueness validation)
     lotNo: z.string().optional(),
+    // Farmer details (editable)
+    farmerName: z.string().min(1).optional(),
+    village: z.string().optional(),
+    tehsil: z.string().optional(),
+    district: z.string().optional(),
+    state: z.string().optional(),
+    contactNumber: z.string().optional(),
   });
 
   app.patch("/api/lots/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {

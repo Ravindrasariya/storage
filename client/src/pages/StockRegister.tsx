@@ -95,6 +95,12 @@ export default function StockRegister() {
     freightDeduction: number;
     otherDeduction: number;
     lotNo: string;
+    farmerName: string;
+    village: string;
+    tehsil: string;
+    district: string;
+    state: string;
+    contactNumber: string;
   } | null>(null);
   const [lotNoError, setLotNoError] = useState<string | null>(null);
 
@@ -881,6 +887,12 @@ export default function StockRegister() {
       freightDeduction: lot.freightDeduction || 0,
       otherDeduction: lot.otherDeduction || 0,
       lotNo: lot.lotNo,
+      farmerName: lot.farmerName,
+      village: lot.village || "",
+      tehsil: lot.tehsil || "",
+      district: lot.district || "",
+      state: lot.state || "",
+      contactNumber: lot.contactNumber || "",
     });
     setLotNoError(null);
 
@@ -1519,33 +1531,81 @@ export default function StockRegister() {
             </DialogDescription>
           </DialogHeader>
 
-          {/* Read-only Farmer Details */}
+          {/* Editable Farmer Details */}
           <div className="space-y-4">
             <h4 className="font-semibold text-sm text-muted-foreground">{t("farmerDetails")}</h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
-              <div>
-                <p className="text-xs text-muted-foreground">{t("farmerName")}</p>
-                <p className="font-medium text-sm">{selectedLot?.farmerName}</p>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">{t("farmerName")}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.farmerName}
+                    onChange={(e) => setEditForm({ ...editForm, farmerName: e.target.value })}
+                    data-testid="input-edit-farmer-name"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.farmerName}</p>
+                )}
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("contactNumber")}</p>
-                <p className="font-medium text-sm">{selectedLot?.contactNumber}</p>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">{t("contactNumber")}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.contactNumber}
+                    onChange={(e) => setEditForm({ ...editForm, contactNumber: e.target.value })}
+                    data-testid="input-edit-contact-number"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.contactNumber}</p>
+                )}
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("village")}</p>
-                <p className="font-medium text-sm">{selectedLot?.village}</p>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">{t("village")}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.village}
+                    onChange={(e) => setEditForm({ ...editForm, village: e.target.value })}
+                    data-testid="input-edit-village"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.village}</p>
+                )}
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("tehsil")}</p>
-                <p className="font-medium text-sm">{selectedLot?.tehsil}</p>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">{t("tehsil")}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.tehsil}
+                    onChange={(e) => setEditForm({ ...editForm, tehsil: e.target.value })}
+                    data-testid="input-edit-tehsil"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.tehsil}</p>
+                )}
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("district")}</p>
-                <p className="font-medium text-sm">{selectedLot?.district}</p>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">{t("district")}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.district}
+                    onChange={(e) => setEditForm({ ...editForm, district: e.target.value })}
+                    data-testid="input-edit-district"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.district}</p>
+                )}
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("state")}</p>
-                <p className="font-medium text-sm">{selectedLot?.state}</p>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">{t("state")}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.state}
+                    onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                    data-testid="input-edit-state"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.state}</p>
+                )}
               </div>
             </div>
           </div>
@@ -1821,6 +1881,12 @@ export default function StockRegister() {
                         freightDeduction: updatedLot.freightDeduction || 0,
                         otherDeduction: updatedLot.otherDeduction || 0,
                         lotNo: updatedLot.lotNo,
+                        farmerName: updatedLot.farmerName,
+                        village: updatedLot.village || "",
+                        tehsil: updatedLot.tehsil || "",
+                        district: updatedLot.district || "",
+                        state: updatedLot.state || "",
+                        contactNumber: updatedLot.contactNumber || "",
                       });
                       setLotNoError(null);
                     }
