@@ -248,7 +248,8 @@ export const cashReceipts = pgTable("cash_receipts", {
   payerType: text("payer_type").notNull().default("cold_merchant"), // 'cold_merchant', 'sales_goods', 'kata', 'others'
   buyerName: text("buyer_name"), // Required for cold_merchant, sales_goods, others; null for kata
   receiptType: text("receipt_type").notNull(), // 'cash' or 'account'
-  accountType: text("account_type"), // 'limit' or 'current' - only when receiptType is 'account'
+  accountType: text("account_type"), // DEPRECATED: Use accountId instead. Legacy values: 'limit' or 'current'
+  accountId: varchar("account_id"), // Reference to bankAccounts table - new dynamic account system
   amount: real("amount").notNull(),
   receivedAt: timestamp("received_at").notNull(),
   appliedAmount: real("applied_amount").notNull().default(0), // Amount applied to sales
@@ -268,7 +269,8 @@ export const expenses = pgTable("expenses", {
   expenseType: text("expense_type").notNull(), // 'salary', 'hammali', 'grading_charges', 'general_expenses'
   receiverName: text("receiver_name"), // Name of the person receiving the payment
   paymentMode: text("payment_mode").notNull(), // 'cash' or 'account'
-  accountType: text("account_type"), // 'limit' or 'current' - only used when paymentMode is 'account'
+  accountType: text("account_type"), // DEPRECATED: Use accountId instead. Legacy values: 'limit' or 'current'
+  accountId: varchar("account_id"), // Reference to bankAccounts table - new dynamic account system
   amount: real("amount").notNull(),
   paidAt: timestamp("paid_at").notNull(),
   remarks: text("remarks"),
@@ -282,8 +284,10 @@ export const cashTransfers = pgTable("cash_transfers", {
   id: varchar("id").primaryKey(),
   transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (e.g., CF202601220)
   coldStorageId: varchar("cold_storage_id").notNull(),
-  fromAccountType: text("from_account_type").notNull(), // 'cash', 'limit', 'current'
-  toAccountType: text("to_account_type").notNull(), // 'cash', 'limit', 'current'
+  fromAccountType: text("from_account_type").notNull(), // 'cash', 'limit', 'current' (or bank account id for new system)
+  toAccountType: text("to_account_type").notNull(), // 'cash', 'limit', 'current' (or bank account id for new system)
+  fromAccountId: varchar("from_account_id"), // Reference to bankAccounts table - null means 'cash'
+  toAccountId: varchar("to_account_id"), // Reference to bankAccounts table - null means 'cash'
   amount: real("amount").notNull(),
   transferredAt: timestamp("transferred_at").notNull(),
   remarks: text("remarks"),
@@ -359,6 +363,17 @@ export const discounts = pgTable("discounts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Bank Accounts - dynamic bank accounts for cold storage (Current, Limit, Saving)
+export const bankAccounts = pgTable("bank_accounts", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  accountName: text("account_name").notNull(), // Free-style name like "SBI-Saving-647567647368"
+  accountType: text("account_type").notNull(), // 'current', 'limit', 'saving'
+  openingBalance: real("opening_balance").notNull().default(0),
+  year: integer("year").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
@@ -377,6 +392,7 @@ export const insertCashOpeningBalanceSchema = createInsertSchema(cashOpeningBala
 export const insertOpeningReceivableSchema = createInsertSchema(openingReceivables).omit({ id: true, createdAt: true });
 export const insertOpeningPayableSchema = createInsertSchema(openingPayables).omit({ id: true, createdAt: true });
 export const insertDiscountSchema = createInsertSchema(discounts).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
+export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({ id: true, createdAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -415,6 +431,8 @@ export type InsertOpeningPayable = z.infer<typeof insertOpeningPayableSchema>;
 export type DailyIdCounter = typeof dailyIdCounters.$inferSelect;
 export type Discount = typeof discounts.$inferSelect;
 export type InsertDiscount = z.infer<typeof insertDiscountSchema>;
+export type BankAccount = typeof bankAccounts.$inferSelect;
+export type InsertBankAccount = z.infer<typeof insertBankAccountSchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({

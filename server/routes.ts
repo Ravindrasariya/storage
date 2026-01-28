@@ -1923,12 +1923,13 @@ export async function registerRoutes(
     buyerName: z.string().optional(),
     receiptType: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
+    accountId: z.string().optional(),
     amount: z.number().positive(),
     receivedAt: z.string().transform((val) => new Date(val)),
     notes: z.string().optional(),
   }).refine(
-    (data) => data.receiptType !== "account" || data.accountType !== undefined,
-    { message: "Account type is required when receipt type is account", path: ["accountType"] }
+    (data) => data.receiptType !== "account" || data.accountId !== undefined || data.accountType !== undefined,
+    { message: "Account is required when receipt type is account", path: ["accountId"] }
   ).refine(
     (data) => data.payerType === "kata" || (data.buyerName && data.buyerName.trim().length > 0),
     { message: "Buyer name is required for this payer type", path: ["buyerName"] }
@@ -1944,6 +1945,7 @@ export async function registerRoutes(
         buyerName: validatedData.payerType === "kata" ? null : (validatedData.buyerName || null),
         receiptType: validatedData.receiptType,
         accountType: validatedData.accountType || null,
+        accountId: validatedData.accountId || null,
         amount: validatedData.amount,
         receivedAt: validatedData.receivedAt,
         notes: validatedData.notes || null,
@@ -1992,16 +1994,17 @@ export async function registerRoutes(
     receiverName: z.string().optional(),
     paymentMode: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
+    accountId: z.string().optional(),
     amount: z.number().positive(),
     paidAt: z.string().transform((val) => new Date(val)),
     remarks: z.string().optional(),
   }).refine((data) => {
-    // accountType is required when paymentMode is 'account'
-    if (data.paymentMode === "account" && !data.accountType) {
+    // accountId or accountType is required when paymentMode is 'account'
+    if (data.paymentMode === "account" && !data.accountId && !data.accountType) {
       return false;
     }
     return true;
-  }, { message: "accountType is required when paymentMode is 'account'" });
+  }, { message: "Account is required when paymentMode is 'account'" });
 
   app.post("/api/expenses", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
@@ -2013,6 +2016,7 @@ export async function registerRoutes(
         receiverName: validatedData.receiverName?.trim() || null,
         paymentMode: validatedData.paymentMode,
         accountType: validatedData.paymentMode === "account" ? validatedData.accountType : null,
+        accountId: validatedData.paymentMode === "account" ? validatedData.accountId : null,
         amount: validatedData.amount,
         paidAt: validatedData.paidAt,
         remarks: validatedData.remarks || null,
@@ -2080,8 +2084,10 @@ export async function registerRoutes(
   });
 
   const createCashTransferSchema = z.object({
-    fromAccountType: z.enum(["cash", "limit", "current"]),
-    toAccountType: z.enum(["cash", "limit", "current"]),
+    fromAccountType: z.string(),
+    toAccountType: z.string(),
+    fromAccountId: z.string().optional(),
+    toAccountId: z.string().optional(),
     amount: z.number().positive(),
     transferredAt: z.string().transform((val) => new Date(val)),
     remarks: z.string().optional(),
@@ -2092,7 +2098,10 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const validatedData = createCashTransferSchema.parse(req.body);
       
-      if (validatedData.fromAccountType === validatedData.toAccountType) {
+      // Check that source and destination are different (use accountId if provided, fallback to accountType)
+      const fromKey = validatedData.fromAccountId || validatedData.fromAccountType;
+      const toKey = validatedData.toAccountId || validatedData.toAccountType;
+      if (fromKey === toKey) {
         return res.status(400).json({ error: "Source and destination accounts must be different" });
       }
       
@@ -2424,6 +2433,78 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete opening payable" });
+    }
+  });
+
+  // ==================== BANK ACCOUNTS ROUTES ====================
+
+  // Get bank accounts for a year
+  app.get("/api/bank-accounts/:year", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const year = parseInt(req.params.year);
+      if (isNaN(year)) {
+        return res.status(400).json({ error: "Invalid year" });
+      }
+      const accounts = await storage.getBankAccounts(coldStorageId, year);
+      res.json(accounts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get bank accounts" });
+    }
+  });
+
+  // Create bank account
+  app.post("/api/bank-accounts", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { accountName, accountType, openingBalance, year } = req.body;
+      
+      if (!accountName || !accountType || !year) {
+        return res.status(400).json({ error: "Account name, type, and year are required" });
+      }
+      
+      const account = await storage.createBankAccount({
+        coldStorageId,
+        accountName,
+        accountType,
+        openingBalance: openingBalance || 0,
+        year,
+      });
+      res.json(account);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create bank account" });
+    }
+  });
+
+  // Update bank account
+  app.patch("/api/bank-accounts/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { accountName, accountType, openingBalance } = req.body;
+      
+      const account = await storage.updateBankAccount(id, {
+        ...(accountName !== undefined && { accountName }),
+        ...(accountType !== undefined && { accountType }),
+        ...(openingBalance !== undefined && { openingBalance }),
+      });
+      
+      if (!account) {
+        return res.status(404).json({ error: "Bank account not found" });
+      }
+      res.json(account);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update bank account" });
+    }
+  });
+
+  // Delete bank account
+  app.delete("/api/bank-accounts/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteBankAccount(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete bank account" });
     }
   });
 

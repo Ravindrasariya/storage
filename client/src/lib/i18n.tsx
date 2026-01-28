@@ -480,6 +480,20 @@ const translations: Translations = {
   amountRequired: { en: "Amount is required", hi: "राशि आवश्यक है" },
   adding: { en: "Adding...", hi: "जोड़ रहे हैं..." },
   
+  // Bank Accounts
+  bankAccounts: { en: "Bank Accounts", hi: "बैंक खाते" },
+  addAccount: { en: "Add Account", hi: "खाता जोड़ें" },
+  accountName: { en: "Account Name", hi: "खाता नाम" },
+  savingAccount: { en: "Saving Account", hi: "बचत खाता" },
+  openingBalanceAmount: { en: "Opening Balance", hi: "प्रारंभिक शेष" },
+  openingCashInHand: { en: "Opening Cash in Hand", hi: "प्रारंभिक हाथ में नकद" },
+  deleteBankAccountWarning: { en: "Are you sure you want to delete this bank account?", hi: "क्या आप वाकई इस बैंक खाते को हटाना चाहते हैं?" },
+  accountExpense: { en: "Account Expense", hi: "खाते से खर्च" },
+  netInAccounts: { en: "Net in Accounts", hi: "खातों में शेष" },
+  unassigned: { en: "Unassigned", hi: "असाइन नहीं किया गया" },
+  selectAccount: { en: "Select Account", hi: "खाता चुनें" },
+  noBankAccounts: { en: "No bank accounts. Add in Settings.", hi: "कोई बैंक खाता नहीं। सेटिंग्स में जोड़ें।" },
+  
   // Cash Summary
   totalCashReceived: { en: "Total Cash Received", hi: "कुल नकद प्राप्त" },
   cashExpense: { en: "Cash Expense", hi: "नकद खर्च" },

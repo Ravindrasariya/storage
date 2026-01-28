@@ -21,6 +21,7 @@ import {
   openingPayables,
   dailyIdCounters,
   discounts,
+  bankAccounts,
   type ColdStorage,
   type InsertColdStorage,
   type ColdStorageUser,
@@ -56,6 +57,8 @@ import {
   type InsertOpeningPayable,
   type Discount,
   type InsertDiscount,
+  type BankAccount,
+  type InsertBankAccount,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -278,6 +281,11 @@ export interface IStorage {
     updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string },
     oldFarmerDetails: { farmerName: string; village: string; contactNumber: string }
   ): Promise<number>;
+  // Bank Accounts
+  getBankAccounts(coldStorageId: string, year: number): Promise<BankAccount[]>;
+  createBankAccount(data: InsertBankAccount): Promise<BankAccount>;
+  updateBankAccount(id: string, updates: Partial<BankAccount>): Promise<BankAccount | undefined>;
+  deleteBankAccount(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3699,6 +3707,41 @@ export class DatabaseStorage implements IStorage {
     `);
     
     return result.length;
+  }
+
+  // Bank Accounts
+  async getBankAccounts(coldStorageId: string, year: number): Promise<BankAccount[]> {
+    return await db.select()
+      .from(bankAccounts)
+      .where(and(
+        eq(bankAccounts.coldStorageId, coldStorageId),
+        eq(bankAccounts.year, year)
+      ))
+      .orderBy(bankAccounts.accountName);
+  }
+
+  async createBankAccount(data: InsertBankAccount): Promise<BankAccount> {
+    const [account] = await db.insert(bankAccounts)
+      .values({
+        id: randomUUID(),
+        ...data,
+      })
+      .returning();
+    return account;
+  }
+
+  async updateBankAccount(id: string, updates: Partial<BankAccount>): Promise<BankAccount | undefined> {
+    const [account] = await db.update(bankAccounts)
+      .set(updates)
+      .where(eq(bankAccounts.id, id))
+      .returning();
+    return account;
+  }
+
+  async deleteBankAccount(id: string): Promise<boolean> {
+    await db.delete(bankAccounts)
+      .where(eq(bankAccounts.id, id));
+    return true;
   }
 }
 

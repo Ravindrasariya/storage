@@ -12,12 +12,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount } from "@shared/schema";
 import { formatCurrency } from "@/components/Currency";
 
 const CASH_MGMT_STATE_KEY_PREFIX = "cashManagementFormState";
@@ -40,14 +40,14 @@ interface PersistedFormState {
   customBuyerName: string;
   salesGoodsBuyerName: string;
   receiptType: string;
-  accountType: string;
+  accountId: string;
   inwardAmount: string;
   receivedDate: string;
   inwardRemarks: string;
   expenseType: string;
   expenseReceiverName: string;
   expensePaymentMode: string;
-  expenseAccountType: string;
+  expenseAccountId: string;
   expenseAmount: string;
   expenseDate: string;
   expenseRemarks: string;
@@ -128,7 +128,7 @@ export default function CashManagement() {
   const [customBuyerName, setCustomBuyerName] = useState(persistedState?.customBuyerName || "");
   const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState(persistedState?.salesGoodsBuyerName || "");
   const [receiptType, setReceiptType] = useState<"cash" | "account">((persistedState?.receiptType as "cash" | "account") || "cash");
-  const [accountType, setAccountType] = useState<"limit" | "current">((persistedState?.accountType as "limit" | "current") || "limit");
+  const [accountId, setAccountId] = useState<string>(persistedState?.accountId || "");
   const [inwardAmount, setInwardAmount] = useState(persistedState?.inwardAmount || "");
   const [receivedDate, setReceivedDate] = useState(persistedState?.receivedDate || todayDate);
   const [inwardRemarks, setInwardRemarks] = useState(persistedState?.inwardRemarks || "");
@@ -137,7 +137,7 @@ export default function CashManagement() {
   const [expenseReceiverName, setExpenseReceiverName] = useState(persistedState?.expenseReceiverName || "");
   const [showReceiverSuggestions, setShowReceiverSuggestions] = useState(false);
   const [expensePaymentMode, setExpensePaymentMode] = useState<"cash" | "account" | "discount">((persistedState?.expensePaymentMode as "cash" | "account" | "discount") || "cash");
-  const [expenseAccountType, setExpenseAccountType] = useState<"limit" | "current">((persistedState?.expenseAccountType as "limit" | "current") || "limit");
+  const [expenseAccountId, setExpenseAccountId] = useState<string>(persistedState?.expenseAccountId || "");
   const [expenseAmount, setExpenseAmount] = useState(persistedState?.expenseAmount || "");
   const [expenseDate, setExpenseDate] = useState(persistedState?.expenseDate || todayDate);
   const [expenseRemarks, setExpenseRemarks] = useState(persistedState?.expenseRemarks || "");
@@ -149,8 +149,8 @@ export default function CashManagement() {
   const [discountRemarks, setDiscountRemarks] = useState("");
   const [discountBuyerAllocations, setDiscountBuyerAllocations] = useState<{ buyerName: string; amount: string; maxAmount: number }[]>([]);
 
-  const [transferFromAccount, setTransferFromAccount] = useState<"cash" | "limit" | "current">((persistedState?.transferFromAccount as "cash" | "limit" | "current") || "cash");
-  const [transferToAccount, setTransferToAccount] = useState<"cash" | "limit" | "current">((persistedState?.transferToAccount as "cash" | "limit" | "current") || "limit");
+  const [transferFromAccount, setTransferFromAccount] = useState<string>(persistedState?.transferFromAccount || "cash");
+  const [transferToAccount, setTransferToAccount] = useState<string>(persistedState?.transferToAccount || "");
   const [transferAmount, setTransferAmount] = useState(persistedState?.transferAmount || "");
   const [transferDate, setTransferDate] = useState(persistedState?.transferDate || todayDate);
   const [transferRemarks, setTransferRemarks] = useState(persistedState?.transferRemarks || "");
@@ -196,6 +196,14 @@ export default function CashManagement() {
   const [newReceivableRemarks, setNewReceivableRemarks] = useState("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   
+  // Bank account form state
+  const [showAddBankAccount, setShowAddBankAccount] = useState(false);
+  const [editingBankAccountId, setEditingBankAccountId] = useState<string | null>(null);
+  const [bankAccountName, setBankAccountName] = useState("");
+  const [bankAccountType, setBankAccountType] = useState<string>("current");
+  const [bankAccountOpeningBalance, setBankAccountOpeningBalance] = useState("");
+  const [deletingBankAccountId, setDeletingBankAccountId] = useState<string | null>(null);
+  
   // Save form state to sessionStorage (persists for 30 seconds when navigating away)
   const saveFormState = useCallback(() => {
     if (!coldStorageId) return; // Don't save if no cold storage
@@ -207,14 +215,14 @@ export default function CashManagement() {
       customBuyerName,
       salesGoodsBuyerName,
       receiptType,
-      accountType,
+      accountId,
       inwardAmount,
       receivedDate,
       inwardRemarks,
       expenseType,
       expenseReceiverName,
       expensePaymentMode,
-      expenseAccountType,
+      expenseAccountId,
       expenseAmount,
       expenseDate,
       expenseRemarks,
@@ -233,9 +241,9 @@ export default function CashManagement() {
     };
     sessionStorage.setItem(getStateKey(coldStorageId), JSON.stringify(stateToSave));
   }, [
-    coldStorageId, activeTab, payerType, buyerName, customBuyerName, salesGoodsBuyerName, receiptType, accountType,
+    coldStorageId, activeTab, payerType, buyerName, customBuyerName, salesGoodsBuyerName, receiptType, accountId,
     inwardAmount, receivedDate, inwardRemarks, expenseType, expenseReceiverName, expensePaymentMode,
-    expenseAccountType, expenseAmount, expenseDate, expenseRemarks, transferFromAccount, transferToAccount,
+    expenseAccountId, expenseAmount, expenseDate, expenseRemarks, transferFromAccount, transferToAccount,
     transferAmount, transferDate, transferRemarks, transferTypeMode, buyerTransferFrom, buyerTransferTo,
     selectedSaleId, buyerTransferAmount, buyerTransferDate, buyerTransferRemarks
   ]);
@@ -259,19 +267,19 @@ export default function CashManagement() {
         if (loaded.customBuyerName) setCustomBuyerName(loaded.customBuyerName);
         if (loaded.salesGoodsBuyerName) setSalesGoodsBuyerName(loaded.salesGoodsBuyerName);
         if (loaded.receiptType) setReceiptType(loaded.receiptType as "cash" | "account");
-        if (loaded.accountType) setAccountType(loaded.accountType as "limit" | "current");
+        if (loaded.accountId) setAccountId(loaded.accountId);
         if (loaded.inwardAmount) setInwardAmount(loaded.inwardAmount);
         if (loaded.receivedDate) setReceivedDate(loaded.receivedDate);
         if (loaded.inwardRemarks) setInwardRemarks(loaded.inwardRemarks);
         if (loaded.expenseType) setExpenseType(loaded.expenseType);
         if (loaded.expenseReceiverName) setExpenseReceiverName(loaded.expenseReceiverName);
         if (loaded.expensePaymentMode) setExpensePaymentMode(loaded.expensePaymentMode as "cash" | "account");
-        if (loaded.expenseAccountType) setExpenseAccountType(loaded.expenseAccountType as "limit" | "current");
+        if (loaded.expenseAccountId) setExpenseAccountId(loaded.expenseAccountId);
         if (loaded.expenseAmount) setExpenseAmount(loaded.expenseAmount);
         if (loaded.expenseDate) setExpenseDate(loaded.expenseDate);
         if (loaded.expenseRemarks) setExpenseRemarks(loaded.expenseRemarks);
-        if (loaded.transferFromAccount) setTransferFromAccount(loaded.transferFromAccount as "cash" | "limit" | "current");
-        if (loaded.transferToAccount) setTransferToAccount(loaded.transferToAccount as "cash" | "limit" | "current");
+        if (loaded.transferFromAccount) setTransferFromAccount(loaded.transferFromAccount);
+        if (loaded.transferToAccount) setTransferToAccount(loaded.transferToAccount);
         if (loaded.transferAmount) setTransferAmount(loaded.transferAmount);
         if (loaded.transferDate) setTransferDate(loaded.transferDate);
         if (loaded.transferRemarks) setTransferRemarks(loaded.transferRemarks);
@@ -324,6 +332,12 @@ export default function CashManagement() {
 
   const { data: openingReceivables = [] } = useQuery<OpeningReceivable[]>({
     queryKey: ["/api/opening-receivables", settingsYear],
+    enabled: showSettings,
+  });
+
+  // Bank accounts for settings dialog
+  const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
+    queryKey: ["/api/bank-accounts", settingsYear],
     enabled: showSettings,
   });
 
@@ -460,7 +474,7 @@ export default function CashManagement() {
   });
 
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { payerType: string; buyerName?: string; receiptType: string; accountType?: string; amount: number; receivedAt: string; notes?: string }) => {
+    mutationFn: async (data: { payerType: string; buyerName?: string; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -475,7 +489,7 @@ export default function CashManagement() {
       setCustomBuyerName("");
       setSalesGoodsBuyerName("");
       setReceiptType("cash");
-      setAccountType("limit");
+      setAccountId("");
       setInwardAmount("");
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
       setInwardRemarks("");
@@ -496,7 +510,7 @@ export default function CashManagement() {
   });
 
   const createExpenseMutation = useMutation({
-    mutationFn: async (data: { expenseType: string; receiverName?: string; paymentMode: string; accountType?: string; amount: number; paidAt: string; remarks?: string }) => {
+    mutationFn: async (data: { expenseType: string; receiverName?: string; paymentMode: string; accountId?: string; amount: number; paidAt: string; remarks?: string }) => {
       const response = await apiRequest("POST", "/api/expenses", data);
       return response.json();
     },
@@ -629,7 +643,7 @@ export default function CashManagement() {
   });
 
   const createTransferMutation = useMutation({
-    mutationFn: async (data: { fromAccountType: string; toAccountType: string; amount: number; transferredAt: string; remarks?: string }) => {
+    mutationFn: async (data: { fromAccountType: string; toAccountType: string; fromAccountId?: string; toAccountId?: string; amount: number; transferredAt: string; remarks?: string }) => {
       const response = await apiRequest("POST", "/api/cash-transfers", data);
       return response.json();
     },
@@ -640,7 +654,7 @@ export default function CashManagement() {
         variant: "success",
       });
       setTransferFromAccount("cash");
-      setTransferToAccount("limit");
+      setTransferToAccount("");
       setTransferAmount("");
       setTransferDate(format(new Date(), "yyyy-MM-dd"));
       setTransferRemarks("");
@@ -724,6 +738,49 @@ export default function CashManagement() {
     },
   });
 
+  // Bank account mutations
+  const createBankAccountMutation = useMutation({
+    mutationFn: async (data: { accountName: string; accountType: string; openingBalance: number; year: number }) => {
+      const response = await apiRequest("POST", "/api/bank-accounts", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: "Bank account added", variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts", settingsYear] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const updateBankAccountMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; accountName?: string; accountType?: string; openingBalance?: number }) => {
+      const response = await apiRequest("PATCH", `/api/bank-accounts/${id}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: "Bank account updated", variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts", settingsYear] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const deleteBankAccountMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("DELETE", `/api/bank-accounts/${id}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: "Bank account deleted", variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts", settingsYear] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
+    },
+  });
+
   const handleInwardSubmit = () => {
     // Determine buyer name based on payer type
     let finalBuyerName: string | undefined;
@@ -751,7 +808,7 @@ export default function CashManagement() {
       payerType,
       buyerName: finalBuyerName,
       receiptType,
-      accountType: receiptType === "account" ? accountType : undefined,
+      accountId: receiptType === "account" ? accountId : undefined,
       amount: parseFloat(inwardAmount),
       receivedAt: new Date(receivedDate).toISOString(),
       notes: inwardRemarks || undefined,
@@ -768,7 +825,7 @@ export default function CashManagement() {
       expenseType,
       receiverName: expenseReceiverName || undefined,
       paymentMode: expensePaymentMode,
-      accountType: expensePaymentMode === "account" ? expenseAccountType : undefined,
+      accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
       amount: parseFloat(expenseAmount),
       paidAt: new Date(expenseDate).toISOString(),
       remarks: expenseRemarks || undefined,
@@ -826,6 +883,8 @@ export default function CashManagement() {
     createTransferMutation.mutate({
       fromAccountType: transferFromAccount,
       toAccountType: transferToAccount,
+      fromAccountId: transferFromAccount === "cash" ? undefined : transferFromAccount,
+      toAccountId: transferToAccount === "cash" ? undefined : transferToAccount,
       amount: parseFloat(transferAmount),
       transferredAt: new Date(transferDate).toISOString(),
       remarks: transferRemarks || undefined,
@@ -852,13 +911,14 @@ export default function CashManagement() {
     });
   };
 
-  const getAccountLabel = (account: string) => {
-    switch (account) {
-      case "cash": return t("cashInHand");
-      case "limit": return t("limitAccount");
-      case "current": return t("currentAccount");
-      default: return account;
-    }
+  const getAccountLabel = (accountIdOrType: string | null | undefined) => {
+    if (!accountIdOrType) return "";
+    if (accountIdOrType === "cash") return t("cashInHand");
+    const bankAccount = bankAccounts.find(a => a.id === accountIdOrType);
+    if (bankAccount) return bankAccount.accountName;
+    if (accountIdOrType === "limit") return t("limitAccount");
+    if (accountIdOrType === "current") return t("currentAccount");
+    return accountIdOrType;
   };
 
   const selectedBuyerDue = buyersWithDues.find(b => 
@@ -925,7 +985,7 @@ export default function CashManagement() {
           r.buyerName || getPayerTypeLabel(r.payerType),
           r.amount.toString(),
           r.receiptType === "cash" ? t("cash") : t("account"),
-          r.receiptType === "account" ? (r.accountType === "limit" ? t("limitAccount") : t("currentAccount")) : "",
+          r.receiptType === "account" ? getAccountLabel(r.accountId || r.accountType) : "",
           getPayerTypeLabel(r.payerType),
           dueAfterStr,
           r.notes || "",
@@ -940,7 +1000,7 @@ export default function CashManagement() {
           getExpenseTypeLabel(e.expenseType) + (e.receiverName ? ` - ${e.receiverName}` : ""),
           e.amount.toString(),
           e.paymentMode === "cash" ? t("cash") : t("account"),
-          e.paymentMode === "account" ? (e.accountType === "limit" ? t("limitAccount") : t("currentAccount")) : "",
+          e.paymentMode === "account" ? getAccountLabel(e.accountId || e.accountType) : "",
           "",
           "",
           e.remarks || "",
@@ -1034,8 +1094,11 @@ export default function CashManagement() {
     if (filterPaymentMode) {
       if (filterPaymentMode === "cash") {
         filteredReceipts = filteredReceipts.filter(r => r.receiptType === "cash");
-      } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
-        filteredReceipts = filteredReceipts.filter(r => r.receiptType === "account" && r.accountType === filterPaymentMode);
+      } else if (filterPaymentMode !== "discount") {
+        filteredReceipts = filteredReceipts.filter(r => 
+          r.receiptType === "account" && 
+          (r.accountId === filterPaymentMode || r.accountType === filterPaymentMode)
+        );
       }
     }
     
@@ -1079,8 +1142,11 @@ export default function CashManagement() {
     if (filterPaymentMode) {
       if (filterPaymentMode === "cash") {
         filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "cash");
-      } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
-        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account" && e.accountType === filterPaymentMode);
+      } else if (filterPaymentMode !== "discount") {
+        filteredExpenses = filteredExpenses.filter(e => 
+          e.paymentMode === "account" && 
+          (e.accountId === filterPaymentMode || e.accountType === filterPaymentMode)
+        );
       }
     }
     
@@ -1396,8 +1462,6 @@ export default function CashManagement() {
 
     // Opening balances from start of year settings
     const openingCash = Number(currentYearOpeningBalance?.cashInHand) || 0;
-    const openingLimit = Number(currentYearOpeningBalance?.limitBalance) || 0;
-    const openingCurrent = Number(currentYearOpeningBalance?.currentBalance) || 0;
 
     const totalCashReceived = activeReceipts
       .filter(r => r.receiptType === "cash")
@@ -1405,14 +1469,6 @@ export default function CashManagement() {
     
     const totalAccountReceived = activeReceipts
       .filter(r => r.receiptType === "account")
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-    
-    const totalLimitReceived = activeReceipts
-      .filter(r => r.receiptType === "account" && r.accountType === "limit")
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-    
-    const totalCurrentReceived = activeReceipts
-      .filter(r => r.receiptType === "account" && r.accountType === "current")
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     
     const totalCashExpenses = activeExpenses
@@ -1423,16 +1479,7 @@ export default function CashManagement() {
       .filter(e => e.paymentMode === "account")
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     
-    const totalLimitExpenses = activeExpenses
-      .filter(e => e.paymentMode === "account" && e.accountType === "limit")
-      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    
-    const totalCurrentExpenses = activeExpenses
-      .filter(e => e.paymentMode === "account" && e.accountType === "current")
-      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    
-    // Calculate net transfer impact on each account type
-    // Transfers TO an account add, transfers FROM an account subtract
+    // Calculate cash transfers
     const cashTransferIn = activeTransfers
       .filter(t => t.toAccountType === "cash")
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -1441,26 +1488,98 @@ export default function CashManagement() {
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const netCashTransfer = cashTransferIn - cashTransferOut;
     
-    const limitTransferIn = activeTransfers
-      .filter(t => t.toAccountType === "limit")
-      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const limitTransferOut = activeTransfers
-      .filter(t => t.fromAccountType === "limit")
-      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const netLimitTransfer = limitTransferIn - limitTransferOut;
-    
-    const currentTransferIn = activeTransfers
-      .filter(t => t.toAccountType === "current")
-      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const currentTransferOut = activeTransfers
-      .filter(t => t.fromAccountType === "current")
-      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const netCurrentTransfer = currentTransferIn - currentTransferOut;
-    
-    // Include opening balances in final calculations
     const cashInHand = openingCash + totalCashReceived - totalCashExpenses + netCashTransfer;
-    const limitBalance = openingLimit + totalLimitReceived - totalLimitExpenses + netLimitTransfer;
-    const currentBalance = openingCurrent + totalCurrentReceived - totalCurrentExpenses + netCurrentTransfer;
+
+    // Helper to get the effective account identifier for receipts/expenses
+    // Uses accountId if present, otherwise falls back to legacy accountType
+    const getReceiptAccountId = (r: CashReceipt) => r.accountId || r.accountType || null;
+    const getExpenseAccountId = (e: Expense) => e.accountId || e.accountType || null;
+    const getTransferToId = (t: CashTransfer) => t.toAccountId || (t.toAccountType !== "cash" ? t.toAccountType : null);
+    const getTransferFromId = (t: CashTransfer) => t.fromAccountId || (t.fromAccountType !== "cash" ? t.fromAccountType : null);
+
+    // Compute per-account balances dynamically
+    const accountBalances: Record<string, { 
+      accountId: string;
+      accountName: string;
+      accountType: string;
+      openingBalance: number;
+      received: number; 
+      expenses: number; 
+      transferIn: number; 
+      transferOut: number; 
+      balance: number;
+    }> = {};
+
+    // Initialize with bank accounts
+    bankAccounts.forEach(account => {
+      accountBalances[account.id] = {
+        accountId: account.id,
+        accountName: account.accountName,
+        accountType: account.accountType,
+        openingBalance: Number(account.openingBalance) || 0,
+        received: 0,
+        expenses: 0,
+        transferIn: 0,
+        transferOut: 0,
+        balance: 0,
+      };
+    });
+
+    // Add legacy entries if not already present (for backward compatibility)
+    const legacyTypes = ["limit", "current"];
+    legacyTypes.forEach(type => {
+      if (!accountBalances[type] && !bankAccounts.some(a => a.id === type)) {
+        accountBalances[type] = {
+          accountId: type,
+          accountName: type === "limit" ? t("limitAccount") : t("currentAccount"),
+          accountType: type,
+          openingBalance: type === "limit" 
+            ? (Number(currentYearOpeningBalance?.limitBalance) || 0) 
+            : (Number(currentYearOpeningBalance?.currentBalance) || 0),
+          received: 0,
+          expenses: 0,
+          transferIn: 0,
+          transferOut: 0,
+          balance: 0,
+        };
+      }
+    });
+
+    // Compute receipts per account
+    activeReceipts.filter(r => r.receiptType === "account").forEach(r => {
+      const accId = getReceiptAccountId(r);
+      if (accId && accountBalances[accId]) {
+        accountBalances[accId].received += Number(r.amount) || 0;
+      }
+    });
+
+    // Compute expenses per account
+    activeExpenses.filter(e => e.paymentMode === "account").forEach(e => {
+      const accId = getExpenseAccountId(e);
+      if (accId && accountBalances[accId]) {
+        accountBalances[accId].expenses += Number(e.amount) || 0;
+      }
+    });
+
+    // Compute transfers per account
+    activeTransfers.forEach(t => {
+      const toId = getTransferToId(t);
+      const fromId = getTransferFromId(t);
+      if (toId && accountBalances[toId]) {
+        accountBalances[toId].transferIn += Number(t.amount) || 0;
+      }
+      if (fromId && accountBalances[fromId]) {
+        accountBalances[fromId].transferOut += Number(t.amount) || 0;
+      }
+    });
+
+    // Compute final balances
+    Object.values(accountBalances).forEach(acc => {
+      acc.balance = acc.openingBalance + acc.received - acc.expenses + acc.transferIn - acc.transferOut;
+    });
+
+    // Total net in accounts
+    const totalAccountBalance = Object.values(accountBalances).reduce((sum, acc) => sum + acc.balance, 0);
 
     return {
       totalCashReceived,
@@ -1468,13 +1587,11 @@ export default function CashManagement() {
       cashInHand,
       totalAccountExpenses,
       totalCashExpenses,
-      limitBalance,
-      currentBalance,
       netCashTransfer,
-      netLimitTransfer,
-      netCurrentTransfer,
+      accountBalances,
+      totalAccountBalance,
     };
-  }, [receipts, expensesList, transfers, currentYearOpeningBalance]);
+  }, [receipts, expensesList, transfers, currentYearOpeningBalance, bankAccounts, t]);
 
   const filteredSummary = useMemo(() => {
     let filteredReceipts = receipts.filter(r => r.isReversed !== 1);
@@ -1487,10 +1604,19 @@ export default function CashManagement() {
         filteredReceipts = filteredReceipts.filter(r => r.receiptType === "cash");
         filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "cash");
         filteredTransfers = filteredTransfers.filter(t => t.fromAccountType === "cash" || t.toAccountType === "cash");
-      } else if (filterPaymentMode === "limit" || filterPaymentMode === "current") {
-        filteredReceipts = filteredReceipts.filter(r => r.receiptType === "account" && r.accountType === filterPaymentMode);
-        filteredExpenses = filteredExpenses.filter(e => e.paymentMode === "account" && e.accountType === filterPaymentMode);
-        filteredTransfers = filteredTransfers.filter(t => t.fromAccountType === filterPaymentMode || t.toAccountType === filterPaymentMode);
+      } else if (filterPaymentMode !== "discount") {
+        filteredReceipts = filteredReceipts.filter(r => 
+          r.receiptType === "account" && 
+          (r.accountId === filterPaymentMode || r.accountType === filterPaymentMode)
+        );
+        filteredExpenses = filteredExpenses.filter(e => 
+          e.paymentMode === "account" && 
+          (e.accountId === filterPaymentMode || e.accountType === filterPaymentMode)
+        );
+        filteredTransfers = filteredTransfers.filter(t => 
+          t.fromAccountId === filterPaymentMode || t.toAccountId === filterPaymentMode ||
+          t.fromAccountType === filterPaymentMode || t.toAccountType === filterPaymentMode
+        );
       }
     }
 
@@ -1593,27 +1719,27 @@ export default function CashManagement() {
           </CardContent>
         </Card>
 
-        <Card data-testid="stat-limit-balance">
+        <Card data-testid="stat-total-account-balance">
           <CardContent className="p-2">
             <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
               <Building2 className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">{t("limitAccount")}</span>
+              <span className="truncate">{t("netInAccounts")}</span>
             </div>
-            <div className={`text-sm font-bold ${summary.limitBalance >= 0 ? "text-blue-600" : "text-red-600"}`}>
-              {isLoading ? "..." : `₹${summary.limitBalance.toLocaleString()}`}
+            <div className={`text-sm font-bold ${summary.totalAccountBalance >= 0 ? "text-blue-600" : "text-red-600"}`}>
+              {isLoading ? "..." : `₹${summary.totalAccountBalance.toLocaleString()}`}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card data-testid="stat-current-balance">
-          <CardContent className="p-2">
-            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
-              <CreditCard className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">{t("currentAccount")}</span>
-            </div>
-            <div className={`text-sm font-bold ${summary.currentBalance >= 0 ? "text-blue-600" : "text-red-600"}`}>
-              {isLoading ? "..." : `₹${summary.currentBalance.toLocaleString()}`}
-            </div>
+            {Object.keys(summary.accountBalances).length > 0 && (
+              <div className="mt-1 text-xs space-y-0.5">
+                {Object.values(summary.accountBalances).map(acc => (
+                  <div key={acc.accountId} className="flex justify-between items-center">
+                    <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
+                    <span className={acc.balance >= 0 ? "text-blue-600" : "text-red-600"}>
+                      ₹{acc.balance.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1720,6 +1846,11 @@ export default function CashManagement() {
                 <SelectContent>
                   <SelectItem value="all">{t("allPaymentModes")}</SelectItem>
                   <SelectItem value="cash">{t("cash")}</SelectItem>
+                  {bankAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.accountName}
+                    </SelectItem>
+                  ))}
                   <SelectItem value="limit">{t("limitAccount")}</SelectItem>
                   <SelectItem value="current">{t("currentAccount")}</SelectItem>
                   <SelectItem value="discount">{t("discount")}</SelectItem>
@@ -1982,24 +2113,32 @@ export default function CashManagement() {
 
                 {receiptType === "account" && (
                   <div className="space-y-2">
-                    <Label>{t("accountType")} *</Label>
-                    <Select value={accountType} onValueChange={(v) => setAccountType(v as "limit" | "current")}>
-                      <SelectTrigger data-testid="select-account-type">
-                        <SelectValue />
+                    <Label>{t("bankAccounts")} *</Label>
+                    <Select value={accountId} onValueChange={(v) => setAccountId(v)}>
+                      <SelectTrigger data-testid="select-account-id">
+                        <SelectValue placeholder={t("selectAccount")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="limit">
-                          <span className="flex items-center gap-2">
-                            <Building2 className="h-4 w-4" />
-                            {t("limitAccount")}
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="current">
-                          <span className="flex items-center gap-2">
-                            <Wallet className="h-4 w-4" />
-                            {t("currentAccount")}
-                          </span>
-                        </SelectItem>
+                        {bankAccounts.length === 0 ? (
+                          <div className="p-2 text-sm text-muted-foreground text-center">
+                            {t("noBankAccounts")}
+                          </div>
+                        ) : (
+                          bankAccounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              <span className="flex items-center gap-2">
+                                {account.accountType === "limit" ? (
+                                  <Building2 className="h-4 w-4" />
+                                ) : account.accountType === "current" ? (
+                                  <Wallet className="h-4 w-4" />
+                                ) : (
+                                  <PiggyBank className="h-4 w-4" />
+                                )}
+                                {account.accountName}
+                              </span>
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2352,25 +2491,33 @@ export default function CashManagement() {
                   <>
                     {expensePaymentMode === "account" && (
                       <div className="space-y-2">
-                        <Label>{t("accountType")} *</Label>
-                        <Select value={expenseAccountType} onValueChange={(v) => setExpenseAccountType(v as "limit" | "current")}>
-                          <SelectTrigger data-testid="select-expense-account-type">
-                            <SelectValue />
+                        <Label>{t("bankAccounts")} *</Label>
+                        <Select value={expenseAccountId} onValueChange={(v) => setExpenseAccountId(v)}>
+                          <SelectTrigger data-testid="select-expense-account-id">
+                            <SelectValue placeholder={t("selectAccount")} />
                           </SelectTrigger>
                           <SelectContent>
-                          <SelectItem value="limit">
-                            <span className="flex items-center gap-2">
-                              <Building2 className="h-4 w-4" />
-                              {t("limitAccount")}
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="current">
-                            <span className="flex items-center gap-2">
-                              <Wallet className="h-4 w-4" />
-                              {t("currentAccount")}
-                            </span>
-                          </SelectItem>
-                        </SelectContent>
+                            {bankAccounts.length === 0 ? (
+                              <div className="p-2 text-sm text-muted-foreground text-center">
+                                {t("noBankAccounts")}
+                              </div>
+                            ) : (
+                              bankAccounts.map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  <span className="flex items-center gap-2">
+                                    {account.accountType === "limit" ? (
+                                      <Building2 className="h-4 w-4" />
+                                    ) : account.accountType === "current" ? (
+                                      <Wallet className="h-4 w-4" />
+                                    ) : (
+                                      <PiggyBank className="h-4 w-4" />
+                                    )}
+                                    {account.accountName}
+                                  </span>
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
                         </Select>
                       </div>
                     )}
@@ -2512,9 +2659,9 @@ export default function CashManagement() {
                   <>
                     <div className="space-y-2">
                       <Label>{t("fromAccount")} *</Label>
-                      <Select value={transferFromAccount} onValueChange={(v) => setTransferFromAccount(v as "cash" | "limit" | "current")}>
+                      <Select value={transferFromAccount} onValueChange={(v) => setTransferFromAccount(v)}>
                         <SelectTrigger data-testid="select-transfer-from">
-                          <SelectValue />
+                          <SelectValue placeholder={t("selectAccount")} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="cash">
@@ -2523,27 +2670,29 @@ export default function CashManagement() {
                               {t("cashInHand")}
                             </span>
                           </SelectItem>
-                          <SelectItem value="limit">
-                            <span className="flex items-center gap-2">
-                              <Building2 className="h-4 w-4" />
-                              {t("limitAccount")}
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="current">
-                            <span className="flex items-center gap-2">
-                              <Wallet className="h-4 w-4" />
-                              {t("currentAccount")}
-                            </span>
-                          </SelectItem>
+                          {bankAccounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              <span className="flex items-center gap-2">
+                                {account.accountType === "limit" ? (
+                                  <Building2 className="h-4 w-4" />
+                                ) : account.accountType === "current" ? (
+                                  <Wallet className="h-4 w-4" />
+                                ) : (
+                                  <PiggyBank className="h-4 w-4" />
+                                )}
+                                {account.accountName}
+                              </span>
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div className="space-y-2">
                       <Label>{t("toAccount")} *</Label>
-                      <Select value={transferToAccount} onValueChange={(v) => setTransferToAccount(v as "cash" | "limit" | "current")}>
+                      <Select value={transferToAccount} onValueChange={(v) => setTransferToAccount(v)}>
                         <SelectTrigger data-testid="select-transfer-to">
-                          <SelectValue />
+                          <SelectValue placeholder={t("selectAccount")} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="cash">
@@ -2552,23 +2701,25 @@ export default function CashManagement() {
                               {t("cashInHand")}
                             </span>
                           </SelectItem>
-                          <SelectItem value="limit">
-                            <span className="flex items-center gap-2">
-                              <Building2 className="h-4 w-4" />
-                              {t("limitAccount")}
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="current">
-                            <span className="flex items-center gap-2">
-                              <Wallet className="h-4 w-4" />
-                              {t("currentAccount")}
-                            </span>
-                          </SelectItem>
+                          {bankAccounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              <span className="flex items-center gap-2">
+                                {account.accountType === "limit" ? (
+                                  <Building2 className="h-4 w-4" />
+                                ) : account.accountType === "current" ? (
+                                  <Wallet className="h-4 w-4" />
+                                ) : (
+                                  <PiggyBank className="h-4 w-4" />
+                                )}
+                                {account.accountName}
+                              </span>
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
 
-                    {transferFromAccount === transferToAccount && (
+                    {transferFromAccount === transferToAccount && transferFromAccount !== "" && (
                       <p className="text-xs text-red-500">{t("sameAccountError")}</p>
                     )}
 
@@ -2853,10 +3004,10 @@ export default function CashManagement() {
                               {transaction.type === "inflow" 
                                 ? ((transaction.data as CashReceipt).receiptType === "cash" 
                                     ? t("cash") 
-                                    : `${t("account")} (${(transaction.data as CashReceipt).accountType === "limit" ? t("limitAccount") : t("currentAccount")})`)
+                                    : `${t("account")} (${getAccountLabel((transaction.data as CashReceipt).accountId || (transaction.data as CashReceipt).accountType)})`)
                                 : ((transaction.data as Expense).paymentMode === "cash" 
                                     ? t("cash") 
-                                    : `${t("account")} (${(transaction.data as Expense).accountType === "limit" ? t("limitAccount") : t("currentAccount")})`)
+                                    : `${t("account")} (${getAccountLabel((transaction.data as Expense).accountId || (transaction.data as Expense).accountType)})`)
                               }
                             </Badge>
                           )}
@@ -3010,7 +3161,7 @@ export default function CashManagement() {
                       <Badge variant="outline">
                         {(selectedTransaction.data as Expense).paymentMode === "cash" 
                           ? t("cash") 
-                          : `${t("account")} (${(selectedTransaction.data as Expense).accountType === "limit" ? t("limitAccount") : t("currentAccount")})`}
+                          : `${t("account")} (${getAccountLabel((selectedTransaction.data as Expense).accountId || (selectedTransaction.data as Expense).accountType)})`}
                       </Badge>
                     </div>
                     <div className="flex justify-between">
@@ -3231,56 +3382,250 @@ export default function CashManagement() {
           {/* Opening Balances Tab Content */}
           {settingsTab === "balances" && (
             <div className="space-y-4 mt-4">
-              <div className="grid gap-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label>{t("cashInHand")}</Label>
-                    <Input
-                      type="number"
-                      value={openingCashInHand || (openingBalance?.cashInHand?.toString() ?? "")}
-                      onChange={(e) => setOpeningCashInHand(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-opening-cash"
-                    />
-                  </div>
-                  <div>
-                    <Label>{t("limitAccount")}</Label>
-                    <Input
-                      type="number"
-                      value={openingLimitBalance || (openingBalance?.limitBalance?.toString() ?? "")}
-                      onChange={(e) => setOpeningLimitBalance(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-opening-limit"
-                    />
-                  </div>
-                  <div>
-                    <Label>{t("currentAccount")}</Label>
-                    <Input
-                      type="number"
-                      value={openingCurrentBalance || (openingBalance?.currentBalance?.toString() ?? "")}
-                      onChange={(e) => setOpeningCurrentBalance(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-opening-current"
-                    />
-                  </div>
+              {/* Opening Cash in Hand */}
+              <Card className="p-4">
+                <Label className="font-medium">{t("openingCashInHand")}</Label>
+                <div className="flex items-center gap-2 mt-2">
+                  <Input
+                    type="number"
+                    value={openingCashInHand || (openingBalance?.cashInHand?.toString() ?? "")}
+                    onChange={(e) => setOpeningCashInHand(e.target.value)}
+                    placeholder="0"
+                    className="flex-1"
+                    data-testid="input-opening-cash"
+                  />
+                  <Button
+                    onClick={() => {
+                      saveOpeningBalanceMutation.mutate({
+                        year: settingsYear,
+                        cashInHand: parseFloat(openingCashInHand || openingBalance?.cashInHand?.toString() || "0") || 0,
+                        limitBalance: openingBalance?.limitBalance || 0,
+                        currentBalance: openingBalance?.currentBalance || 0,
+                      });
+                    }}
+                    disabled={saveOpeningBalanceMutation.isPending}
+                    size="icon"
+                    className="bg-blue-600 hover:bg-blue-700"
+                    data-testid="button-save-opening-cash"
+                  >
+                    <Save className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button
-                  onClick={() => {
-                    saveOpeningBalanceMutation.mutate({
-                      year: settingsYear,
-                      cashInHand: parseFloat(openingCashInHand || openingBalance?.cashInHand?.toString() || "0") || 0,
-                      limitBalance: parseFloat(openingLimitBalance || openingBalance?.limitBalance?.toString() || "0") || 0,
-                      currentBalance: parseFloat(openingCurrentBalance || openingBalance?.currentBalance?.toString() || "0") || 0,
-                    });
-                  }}
-                  disabled={saveOpeningBalanceMutation.isPending}
-                  className="bg-blue-600 hover:bg-blue-700"
-                  data-testid="button-save-opening-balances"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {saveOpeningBalanceMutation.isPending ? t("saving") : t("saveOpeningBalances")}
-                </Button>
-              </div>
+              </Card>
+              
+              {/* Bank Accounts Section */}
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Building2 className="h-5 w-5 text-muted-foreground" />
+                  <h3 className="font-semibold">{t("bankAccounts")}</h3>
+                </div>
+                
+                {/* List of bank accounts */}
+                <div className="space-y-2">
+                  {bankAccounts.map((account) => (
+                    <Card key={account.id} className="p-3">
+                      {editingBankAccountId === account.id ? (
+                        // Edit mode
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-3 gap-2">
+                            <Input
+                              value={bankAccountName}
+                              onChange={(e) => setBankAccountName(e.target.value)}
+                              placeholder={t("accountName")}
+                              data-testid={`input-edit-account-name-${account.id}`}
+                            />
+                            <Select value={bankAccountType} onValueChange={setBankAccountType}>
+                              <SelectTrigger data-testid={`select-edit-account-type-${account.id}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="current">{t("current")}</SelectItem>
+                                <SelectItem value="limit">{t("limit")}</SelectItem>
+                                <SelectItem value="saving">{t("saving")}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              value={bankAccountOpeningBalance}
+                              onChange={(e) => setBankAccountOpeningBalance(e.target.value)}
+                              placeholder="0"
+                              data-testid={`input-edit-account-balance-${account.id}`}
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingBankAccountId(null);
+                                setBankAccountName("");
+                                setBankAccountType("current");
+                                setBankAccountOpeningBalance("");
+                              }}
+                              data-testid={`button-cancel-edit-${account.id}`}
+                            >
+                              {t("cancel")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                updateBankAccountMutation.mutate({
+                                  id: account.id,
+                                  accountName: bankAccountName,
+                                  accountType: bankAccountType,
+                                  openingBalance: parseFloat(bankAccountOpeningBalance) || 0,
+                                });
+                                setEditingBankAccountId(null);
+                                setBankAccountName("");
+                                setBankAccountType("current");
+                                setBankAccountOpeningBalance("");
+                              }}
+                              disabled={!bankAccountName || updateBankAccountMutation.isPending}
+                              data-testid={`button-save-edit-${account.id}`}
+                            >
+                              {t("save")}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        // Display mode
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <span className="font-medium">{account.accountName}</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <Badge variant="outline" className="capitalize">{account.accountType}</Badge>
+                            <span className="font-medium text-green-600">{formatCurrency(account.openingBalance || 0)}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setEditingBankAccountId(account.id);
+                                setBankAccountName(account.accountName);
+                                setBankAccountType(account.accountType);
+                                setBankAccountOpeningBalance((account.openingBalance || 0).toString());
+                              }}
+                              data-testid={`button-edit-account-${account.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog open={deletingBankAccountId === account.id} onOpenChange={(open) => !open && setDeletingBankAccountId(null)}>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => setDeletingBankAccountId(account.id)}
+                                  data-testid={`button-delete-account-${account.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>{t("confirmDelete")}</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {t("deleteBankAccountWarning")} "{account.accountName}"?
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => {
+                                      deleteBankAccountMutation.mutate(account.id);
+                                      setDeletingBankAccountId(null);
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    {t("delete")}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                  
+                  {/* Add new account form */}
+                  {showAddBankAccount ? (
+                    <Card className="p-3 border-dashed">
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <Input
+                            value={bankAccountName}
+                            onChange={(e) => setBankAccountName(e.target.value)}
+                            placeholder={t("accountName")}
+                            data-testid="input-new-account-name"
+                          />
+                          <Select value={bankAccountType} onValueChange={setBankAccountType}>
+                            <SelectTrigger data-testid="select-new-account-type">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="current">{t("current")}</SelectItem>
+                              <SelectItem value="limit">{t("limit")}</SelectItem>
+                              <SelectItem value="saving">{t("saving")}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            value={bankAccountOpeningBalance}
+                            onChange={(e) => setBankAccountOpeningBalance(e.target.value)}
+                            placeholder={t("openingBalance")}
+                            data-testid="input-new-account-balance"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setShowAddBankAccount(false);
+                              setBankAccountName("");
+                              setBankAccountType("current");
+                              setBankAccountOpeningBalance("");
+                            }}
+                            data-testid="button-cancel-add-account"
+                          >
+                            {t("cancel")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              createBankAccountMutation.mutate({
+                                accountName: bankAccountName,
+                                accountType: bankAccountType,
+                                openingBalance: parseFloat(bankAccountOpeningBalance) || 0,
+                                year: settingsYear,
+                              });
+                              setShowAddBankAccount(false);
+                              setBankAccountName("");
+                              setBankAccountType("current");
+                              setBankAccountOpeningBalance("");
+                            }}
+                            disabled={!bankAccountName || createBankAccountMutation.isPending}
+                            data-testid="button-save-add-account"
+                          >
+                            {t("save")}
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full border-dashed"
+                      onClick={() => setShowAddBankAccount(true)}
+                      data-testid="button-add-account"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      {t("addAccount")}
+                    </Button>
+                  )}
+                </div>
+              </Card>
             </div>
           )}
 

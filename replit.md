@@ -159,11 +159,29 @@ The `recomputeBuyerPayments` function:
 - Settings button in Cash Management header (edit access only)
 - Two tabs: Opening Balances and Receivables
 - Year selector allows configuring for current or previous 2 years
-- Opening balances (cash in hand, limit account, current account) affect displayed balance calculations
+- Opening balances (cash in hand) affect displayed balance calculations
 - Receivables track outstanding amounts due from buyers with payer type categories
 - Buyer name autocomplete with popover shows suggestions from sales history immediately on focus
 - Opening receivables for cold_merchant type are combined with sales history dues in buyer dropdown
 - Database tables: cashOpeningBalances, openingReceivables (year-scoped)
+
+### Dynamic Bank Accounts
+- Replaced fixed two-account system (Current/Limit) with unlimited user-defined bank accounts per cold storage
+- Bank accounts table: bankAccounts (id, coldStorageId, accountName, accountType, openingBalance, year)
+- Account types: "current", "limit", "saving" (lowercase in database)
+- CRUD operations in Settings Dialog (inside Cash Management page):
+  - Add new bank accounts with name, type, and opening balance
+  - Edit existing account details
+  - Delete accounts with confirmation dialog
+- Cash receipts and expenses use accountId (reference to bankAccounts table) instead of legacy accountType
+- Cash transfers use fromAccountId/toAccountId fields
+- Backward compatibility maintained:
+  - API schemas accept both accountId and legacy accountType
+  - Summary calculations check accountId first, fallback to accountType
+  - getAccountLabel() helper displays actual account names with legacy fallback
+- Summary calculations dynamically iterate over all bank accounts for per-account balances
+- Filter dropdown supports filtering by dynamic bank account IDs
+- Translation keys: bankAccounts, accountName, selectAccount, noBankAccounts, deleteBankAccountWarning
 
 ### Build and Deployment
 - Development: Vite dev server with HMR, Express API on same port
