@@ -762,6 +762,25 @@ export async function registerRoutes(
       
       const updatedLot = await storage.updateLot(req.params.id, updateData);
 
+      // If farmer details changed, update all related salesHistory entries
+      const farmerFieldsChanged = validated.farmerName !== undefined || 
+                                   validated.village !== undefined ||
+                                   validated.tehsil !== undefined ||
+                                   validated.district !== undefined ||
+                                   validated.state !== undefined ||
+                                   validated.contactNumber !== undefined;
+      
+      if (farmerFieldsChanged) {
+        await storage.updateSalesHistoryFarmerDetails(req.params.id, {
+          farmerName: validated.farmerName,
+          village: validated.village,
+          tehsil: validated.tehsil,
+          district: validated.district,
+          state: validated.state,
+          contactNumber: validated.contactNumber,
+        });
+      }
+
       // If lotNo changed, recalculate the counter for this bag type category
       if (validated.lotNo && validated.lotNo !== lot.lotNo) {
         const isWaferCategory = lot.bagType === "wafer";

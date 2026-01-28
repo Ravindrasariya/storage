@@ -271,6 +271,8 @@ export interface IStorage {
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
   getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
+  // Update farmer details in all salesHistory entries for a given lotId
+  updateSalesHistoryFarmerDetails(lotId: string, updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string }): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3640,6 +3642,31 @@ export class DatabaseStorage implements IStorage {
     }
     
     return totalDiscountForBuyer;
+  }
+
+  async updateSalesHistoryFarmerDetails(
+    lotId: string,
+    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string }
+  ): Promise<number> {
+    // Filter out undefined values
+    const filteredUpdates: Record<string, string> = {};
+    if (updates.farmerName !== undefined) filteredUpdates.farmerName = updates.farmerName;
+    if (updates.village !== undefined) filteredUpdates.village = updates.village;
+    if (updates.tehsil !== undefined) filteredUpdates.tehsil = updates.tehsil;
+    if (updates.district !== undefined) filteredUpdates.district = updates.district;
+    if (updates.state !== undefined) filteredUpdates.state = updates.state;
+    if (updates.contactNumber !== undefined) filteredUpdates.contactNumber = updates.contactNumber;
+
+    if (Object.keys(filteredUpdates).length === 0) {
+      return 0;
+    }
+
+    const result = await db.update(salesHistory)
+      .set(filteredUpdates)
+      .where(eq(salesHistory.lotId, lotId))
+      .returning();
+    
+    return result.length;
   }
 }
 
