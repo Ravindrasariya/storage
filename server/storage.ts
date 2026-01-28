@@ -3667,30 +3667,36 @@ export class DatabaseStorage implements IStorage {
       return 0;
     }
 
-    // Build the old "self" buyer pattern: "FarmerName - Phone - Village"
-    const oldSelfPattern = `${oldFarmerDetails.farmerName} - ${oldFarmerDetails.contactNumber} - ${oldFarmerDetails.village}`;
-    
-    // Calculate new values (using updated values where available, old values otherwise)
-    const newFarmerName = updates.farmerName ?? oldFarmerDetails.farmerName;
-    const newContactNumber = updates.contactNumber ?? oldFarmerDetails.contactNumber;
-    const newVillage = updates.village ?? oldFarmerDetails.village;
-    const newSelfPattern = `${newFarmerName} - ${newContactNumber} - ${newVillage}`;
-
     // First, update all salesHistory entries for this lot with farmer details
     const result = await db.update(salesHistory)
       .set(filteredUpdates)
       .where(eq(salesHistory.lotId, lotId))
       .returning();
 
-    // Then, update buyerName for entries where buyer was "self" (matched old pattern)
-    if (oldSelfPattern !== newSelfPattern) {
-      await db.update(salesHistory)
-        .set({ buyerName: newSelfPattern })
-        .where(and(
-          eq(salesHistory.lotId, lotId),
-          eq(salesHistory.buyerName, oldSelfPattern)
-        ));
-    }
+    // Calculate new values (using updated values where available, old values otherwise)
+    const newFarmerName = (updates.farmerName ?? oldFarmerDetails.farmerName).trim();
+    const newContactNumber = (updates.contactNumber ?? oldFarmerDetails.contactNumber).trim();
+    const newVillage = (updates.village ?? oldFarmerDetails.village).trim();
+    const newSelfPattern = `${newFarmerName} - ${newContactNumber} - ${newVillage}`;
+
+    // Update buyerName for entries where buyer was "self" 
+    // Self-buyer format is: "FarmerName - Phone - Village"
+    // Use PostgreSQL regexp_replace to normalize whitespace before comparing
+    const oldFarmerNameTrimmed = oldFarmerDetails.farmerName.trim();
+    const oldPhone = oldFarmerDetails.contactNumber.trim();
+    const oldVillage = oldFarmerDetails.village.trim();
+    
+    // Build the normalized expected pattern (single spaces, trimmed)
+    const normalizedOldPattern = `${oldFarmerNameTrimmed} - ${oldPhone} - ${oldVillage}`;
+    
+    // Update rows where normalized buyerName matches normalized old pattern
+    // regexp_replace(trim(buyer_name), '\\s+', ' ', 'g') collapses all whitespace to single spaces
+    await db.execute(sql`
+      UPDATE sales_history 
+      SET buyer_name = ${newSelfPattern}
+      WHERE lot_id = ${lotId}
+        AND regexp_replace(trim(buyer_name), '\\s+', ' ', 'g') = ${normalizedOldPattern}
+    `);
     
     return result.length;
   }
