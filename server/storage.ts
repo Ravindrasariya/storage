@@ -1999,11 +1999,11 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
         eq(openingReceivables.year, year),
-        sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`
+        eq(openingReceivables.payerType, "farmer")
       ));
 
     // Also get farmer dues from self sales (where farmer is the buyer)
-    // Uses LOWER/TRIM for case-insensitive, space-trimmed grouping
+    // Uses TRIM for space-trimmed grouping, aggregation handles case differences via JavaScript
     const selfSalesResult = await db.execute(sql`
       SELECT 
         TRIM(farmer_name) as farmer_name,
@@ -2015,7 +2015,7 @@ export class DatabaseStorage implements IStorage {
         AND is_self_sale = 1
         AND sale_year = ${year}
         AND (due_amount > 0 OR extra_due_to_merchant > 0)
-      GROUP BY LOWER(TRIM(farmer_name)), LOWER(TRIM(village)), TRIM(contact_number)
+      GROUP BY TRIM(farmer_name), TRIM(village), TRIM(contact_number)
       HAVING SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)) > 0
     `);
     const selfSales = selfSalesResult.rows as { farmer_name: string; contact_number: string; village: string; total_due: number }[];
