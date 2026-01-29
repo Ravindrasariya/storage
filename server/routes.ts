@@ -1961,9 +1961,13 @@ export async function registerRoutes(
       // For farmer payer type, handle payment allocation to farmer receivable
       if (validatedData.payerType === "farmer" && validatedData.farmerReceivableId) {
         try {
+          // Extract farmerDetails from request body if provided (for self-sale farmers)
+          const farmerDetails = req.body.farmerDetails as { farmerName: string; contactNumber: string; village: string } | undefined;
+          
           const result = await storage.createFarmerReceivablePayment({
             coldStorageId: coldStorageId,
             farmerReceivableId: validatedData.farmerReceivableId,
+            farmerDetails: farmerDetails || null,
             buyerName: validatedData.buyerName || null,
             receiptType: validatedData.receiptType,
             accountType: validatedData.accountType || null,

@@ -207,7 +207,7 @@ export interface IStorage {
   // Cash Receipts
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
   getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
-  createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
+  createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
   getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
   getSalesGoodsBuyers(coldStorageId: string): Promise<string[]>;
   createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
@@ -2001,66 +2001,170 @@ export class DatabaseStorage implements IStorage {
         eq(openingReceivables.payerType, "farmer")
       ));
 
-    // Calculate remaining dues for each farmer
-    return farmers
-      .filter(f => f.farmerName && f.contactNumber && f.village)
-      .map(f => {
-        const remainingDue = f.dueAmount - (f.paidAmount || 0);
-        return {
+    // Also get farmer dues from self sales (where farmer is the buyer)
+    // Use due_amount which is already correctly calculated and tracked
+    const selfSalesResult = await db.execute(sql`
+      SELECT 
+        farmer_name,
+        contact_number,
+        village,
+        COALESCE(SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)), 0)::float as total_due
+      FROM sales_history
+      WHERE cold_storage_id = ${coldStorageId}
+        AND is_self_sale = 1
+        AND sale_year = ${year}
+        AND (due_amount > 0 OR extra_due_to_merchant > 0)
+      GROUP BY farmer_name, contact_number, village
+      HAVING SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)) > 0
+    `);
+    const selfSales = selfSalesResult.rows as { farmer_name: string; contact_number: string; village: string; total_due: number }[];
+
+    // Map to track farmer dues by unique key (farmerName + contactNumber + village)
+    const farmerDuesMap = new Map<string, { id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }>();
+
+    // Add receivables from openingReceivables
+    for (const f of farmers) {
+      if (!f.farmerName || !f.contactNumber || !f.village) continue;
+      const remainingDue = f.dueAmount - (f.paidAmount || 0);
+      if (remainingDue <= 0) continue;
+      
+      const key = `${f.farmerName.toLowerCase()}_${f.contactNumber}_${f.village.toLowerCase()}`;
+      const existing = farmerDuesMap.get(key);
+      if (existing) {
+        existing.totalDue += remainingDue;
+      } else {
+        farmerDuesMap.set(key, {
           id: f.id,
-          farmerName: f.farmerName!,
-          contactNumber: f.contactNumber!,
-          village: f.village!,
+          farmerName: f.farmerName,
+          contactNumber: f.contactNumber,
+          village: f.village,
           totalDue: remainingDue
-        };
-      })
+        });
+      }
+    }
+
+    // Add dues from self sales
+    for (const sale of selfSales) {
+      if (!sale.farmer_name || !sale.contact_number || !sale.village) continue;
+      const key = `${sale.farmer_name.toLowerCase()}_${sale.contact_number}_${sale.village.toLowerCase()}`;
+      const existing = farmerDuesMap.get(key);
+      if (existing) {
+        existing.totalDue += sale.total_due;
+      } else {
+        // Generate a synthetic id for self-sale farmers (they have no receivable entry)
+        farmerDuesMap.set(key, {
+          id: `self_sale_${sale.farmer_name}_${sale.contact_number}_${sale.village}`,
+          farmerName: sale.farmer_name,
+          contactNumber: sale.contact_number,
+          village: sale.village,
+          totalDue: sale.total_due
+        });
+      }
+    }
+
+    return Array.from(farmerDuesMap.values())
       .filter(f => f.totalDue > 0)
       .sort((a, b) => a.farmerName.toLowerCase().localeCompare(b.farmerName.toLowerCase()));
   }
 
-  async createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
-    // Get the selected farmer receivable with coldStorageId verification for tenant isolation
-    const [selectedReceivable] = await db.select()
-      .from(openingReceivables)
-      .where(and(
-        eq(openingReceivables.id, data.farmerReceivableId),
-        eq(openingReceivables.coldStorageId, data.coldStorageId)
-      ));
+  async createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
+    // Check if this is a self-sale farmer payment (synthetic ID)
+    const isSelfSalePayment = data.farmerReceivableId.startsWith("self_sale_");
     
-    if (!selectedReceivable) {
-      throw new Error("Farmer receivable not found");
-    }
-    
-    // Validate payerType is farmer
-    if (selectedReceivable.payerType !== "farmer") {
-      throw new Error("Selected receivable is not a farmer receivable");
-    }
-    
-    // Get the farmer's identity for display name and for finding all their receivables
-    const farmerIdentity = {
-      farmerName: selectedReceivable.farmerName,
-      contactNumber: selectedReceivable.contactNumber,
-      village: selectedReceivable.village,
-    };
-    
-    // Get all farmer receivables for this farmer (FIFO by createdAt)
-    const allFarmerReceivables = await db.select()
-      .from(openingReceivables)
-      .where(and(
-        eq(openingReceivables.coldStorageId, data.coldStorageId),
-        eq(openingReceivables.payerType, "farmer"),
-        eq(openingReceivables.farmerName, farmerIdentity.farmerName!),
-        eq(openingReceivables.contactNumber, farmerIdentity.contactNumber!),
-        eq(openingReceivables.village, farmerIdentity.village!)
-      ))
-      .orderBy(openingReceivables.createdAt);
-    
-    // Calculate total due before payment for all farmer's receivables
+    let farmerIdentity: { farmerName: string; contactNumber: string; village: string };
     let totalDueBefore = 0;
-    for (const receivable of allFarmerReceivables) {
-      const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
-      if (remainingDue > 0) {
-        totalDueBefore += remainingDue;
+    let allFarmerReceivables: typeof openingReceivables.$inferSelect[] = [];
+    let selfSalesWithDues: { id: string; due_amount: number; extra_due_to_merchant: number }[] = [];
+    
+    if (isSelfSalePayment) {
+      // Use explicitly provided farmer details (preferred) or throw error
+      if (data.farmerDetails) {
+        farmerIdentity = {
+          farmerName: data.farmerDetails.farmerName,
+          contactNumber: data.farmerDetails.contactNumber,
+          village: data.farmerDetails.village,
+        };
+      } else {
+        throw new Error("Farmer details are required for self-sale payments");
+      }
+      
+      // Get self-sales with dues for this farmer
+      const selfSalesResult = await db.execute(sql`
+        SELECT id, due_amount, extra_due_to_merchant
+        FROM sales_history
+        WHERE cold_storage_id = ${data.coldStorageId}
+          AND is_self_sale = 1
+          AND farmer_name = ${farmerIdentity.farmerName}
+          AND contact_number = ${farmerIdentity.contactNumber}
+          AND village = ${farmerIdentity.village}
+          AND (due_amount > 0 OR extra_due_to_merchant > 0)
+        ORDER BY sold_at ASC
+      `);
+      selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number }[];
+      
+      // Calculate total due
+      for (const sale of selfSalesWithDues) {
+        totalDueBefore += (sale.due_amount || 0) + (sale.extra_due_to_merchant || 0);
+      }
+    } else {
+      // Regular receivable payment flow
+      const [selectedReceivable] = await db.select()
+        .from(openingReceivables)
+        .where(and(
+          eq(openingReceivables.id, data.farmerReceivableId),
+          eq(openingReceivables.coldStorageId, data.coldStorageId)
+        ));
+      
+      if (!selectedReceivable) {
+        throw new Error("Farmer receivable not found");
+      }
+      
+      if (selectedReceivable.payerType !== "farmer") {
+        throw new Error("Selected receivable is not a farmer receivable");
+      }
+      
+      farmerIdentity = {
+        farmerName: selectedReceivable.farmerName!,
+        contactNumber: selectedReceivable.contactNumber!,
+        village: selectedReceivable.village!,
+      };
+      
+      // Get all farmer receivables for this farmer (FIFO by createdAt)
+      allFarmerReceivables = await db.select()
+        .from(openingReceivables)
+        .where(and(
+          eq(openingReceivables.coldStorageId, data.coldStorageId),
+          eq(openingReceivables.payerType, "farmer"),
+          eq(openingReceivables.farmerName, farmerIdentity.farmerName),
+          eq(openingReceivables.contactNumber, farmerIdentity.contactNumber),
+          eq(openingReceivables.village, farmerIdentity.village)
+        ))
+        .orderBy(openingReceivables.createdAt);
+      
+      // Calculate total due from receivables
+      for (const receivable of allFarmerReceivables) {
+        const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
+        if (remainingDue > 0) {
+          totalDueBefore += remainingDue;
+        }
+      }
+      
+      // Also get self-sales with dues for this farmer (to include in total due calculation)
+      const selfSalesResult = await db.execute(sql`
+        SELECT id, due_amount, extra_due_to_merchant
+        FROM sales_history
+        WHERE cold_storage_id = ${data.coldStorageId}
+          AND is_self_sale = 1
+          AND farmer_name = ${farmerIdentity.farmerName}
+          AND contact_number = ${farmerIdentity.contactNumber}
+          AND village = ${farmerIdentity.village}
+          AND (due_amount > 0 OR extra_due_to_merchant > 0)
+        ORDER BY sold_at ASC
+      `);
+      selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number }[];
+      
+      for (const sale of selfSalesWithDues) {
+        totalDueBefore += (sale.due_amount || 0) + (sale.extra_due_to_merchant || 0);
       }
     }
     
@@ -2076,10 +2180,12 @@ export class DatabaseStorage implements IStorage {
     
     // Apply payment in FIFO order
     let remainingAmount = data.amount;
-    let receivablesUpdated = 0;
+    let recordsUpdated = 0;
     let totalApplied = 0;
     
+    // First apply to receivables (if any)
     for (const receivable of allFarmerReceivables) {
+      if (remainingAmount <= 0) break;
       const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
       if (remainingDue <= 0) continue;
       
@@ -2095,10 +2201,47 @@ export class DatabaseStorage implements IStorage {
         
         remainingAmount -= amountToApply;
         totalApplied += amountToApply;
-        receivablesUpdated++;
+        recordsUpdated++;
       }
-      
+    }
+    
+    // Then apply to self-sales (FIFO by sold_at)
+    for (const sale of selfSalesWithDues) {
       if (remainingAmount <= 0) break;
+      
+      const saleTotalDue = (sale.due_amount || 0) + (sale.extra_due_to_merchant || 0);
+      if (saleTotalDue <= 0) continue;
+      
+      const amountToApply = Math.min(remainingAmount, saleTotalDue);
+      
+      if (amountToApply > 0) {
+        // Apply to due_amount first, then extra_due_to_merchant
+        let toApply = amountToApply;
+        const dueAmount = sale.due_amount || 0;
+        const extraDue = sale.extra_due_to_merchant || 0;
+        
+        const applyToDue = Math.min(toApply, dueAmount);
+        toApply -= applyToDue;
+        const applyToExtra = Math.min(toApply, extraDue);
+        
+        await db.execute(sql`
+          UPDATE sales_history
+          SET 
+            due_amount = due_amount - ${applyToDue},
+            paid_amount = paid_amount + ${applyToDue},
+            extra_due_to_merchant = extra_due_to_merchant - ${applyToExtra},
+            payment_status = CASE 
+              WHEN (due_amount - ${applyToDue}) + (extra_due_to_merchant - ${applyToExtra}) <= 0 THEN 'paid'
+              WHEN (paid_amount + ${applyToDue}) > 0 THEN 'partial'
+              ELSE payment_status
+            END
+          WHERE id = ${sale.id}
+        `);
+        
+        remainingAmount -= amountToApply;
+        totalApplied += amountToApply;
+        recordsUpdated++;
+      }
     }
     
     // Calculate total due after payment
@@ -2126,7 +2269,7 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     
-    return { receipt, salesUpdated: receivablesUpdated };
+    return { receipt, salesUpdated: recordsUpdated };
   }
 
   async getCashReceipts(coldStorageId: string): Promise<CashReceipt[]> {

@@ -492,7 +492,7 @@ export default function CashManagement() {
   });
 
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
+    mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; farmerDetails?: { farmerName: string; contactNumber: string; village: string }; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -862,10 +862,18 @@ export default function CashManagement() {
       return;
     }
 
+    // For farmer payments, include explicit farmer details to avoid synthetic ID parsing issues
+    const selectedFarmer = payerType === "farmer" ? farmerReceivablesWithDues.find(f => f.id === farmerReceivableId) : undefined;
+    
     createReceiptMutation.mutate({
       payerType,
       buyerName: finalBuyerName,
       farmerReceivableId,
+      farmerDetails: selectedFarmer ? {
+        farmerName: selectedFarmer.farmerName,
+        contactNumber: selectedFarmer.contactNumber,
+        village: selectedFarmer.village,
+      } : undefined,
       receiptType,
       accountId: receiptType === "account" ? accountId : undefined,
       amount: parseFloat(inwardAmount),
