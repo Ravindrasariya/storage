@@ -1949,6 +1949,43 @@ export async function registerRoutes(
     }
   });
 
+  // Farmer to Buyer debt transfer schema
+  const farmerToBuyerTransferSchema = z.object({
+    farmerName: z.string().min(1),
+    village: z.string().min(1),
+    contactNumber: z.string().min(1),
+    toBuyerName: z.string().min(1),
+    amount: z.number().positive(),
+    transferDate: z.string().transform((val) => new Date(val)),
+    remarks: z.string().optional(),
+  });
+
+  app.post("/api/farmer-to-buyer-transfer", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const validatedData = farmerToBuyerTransferSchema.parse(req.body);
+      
+      const result = await storage.createFarmerToBuyerTransfer({
+        coldStorageId,
+        farmerName: validatedData.farmerName,
+        village: validatedData.village,
+        contactNumber: validatedData.contactNumber,
+        toBuyerName: validatedData.toBuyerName,
+        amount: validatedData.amount,
+        transferDate: validatedData.transferDate,
+        remarks: validatedData.remarks || null,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid transfer data", details: error.errors });
+      }
+      console.error("Farmer to buyer transfer error:", error);
+      res.status(500).json({ error: "Failed to record farmer to buyer transfer" });
+    }
+  });
+
   const createCashReceiptSchema = z.object({
     payerType: z.enum(["cold_merchant", "sales_goods", "kata", "others", "farmer"]),
     buyerName: z.string().optional(),

@@ -56,13 +56,18 @@ interface PersistedFormState {
   transferAmount: string;
   transferDate: string;
   transferRemarks: string;
-  transferTypeMode: "internal" | "buyer";
+  transferTypeMode: "internal" | "buyer" | "farmer";
   buyerTransferFrom: string;
   buyerTransferTo: string;
   selectedSaleId: string;
   buyerTransferAmount: string;
   buyerTransferDate: string;
   buyerTransferRemarks: string;
+  farmerTransferFrom: string;
+  farmerTransferToBuyer: string;
+  farmerTransferAmount: string;
+  farmerTransferDate: string;
+  farmerTransferRemarks: string;
 }
 
 function getStateKey(coldStorageId: string): string {
@@ -157,7 +162,7 @@ export default function CashManagement() {
   const [transferRemarks, setTransferRemarks] = useState(persistedState?.transferRemarks || "");
   
   // Buyer-to-buyer transfer state
-  const [transferTypeMode, setTransferTypeMode] = useState<"internal" | "buyer">(persistedState?.transferTypeMode || "internal");
+  const [transferTypeMode, setTransferTypeMode] = useState<"internal" | "buyer" | "farmer">(persistedState?.transferTypeMode || "internal");
   const [buyerTransferFrom, setBuyerTransferFrom] = useState(persistedState?.buyerTransferFrom || "");
   const [buyerTransferTo, setBuyerTransferTo] = useState(persistedState?.buyerTransferTo || "");
   const [selectedSaleId, setSelectedSaleId] = useState(persistedState?.selectedSaleId || "");
@@ -166,6 +171,13 @@ export default function CashManagement() {
   const [buyerTransferRemarks, setBuyerTransferRemarks] = useState(persistedState?.buyerTransferRemarks || "");
   const [showBuyerFromSuggestions, setShowBuyerFromSuggestions] = useState(false);
   const [showBuyerToSuggestions, setShowBuyerToSuggestions] = useState(false);
+  
+  // Farmer-to-buyer transfer state
+  const [farmerTransferFrom, setFarmerTransferFrom] = useState(persistedState?.farmerTransferFrom || "");
+  const [farmerTransferToBuyer, setFarmerTransferToBuyer] = useState(persistedState?.farmerTransferToBuyer || "");
+  const [farmerTransferAmount, setFarmerTransferAmount] = useState(persistedState?.farmerTransferAmount || "");
+  const [farmerTransferDate, setFarmerTransferDate] = useState(persistedState?.farmerTransferDate || todayDate);
+  const [farmerTransferRemarks, setFarmerTransferRemarks] = useState(persistedState?.farmerTransferRemarks || "");
 
   const [filterTransactionType, setFilterTransactionType] = useState<"all" | "inward" | "expense" | "self" | "buyerTransfer">("all");
   const [filterPaymentMode, setFilterPaymentMode] = useState<string>("");
@@ -250,6 +262,11 @@ export default function CashManagement() {
       buyerTransferAmount,
       buyerTransferDate,
       buyerTransferRemarks,
+      farmerTransferFrom,
+      farmerTransferToBuyer,
+      farmerTransferAmount,
+      farmerTransferDate,
+      farmerTransferRemarks,
     };
     sessionStorage.setItem(getStateKey(coldStorageId), JSON.stringify(stateToSave));
   }, [
@@ -257,7 +274,8 @@ export default function CashManagement() {
     inwardAmount, receivedDate, inwardRemarks, expenseType, expenseReceiverName, expensePaymentMode,
     expenseAccountId, expenseAmount, expenseDate, expenseRemarks, transferFromAccount, transferToAccount,
     transferAmount, transferDate, transferRemarks, transferTypeMode, buyerTransferFrom, buyerTransferTo,
-    selectedSaleId, buyerTransferAmount, buyerTransferDate, buyerTransferRemarks
+    selectedSaleId, buyerTransferAmount, buyerTransferDate, buyerTransferRemarks,
+    farmerTransferFrom, farmerTransferToBuyer, farmerTransferAmount, farmerTransferDate, farmerTransferRemarks
   ]);
 
   // Auto-save form state whenever any form field changes
@@ -302,6 +320,11 @@ export default function CashManagement() {
         if (loaded.buyerTransferAmount) setBuyerTransferAmount(loaded.buyerTransferAmount);
         if (loaded.buyerTransferDate) setBuyerTransferDate(loaded.buyerTransferDate);
         if (loaded.buyerTransferRemarks) setBuyerTransferRemarks(loaded.buyerTransferRemarks);
+        if (loaded.farmerTransferFrom) setFarmerTransferFrom(loaded.farmerTransferFrom);
+        if (loaded.farmerTransferToBuyer) setFarmerTransferToBuyer(loaded.farmerTransferToBuyer);
+        if (loaded.farmerTransferAmount) setFarmerTransferAmount(loaded.farmerTransferAmount);
+        if (loaded.farmerTransferDate) setFarmerTransferDate(loaded.farmerTransferDate);
+        if (loaded.farmerTransferRemarks) setFarmerTransferRemarks(loaded.farmerTransferRemarks);
       }
       setHasLoadedPersistedState(true);
     }

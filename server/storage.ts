@@ -277,6 +277,17 @@ export interface IStorage {
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
   getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
+  // Farmer to Buyer debt transfer
+  createFarmerToBuyerTransfer(data: {
+    coldStorageId: string;
+    farmerName: string;
+    village: string;
+    contactNumber: string;
+    toBuyerName: string;
+    amount: number;
+    transferDate: Date;
+    remarks?: string | null;
+  }): Promise<{ success: boolean; receivablesTransferred: number; selfSalesTransferred: number; transactionId: string }>;
   // Update farmer details in all salesHistory entries for a given lotId
   // Also updates buyerName if it matches the "self" pattern (farmer as buyer)
   updateSalesHistoryFarmerDetails(
@@ -4398,6 +4409,103 @@ export class DatabaseStorage implements IStorage {
     `);
     
     return result.length;
+  }
+
+  // Farmer to Buyer debt transfer - FIFO applies to receivables first, then self-sales
+  async createFarmerToBuyerTransfer(data: {
+    coldStorageId: string;
+    farmerName: string;
+    village: string;
+    contactNumber: string;
+    toBuyerName: string;
+    amount: number;
+    transferDate: Date;
+    remarks?: string | null;
+  }): Promise<{ success: boolean; receivablesTransferred: number; selfSalesTransferred: number; transactionId: string }> {
+    let remainingAmount = data.amount;
+    let receivablesTransferred = 0;
+    let selfSalesTransferred = 0;
+
+    // Step 1: Apply to opening_receivables first (FIFO by createdAt)
+    const receivablesResult = await db.execute(sql`
+      SELECT id, due_amount, paid_amount
+      FROM opening_receivables
+      WHERE cold_storage_id = ${data.coldStorageId}
+        AND payer_type = 'farmer'
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+        AND TRIM(contact_number) = TRIM(${data.contactNumber})
+        AND (due_amount - COALESCE(paid_amount, 0)) > 0
+      ORDER BY created_at ASC
+    `);
+
+    for (const row of receivablesResult.rows as { id: string; due_amount: number; paid_amount: number }[]) {
+      if (remainingAmount <= 0) break;
+
+      const receivableId = row.id;
+      const currentDue = row.due_amount;
+      const currentPaid = row.paid_amount || 0;
+      const remainingDue = currentDue - currentPaid;
+      const amountToTransfer = Math.min(remainingAmount, remainingDue);
+
+      // Transfer the receivable amount to the buyer by increasing paid_amount (reduces farmer's receivable)
+      await db.execute(sql`
+        UPDATE opening_receivables
+        SET paid_amount = paid_amount + ${amountToTransfer}
+        WHERE id = ${receivableId}
+      `);
+
+      receivablesTransferred += amountToTransfer;
+      remainingAmount -= amountToTransfer;
+    }
+
+    // Step 2: Apply remaining to self-sales (FIFO by soldAt)
+    if (remainingAmount > 0) {
+      const selfSalesResult = await db.execute(sql`
+        SELECT id, due_amount
+        FROM sales_history
+        WHERE cold_storage_id = ${data.coldStorageId}
+          AND COALESCE(is_self_sale, 0) = 1
+          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+          AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+          AND TRIM(contact_number) = TRIM(${data.contactNumber})
+          AND due_amount > 0
+          AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
+        ORDER BY sold_at ASC
+      `);
+
+      for (const row of selfSalesResult.rows as { id: string; due_amount: number }[]) {
+        if (remainingAmount <= 0) break;
+
+        const saleId = row.id;
+        const currentDue = row.due_amount;
+        const amountToTransfer = Math.min(remainingAmount, currentDue);
+
+        // Transfer the due to the new buyer
+        await db.execute(sql`
+          UPDATE sales_history
+          SET 
+            transfer_to_buyer_name = ${data.toBuyerName},
+            transfer_date = ${data.transferDate},
+            transfer_remarks = ${data.remarks || null},
+            clearance_type = 'transfer'
+          WHERE id = ${saleId}
+        `);
+
+        selfSalesTransferred += amountToTransfer;
+        remainingAmount -= amountToTransfer;
+      }
+    }
+
+    // Generate transaction ID for cash flow record
+    const transactionId = `FT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    return {
+      success: true,
+      receivablesTransferred,
+      selfSalesTransferred,
+      transactionId,
+    };
   }
 
   // Bank Accounts
