@@ -309,7 +309,7 @@ export default function CashManagement() {
 
   // Farmer receivables with dues (for Cash Inward "farmer" payer type)
   const { data: farmerReceivablesWithDues = [] } = useQuery<{ id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>({
-    queryKey: ["/api/farmer-receivables-with-dues", currentYear],
+    queryKey: [`/api/farmer-receivables-with-dues?year=${currentYear}`],
   });
 
   const { data: receipts = [], isLoading: loadingReceipts } = useQuery<CashReceipt[]>({
@@ -516,7 +516,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/sales-goods-buyers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-receivables-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
@@ -757,6 +757,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      // Invalidate all farmer receivables queries (any year)
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -1988,8 +1990,9 @@ export default function CashManagement() {
                   <SelectContent>
                     <SelectItem value="all">{t("allPayerTypes")}</SelectItem>
                     <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
-                    <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
+                    <SelectItem value="farmer">{t("farmer")}</SelectItem>
                     <SelectItem value="kata">{t("kata")}</SelectItem>
+                    <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
                     <SelectItem value="others">{t("others")}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -2235,10 +2238,10 @@ export default function CashManagement() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
-                      <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
-                      <SelectItem value="kata">{t("kata")}</SelectItem>
-                      <SelectItem value="others">{t("others")}</SelectItem>
                       <SelectItem value="farmer">{t("farmer")}</SelectItem>
+                      <SelectItem value="kata">{t("kata")}</SelectItem>
+                      <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
+                      <SelectItem value="others">{t("others")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -3760,10 +3763,10 @@ export default function CashManagement() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
-                          <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
-                          <SelectItem value="kata">{t("kata")}</SelectItem>
-                          <SelectItem value="others">{t("others")}</SelectItem>
                           <SelectItem value="farmer">{t("farmer")}</SelectItem>
+                          <SelectItem value="kata">{t("kata")}</SelectItem>
+                          <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
+                          <SelectItem value="others">{t("others")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -3986,9 +3989,15 @@ export default function CashManagement() {
                     {openingReceivables.map((r) => (
                       <div key={r.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <Badge variant="outline" className="text-xs">{t(r.payerType)}</Badge>
-                            {r.buyerName && <span className="text-sm font-medium">{r.buyerName}</span>}
+                            {r.payerType === "farmer" && r.farmerName ? (
+                              <span className="text-sm font-medium">
+                                {r.farmerName} - {r.contactNumber} - {r.village}
+                              </span>
+                            ) : (
+                              r.buyerName && <span className="text-sm font-medium">{r.buyerName}</span>
+                            )}
                           </div>
                           {r.remarks && <p className="text-xs text-muted-foreground">{r.remarks}</p>}
                           <p className="text-xs text-muted-foreground">
