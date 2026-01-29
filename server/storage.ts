@@ -223,6 +223,7 @@ export interface IStorage {
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
   // FIFO Recomputation
   recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
+  recomputeFarmerPayments(coldStorageId: string, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }>;
   // Admin
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
   // Bill number assignment
@@ -2750,6 +2751,20 @@ export class DatabaseStorage implements IStorage {
         .where(eq(openingReceivables.id, receivable.id));
     }
     
+    // Step 1b: Reset all self-sales for this farmer to original due amounts
+    await db.execute(sql`
+      UPDATE sales_history
+      SET 
+        paid_amount = 0,
+        due_amount = cold_storage_charge,
+        payment_status = 'due'
+      WHERE cold_storage_id = ${coldStorageId}
+        AND is_self_sale = 1
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+        AND contact_number = ${contactNumber}
+    `);
+    
     // Step 2: Get all non-reversed farmer receipts for this farmer
     // Match by buyerName pattern "FarmerName (Village)"
     const activeReceipts = await db.select()
@@ -2796,6 +2811,59 @@ export class DatabaseStorage implements IStorage {
         }
         
         if (remainingAmount <= 0) break;
+      }
+      
+      // Pass 2: Apply remaining to self-sales (FIFO by soldAt)
+      if (remainingAmount > 0) {
+        // Get self-sales for this farmer
+        const selfSales = await db.select()
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            eq(salesHistory.isSelfSale, 1),
+            sql`LOWER(TRIM(${salesHistory.farmerName})) = LOWER(TRIM(${farmerName}))`,
+            sql`LOWER(TRIM(${salesHistory.village})) = LOWER(TRIM(${village}))`,
+            sql`${salesHistory.contactNumber} = ${contactNumber}`,
+            sql`(${salesHistory.dueAmount} > 0 OR ${salesHistory.extraDueToMerchant} > 0)`
+          ))
+          .orderBy(salesHistory.soldAt);
+        
+        for (const sale of selfSales) {
+          if (remainingAmount <= 0) break;
+          
+          const dueAmount = sale.dueAmount || 0;
+          const extraDue = sale.extraDueToMerchant || 0;
+          const totalSaleDue = dueAmount + extraDue;
+          
+          if (totalSaleDue <= 0) continue;
+          
+          const amountToApply = Math.min(remainingAmount, totalSaleDue);
+          
+          // Apply to due_amount first, then to extra_due_to_merchant
+          let toApply = amountToApply;
+          const applyToDue = Math.min(toApply, dueAmount);
+          toApply -= applyToDue;
+          const applyToExtra = Math.min(toApply, extraDue);
+          
+          const newDueAmount = Math.round((dueAmount - applyToDue) * 100) / 100;
+          const newExtraDue = Math.round((extraDue - applyToExtra) * 100) / 100;
+          const newPaidAmount = Math.round(((sale.paidAmount || 0) + applyToDue) * 100) / 100;
+          
+          // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
+          const paymentStatusToSet = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
+          
+          await db.update(salesHistory)
+            .set({
+              dueAmount: newDueAmount,
+              paidAmount: newPaidAmount,
+              extraDueToMerchant: newExtraDue,
+              paymentStatus: paymentStatusToSet
+            })
+            .where(eq(salesHistory.id, sale.id));
+          
+          remainingAmount -= amountToApply;
+          receivablesUpdated++;
+        }
       }
     }
     

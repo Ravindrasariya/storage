@@ -1506,20 +1506,27 @@ export async function registerRoutes(
         }
       }
       
-      // If cold storage charges changed, trigger FIFO recalculation for the CurrentDueBuyerName
+      // If cold storage charges changed, trigger FIFO recalculation
       const chargeFieldsChanged = validatedData.coldStorageCharge !== undefined || 
         validatedData.coldCharge !== undefined || 
         validatedData.hammali !== undefined;
       
       if (chargeFieldsChanged && updated) {
-        // Get CurrentDueBuyerName: transferToBuyerName if not blank, else buyerName
-        const currentDueBuyerName = (updated.transferToBuyerName && updated.transferToBuyerName.trim() !== '') 
-          ? updated.transferToBuyerName 
-          : updated.buyerName;
-        
-        if (currentDueBuyerName) {
-          // Trigger FIFO recalculation for this buyer (signature: buyerName, coldStorageId)
-          await storage.recomputeBuyerPayments(currentDueBuyerName, coldStorageId);
+        // Check if this is a self-sale - trigger farmer FIFO instead of buyer FIFO
+        if (updated.isSelfSale === 1 && updated.farmerName && updated.village) {
+          // For self-sales, trigger farmer FIFO recalculation
+          const buyerDisplayName = `${updated.farmerName} (${updated.village})`;
+          await storage.recomputeFarmerPayments(coldStorageId, buyerDisplayName);
+        } else {
+          // Get CurrentDueBuyerName: transferToBuyerName if not blank, else buyerName
+          const currentDueBuyerName = (updated.transferToBuyerName && updated.transferToBuyerName.trim() !== '') 
+            ? updated.transferToBuyerName 
+            : updated.buyerName;
+          
+          if (currentDueBuyerName) {
+            // Trigger FIFO recalculation for this buyer (signature: buyerName, coldStorageId)
+            await storage.recomputeBuyerPayments(currentDueBuyerName, coldStorageId);
+          }
         }
       }
       
@@ -1572,14 +1579,24 @@ export async function registerRoutes(
         }
       }
 
+      // Check if this is a self-sale before reversing (for farmer FIFO trigger)
+      const isSelfSale = sale.isSelfSale === 1;
+      const farmerName = sale.farmerName;
+      const village = sale.village;
+      
       const result = await storage.reverseSale(req.params.id);
       if (!result.success) {
         const statusCode = result.errorType === "not_found" ? 404 : 400;
         return res.status(statusCode).json({ error: result.message });
       }
 
-      // Trigger FIFO recomputation for the affected buyer to redistribute payments
-      if (result.buyerName && result.coldStorageId) {
+      // Trigger appropriate FIFO recomputation
+      if (isSelfSale && farmerName && village && result.coldStorageId) {
+        // For self-sales, trigger farmer FIFO recalculation
+        const buyerDisplayName = `${farmerName} (${village})`;
+        await storage.recomputeFarmerPayments(result.coldStorageId, buyerDisplayName);
+      } else if (result.buyerName && result.coldStorageId) {
+        // For regular sales, trigger buyer FIFO recomputation
         await storage.recomputeBuyerPayments(result.buyerName, result.coldStorageId);
       }
 
