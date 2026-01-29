@@ -2724,12 +2724,32 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(openingReceivables.createdAt);
     
-    if (farmerReceivables.length === 0) {
-      return { receivablesUpdated: 0 };
+    // Get the contactNumber - try from receivables first, then from self-sales
+    let contactNumber: string | null = null;
+    
+    if (farmerReceivables.length > 0) {
+      contactNumber = farmerReceivables[0].contactNumber;
+    } else {
+      // No receivables found - try to get contact number from self-sales
+      const selfSalesForFarmer = await db.select()
+        .from(salesHistory)
+        .where(and(
+          eq(salesHistory.coldStorageId, coldStorageId),
+          eq(salesHistory.isSelfSale, 1),
+          sql`LOWER(TRIM(${salesHistory.farmerName})) = LOWER(TRIM(${farmerName}))`,
+          sql`LOWER(TRIM(${salesHistory.village})) = LOWER(TRIM(${village}))`
+        ))
+        .limit(1);
+      
+      if (selfSalesForFarmer.length > 0) {
+        contactNumber = selfSalesForFarmer[0].contactNumber;
+      }
     }
     
-    // Get the contactNumber from the first matching receivable for exact matching
-    const contactNumber = farmerReceivables[0].contactNumber;
+    // If we couldn't find a contact number from either source, nothing to recompute
+    if (!contactNumber) {
+      return { receivablesUpdated: 0 };
+    }
     
     // Now get all receivables for this exact farmer (name + village + contactNumber)
     // This matches the exact criteria used in createFarmerReceivablePayment
