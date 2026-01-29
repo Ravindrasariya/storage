@@ -185,6 +185,8 @@ export const salesHistory = pgTable("sales_history", {
   advanceDeduction: real("advance_deduction").default(0), // Advance paid to farmer
   freightDeduction: real("freight_deduction").default(0), // Freight / Gadi Bhada charges
   otherDeduction: real("other_deduction").default(0), // Other miscellaneous deductions
+  // Self sale flag - when farmer is the buyer (Self checkbox checked)
+  isSelfSale: integer("is_self_sale").default(0), // 1 = farmer buying own produce, dues tracked under farmer not cold_merchant
 });
 
 // Edit history for tracking changes
