@@ -606,16 +606,24 @@ export default function SalesHistoryPage() {
                       <TableCell className="text-right font-medium">
                         <div className="flex items-center justify-end gap-1">
                           <Currency amount={calculateTotalColdCharges(sale)} />
-                          {sale.transferToBuyerName && sale.transferToBuyerName.trim() && (
+                          {sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed !== 1 && (
                             <ArrowLeftRight className="h-4 w-4 text-purple-600" />
+                          )}
+                          {sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed === 1 && (
+                            <Badge variant="secondary" className="text-xs ml-1">{t("reversed")}</Badge>
                           )}
                         </div>
                       </TableCell>
                       <TableCell className="text-xs">
-                        {sale.transferToBuyerName && sale.transferToBuyerName.trim() ? (
+                        {sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed !== 1 ? (
                           <div className="flex flex-col">
                             <span className="line-through text-muted-foreground">{sale.buyerName || "-"}</span>
                             <span className="text-purple-600 font-medium">{sale.transferToBuyerName}</span>
+                          </div>
+                        ) : sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed === 1 ? (
+                          <div className="flex flex-col">
+                            <span>{sale.buyerName || "-"}</span>
+                            <span className="line-through text-gray-400 text-xs">{sale.transferToBuyerName}</span>
                           </div>
                         ) : (
                           sale.buyerName || "-"
