@@ -224,6 +224,7 @@ export interface IStorage {
   // FIFO Recomputation
   recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
   recomputeFarmerPayments(coldStorageId: string, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }>;
+  recomputeFarmerPaymentsWithDiscounts(coldStorageId: string, farmerName: string, contactNumber: string, village: string): Promise<{ receivablesUpdated: number; selfSalesUpdated: number }>;
   // Admin
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
   // Bill number assignment
@@ -4306,8 +4307,31 @@ export class DatabaseStorage implements IStorage {
     
     // Collect unique buyer names (normalized for case-insensitivity)
     const affectedBuyers = new Set<string>();
+    // Also track farmers with self-sale allocations for separate recomputation
+    const affectedFarmers: { name: string; phone: string; village: string }[] = [];
+    
     for (const allocation of allocations) {
-      affectedBuyers.add(allocation.buyerName.trim());
+      const buyerName = allocation.buyerName.trim();
+      affectedBuyers.add(buyerName);
+      
+      // Check if this is a self-sale pattern: "FarmerName - Phone - Village"
+      // Self-sale pattern has exactly 2 " - " separators, phone can be any digits
+      const selfSaleMatch = buyerName.match(/^(.+?)\s*-\s*(\d+)\s*-\s*(.+)$/);
+      if (selfSaleMatch) {
+        // Normalize internal whitespace (multiple spaces to single space)
+        const farmerName = selfSaleMatch[1].trim().replace(/\s+/g, ' ');
+        const phone = selfSaleMatch[2].trim();
+        const village = selfSaleMatch[3].trim().replace(/\s+/g, ' ');
+        // Check if we already have this farmer in the list
+        const exists = affectedFarmers.some(f => 
+          f.name.toLowerCase() === farmerName.toLowerCase() &&
+          f.phone === phone &&
+          f.village.toLowerCase() === village.toLowerCase()
+        );
+        if (!exists) {
+          affectedFarmers.push({ name: farmerName, phone, village });
+        }
+      }
     }
     
     // Trigger FIFO recomputation for each affected buyer
@@ -4316,7 +4340,303 @@ export class DatabaseStorage implements IStorage {
       await this.recomputeBuyerPayments(buyerName, discount.coldStorageId);
     }
     
+    // For self-sale allocations, also recompute farmer dues (receivables + self-sales with discounts)
+    // This handles cases where the self-sale buyer pattern doesn't match due to spacing differences
+    for (const farmer of affectedFarmers) {
+      await this.recomputeFarmerPaymentsWithDiscounts(
+        discount.coldStorageId, 
+        farmer.name, 
+        farmer.phone, 
+        farmer.village
+      );
+    }
+    
     return { success: true };
+  }
+  
+  // Recompute farmer payments including both receipts AND discounts for self-sales
+  // Uses farmer identity components (name, phone, village) for exact matching
+  async recomputeFarmerPaymentsWithDiscounts(
+    coldStorageId: string, 
+    farmerName: string, 
+    contactNumber: string, 
+    village: string
+  ): Promise<{ receivablesUpdated: number; selfSalesUpdated: number }> {
+    // Step 1: Reset all farmer receivables paidAmount to 0
+    await db.execute(sql`
+      UPDATE opening_receivables
+      SET paid_amount = 0
+      WHERE cold_storage_id = ${coldStorageId}
+        AND payer_type = 'farmer'
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+        AND TRIM(contact_number) = TRIM(${contactNumber})
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+    `);
+    
+    // Step 2: Reset all self-sales for this farmer to original due amounts
+    // Match by farmer composite key (name + phone + village)
+    // Also match by buyer pattern which contains these elements
+    const selfSalePattern = `${farmerName.trim()} - ${contactNumber.trim()} - ${village.trim()}`;
+    
+    await db.execute(sql`
+      UPDATE sales_history
+      SET 
+        paid_amount = 0,
+        discount_allocated = 0,
+        due_amount = cold_storage_charge,
+        extra_due_to_merchant = COALESCE(extra_due_to_merchant_original, 0),
+        payment_status = CASE 
+          WHEN cold_storage_charge + COALESCE(extra_due_to_merchant_original, 0) < 1 THEN 'paid'
+          ELSE 'due'
+        END
+      WHERE cold_storage_id = ${coldStorageId}
+        AND (
+          (COALESCE(is_self_sale, 0) = 1 
+           AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+           AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+           AND TRIM(contact_number) = TRIM(${contactNumber}))
+          OR
+          (LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${selfSalePattern})))
+        )
+    `);
+    
+    // Step 3: Get farmer receipts (payerType = 'farmer') for this farmer
+    // Match by buyerName pattern "FarmerName (Village)"
+    const buyerDisplayName = `${farmerName.trim()} (${village.trim()})`;
+    
+    const activeReceipts = await db.select()
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.payerType, "farmer"),
+        eq(cashReceipts.isReversed, 0),
+        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName}))`
+      ))
+      .orderBy(cashReceipts.receivedAt);
+    
+    // Step 4: Get non-reversed discounts for this farmer that affect self-sales
+    const activeDiscounts = await db.select()
+      .from(discounts)
+      .where(and(
+        eq(discounts.coldStorageId, coldStorageId),
+        eq(discounts.isReversed, 0),
+        sql`LOWER(TRIM(${discounts.farmerName})) = LOWER(TRIM(${farmerName}))`,
+        sql`LOWER(TRIM(${discounts.village})) = LOWER(TRIM(${village}))`,
+        sql`TRIM(${discounts.contactNumber}) = TRIM(${contactNumber})`
+      ));
+    
+    // Find discounts with self-sale allocations
+    type DiscountWithAllocation = { discount: typeof activeDiscounts[0]; amount: number };
+    const relevantDiscounts: DiscountWithAllocation[] = [];
+    
+    for (const discount of activeDiscounts) {
+      const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
+      for (const allocation of allocations) {
+        // Check if allocation is to self-sale pattern (tolerant regex for any digits)
+        const allocMatch = allocation.buyerName.trim().match(/^(.+?)\s*-\s*(\d+)\s*-\s*(.+)$/);
+        if (allocMatch) {
+          // Normalize internal whitespace for comparison
+          const allocName = allocMatch[1].trim().replace(/\s+/g, ' ').toLowerCase();
+          const allocPhone = allocMatch[2].trim();
+          const allocVillage = allocMatch[3].trim().replace(/\s+/g, ' ').toLowerCase();
+          // Match against the farmer (normalized)
+          const normalizedFarmerName = farmerName.trim().replace(/\s+/g, ' ').toLowerCase();
+          const normalizedVillage = village.trim().replace(/\s+/g, ' ').toLowerCase();
+          if (allocName === normalizedFarmerName &&
+              allocPhone === contactNumber.trim() &&
+              allocVillage === normalizedVillage) {
+            relevantDiscounts.push({ discount, amount: allocation.amount });
+          }
+        }
+      }
+    }
+    
+    // Step 5: Merge receipts and discounts into timeline and sort by date
+    type Transaction = 
+      | { type: 'receipt'; data: typeof activeReceipts[0]; date: Date }
+      | { type: 'discount'; data: DiscountWithAllocation; date: Date };
+    
+    const transactions: Transaction[] = [];
+    
+    for (const receipt of activeReceipts) {
+      transactions.push({
+        type: 'receipt',
+        data: receipt,
+        date: new Date(receipt.receivedAt || receipt.createdAt)
+      });
+    }
+    
+    for (const rd of relevantDiscounts) {
+      transactions.push({
+        type: 'discount',
+        data: rd,
+        date: new Date(rd.discount.discountDate || rd.discount.createdAt)
+      });
+    }
+    
+    // Sort by date for FIFO order
+    transactions.sort((a, b) => a.date.getTime() - b.date.getTime());
+    
+    let receivablesUpdated = 0;
+    let selfSalesUpdated = 0;
+    
+    // Step 6: Replay transactions in chronological order
+    for (const txn of transactions) {
+      if (txn.type === 'receipt') {
+        // Apply receipt FIFO: receivables first, then self-sales
+        let remainingAmount = txn.data.amount;
+        
+        // Pass 1: Farmer receivables
+        const currentReceivables = await db.select()
+          .from(openingReceivables)
+          .where(and(
+            eq(openingReceivables.coldStorageId, coldStorageId),
+            eq(openingReceivables.payerType, "farmer"),
+            sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
+            sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
+            sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`,
+            sql`(${openingReceivables.dueAmount} - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
+          ))
+          .orderBy(openingReceivables.createdAt);
+        
+        for (const receivable of currentReceivables) {
+          if (remainingAmount <= 0) break;
+          const remainingDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+          const amountToApply = Math.min(remainingAmount, remainingDue);
+          
+          if (amountToApply > 0) {
+            await db.update(openingReceivables)
+              .set({ paidAmount: (receivable.paidAmount || 0) + amountToApply })
+              .where(eq(openingReceivables.id, receivable.id));
+            remainingAmount -= amountToApply;
+            receivablesUpdated++;
+          }
+        }
+        
+        // Pass 2: Self-sales
+        if (remainingAmount > 0) {
+          const selfSales = await db.select()
+            .from(salesHistory)
+            .where(and(
+              eq(salesHistory.coldStorageId, coldStorageId),
+              sql`(
+                (COALESCE(is_self_sale, 0) = 1 
+                 AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+                 AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+                 AND TRIM(contact_number) = TRIM(${contactNumber}))
+                OR
+                (LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${selfSalePattern})))
+              )`,
+              sql`(due_amount > 0 OR extra_due_to_merchant > 0)`
+            ))
+            .orderBy(salesHistory.soldAt);
+          
+          for (const sale of selfSales) {
+            if (remainingAmount <= 0) break;
+            const dueAmount = sale.dueAmount || 0;
+            const extraDue = sale.extraDueToMerchant || 0;
+            const totalDue = dueAmount + extraDue;
+            if (totalDue <= 0) continue;
+            
+            const amountToApply = Math.min(remainingAmount, totalDue);
+            const applyToDue = Math.min(amountToApply, dueAmount);
+            const applyToExtra = Math.min(amountToApply - applyToDue, extraDue);
+            
+            const newDueAmount = Math.round((dueAmount - applyToDue) * 100) / 100;
+            const newExtraDue = Math.round((extraDue - applyToExtra) * 100) / 100;
+            const newPaidAmount = Math.round(((sale.paidAmount || 0) + applyToDue + applyToExtra) * 100) / 100;
+            const paymentStatus = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
+            
+            await db.update(salesHistory)
+              .set({
+                dueAmount: newDueAmount,
+                paidAmount: newPaidAmount,
+                extraDueToMerchant: newExtraDue,
+                paymentStatus
+              })
+              .where(eq(salesHistory.id, sale.id));
+            
+            remainingAmount -= amountToApply;
+            selfSalesUpdated++;
+          }
+        }
+      } else {
+        // Apply discount FIFO: receivables first, then self-sales
+        let remainingAmount = txn.data.amount;
+        
+        // Pass 1: Apply discount to farmer receivables first
+        const discountReceivables = await db.select()
+          .from(openingReceivables)
+          .where(and(
+            eq(openingReceivables.coldStorageId, coldStorageId),
+            eq(openingReceivables.payerType, "farmer"),
+            sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
+            sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
+            sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`,
+            sql`(${openingReceivables.dueAmount} - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
+          ))
+          .orderBy(openingReceivables.createdAt);
+        
+        for (const receivable of discountReceivables) {
+          if (remainingAmount <= 0) break;
+          const remainingDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+          const amountToApply = Math.min(remainingAmount, remainingDue);
+          
+          if (amountToApply > 0) {
+            await db.update(openingReceivables)
+              .set({ paidAmount: (receivable.paidAmount || 0) + amountToApply })
+              .where(eq(openingReceivables.id, receivable.id));
+            remainingAmount -= amountToApply;
+            receivablesUpdated++;
+          }
+        }
+        
+        // Pass 2: Apply remaining discount to self-sales
+        if (remainingAmount > 0) {
+          const selfSales = await db.select()
+            .from(salesHistory)
+            .where(and(
+              eq(salesHistory.coldStorageId, coldStorageId),
+              sql`(
+                (COALESCE(is_self_sale, 0) = 1 
+                 AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+                 AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+                 AND TRIM(contact_number) = TRIM(${contactNumber}))
+                OR
+                (LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${selfSalePattern})))
+              )`,
+              sql`due_amount > 0`
+            ))
+            .orderBy(salesHistory.soldAt);
+          
+          for (const sale of selfSales) {
+            if (remainingAmount <= 0) break;
+            const currentDue = sale.dueAmount || 0;
+            if (currentDue <= 0) continue;
+            
+            const discountToApply = Math.min(remainingAmount, currentDue);
+            const newDueAmount = Math.round((currentDue - discountToApply) * 100) / 100;
+            const newPaidAmount = Math.round(((sale.paidAmount || 0) + discountToApply) * 100) / 100;
+            const newDiscountAllocated = Math.round(((sale.discountAllocated || 0) + discountToApply) * 100) / 100;
+            const paymentStatus = newDueAmount < 1 ? "paid" : "partial";
+            
+            await db.update(salesHistory)
+              .set({
+                dueAmount: newDueAmount,
+                paidAmount: newPaidAmount,
+                discountAllocated: newDiscountAllocated,
+                paymentStatus
+              })
+              .where(eq(salesHistory.id, sale.id));
+            
+            remainingAmount -= discountToApply;
+            selfSalesUpdated++;
+          }
+        }
+      }
+    }
+    
+    return { receivablesUpdated, selfSalesUpdated };
   }
 
   // Get total discount allocated for a specific farmer+buyer combination
