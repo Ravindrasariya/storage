@@ -192,6 +192,7 @@ export interface IStorage {
     paidAmount?: number;
     dueAmount?: number;
   }): Promise<SalesHistory | undefined>;
+  reverseBuyerToBuyerTransfer(saleId: string): Promise<{ success: boolean; message?: string; fromBuyer?: string; toBuyer?: string; coldStorageId?: string }>;
   // Maintenance Records
   getMaintenanceRecords(coldStorageId: string): Promise<MaintenanceRecord[]>;
   createMaintenanceRecord(data: InsertMaintenanceRecord): Promise<MaintenanceRecord>;
@@ -1522,6 +1523,48 @@ export class DatabaseStorage implements IStorage {
       .where(eq(salesHistory.id, saleId))
       .returning();
     return updated;
+  }
+
+  async reverseBuyerToBuyerTransfer(saleId: string): Promise<{ success: boolean; message?: string; fromBuyer?: string; toBuyer?: string; coldStorageId?: string }> {
+    // Get the sale record
+    const [sale] = await db.select()
+      .from(salesHistory)
+      .where(eq(salesHistory.id, saleId));
+    
+    if (!sale) {
+      return { success: false, message: "Sale record not found" };
+    }
+    
+    // Check if this sale has a buyer-to-buyer transfer
+    if (!sale.transferToBuyerName || sale.clearanceType !== 'transfer') {
+      return { success: false, message: "This sale does not have a buyer-to-buyer transfer to reverse" };
+    }
+    
+    const fromBuyer = sale.buyerName || "";
+    const toBuyer = sale.transferToBuyerName;
+    const coldStorageId = sale.coldStorageId;
+    
+    // Clear transfer fields - reverse the transfer
+    await db.update(salesHistory)
+      .set({
+        clearanceType: null,
+        transferToBuyerName: null,
+        transferGroupId: null,
+        transferDate: null,
+        transferRemarks: null,
+        transferTransactionId: null,
+      })
+      .where(eq(salesHistory.id, saleId));
+    
+    // Recompute FIFO for both buyers (from original buyer and to transferred buyer)
+    if (fromBuyer && coldStorageId) {
+      await this.recomputeBuyerPayments(fromBuyer, coldStorageId);
+    }
+    if (toBuyer && coldStorageId) {
+      await this.recomputeBuyerPayments(toBuyer, coldStorageId);
+    }
+    
+    return { success: true, message: "Buyer-to-buyer transfer reversed successfully", fromBuyer, toBuyer, coldStorageId };
   }
 
   async updateSalesHistory(saleId: string, updates: {
