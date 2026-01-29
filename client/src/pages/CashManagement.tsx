@@ -2259,12 +2259,12 @@ export default function CashManagement() {
                         <SelectContent>
                           {farmerReceivablesWithDues.map((farmer) => (
                             <SelectItem key={farmer.id} value={farmer.id}>
-                              <span className="flex items-center justify-between gap-4 w-full">
-                                <span>{farmer.farmerName} - {farmer.village}</span>
-                                <Badge variant="outline" className="text-xs">
-                                  ₹{formatCurrency(farmer.totalDue)}
-                                </Badge>
-                              </span>
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">{farmer.farmerName}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {farmer.village} | {farmer.contactNumber} | {t("due")}: ₹{formatCurrency(farmer.totalDue)}
+                                </span>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
