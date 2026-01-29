@@ -165,6 +165,25 @@ The `recomputeBuyerPayments` function:
 - Opening receivables for cold_merchant type are combined with sales history dues in buyer dropdown
 - Database tables: cashOpeningBalances, openingReceivables (year-scoped)
 
+### Farmer Receivables
+- Farmer payer type in Receivables tab with farmer-specific fields:
+  - Required: farmerName, contactNumber (10 digits), village, district, state
+  - Optional: tehsil
+  - District options: Ujjain, Agar Malwa, Dewas, Indore, Shajapur, Rajgarh, Other
+  - State options: Madhya Pradesh, Gujarat, Uttar Pradesh
+- Cash Inward supports "farmer" payer type with searchable farmer dropdown
+  - Shows farmers with outstanding dues from receivables
+  - Displays farmer name, village, and total due amount
+- FIFO payment allocation for farmer receivables:
+  - Payments applied across all receivables for the same farmer (by name, contact, village)
+  - Ordered by createdAt for FIFO
+  - Validates: rejects if no outstanding dues or if amount exceeds total dues
+  - Tracks dueBalanceAfter for all farmer's receivables combined
+- API endpoints:
+  - GET /api/farmer-receivables-with-dues: Returns farmers with outstanding receivables
+  - POST /api/cash-receipts (payerType: "farmer"): Creates payment with FIFO allocation
+- Storage method: createFarmerReceivablePayment handles tenant isolation and FIFO logic
+
 ### Dynamic Bank Accounts
 - Replaced fixed two-account system (Current/Limit) with unlimited user-defined bank accounts per cold storage
 - Bank accounts table: bankAccounts (id, coldStorageId, accountName, accountType, openingBalance, year)
