@@ -1536,7 +1536,7 @@ export default function CashManagement() {
         timestamp: getTimestamp(bt.transferDate || bt.soldAt)
       })) : []),
       ...(includeDiscount ? discountsList.filter(d => {
-        if (d.isReversed === 1) return false;
+        // Note: Don't filter out reversed discounts - show them with visual styling instead
         // Apply buyer name filter for discounts - match by farmerName or buyers in allocations
         if (filterBuyer) {
           const filterKey = filterBuyer.trim().toLowerCase();
@@ -3295,7 +3295,9 @@ export default function CashManagement() {
               <div className="h-[520px] overflow-y-auto">
                 <div className="space-y-2 px-4 py-2">
                   {allTransactions.map((transaction, index) => {
-                    const isReversed = transaction.type !== "buyerTransfer" && (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1;
+                    const isReversed = transaction.type === "discount" 
+                      ? (transaction.data as Discount).isReversed === 1 
+                      : transaction.type !== "buyerTransfer" && (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1;
                     return (
                       <div
                         key={`${transaction.type}-${transaction.data.id}`}
@@ -3465,14 +3467,22 @@ export default function CashManagement() {
             <div className="space-y-4">
               {/* Status Badge */}
               <div className="flex flex-col items-center gap-1">
-                {selectedTransaction.type !== "buyerTransfer" && selectedTransaction.type !== "discount" && (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1 ? (
+                {(selectedTransaction.type === "discount" 
+                ? (selectedTransaction.data as Discount).isReversed === 1 
+                : selectedTransaction.type !== "buyerTransfer" && (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1) ? (
                   <>
                     <Badge variant="secondary" className="text-base px-4 py-1">
                       {t("reversed")}
                     </Badge>
-                    {(selectedTransaction.data as CashReceipt | Expense).reversedAt && (
+                    {(selectedTransaction.type === "discount" 
+                      ? (selectedTransaction.data as Discount).reversedAt 
+                      : (selectedTransaction.data as CashReceipt | Expense).reversedAt) && (
                       <span className="text-xs text-muted-foreground">
-                        {format(new Date((selectedTransaction.data as CashReceipt | Expense).reversedAt!), "dd/MM/yyyy")}
+                        {format(new Date(
+                          selectedTransaction.type === "discount" 
+                            ? (selectedTransaction.data as Discount).reversedAt! 
+                            : (selectedTransaction.data as CashReceipt | Expense).reversedAt!
+                        ), "dd/MM/yyyy")}
                       </span>
                     )}
                   </>
@@ -3677,7 +3687,11 @@ export default function CashManagement() {
               </div>
 
               {/* Reverse Button */}
-              {canEdit && selectedTransaction.type !== "buyerTransfer" && (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed !== 1 && (
+              {canEdit && selectedTransaction.type !== "buyerTransfer" && (
+                selectedTransaction.type === "discount" 
+                  ? (selectedTransaction.data as Discount).isReversed !== 1 
+                  : (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed !== 1
+              ) && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" className="w-full" data-testid="button-reverse-from-dialog">
