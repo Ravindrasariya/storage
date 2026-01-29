@@ -422,10 +422,10 @@ export default function CashManagement() {
     },
   });
 
-  // Discount queries - farmers with dues
+  // Discount queries - farmers with dues (enabled for discount mode OR farmer-to-buyer transfer)
   const { data: farmersWithDues = [] } = useQuery<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]>({
     queryKey: ["/api/farmers-with-dues"],
-    enabled: expensePaymentMode === "discount",
+    enabled: expensePaymentMode === "discount" || transferTypeMode === "farmer",
   });
 
   // Parse selected farmer key to get details
@@ -2434,7 +2434,7 @@ export default function CashManagement() {
                           <SelectValue placeholder={t("selectFarmer")} />
                         </SelectTrigger>
                         <SelectContent>
-                          {farmerReceivablesWithDues.map((farmer) => (
+                          {farmerReceivablesWithDues.filter(f => f.totalDue >= 1).map((farmer) => (
                             <SelectItem key={farmer.id} value={farmer.id}>
                               <div className="flex flex-col items-start">
                                 <span className="font-medium">{farmer.farmerName}</span>
@@ -2644,7 +2644,7 @@ export default function CashManagement() {
                           <SelectValue placeholder="Select farmer..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {farmersWithDues.map((f) => (
+                          {farmersWithDues.filter(f => f.totalDue >= 1).map((f) => (
                             <SelectItem 
                               key={`${f.farmerName}|${f.village}|${f.contactNumber}`}
                               value={`${f.farmerName}|${f.village}|${f.contactNumber}`}
@@ -3194,7 +3194,7 @@ export default function CashManagement() {
                           <SelectValue placeholder={t("selectFarmer") || "Select Farmer"} />
                         </SelectTrigger>
                         <SelectContent>
-                          {farmersWithDues.filter(f => f.totalDue > 0).map((farmer) => (
+                          {farmersWithDues.filter(f => f.totalDue >= 1).map((farmer) => (
                             <SelectItem key={`${farmer.farmerName}|${farmer.village}|${farmer.contactNumber}`} value={`${farmer.farmerName}|${farmer.village}|${farmer.contactNumber}`}>
                               {farmer.farmerName} - {farmer.contactNumber} - {farmer.village} (₹{formatCurrency(farmer.totalDue)})
                             </SelectItem>

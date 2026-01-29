@@ -2028,7 +2028,7 @@ export class DatabaseStorage implements IStorage {
         AND sale_year = ${year}
         AND (due_amount > 0 OR extra_due_to_merchant > 0)
       GROUP BY TRIM(farmer_name), TRIM(village), TRIM(contact_number)
-      HAVING SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)) > 0
+      HAVING SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)) >= 1
     `);
     const selfSales = selfSalesResult.rows as { farmer_name: string; contact_number: string; village: string; total_due: number }[];
 
@@ -2040,7 +2040,7 @@ export class DatabaseStorage implements IStorage {
     for (const f of farmers) {
       if (!f.farmerName || !f.contactNumber || !f.village) continue;
       const remainingDue = f.dueAmount - (f.paidAmount || 0);
-      if (remainingDue <= 0) continue;
+      if (remainingDue < 1) continue;
       
       // Normalize key with trim and lowercase for consistent matching
       const key = `${f.farmerName.trim().toLowerCase()}_${f.contactNumber.trim()}_${f.village.trim().toLowerCase()}`;
@@ -2079,7 +2079,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     return Array.from(farmerDuesMap.values())
-      .filter(f => f.totalDue > 0)
+      .filter(f => f.totalDue >= 1)
       .sort((a, b) => a.farmerName.toLowerCase().localeCompare(b.farmerName.toLowerCase()));
   }
 
@@ -4010,7 +4010,7 @@ export class DatabaseStorage implements IStorage {
         COALESCE(SUM(remaining_due), 0)::float as "totalDue"
       FROM combined_dues
       GROUP BY LOWER(farmer_name), LOWER(village), contact_number
-      HAVING SUM(remaining_due) > 0
+      HAVING SUM(remaining_due) >= 1
       ORDER BY MAX(farmer_name)
     `);
     return result.rows as { farmerName: string; village: string; contactNumber: string; totalDue: number }[];
