@@ -2533,13 +2533,123 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(cashReceipts.id, receiptId));
 
-    // Use unified recomputeBuyerPayments to properly handle both receipts AND discounts
-    // This replaces the old custom FIFO replay that only considered receipts
-    if (receipt.buyerName && receipt.coldStorageId) {
+    // Handle recomputation based on payer type
+    if (receipt.payerType === "farmer" && receipt.coldStorageId) {
+      // For farmer payments, recompute farmer receivables
+      await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.buyerName);
+    } else if (receipt.buyerName && receipt.coldStorageId) {
+      // Use unified recomputeBuyerPayments to properly handle both receipts AND discounts
+      // This replaces the old custom FIFO replay that only considered receipts
       await this.recomputeBuyerPayments(receipt.buyerName, receipt.coldStorageId);
     }
 
     return { success: true, message: "Receipt reversed and payments recalculated" };
+  }
+
+  async recomputeFarmerPayments(coldStorageId: string, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }> {
+    // Parse farmer identity from buyerDisplayName format: "FarmerName (Village)"
+    if (!buyerDisplayName) {
+      return { receivablesUpdated: 0 };
+    }
+    
+    // Extract farmerName and village from format "FarmerName (Village)"
+    const match = buyerDisplayName.match(/^(.+?)\s*\((.+?)\)$/);
+    if (!match) {
+      return { receivablesUpdated: 0 };
+    }
+    
+    const farmerName = match[1].trim();
+    const village = match[2].trim();
+    
+    // Find farmer receivables matching name and village to get the contactNumber
+    // This matches the criteria used in createFarmerReceivablePayment
+    const farmerReceivables = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, "farmer"),
+        sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
+        sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
+      ))
+      .orderBy(openingReceivables.createdAt);
+    
+    if (farmerReceivables.length === 0) {
+      return { receivablesUpdated: 0 };
+    }
+    
+    // Get the contactNumber from the first matching receivable for exact matching
+    const contactNumber = farmerReceivables[0].contactNumber;
+    
+    // Now get all receivables for this exact farmer (name + village + contactNumber)
+    // This matches the exact criteria used in createFarmerReceivablePayment
+    const allFarmerReceivables = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, "farmer"),
+        eq(openingReceivables.farmerName, farmerName),
+        eq(openingReceivables.contactNumber, contactNumber!),
+        eq(openingReceivables.village, village)
+      ))
+      .orderBy(openingReceivables.createdAt);
+    
+    // Step 1: Reset all farmer receivables paidAmount to 0
+    for (const receivable of allFarmerReceivables) {
+      await db.update(openingReceivables)
+        .set({ paidAmount: 0 })
+        .where(eq(openingReceivables.id, receivable.id));
+    }
+    
+    // Step 2: Get all non-reversed farmer receipts for this farmer
+    // Match by buyerName pattern "FarmerName (Village)"
+    const activeReceipts = await db.select()
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.payerType, "farmer"),
+        eq(cashReceipts.isReversed, 0),
+        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName}))`
+      ))
+      .orderBy(cashReceipts.receivedAt);
+    
+    // Step 3: Replay all active receipts in FIFO order
+    let receivablesUpdated = 0;
+    
+    for (const receipt of activeReceipts) {
+      let remainingAmount = receipt.amount;
+      
+      // Re-fetch current state of receivables
+      const currentReceivables = await db.select()
+        .from(openingReceivables)
+        .where(and(
+          eq(openingReceivables.coldStorageId, coldStorageId),
+          eq(openingReceivables.payerType, "farmer"),
+          eq(openingReceivables.farmerName, farmerName),
+          eq(openingReceivables.contactNumber, contactNumber!),
+          eq(openingReceivables.village, village)
+        ))
+        .orderBy(openingReceivables.createdAt);
+      
+      for (const receivable of currentReceivables) {
+        const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
+        if (remainingDue <= 0) continue;
+        
+        const amountToApply = Math.min(remainingAmount, remainingDue);
+        
+        if (amountToApply > 0) {
+          await db.update(openingReceivables)
+            .set({ paidAmount: (receivable.paidAmount || 0) + amountToApply })
+            .where(eq(openingReceivables.id, receivable.id));
+          
+          remainingAmount -= amountToApply;
+          receivablesUpdated++;
+        }
+        
+        if (remainingAmount <= 0) break;
+      }
+    }
+    
+    return { receivablesUpdated };
   }
 
   async reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }> {
