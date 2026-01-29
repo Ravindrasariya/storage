@@ -578,6 +578,10 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      // Invalidate farmer receivables cache for farmer payment reversals
+      queryClient.invalidateQueries({ 
+        predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues")
+      });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
