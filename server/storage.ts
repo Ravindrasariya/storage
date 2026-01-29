@@ -1499,6 +1499,9 @@ export class DatabaseStorage implements IStorage {
       transferGroupId: updates.transferGroupId,
       transferDate: updates.transferDate,
       transferRemarks: updates.transferRemarks,
+      // Clear reversal flags when making a new transfer (in case this was previously reversed)
+      isTransferReversed: 0,
+      transferReversedAt: null,
     };
     
     // Add CF transaction ID for buyer-to-buyer transfers
