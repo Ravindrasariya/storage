@@ -2192,7 +2192,9 @@ export default function CashManagement() {
             </div>
             {Object.keys(summary.accountBalances).length > 0 && (
               <div className="mt-1 text-xs space-y-0.5">
-                {Object.values(summary.accountBalances).map(acc => (
+                {Object.values(summary.accountBalances)
+                  .filter(acc => acc.balance !== 0)
+                  .map(acc => (
                   <div key={acc.accountId} className="flex justify-between items-center">
                     <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
                     <span className={acc.balance >= 0 ? "text-blue-600" : "text-red-600"}>
