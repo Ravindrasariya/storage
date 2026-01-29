@@ -1805,6 +1805,18 @@ export async function registerRoutes(
     }
   });
 
+  // Get farmers with outstanding dues from receivables
+  app.get("/api/farmer-receivables-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const farmers = await storage.getFarmerReceivablesWithDues(coldStorageId, year);
+      res.json(farmers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch farmers with dues" });
+    }
+  });
+
   app.get("/api/cash-receipts", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -1919,8 +1931,9 @@ export async function registerRoutes(
   });
 
   const createCashReceiptSchema = z.object({
-    payerType: z.enum(["cold_merchant", "sales_goods", "kata", "others"]),
+    payerType: z.enum(["cold_merchant", "sales_goods", "kata", "others", "farmer"]),
     buyerName: z.string().optional(),
+    farmerReceivableId: z.string().optional(),
     receiptType: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
     accountId: z.string().optional(),
@@ -1931,14 +1944,39 @@ export async function registerRoutes(
     (data) => data.receiptType !== "account" || data.accountId !== undefined || data.accountType !== undefined,
     { message: "Account is required when receipt type is account", path: ["accountId"] }
   ).refine(
-    (data) => data.payerType === "kata" || (data.buyerName && data.buyerName.trim().length > 0),
+    (data) => data.payerType === "kata" || data.payerType === "farmer" || (data.buyerName && data.buyerName.trim().length > 0),
     { message: "Buyer name is required for this payer type", path: ["buyerName"] }
+  ).refine(
+    (data) => data.payerType !== "farmer" || (data.farmerReceivableId && data.farmerReceivableId.trim().length > 0),
+    { message: "Farmer receivable selection is required", path: ["farmerReceivableId"] }
   );
 
   app.post("/api/cash-receipts", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = createCashReceiptSchema.parse(req.body);
+      
+      // For farmer payer type, handle payment allocation to farmer receivable
+      if (validatedData.payerType === "farmer" && validatedData.farmerReceivableId) {
+        try {
+          const result = await storage.createFarmerReceivablePayment({
+            coldStorageId: coldStorageId,
+            farmerReceivableId: validatedData.farmerReceivableId,
+            buyerName: validatedData.buyerName || null,
+            receiptType: validatedData.receiptType,
+            accountType: validatedData.accountType || null,
+            accountId: validatedData.accountId || null,
+            amount: validatedData.amount,
+            receivedAt: validatedData.receivedAt,
+            notes: validatedData.notes || null,
+          });
+          return res.json(result);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Failed to create farmer payment";
+          return res.status(400).json({ error: message });
+        }
+      }
+      
       const result = await storage.createCashReceiptWithFIFO({
         coldStorageId: coldStorageId,
         payerType: validatedData.payerType,
@@ -2339,10 +2377,17 @@ export async function registerRoutes(
   app.post("/api/opening-receivables", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, payerType, buyerName, dueAmount, remarks } = req.body;
+      const { year, payerType, buyerName, dueAmount, remarks, farmerName, contactNumber, village, tehsil, district, state } = req.body;
       
       if (!year || !payerType || !dueAmount) {
         return res.status(400).json({ error: "Year, payer type, and amount are required" });
+      }
+
+      // Validate farmer fields if payer type is farmer
+      if (payerType === "farmer") {
+        if (!farmerName || !contactNumber || !village || !district || !state) {
+          return res.status(400).json({ error: "Farmer name, contact, village, district, and state are required for farmer type" });
+        }
       }
 
       const receivable = await storage.createOpeningReceivable({
@@ -2352,6 +2397,13 @@ export async function registerRoutes(
         buyerName: buyerName || null,
         dueAmount,
         remarks: remarks || null,
+        // Farmer-specific fields
+        farmerName: farmerName || null,
+        contactNumber: contactNumber || null,
+        village: village || null,
+        tehsil: tehsil || null,
+        district: district || null,
+        state: state || null,
       });
 
       // Trigger FIFO recomputation for cold_merchant type with buyer name

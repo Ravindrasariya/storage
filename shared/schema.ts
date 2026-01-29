@@ -313,8 +313,15 @@ export const openingReceivables = pgTable("opening_receivables", {
   id: varchar("id").primaryKey(),
   coldStorageId: varchar("cold_storage_id").notNull(),
   year: integer("year").notNull(),
-  payerType: text("payer_type").notNull(), // 'cold_merchant', 'sales_goods', 'kata', 'others'
+  payerType: text("payer_type").notNull(), // 'cold_merchant', 'sales_goods', 'kata', 'others', 'farmer'
   buyerName: text("buyer_name"),
+  // Farmer-specific fields (used when payerType is 'farmer')
+  farmerName: text("farmer_name"),
+  contactNumber: text("contact_number"),
+  village: text("village"),
+  tehsil: text("tehsil"),
+  district: text("district"),
+  state: text("state"),
   dueAmount: real("due_amount").notNull(),
   paidAmount: real("paid_amount").notNull().default(0), // Track FIFO payments against this receivable
   remarks: text("remarks"),

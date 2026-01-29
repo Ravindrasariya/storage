@@ -206,6 +206,8 @@ export interface IStorage {
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
   // Cash Receipts
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
+  getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
+  createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
   getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
   getSalesGoodsBuyers(coldStorageId: string): Promise<string[]>;
   createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
@@ -1983,6 +1985,143 @@ export class DatabaseStorage implements IStorage {
     return Array.from(buyerDues.values())
       .map(({ displayName, totalDue }) => ({ buyerName: displayName, totalDue }))
       .sort((a, b) => a.buyerName.toLowerCase().localeCompare(b.buyerName.toLowerCase()));
+  }
+
+  async getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }[]> {
+    // Get farmer receivables with outstanding dues for the specified year
+    const farmers = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.year, year),
+        eq(openingReceivables.payerType, "farmer")
+      ));
+
+    // Calculate remaining dues for each farmer
+    return farmers
+      .filter(f => f.farmerName && f.contactNumber && f.village)
+      .map(f => {
+        const remainingDue = f.dueAmount - (f.paidAmount || 0);
+        return {
+          id: f.id,
+          farmerName: f.farmerName!,
+          contactNumber: f.contactNumber!,
+          village: f.village!,
+          totalDue: remainingDue
+        };
+      })
+      .filter(f => f.totalDue > 0)
+      .sort((a, b) => a.farmerName.toLowerCase().localeCompare(b.farmerName.toLowerCase()));
+  }
+
+  async createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
+    // Get the selected farmer receivable with coldStorageId verification for tenant isolation
+    const [selectedReceivable] = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.id, data.farmerReceivableId),
+        eq(openingReceivables.coldStorageId, data.coldStorageId)
+      ));
+    
+    if (!selectedReceivable) {
+      throw new Error("Farmer receivable not found");
+    }
+    
+    // Validate payerType is farmer
+    if (selectedReceivable.payerType !== "farmer") {
+      throw new Error("Selected receivable is not a farmer receivable");
+    }
+    
+    // Get the farmer's identity for display name and for finding all their receivables
+    const farmerIdentity = {
+      farmerName: selectedReceivable.farmerName,
+      contactNumber: selectedReceivable.contactNumber,
+      village: selectedReceivable.village,
+    };
+    
+    // Get all farmer receivables for this farmer (FIFO by createdAt)
+    const allFarmerReceivables = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, data.coldStorageId),
+        eq(openingReceivables.payerType, "farmer"),
+        eq(openingReceivables.farmerName, farmerIdentity.farmerName!),
+        eq(openingReceivables.contactNumber, farmerIdentity.contactNumber!),
+        eq(openingReceivables.village, farmerIdentity.village!)
+      ))
+      .orderBy(openingReceivables.createdAt);
+    
+    // Calculate total due before payment for all farmer's receivables
+    let totalDueBefore = 0;
+    for (const receivable of allFarmerReceivables) {
+      const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
+      if (remainingDue > 0) {
+        totalDueBefore += remainingDue;
+      }
+    }
+    
+    // Validate: reject if no outstanding dues
+    if (totalDueBefore <= 0) {
+      throw new Error("No outstanding dues for this farmer");
+    }
+    
+    // Validate: reject if payment exceeds total dues (no overpayment allowed)
+    if (data.amount > totalDueBefore) {
+      throw new Error(`Payment amount (₹${data.amount}) exceeds total outstanding dues (₹${totalDueBefore})`);
+    }
+    
+    // Apply payment in FIFO order
+    let remainingAmount = data.amount;
+    let receivablesUpdated = 0;
+    let totalApplied = 0;
+    
+    for (const receivable of allFarmerReceivables) {
+      const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
+      if (remainingDue <= 0) continue;
+      
+      const amountToApply = Math.min(remainingAmount, remainingDue);
+      
+      if (amountToApply > 0) {
+        await db.update(openingReceivables)
+          .set({ paidAmount: (receivable.paidAmount || 0) + amountToApply })
+          .where(and(
+            eq(openingReceivables.id, receivable.id),
+            eq(openingReceivables.coldStorageId, data.coldStorageId)
+          ));
+        
+        remainingAmount -= amountToApply;
+        totalApplied += amountToApply;
+        receivablesUpdated++;
+      }
+      
+      if (remainingAmount <= 0) break;
+    }
+    
+    // Calculate total due after payment
+    const totalDueAfter = Math.max(0, totalDueBefore - totalApplied);
+    
+    // Generate transaction ID
+    const transactionId = await this.generateTransactionId(data.coldStorageId, "cash_flow", data.receivedAt);
+    
+    // Create the cash receipt with farmer payer type
+    const buyerDisplayName = data.buyerName || `${farmerIdentity.farmerName} (${farmerIdentity.village})`;
+    const [receipt] = await db.insert(cashReceipts)
+      .values({
+        coldStorageId: data.coldStorageId,
+        payerType: "farmer",
+        buyerName: buyerDisplayName,
+        receiptType: data.receiptType,
+        accountType: data.accountType,
+        accountId: data.accountId,
+        amount: data.amount,
+        receivedAt: data.receivedAt,
+        notes: data.notes,
+        transactionId,
+        dueBalanceAfter: totalDueAfter,
+      })
+      .returning();
+    
+    return { receipt, salesUpdated: receivablesUpdated };
   }
 
   async getCashReceipts(coldStorageId: string): Promise<CashReceipt[]> {

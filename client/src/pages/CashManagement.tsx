@@ -123,10 +123,11 @@ export default function CashManagement() {
   
   const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">(persistedState?.activeTab || "inward");
   
-  const [payerType, setPayerType] = useState<"cold_merchant" | "sales_goods" | "kata" | "others">((persistedState?.payerType as "cold_merchant" | "sales_goods" | "kata" | "others") || "cold_merchant");
+  const [payerType, setPayerType] = useState<"cold_merchant" | "sales_goods" | "kata" | "others" | "farmer">((persistedState?.payerType as "cold_merchant" | "sales_goods" | "kata" | "others" | "farmer") || "cold_merchant");
   const [buyerName, setBuyerName] = useState(persistedState?.buyerName || "");
   const [customBuyerName, setCustomBuyerName] = useState(persistedState?.customBuyerName || "");
   const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState(persistedState?.salesGoodsBuyerName || "");
+  const [selectedFarmerReceivableId, setSelectedFarmerReceivableId] = useState("");
   const [receiptType, setReceiptType] = useState<"cash" | "account">((persistedState?.receiptType as "cash" | "account") || "cash");
   const [accountId, setAccountId] = useState<string>(persistedState?.accountId || "");
   const [inwardAmount, setInwardAmount] = useState(persistedState?.inwardAmount || "");
@@ -195,6 +196,13 @@ export default function CashManagement() {
   const [newReceivableAmount, setNewReceivableAmount] = useState("");
   const [newReceivableRemarks, setNewReceivableRemarks] = useState("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
+  // Farmer-specific fields for receivables
+  const [newReceivableFarmerName, setNewReceivableFarmerName] = useState("");
+  const [newReceivableContactNumber, setNewReceivableContactNumber] = useState("");
+  const [newReceivableVillage, setNewReceivableVillage] = useState("");
+  const [newReceivableTehsil, setNewReceivableTehsil] = useState("");
+  const [newReceivableDistrict, setNewReceivableDistrict] = useState("");
+  const [newReceivableState, setNewReceivableState] = useState("");
   
   // Bank account form state
   const [showAddBankAccount, setShowAddBankAccount] = useState(false);
@@ -297,6 +305,11 @@ export default function CashManagement() {
 
   const { data: buyersWithDues = [], isLoading: loadingBuyers } = useQuery<BuyerWithDue[]>({
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
+  });
+
+  // Farmer receivables with dues (for Cash Inward "farmer" payer type)
+  const { data: farmerReceivablesWithDues = [] } = useQuery<{ id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>({
+    queryKey: ["/api/farmer-receivables-with-dues", currentYear],
   });
 
   const { data: receipts = [], isLoading: loadingReceipts } = useQuery<CashReceipt[]>({
@@ -479,7 +492,7 @@ export default function CashManagement() {
   });
 
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { payerType: string; buyerName?: string; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
+    mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -493,6 +506,7 @@ export default function CashManagement() {
       setBuyerName("");
       setCustomBuyerName("");
       setSalesGoodsBuyerName("");
+      setSelectedFarmerReceivableId("");
       setReceiptType("cash");
       setAccountId("");
       setInwardAmount("");
@@ -502,6 +516,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/sales-goods-buyers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-receivables-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
@@ -711,7 +727,19 @@ export default function CashManagement() {
   });
 
   const createReceivableMutation = useMutation({
-    mutationFn: async (data: { year: number; payerType: string; buyerName?: string; dueAmount: number; remarks?: string }) => {
+    mutationFn: async (data: { 
+      year: number; 
+      payerType: string; 
+      buyerName?: string; 
+      dueAmount: number; 
+      remarks?: string;
+      farmerName?: string;
+      contactNumber?: string;
+      village?: string;
+      tehsil?: string;
+      district?: string;
+      state?: string;
+    }) => {
       const response = await apiRequest("POST", "/api/opening-receivables", data);
       return response.json();
     },
@@ -720,8 +748,15 @@ export default function CashManagement() {
       setNewReceivableBuyerName("");
       setNewReceivableAmount("");
       setNewReceivableRemarks("");
+      setNewReceivableFarmerName("");
+      setNewReceivableContactNumber("");
+      setNewReceivableVillage("");
+      setNewReceivableTehsil("");
+      setNewReceivableDistrict("");
+      setNewReceivableState("");
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -789,17 +824,29 @@ export default function CashManagement() {
   const handleInwardSubmit = () => {
     // Determine buyer name based on payer type
     let finalBuyerName: string | undefined;
+    let farmerReceivableId: string | undefined;
+    
     if (payerType === "cold_merchant") {
       finalBuyerName = buyerName === "__other__" ? customBuyerName.trim() : buyerName;
     } else if (payerType === "sales_goods") {
       finalBuyerName = salesGoodsBuyerName.trim();
     } else if (payerType === "others") {
       finalBuyerName = customBuyerName.trim();
+    } else if (payerType === "farmer") {
+      farmerReceivableId = selectedFarmerReceivableId;
+      const selectedFarmer = farmerReceivablesWithDues.find(f => f.id === farmerReceivableId);
+      if (selectedFarmer) {
+        finalBuyerName = `${selectedFarmer.farmerName} (${selectedFarmer.village})`;
+      }
     }
     // For kata, no buyer name needed
     
     // Validate required fields based on payer type
-    if (payerType !== "kata" && !finalBuyerName) {
+    if (payerType === "farmer" && !farmerReceivableId) {
+      toast({ title: t("error"), description: t("selectFarmer"), variant: "destructive" });
+      return;
+    }
+    if (payerType !== "kata" && payerType !== "farmer" && !finalBuyerName) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
@@ -812,6 +859,7 @@ export default function CashManagement() {
     createReceiptMutation.mutate({
       payerType,
       buyerName: finalBuyerName,
+      farmerReceivableId,
       receiptType,
       accountId: receiptType === "account" ? accountId : undefined,
       amount: parseFloat(inwardAmount),
@@ -2190,9 +2238,42 @@ export default function CashManagement() {
                       <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
                       <SelectItem value="kata">{t("kata")}</SelectItem>
                       <SelectItem value="others">{t("others")}</SelectItem>
+                      <SelectItem value="farmer">{t("farmer")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {payerType === "farmer" && (
+                  <div className="space-y-2">
+                    <Label>{t("selectFarmer")} *</Label>
+                    {farmerReceivablesWithDues.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">{t("noFarmersWithDues")}</p>
+                    ) : (
+                      <Select value={selectedFarmerReceivableId} onValueChange={setSelectedFarmerReceivableId}>
+                        <SelectTrigger data-testid="select-farmer-receivable">
+                          <SelectValue placeholder={t("selectFarmer")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {farmerReceivablesWithDues.map((farmer) => (
+                            <SelectItem key={farmer.id} value={farmer.id}>
+                              <span className="flex items-center justify-between gap-4 w-full">
+                                <span>{farmer.farmerName} - {farmer.village}</span>
+                                <Badge variant="outline" className="text-xs">
+                                  ₹{formatCurrency(farmer.totalDue)}
+                                </Badge>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {selectedFarmerReceivableId && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("totalDue")}: ₹{formatCurrency(farmerReceivablesWithDues.find(f => f.id === selectedFarmerReceivableId)?.totalDue || 0)}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {payerType === "cold_merchant" && (
                   <div className="space-y-2">
@@ -3682,61 +3763,144 @@ export default function CashManagement() {
                           <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
                           <SelectItem value="kata">{t("kata")}</SelectItem>
                           <SelectItem value="others">{t("others")}</SelectItem>
+                          <SelectItem value="farmer">{t("farmer")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="relative">
-                      <Label className="text-xs">{t("buyerName")}</Label>
-                      <Input
-                        value={newReceivableBuyerName}
-                        onChange={(e) => setNewReceivableBuyerName(e.target.value)}
-                        onFocus={() => {
-                          if (newReceivablePayerType !== "sales_goods") {
-                            setShowBuyerSuggestions(true);
-                          }
-                        }}
-                        onBlur={() => {
-                          setTimeout(() => setShowBuyerSuggestions(false), 150);
-                        }}
-                        placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
-                        data-testid="input-receivable-buyer"
-                      />
-                      {showBuyerSuggestions && newReceivablePayerType !== "sales_goods" && (
-                        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
-                          <ScrollArea className="max-h-[200px]">
-                            {buyersWithDues.filter(b => 
-                              !newReceivableBuyerName || 
-                              b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
-                            ).length === 0 ? (
-                              <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
-                            ) : (
-                              buyersWithDues
-                                .filter(b => 
-                                  !newReceivableBuyerName || 
-                                  b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
-                                )
-                                .map((b) => (
-                                  <Button
-                                    key={b.buyerName}
-                                    variant="ghost"
-                                    size="sm"
-                                    className="w-full justify-start"
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      setNewReceivableBuyerName(b.buyerName);
-                                      setShowBuyerSuggestions(false);
-                                    }}
-                                    data-testid={`suggestion-buyer-${b.buyerName}`}
-                                  >
-                                    {b.buyerName}
-                                  </Button>
-                                ))
-                            )}
-                          </ScrollArea>
-                        </div>
-                      )}
-                    </div>
+                    {newReceivablePayerType !== "farmer" && (
+                      <div className="relative">
+                        <Label className="text-xs">{t("buyerName")}</Label>
+                        <Input
+                          value={newReceivableBuyerName}
+                          onChange={(e) => setNewReceivableBuyerName(e.target.value)}
+                          onFocus={() => {
+                            if (newReceivablePayerType !== "sales_goods") {
+                              setShowBuyerSuggestions(true);
+                            }
+                          }}
+                          onBlur={() => {
+                            setTimeout(() => setShowBuyerSuggestions(false), 150);
+                          }}
+                          placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
+                          data-testid="input-receivable-buyer"
+                        />
+                        {showBuyerSuggestions && newReceivablePayerType !== "sales_goods" && (
+                          <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
+                            <ScrollArea className="max-h-[200px]">
+                              {buyersWithDues.filter(b => 
+                                !newReceivableBuyerName || 
+                                b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
+                              ).length === 0 ? (
+                                <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
+                              ) : (
+                                buyersWithDues
+                                  .filter(b => 
+                                    !newReceivableBuyerName || 
+                                    b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
+                                  )
+                                  .map((b) => (
+                                    <Button
+                                      key={b.buyerName}
+                                      variant="ghost"
+                                      size="sm"
+                                      className="w-full justify-start"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setNewReceivableBuyerName(b.buyerName);
+                                        setShowBuyerSuggestions(false);
+                                      }}
+                                      data-testid={`suggestion-buyer-${b.buyerName}`}
+                                    >
+                                      {b.buyerName}
+                                    </Button>
+                                  ))
+                              )}
+                            </ScrollArea>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
+                  
+                  {/* Farmer-specific fields */}
+                  {newReceivablePayerType === "farmer" && (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">{t("farmerName")} *</Label>
+                          <Input
+                            value={newReceivableFarmerName}
+                            onChange={(e) => setNewReceivableFarmerName(e.target.value)}
+                            placeholder={t("enterFarmerName")}
+                            data-testid="input-receivable-farmer-name"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">{t("contactNumber")} *</Label>
+                          <Input
+                            value={newReceivableContactNumber}
+                            onChange={(e) => setNewReceivableContactNumber(e.target.value)}
+                            placeholder={t("enterContactNumber")}
+                            maxLength={10}
+                            data-testid="input-receivable-contact"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">{t("village")} *</Label>
+                          <Input
+                            value={newReceivableVillage}
+                            onChange={(e) => setNewReceivableVillage(e.target.value)}
+                            placeholder={t("enterVillage")}
+                            data-testid="input-receivable-village"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">{t("tehsil")}</Label>
+                          <Input
+                            value={newReceivableTehsil}
+                            onChange={(e) => setNewReceivableTehsil(e.target.value)}
+                            placeholder={t("enterTehsil")}
+                            data-testid="input-receivable-tehsil"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">{t("district")} *</Label>
+                          <Select value={newReceivableDistrict} onValueChange={setNewReceivableDistrict}>
+                            <SelectTrigger data-testid="select-receivable-district">
+                              <SelectValue placeholder={t("selectDistrict")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Ujjain">Ujjain</SelectItem>
+                              <SelectItem value="Agar Malwa">Agar Malwa</SelectItem>
+                              <SelectItem value="Dewas">Dewas</SelectItem>
+                              <SelectItem value="Indore">Indore</SelectItem>
+                              <SelectItem value="Shajapur">Shajapur</SelectItem>
+                              <SelectItem value="Rajgarh">Rajgarh</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">{t("state")} *</Label>
+                          <Select value={newReceivableState} onValueChange={setNewReceivableState}>
+                            <SelectTrigger data-testid="select-receivable-state">
+                              <SelectValue placeholder={t("selectState")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Madhya Pradesh">Madhya Pradesh</SelectItem>
+                              <SelectItem value="Gujarat">Gujarat</SelectItem>
+                              <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <Label className="text-xs">{t("amount")}</Label>
@@ -3765,12 +3929,42 @@ export default function CashManagement() {
                         toast({ title: t("error"), description: t("amountRequired"), variant: "destructive" });
                         return;
                       }
+                      // Validate farmer fields if payer type is farmer
+                      if (newReceivablePayerType === "farmer") {
+                        if (!newReceivableFarmerName.trim()) {
+                          toast({ title: t("error"), description: t("farmerNameRequired"), variant: "destructive" });
+                          return;
+                        }
+                        if (!newReceivableContactNumber.trim() || newReceivableContactNumber.length !== 10) {
+                          toast({ title: t("error"), description: t("validContactRequired"), variant: "destructive" });
+                          return;
+                        }
+                        if (!newReceivableVillage.trim()) {
+                          toast({ title: t("error"), description: t("villageRequired"), variant: "destructive" });
+                          return;
+                        }
+                        if (!newReceivableDistrict) {
+                          toast({ title: t("error"), description: t("districtRequired"), variant: "destructive" });
+                          return;
+                        }
+                        if (!newReceivableState) {
+                          toast({ title: t("error"), description: t("stateRequired"), variant: "destructive" });
+                          return;
+                        }
+                      }
                       createReceivableMutation.mutate({
                         year: settingsYear,
                         payerType: newReceivablePayerType,
-                        buyerName: newReceivableBuyerName || undefined,
+                        buyerName: newReceivablePayerType !== "farmer" ? (newReceivableBuyerName || undefined) : undefined,
                         dueAmount: parseFloat(newReceivableAmount),
                         remarks: newReceivableRemarks || undefined,
+                        // Farmer-specific fields
+                        farmerName: newReceivablePayerType === "farmer" ? newReceivableFarmerName : undefined,
+                        contactNumber: newReceivablePayerType === "farmer" ? newReceivableContactNumber : undefined,
+                        village: newReceivablePayerType === "farmer" ? newReceivableVillage : undefined,
+                        tehsil: newReceivablePayerType === "farmer" ? newReceivableTehsil : undefined,
+                        district: newReceivablePayerType === "farmer" ? newReceivableDistrict : undefined,
+                        state: newReceivablePayerType === "farmer" ? newReceivableState : undefined,
                       });
                     }}
                     disabled={createReceivableMutation.isPending}
