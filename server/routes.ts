@@ -1949,6 +1949,23 @@ export async function registerRoutes(
     }
   });
 
+  // Reverse buyer-to-buyer transfer
+  app.delete("/api/buyer-transfers/:saleId", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { saleId } = req.params;
+      const result = await storage.reverseBuyerToBuyerTransfer(saleId);
+      
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Buyer transfer reversal error:", error);
+      res.status(500).json({ error: "Failed to reverse buyer transfer" });
+    }
+  });
+
   // Farmer to Buyer debt transfer schema
   const farmerToBuyerTransferSchema = z.object({
     farmerName: z.string().min(1),
