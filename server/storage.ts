@@ -1870,6 +1870,7 @@ export class DatabaseStorage implements IStorage {
   async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
     // Get all sales with due or partial payment status that have a buyer name
     // Include sales where either buyerName or transferToBuyerName is set
+    // Exclude self sales (isSelfSale = 1) - those are farmer dues, not merchant dues
     // NOTE: Using raw SQL instead of Drizzle ORM's eq() because eq() combined with sql`` 
     // template literals in and() clauses was not reliably filtering by coldStorageId
     const rawResult = await db.execute(sql`
@@ -1877,6 +1878,7 @@ export class DatabaseStorage implements IStorage {
       WHERE cold_storage_id = ${coldStorageId}
       AND payment_status IN ('due', 'partial')
       AND ((buyer_name IS NOT NULL AND buyer_name != '') OR (transfer_to_buyer_name IS NOT NULL AND transfer_to_buyer_name != ''))
+      AND (is_self_sale = 0 OR is_self_sale IS NULL)
     `);
     const sales = rawResult.rows as any[];
 
@@ -1920,11 +1922,13 @@ export class DatabaseStorage implements IStorage {
     
     // Also get extraDueToMerchant from ALL sales (not just due/partial) by original buyer
     // since this is a separate charge that may exist even when cold charges are paid
+    // Exclude self sales - those are farmer dues
     const extraDueResult = await db.execute(sql`
       SELECT * FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
       AND extra_due_to_merchant > 0
       AND buyer_name IS NOT NULL AND buyer_name != ''
+      AND (is_self_sale = 0 OR is_self_sale IS NULL)
     `);
     const allSalesForExtraDue = extraDueResult.rows as any[];
     
