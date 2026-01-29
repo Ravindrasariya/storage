@@ -2227,12 +2227,12 @@ export class DatabaseStorage implements IStorage {
         await db.execute(sql`
           UPDATE sales_history
           SET 
-            due_amount = due_amount - ${applyToDue},
-            paid_amount = paid_amount + ${applyToDue},
-            extra_due_to_merchant = extra_due_to_merchant - ${applyToExtra},
+            due_amount = ROUND((due_amount - ${applyToDue})::numeric, 2),
+            paid_amount = ROUND((paid_amount + ${applyToDue})::numeric, 2),
+            extra_due_to_merchant = ROUND((extra_due_to_merchant - ${applyToExtra})::numeric, 2),
             payment_status = CASE 
-              WHEN (due_amount - ${applyToDue}) + (extra_due_to_merchant - ${applyToExtra}) <= 0 THEN 'paid'
-              WHEN (paid_amount + ${applyToDue}) > 0 THEN 'partial'
+              WHEN ROUND((due_amount - ${applyToDue})::numeric, 2) + ROUND((extra_due_to_merchant - ${applyToExtra})::numeric, 2) <= 0 THEN 'paid'
+              WHEN ROUND((paid_amount + ${applyToDue})::numeric, 2) > 0 THEN 'partial'
               ELSE payment_status
             END
           WHERE id = ${sale.id}
