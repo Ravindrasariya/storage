@@ -2090,14 +2090,15 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Get self-sales with dues for this farmer
+      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
       const selfSalesResult = await db.execute(sql`
         SELECT id, due_amount, extra_due_to_merchant
         FROM sales_history
         WHERE cold_storage_id = ${data.coldStorageId}
           AND is_self_sale = 1
-          AND farmer_name = ${farmerIdentity.farmerName}
-          AND contact_number = ${farmerIdentity.contactNumber}
-          AND village = ${farmerIdentity.village}
+          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerIdentity.farmerName}))
+          AND TRIM(contact_number) = TRIM(${farmerIdentity.contactNumber})
+          AND LOWER(TRIM(village)) = LOWER(TRIM(${farmerIdentity.village}))
           AND (due_amount > 0 OR extra_due_to_merchant > 0)
         ORDER BY sold_at ASC
       `);
@@ -2131,14 +2132,15 @@ export class DatabaseStorage implements IStorage {
       };
       
       // Get all farmer receivables for this farmer (FIFO by createdAt)
+      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
       allFarmerReceivables = await db.select()
         .from(openingReceivables)
         .where(and(
           eq(openingReceivables.coldStorageId, data.coldStorageId),
-          eq(openingReceivables.payerType, "farmer"),
-          eq(openingReceivables.farmerName, farmerIdentity.farmerName),
-          eq(openingReceivables.contactNumber, farmerIdentity.contactNumber),
-          eq(openingReceivables.village, farmerIdentity.village)
+          sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`,
+          sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerIdentity.farmerName}))`,
+          sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${farmerIdentity.contactNumber})`,
+          sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${farmerIdentity.village}))`
         ))
         .orderBy(openingReceivables.createdAt);
       
@@ -2151,14 +2153,15 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Also get self-sales with dues for this farmer (to include in total due calculation)
+      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
       const selfSalesResult = await db.execute(sql`
         SELECT id, due_amount, extra_due_to_merchant
         FROM sales_history
         WHERE cold_storage_id = ${data.coldStorageId}
           AND is_self_sale = 1
-          AND farmer_name = ${farmerIdentity.farmerName}
-          AND contact_number = ${farmerIdentity.contactNumber}
-          AND village = ${farmerIdentity.village}
+          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerIdentity.farmerName}))
+          AND TRIM(contact_number) = TRIM(${farmerIdentity.contactNumber})
+          AND LOWER(TRIM(village)) = LOWER(TRIM(${farmerIdentity.village}))
           AND (due_amount > 0 OR extra_due_to_merchant > 0)
         ORDER BY sold_at ASC
       `);
@@ -2752,15 +2755,15 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Now get all receivables for this exact farmer (name + village + contactNumber)
-    // This matches the exact criteria used in createFarmerReceivablePayment
+    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
     const allFarmerReceivables = await db.select()
       .from(openingReceivables)
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
-        eq(openingReceivables.payerType, "farmer"),
-        eq(openingReceivables.farmerName, farmerName),
-        eq(openingReceivables.contactNumber, contactNumber!),
-        eq(openingReceivables.village, village)
+        sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`,
+        sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
+        sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
+        sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
       ))
       .orderBy(openingReceivables.createdAt);
     
@@ -2810,14 +2813,15 @@ export class DatabaseStorage implements IStorage {
       let remainingAmount = receipt.amount;
       
       // Re-fetch current state of receivables
+      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
       const currentReceivables = await db.select()
         .from(openingReceivables)
         .where(and(
           eq(openingReceivables.coldStorageId, coldStorageId),
-          eq(openingReceivables.payerType, "farmer"),
-          eq(openingReceivables.farmerName, farmerName),
-          eq(openingReceivables.contactNumber, contactNumber!),
-          eq(openingReceivables.village, village)
+          sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`,
+          sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
+          sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
+          sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
         ))
         .orderBy(openingReceivables.createdAt);
       
@@ -3228,13 +3232,14 @@ export class DatabaseStorage implements IStorage {
     let remainingAmount = allocation.amount;
     
     // Get sales for this farmer from this buyer, ordered by oldest first (FIFO)
+    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
     const salesResult = await db.execute(sql`
       SELECT id, due_amount
       FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
-        AND farmer_name = ${discount.farmerName}
-        AND village = ${discount.village}
-        AND contact_number = ${discount.contactNumber}
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${discount.farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${discount.village}))
+        AND TRIM(contact_number) = TRIM(${discount.contactNumber})
         AND LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${allocation.buyerName}))
         AND due_amount > 0
       ORDER BY sold_at ASC
@@ -3956,14 +3961,15 @@ export class DatabaseStorage implements IStorage {
   // Discounts - Get farmers with outstanding dues
   // Combines dues from both sales_history (self-sales) and opening_receivables (farmer type)
   // Aggregates by farmer composite key (name + phone + village)
+  // Uses LOWER/TRIM for case-insensitive, space-trimmed matching
   async getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]> {
     const result = await db.execute(sql`
       WITH combined_dues AS (
         -- Sales history dues (self-sales where payer_type = 'Farmer')
         SELECT 
-          farmer_name,
-          village,
-          contact_number,
+          TRIM(farmer_name) as farmer_name,
+          TRIM(village) as village,
+          TRIM(contact_number) as contact_number,
           due_amount
         FROM sales_history
         WHERE cold_storage_id = ${coldStorageId}
@@ -3973,29 +3979,30 @@ export class DatabaseStorage implements IStorage {
         
         -- Opening receivables (farmer type only)
         SELECT 
-          farmer_name,
-          village,
-          contact_number,
+          TRIM(farmer_name) as farmer_name,
+          TRIM(village) as village,
+          TRIM(contact_number) as contact_number,
           due_amount
         FROM opening_receivables
         WHERE cold_storage_id = ${coldStorageId}
-          AND payer_type = 'farmer'
+          AND LOWER(TRIM(payer_type)) = 'farmer'
           AND due_amount > 0
       )
       SELECT 
-        farmer_name as "farmerName",
-        village,
-        contact_number as "contactNumber",
+        MAX(farmer_name) as "farmerName",
+        MAX(village) as "village",
+        MAX(contact_number) as "contactNumber",
         COALESCE(SUM(due_amount), 0)::float as "totalDue"
       FROM combined_dues
-      GROUP BY farmer_name, village, contact_number
+      GROUP BY LOWER(farmer_name), LOWER(village), contact_number
       HAVING SUM(due_amount) > 0
-      ORDER BY farmer_name
+      ORDER BY MAX(farmer_name)
     `);
     return result.rows as { farmerName: string; village: string; contactNumber: string; totalDue: number }[];
   }
 
   // Get buyer dues for a specific farmer (sorted by latest sale date)
+  // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
   async getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date }[]> {
     const result = await db.execute(sql`
       SELECT 
@@ -4004,9 +4011,9 @@ export class DatabaseStorage implements IStorage {
         MAX(sold_at) as "latestSaleDate"
       FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
-        AND farmer_name = ${farmerName}
-        AND village = ${village}
-        AND contact_number = ${contactNumber}
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+        AND TRIM(contact_number) = TRIM(${contactNumber})
         AND due_amount > 0
         AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) IS NOT NULL
       GROUP BY COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name)
@@ -4033,14 +4040,15 @@ export class DatabaseStorage implements IStorage {
       const buyerName = allocation.buyerName;
       
       // Get sales for this farmer from this buyer, ordered by oldest first (FIFO)
+      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
       const salesResult = await db.execute(sql`
         SELECT id, due_amount
         FROM sales_history
         WHERE cold_storage_id = ${data.coldStorageId}
-          AND farmer_name = ${data.farmerName}
-          AND village = ${data.village}
-          AND contact_number = ${data.contactNumber}
-          AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) = ${buyerName}
+          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+          AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+          AND TRIM(contact_number) = TRIM(${data.contactNumber})
+          AND LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${buyerName}))
           AND due_amount > 0
         ORDER BY sold_at ASC
       `);
@@ -4072,13 +4080,14 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Calculate remaining farmer dues after discount
+    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
     const remainingDuesResult = await db.execute(sql`
       SELECT COALESCE(SUM(due_amount), 0) as total_due
       FROM sales_history
       WHERE cold_storage_id = ${data.coldStorageId}
-        AND farmer_name = ${data.farmerName}
-        AND village = ${data.village}
-        AND contact_number = ${data.contactNumber}
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+        AND TRIM(contact_number) = TRIM(${data.contactNumber})
         AND due_amount > 0
     `);
     const dueBalanceAfter = (remainingDuesResult.rows[0] as any)?.total_due || 0;
@@ -4153,13 +4162,14 @@ export class DatabaseStorage implements IStorage {
     buyerName: string
   ): Promise<number> {
     // Get all active (non-reversed) discounts for this farmer
+    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
     const discountRows = await db.select()
       .from(discounts)
       .where(and(
         eq(discounts.coldStorageId, coldStorageId),
-        eq(discounts.farmerName, farmerName),
-        eq(discounts.village, village),
-        eq(discounts.contactNumber, contactNumber),
+        sql`LOWER(TRIM(${discounts.farmerName})) = LOWER(TRIM(${farmerName}))`,
+        sql`LOWER(TRIM(${discounts.village})) = LOWER(TRIM(${village}))`,
+        sql`TRIM(${discounts.contactNumber}) = TRIM(${contactNumber})`,
         eq(discounts.isReversed, 0)
       ));
     
