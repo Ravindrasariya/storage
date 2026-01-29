@@ -5012,7 +5012,7 @@ export class DatabaseStorage implements IStorage {
 
     // Restore the farmer's receivables (reduce paid_amount)
     if (transfer.receivablesTransferred > 0) {
-      let remainingToRestore = transfer.receivablesTransferred;
+      let remainingToRestore = roundAmount(transfer.receivablesTransferred);
       
       // Get receivables in reverse order (most recent first, opposite of FIFO)
       const receivablesResult = await db.execute(sql`
@@ -5031,25 +5031,31 @@ export class DatabaseStorage implements IStorage {
         if (remainingToRestore <= 0) break;
 
         const currentPaid = row.paid_amount || 0;
-        const amountToRestore = Math.min(remainingToRestore, currentPaid);
+        if (currentPaid <= 0) continue; // Skip if nothing to restore from
+        
+        const amountToRestore = roundAmount(Math.min(remainingToRestore, currentPaid));
+        if (amountToRestore <= 0) continue; // Skip if nothing to restore
+        
+        const newPaidAmount = roundAmount(Math.max(0, currentPaid - amountToRestore)); // Guard against negative
 
         await db.execute(sql`
           UPDATE opening_receivables
-          SET paid_amount = paid_amount - ${amountToRestore}
+          SET paid_amount = ${newPaidAmount}
           WHERE id = ${row.id}
         `);
 
-        remainingToRestore -= amountToRestore;
+        remainingToRestore = roundAmount(remainingToRestore - amountToRestore);
       }
     }
 
     // Restore the farmer's self-sale dues
     if (transfer.selfSalesTransferred > 0) {
-      let remainingToRestore = transfer.selfSalesTransferred;
+      let remainingToRestore = roundAmount(transfer.selfSalesTransferred);
 
       // Get self-sales in reverse order (most recent first)
+      // These are sales where the farmer bought their own produce and then transferred the debt to a buyer
       const selfSalesResult = await db.execute(sql`
-        SELECT id, due_amount, total_price
+        SELECT id, due_amount, cold_storage_charge
         FROM sales_history
         WHERE cold_storage_id = ${transfer.coldStorageId}
           AND COALESCE(is_self_sale, 0) = 1
@@ -5060,13 +5066,31 @@ export class DatabaseStorage implements IStorage {
         ORDER BY sold_at DESC
       `);
 
-      for (const row of selfSalesResult.rows as { id: string; due_amount: number; total_price: number }[]) {
+      for (const row of selfSalesResult.rows as { id: string; due_amount: number; cold_storage_charge: number }[]) {
         if (remainingToRestore <= 0) break;
 
         const saleId = row.id;
-        const maxCanRestore = roundAmount(row.total_price - row.due_amount);
-        const amountToRestore = Math.min(remainingToRestore, maxCanRestore);
-        const newDueAmount = roundAmount(row.due_amount + amountToRestore);
+        // maxCanRestore = how much was transferred from this sale (original charge - current due)
+        const originalCharge = row.cold_storage_charge || 0;
+        const currentDue = row.due_amount || 0;
+        
+        // Calculate max restorable - this is what was transferred out of this sale
+        // Guard against data anomalies where currentDue > originalCharge or missing originalCharge
+        let maxCanRestore = roundAmount(originalCharge - currentDue);
+        
+        // If originalCharge is 0 or missing (legacy records), we can still restore up to remainingToRestore
+        // since the sale was marked with transfer_to_buyer_name, it must have been transferred
+        if (originalCharge <= 0) {
+          maxCanRestore = remainingToRestore; // Allow full restoration for legacy records
+        }
+        
+        // Guard against negative values (data anomalies)
+        if (maxCanRestore < 0) maxCanRestore = 0;
+        
+        const amountToRestore = roundAmount(Math.min(remainingToRestore, maxCanRestore));
+        if (amountToRestore <= 0) continue; // Skip if nothing to restore
+        
+        const newDueAmount = roundAmount(currentDue + amountToRestore);
 
         await db.execute(sql`
           UPDATE sales_history

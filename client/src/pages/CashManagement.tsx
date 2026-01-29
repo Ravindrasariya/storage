@@ -846,6 +846,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      // Also invalidate opening receivables since F2B reversal restores farmer receivables
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
