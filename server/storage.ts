@@ -1035,8 +1035,12 @@ export class DatabaseStorage implements IStorage {
       totalDue,
       paidCount,
       dueCount,
-      totalHammali: hammaliDue,
-      totalGradingCharges: gradingDue,
+      // Gross totals (for Analytics display)
+      totalHammali,
+      totalGradingCharges,
+      // Net amounts after expenses (for Cash Management expense dropdowns)
+      hammaliDue,
+      gradingDue,
     };
   }
 

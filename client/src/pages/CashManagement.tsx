@@ -1493,16 +1493,6 @@ export default function CashManagement() {
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const netCashTransfer = cashTransferIn - cashTransferOut;
     
-    // Debug logging for transfer calculations
-    console.log("DEBUG Transfer Calculation:", {
-      totalTransfers: transfers.length,
-      activeTransfers: activeTransfers.length,
-      cashTransfersFromCash: cashTransfersFromCash.map(t => ({ id: t.id, fromType: t.fromAccountType, toType: t.toAccountType, amount: t.amount, reversed: t.isReversed })),
-      cashTransferIn,
-      cashTransferOut,
-      netCashTransfer,
-    });
-    
     const cashInHand = openingCash + totalCashReceived - totalCashExpenses + netCashTransfer;
 
     // Helper to get the effective account identifier for receipts/expenses
@@ -1526,7 +1516,6 @@ export default function CashManagement() {
     }> = {};
 
     // Initialize with bank accounts
-    console.log("DEBUG Bank Accounts for initialization:", bankAccounts.map(a => ({ id: a.id, name: a.accountName, opening: a.openingBalance })));
     bankAccounts.forEach(account => {
       accountBalances[account.id] = {
         accountId: account.id,
@@ -1581,16 +1570,6 @@ export default function CashManagement() {
     activeTransfers.forEach(t => {
       const toId = getTransferToId(t);
       const fromId = getTransferFromId(t);
-      console.log("DEBUG Processing transfer:", { 
-        id: t.id, 
-        toAccountId: t.toAccountId, 
-        toAccountType: t.toAccountType,
-        toId, 
-        fromId, 
-        amount: t.amount,
-        toIdExists: !!accountBalances[toId as string],
-        accountBalanceKeys: Object.keys(accountBalances)
-      });
       if (toId && accountBalances[toId]) {
         accountBalances[toId].transferIn += Number(t.amount) || 0;
       }
@@ -2584,10 +2563,10 @@ export default function CashManagement() {
                     <SelectContent>
                       <SelectItem value="salary">{t("salary")}</SelectItem>
                       <SelectItem value="hammali">
-                        {t("hammali")} {paymentStats?.totalHammali ? `(₹${paymentStats.totalHammali.toLocaleString("en-IN")})` : ""}
+                        {t("hammali")} {paymentStats?.hammaliDue ? `(₹${paymentStats.hammaliDue.toLocaleString("en-IN")})` : ""}
                       </SelectItem>
                       <SelectItem value="grading_charges">
-                        {t("gradingCharges")} {paymentStats?.totalGradingCharges ? `(₹${paymentStats.totalGradingCharges.toLocaleString("en-IN")})` : ""}
+                        {t("gradingCharges")} {paymentStats?.gradingDue ? `(₹${paymentStats.gradingDue.toLocaleString("en-IN")})` : ""}
                       </SelectItem>
                       <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                       <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>

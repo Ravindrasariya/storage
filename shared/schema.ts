@@ -554,8 +554,12 @@ export interface PaymentStats {
   totalDue: number;
   paidCount: number;
   dueCount: number;
+  // Gross totals (for Analytics display)
   totalHammali: number;
   totalGradingCharges: number;
+  // Net amounts after expenses (for Cash Management expense dropdowns)
+  hammaliDue: number;
+  gradingDue: number;
 }
 
 // Merchant stats for analytics
