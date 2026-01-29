@@ -21,6 +21,7 @@ import {
   openingPayables,
   dailyIdCounters,
   discounts,
+  farmerToBuyerTransfers,
   bankAccounts,
   type ColdStorage,
   type InsertColdStorage,
@@ -57,6 +58,7 @@ import {
   type InsertOpeningPayable,
   type Discount,
   type InsertDiscount,
+  type FarmerToBuyerTransfer,
   type BankAccount,
   type InsertBankAccount,
   type DashboardStats,
@@ -279,6 +281,7 @@ export interface IStorage {
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
   getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
   // Farmer to Buyer debt transfer
+  getFarmerToBuyerTransfers(coldStorageId: string): Promise<FarmerToBuyerTransfer[]>;
   createFarmerToBuyerTransfer(data: {
     coldStorageId: string;
     farmerName: string;
@@ -289,6 +292,7 @@ export interface IStorage {
     transferDate: Date;
     remarks?: string | null;
   }): Promise<{ success: boolean; receivablesTransferred: number; selfSalesTransferred: number; transactionId: string }>;
+  reverseFarmerToBuyerTransfer(transferId: string): Promise<{ success: boolean; message?: string }>;
   // Update farmer details in all salesHistory entries for a given lotId
   // Also updates buyerName if it matches the "self" pattern (farmer as buyer)
   updateSalesHistoryFarmerDetails(
@@ -4852,8 +4856,49 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Generate transaction ID for cash flow record
-    const transactionId = `FT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Generate transaction ID for cash flow record (same format as other cash flow entries)
+    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId, data.transferDate);
+
+    // Calculate remaining farmer dues after this transfer
+    const remainingReceivablesResult = await db.execute(sql`
+      SELECT COALESCE(SUM(due_amount - COALESCE(paid_amount, 0)), 0)::float as total
+      FROM opening_receivables
+      WHERE cold_storage_id = ${data.coldStorageId}
+        AND payer_type = 'farmer'
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+        AND TRIM(contact_number) = TRIM(${data.contactNumber})
+        AND (due_amount - COALESCE(paid_amount, 0)) > 0
+    `);
+    const remainingSelfSalesResult = await db.execute(sql`
+      SELECT COALESCE(SUM(due_amount), 0)::float as total
+      FROM sales_history
+      WHERE cold_storage_id = ${data.coldStorageId}
+        AND COALESCE(is_self_sale, 0) = 1
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+        AND TRIM(contact_number) = TRIM(${data.contactNumber})
+        AND due_amount > 0
+    `);
+    const dueBalanceAfter = parseFloat((remainingReceivablesResult.rows[0] as { total: string | number })?.total?.toString() || "0") +
+                           parseFloat((remainingSelfSalesResult.rows[0] as { total: string | number })?.total?.toString() || "0");
+
+    // Store the transfer in the farmer_to_buyer_transfers table for cash flow history
+    await db.insert(farmerToBuyerTransfers).values({
+      id: randomUUID(),
+      transactionId,
+      coldStorageId: data.coldStorageId,
+      farmerName: data.farmerName.trim(),
+      village: data.village.trim(),
+      contactNumber: data.contactNumber.trim(),
+      toBuyerName: data.toBuyerName,
+      totalAmount: data.amount,
+      receivablesTransferred,
+      selfSalesTransferred,
+      transferDate: data.transferDate,
+      remarks: data.remarks || null,
+      dueBalanceAfter: Math.floor(dueBalanceAfter * 10) / 10, // Truncate to 1 decimal
+    });
 
     return {
       success: true,
@@ -4861,6 +4906,113 @@ export class DatabaseStorage implements IStorage {
       selfSalesTransferred,
       transactionId,
     };
+  }
+
+  // Get all farmer-to-buyer transfers for cash flow history
+  async getFarmerToBuyerTransfers(coldStorageId: string): Promise<FarmerToBuyerTransfer[]> {
+    return db.select()
+      .from(farmerToBuyerTransfers)
+      .where(eq(farmerToBuyerTransfers.coldStorageId, coldStorageId))
+      .orderBy(desc(farmerToBuyerTransfers.createdAt));
+  }
+
+  // Reverse a farmer-to-buyer transfer
+  async reverseFarmerToBuyerTransfer(transferId: string): Promise<{ success: boolean; message?: string }> {
+    // Get the transfer
+    const [transfer] = await db.select()
+      .from(farmerToBuyerTransfers)
+      .where(eq(farmerToBuyerTransfers.id, transferId));
+
+    if (!transfer) {
+      return { success: false, message: "Transfer not found" };
+    }
+
+    if (transfer.isReversed === 1) {
+      return { success: false, message: "Transfer already reversed" };
+    }
+
+    // Restore the farmer's receivables (reduce paid_amount)
+    if (transfer.receivablesTransferred > 0) {
+      let remainingToRestore = transfer.receivablesTransferred;
+      
+      // Get receivables in reverse order (most recent first, opposite of FIFO)
+      const receivablesResult = await db.execute(sql`
+        SELECT id, due_amount, paid_amount
+        FROM opening_receivables
+        WHERE cold_storage_id = ${transfer.coldStorageId}
+          AND payer_type = 'farmer'
+          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${transfer.farmerName}))
+          AND LOWER(TRIM(village)) = LOWER(TRIM(${transfer.village}))
+          AND TRIM(contact_number) = TRIM(${transfer.contactNumber})
+          AND COALESCE(paid_amount, 0) > 0
+        ORDER BY created_at DESC
+      `);
+
+      for (const row of receivablesResult.rows as { id: string; due_amount: number; paid_amount: number }[]) {
+        if (remainingToRestore <= 0) break;
+
+        const currentPaid = row.paid_amount || 0;
+        const amountToRestore = Math.min(remainingToRestore, currentPaid);
+
+        await db.execute(sql`
+          UPDATE opening_receivables
+          SET paid_amount = paid_amount - ${amountToRestore}
+          WHERE id = ${row.id}
+        `);
+
+        remainingToRestore -= amountToRestore;
+      }
+    }
+
+    // Restore the farmer's self-sale dues
+    if (transfer.selfSalesTransferred > 0) {
+      let remainingToRestore = transfer.selfSalesTransferred;
+
+      // Get self-sales in reverse order (most recent first)
+      const selfSalesResult = await db.execute(sql`
+        SELECT id, due_amount, total_price
+        FROM sales_history
+        WHERE cold_storage_id = ${transfer.coldStorageId}
+          AND COALESCE(is_self_sale, 0) = 1
+          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${transfer.farmerName}))
+          AND LOWER(TRIM(village)) = LOWER(TRIM(${transfer.village}))
+          AND TRIM(contact_number) = TRIM(${transfer.contactNumber})
+          AND transfer_to_buyer_name = ${transfer.toBuyerName}
+        ORDER BY sold_at DESC
+      `);
+
+      for (const row of selfSalesResult.rows as { id: string; due_amount: number; total_price: number }[]) {
+        if (remainingToRestore <= 0) break;
+
+        const saleId = row.id;
+        const maxCanRestore = row.total_price - row.due_amount;
+        const amountToRestore = Math.min(remainingToRestore, maxCanRestore);
+        const newDueAmount = row.due_amount + amountToRestore;
+
+        await db.execute(sql`
+          UPDATE sales_history
+          SET 
+            due_amount = ${newDueAmount},
+            transfer_to_buyer_name = NULL,
+            transfer_date = NULL,
+            transfer_remarks = NULL,
+            clearance_type = NULL
+          WHERE id = ${saleId}
+        `);
+
+        remainingToRestore -= amountToRestore;
+      }
+    }
+
+    // Mark the transfer as reversed
+    await db.update(farmerToBuyerTransfers)
+      .set({
+        isReversed: 1,
+        reversedAt: new Date(),
+      })
+      .where(eq(farmerToBuyerTransfers.id, transferId));
+
+    return { success: true };
   }
 
   // Bank Accounts
