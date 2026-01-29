@@ -1485,13 +1485,23 @@ export default function CashManagement() {
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     
     // Calculate cash transfers
+    const cashTransfersFromCash = activeTransfers.filter(t => t.fromAccountType === "cash");
     const cashTransferIn = activeTransfers
       .filter(t => t.toAccountType === "cash")
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    const cashTransferOut = activeTransfers
-      .filter(t => t.fromAccountType === "cash")
+    const cashTransferOut = cashTransfersFromCash
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const netCashTransfer = cashTransferIn - cashTransferOut;
+    
+    // Debug logging for transfer calculations
+    console.log("DEBUG Transfer Calculation:", {
+      totalTransfers: transfers.length,
+      activeTransfers: activeTransfers.length,
+      cashTransfersFromCash: cashTransfersFromCash.map(t => ({ id: t.id, fromType: t.fromAccountType, toType: t.toAccountType, amount: t.amount, reversed: t.isReversed })),
+      cashTransferIn,
+      cashTransferOut,
+      netCashTransfer,
+    });
     
     const cashInHand = openingCash + totalCashReceived - totalCashExpenses + netCashTransfer;
 
@@ -1516,6 +1526,7 @@ export default function CashManagement() {
     }> = {};
 
     // Initialize with bank accounts
+    console.log("DEBUG Bank Accounts for initialization:", bankAccounts.map(a => ({ id: a.id, name: a.accountName, opening: a.openingBalance })));
     bankAccounts.forEach(account => {
       accountBalances[account.id] = {
         accountId: account.id,
@@ -1570,6 +1581,16 @@ export default function CashManagement() {
     activeTransfers.forEach(t => {
       const toId = getTransferToId(t);
       const fromId = getTransferFromId(t);
+      console.log("DEBUG Processing transfer:", { 
+        id: t.id, 
+        toAccountId: t.toAccountId, 
+        toAccountType: t.toAccountType,
+        toId, 
+        fromId, 
+        amount: t.amount,
+        toIdExists: !!accountBalances[toId as string],
+        accountBalanceKeys: Object.keys(accountBalances)
+      });
       if (toId && accountBalances[toId]) {
         accountBalances[toId].transferIn += Number(t.amount) || 0;
       }
