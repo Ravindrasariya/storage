@@ -203,6 +203,10 @@ export default function CashManagement() {
   const [newReceivableTehsil, setNewReceivableTehsil] = useState("");
   const [newReceivableDistrict, setNewReceivableDistrict] = useState("");
   const [newReceivableState, setNewReceivableState] = useState("");
+  // Farmer autocomplete state
+  const [showReceivableFarmerNameSuggestions, setShowReceivableFarmerNameSuggestions] = useState(false);
+  const [showReceivablePhoneSuggestions, setShowReceivablePhoneSuggestions] = useState(false);
+  const [showReceivableVillageSuggestions, setShowReceivableVillageSuggestions] = useState(false);
   
   // Bank account form state
   const [showAddBankAccount, setShowAddBankAccount] = useState(false);
@@ -348,6 +352,21 @@ export default function CashManagement() {
     enabled: showSettings,
   });
 
+  // Farmer records for autocomplete in receivables form
+  type FarmerRecord = {
+    farmerName: string;
+    village: string;
+    tehsil: string;
+    district: string;
+    state: string;
+    contactNumber: string;
+  };
+  
+  const { data: farmerRecordsForReceivables } = useQuery<FarmerRecord[]>({
+    queryKey: ["/api/farmers/lookup"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Bank accounts - always fetch for current year (used in dropdowns)
   const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
     queryKey: ["/api/bank-accounts", currentYear],
@@ -394,6 +413,44 @@ export default function CashManagement() {
     );
     return farmer || null;
   }, [discountFarmerKey, farmersWithDues]);
+
+  // Farmer autocomplete suggestions for receivables form
+  const receivableFarmerNameSuggestions = useMemo(() => {
+    if (!farmerRecordsForReceivables || farmerRecordsForReceivables.length === 0 || !newReceivableFarmerName.trim()) return [];
+    const nameVal = newReceivableFarmerName.toLowerCase().trim();
+    return farmerRecordsForReceivables
+      .filter(farmer => farmer.farmerName.toLowerCase().includes(nameVal))
+      .slice(0, 8);
+  }, [farmerRecordsForReceivables, newReceivableFarmerName]);
+
+  const receivablePhoneSuggestions = useMemo(() => {
+    if (!farmerRecordsForReceivables || farmerRecordsForReceivables.length === 0 || !newReceivableContactNumber.trim()) return [];
+    const phoneVal = newReceivableContactNumber.trim();
+    return farmerRecordsForReceivables
+      .filter(farmer => farmer.contactNumber.includes(phoneVal))
+      .slice(0, 8);
+  }, [farmerRecordsForReceivables, newReceivableContactNumber]);
+
+  const receivableVillageSuggestions = useMemo(() => {
+    if (!farmerRecordsForReceivables || farmerRecordsForReceivables.length === 0 || !newReceivableVillage.trim()) return [];
+    const villageVal = newReceivableVillage.toLowerCase().trim();
+    return farmerRecordsForReceivables
+      .filter(farmer => farmer.village.toLowerCase().includes(villageVal))
+      .slice(0, 8);
+  }, [farmerRecordsForReceivables, newReceivableVillage]);
+
+  // Select farmer from autocomplete and populate all fields
+  const selectReceivableFarmer = (farmer: FarmerRecord) => {
+    setNewReceivableFarmerName(farmer.farmerName);
+    setNewReceivableContactNumber(farmer.contactNumber);
+    setNewReceivableVillage(farmer.village);
+    setNewReceivableTehsil(farmer.tehsil);
+    setNewReceivableDistrict(farmer.district);
+    setNewReceivableState(farmer.state);
+    setShowReceivableFarmerNameSuggestions(false);
+    setShowReceivablePhoneSuggestions(false);
+    setShowReceivableVillageSuggestions(false);
+  };
 
   // Buyer dues for selected farmer
   const { data: buyerDuesForFarmer = [] } = useQuery<{ buyerName: string; totalDue: number; latestSaleDate: string }[]>({
@@ -3841,35 +3898,101 @@ export default function CashManagement() {
                   {newReceivablePayerType === "farmer" && (
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
+                        <div className="relative">
                           <Label className="text-xs">{t("farmerName")} *</Label>
                           <Input
                             value={newReceivableFarmerName}
-                            onChange={(e) => setNewReceivableFarmerName(e.target.value)}
+                            onChange={(e) => {
+                              setNewReceivableFarmerName(e.target.value);
+                              setShowReceivableFarmerNameSuggestions(true);
+                            }}
+                            onFocus={() => setShowReceivableFarmerNameSuggestions(true)}
+                            onBlur={() => setTimeout(() => setShowReceivableFarmerNameSuggestions(false), 200)}
                             placeholder={t("enterFarmerName")}
+                            autoComplete="off"
                             data-testid="input-receivable-farmer-name"
                           />
+                          {showReceivableFarmerNameSuggestions && receivableFarmerNameSuggestions.length > 0 && newReceivableFarmerName && (
+                            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                              {receivableFarmerNameSuggestions.map((farmer, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                                  onClick={() => selectReceivableFarmer(farmer)}
+                                  data-testid={`suggestion-receivable-farmer-${idx}`}
+                                >
+                                  <span className="font-medium">{farmer.farmerName}</span>
+                                  <span className="text-xs text-muted-foreground">{farmer.contactNumber} • {farmer.village}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div>
+                        <div className="relative">
                           <Label className="text-xs">{t("contactNumber")} *</Label>
                           <Input
                             value={newReceivableContactNumber}
-                            onChange={(e) => setNewReceivableContactNumber(e.target.value)}
+                            onChange={(e) => {
+                              setNewReceivableContactNumber(e.target.value);
+                              setShowReceivablePhoneSuggestions(true);
+                            }}
+                            onFocus={() => setShowReceivablePhoneSuggestions(true)}
+                            onBlur={() => setTimeout(() => setShowReceivablePhoneSuggestions(false), 200)}
                             placeholder={t("enterContactNumber")}
                             maxLength={10}
+                            autoComplete="off"
                             data-testid="input-receivable-contact"
                           />
+                          {showReceivablePhoneSuggestions && receivablePhoneSuggestions.length > 0 && newReceivableContactNumber && (
+                            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                              {receivablePhoneSuggestions.map((farmer, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                                  onClick={() => selectReceivableFarmer(farmer)}
+                                  data-testid={`suggestion-receivable-phone-${idx}`}
+                                >
+                                  <span className="font-medium">{farmer.contactNumber}</span>
+                                  <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
+                        <div className="relative">
                           <Label className="text-xs">{t("village")} *</Label>
                           <Input
                             value={newReceivableVillage}
-                            onChange={(e) => setNewReceivableVillage(e.target.value)}
+                            onChange={(e) => {
+                              setNewReceivableVillage(e.target.value);
+                              setShowReceivableVillageSuggestions(true);
+                            }}
+                            onFocus={() => setShowReceivableVillageSuggestions(true)}
+                            onBlur={() => setTimeout(() => setShowReceivableVillageSuggestions(false), 200)}
                             placeholder={t("enterVillage")}
+                            autoComplete="off"
                             data-testid="input-receivable-village"
                           />
+                          {showReceivableVillageSuggestions && receivableVillageSuggestions.length > 0 && newReceivableVillage && (
+                            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                              {receivableVillageSuggestions.map((farmer, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                                  onClick={() => selectReceivableFarmer(farmer)}
+                                  data-testid={`suggestion-receivable-village-${idx}`}
+                                >
+                                  <span className="font-medium">{farmer.village}</span>
+                                  <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.contactNumber}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div>
                           <Label className="text-xs">{t("tehsil")}</Label>
