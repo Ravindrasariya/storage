@@ -3954,16 +3954,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Discounts - Get farmers with outstanding dues
+  // Combines dues from both sales_history (self-sales) and opening_receivables (farmer type)
+  // Aggregates by farmer composite key (name + phone + village)
   async getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]> {
     const result = await db.execute(sql`
+      WITH combined_dues AS (
+        -- Sales history dues (self-sales where payer_type = 'Farmer')
+        SELECT 
+          farmer_name,
+          village,
+          contact_number,
+          due_amount
+        FROM sales_history
+        WHERE cold_storage_id = ${coldStorageId}
+          AND due_amount > 0
+        
+        UNION ALL
+        
+        -- Opening receivables (farmer type only)
+        SELECT 
+          farmer_name,
+          village,
+          contact_number,
+          due_amount
+        FROM opening_receivables
+        WHERE cold_storage_id = ${coldStorageId}
+          AND payer_type = 'farmer'
+          AND due_amount > 0
+      )
       SELECT 
         farmer_name as "farmerName",
         village,
         contact_number as "contactNumber",
         COALESCE(SUM(due_amount), 0)::float as "totalDue"
-      FROM sales_history
-      WHERE cold_storage_id = ${coldStorageId}
-        AND due_amount > 0
+      FROM combined_dues
       GROUP BY farmer_name, village, contact_number
       HAVING SUM(due_amount) > 0
       ORDER BY farmer_name
