@@ -2101,7 +2101,7 @@ export class DatabaseStorage implements IStorage {
     const totalDueAfter = Math.max(0, totalDueBefore - totalApplied);
     
     // Generate transaction ID
-    const transactionId = await this.generateTransactionId(data.coldStorageId, "cash_flow", data.receivedAt);
+    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
     
     // Create the cash receipt with farmer payer type
     const buyerDisplayName = data.buyerName || `${farmerIdentity.farmerName} (${farmerIdentity.village})`;
