@@ -2107,6 +2107,7 @@ export class DatabaseStorage implements IStorage {
     const buyerDisplayName = data.buyerName || `${farmerIdentity.farmerName} (${farmerIdentity.village})`;
     const [receipt] = await db.insert(cashReceipts)
       .values({
+        id: randomUUID(),
         coldStorageId: data.coldStorageId,
         payerType: "farmer",
         buyerName: buyerDisplayName,
