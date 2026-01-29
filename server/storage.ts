@@ -1446,10 +1446,10 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     if (filters?.buyerName) {
-      // Search by CurrentDueBuyerName: COALESCE(NULLIF(transferToBuyerName, ''), buyerName)
-      // This filters by the effective buyer - transferToBuyerName if available, else buyerName
+      // Search by CurrentDueBuyerName: use original buyer if transfer is reversed
+      // This filters by the effective buyer - transferToBuyerName if available and not reversed, else buyerName
       conditions.push(
-        sql`COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) ILIKE ${`%${filters.buyerName}%`}`
+        sql`CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END ILIKE ${`%${filters.buyerName}%`}`
       );
     }
 
@@ -2423,11 +2423,12 @@ export class DatabaseStorage implements IStorage {
 
     // PASS 1: Apply to cold storage dues (FIFO by soldAt)
     // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
+    // BUT if transfer is reversed (isTransferReversed = 1), use original buyerName
     const sales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
-        sql`LOWER(TRIM(COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}))) = LOWER(TRIM(${data.buyerName}))`,
+        sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${data.buyerName}))`,
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
       ))
       .orderBy(salesHistory.soldAt); // FIFO - oldest first
@@ -2559,6 +2560,7 @@ export class DatabaseStorage implements IStorage {
     const currentYear = new Date().getFullYear();
 
     // 1. Get cold storage dues from salesHistory (using CurrentDueBuyerName logic)
+    // BUT if transfer is reversed (is_transfer_reversed = 1), use original buyer_name
     const salesResult = await db.execute(sql`
       SELECT 
         COALESCE(cold_storage_charge, 0) as cold_storage_charge,
@@ -2569,7 +2571,7 @@ export class DatabaseStorage implements IStorage {
       FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
       AND payment_status IN ('due', 'partial')
-      AND LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = ${normalizedBuyer}
+      AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = ${normalizedBuyer}
     `);
     
     for (const row of salesResult.rows as any[]) {
@@ -2994,11 +2996,12 @@ export class DatabaseStorage implements IStorage {
     // Step 1: Reset all sales for this buyer to "due" status with 0 paidAmount
     // Calculate proper dueAmount using all surcharges
     // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
+    // BUT if transfer is reversed (isTransferReversed = 1), use original buyerName
     const buyerSales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}))) = LOWER(TRIM(${buyerName}))`
+        sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))`
       ))
       .orderBy(salesHistory.soldAt);
 
@@ -3189,12 +3192,13 @@ export class DatabaseStorage implements IStorage {
     }
 
     // PASS 1: Apply to cold storage dues (FIFO by soldAt)
+    // Use CurrentDueBuyerName logic: BUT if transfer is reversed (isTransferReversed = 1), use original buyerName
     if (remainingAmount > 0) {
       const sales = await db.select()
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
-          sql`LOWER(TRIM(COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}))) = LOWER(TRIM(${buyerName}))`,
+          sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))`,
           sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
         ))
         .orderBy(salesHistory.soldAt);
@@ -3304,7 +3308,7 @@ export class DatabaseStorage implements IStorage {
         AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${discount.farmerName}))
         AND LOWER(TRIM(village)) = LOWER(TRIM(${discount.village}))
         AND TRIM(contact_number) = TRIM(${discount.contactNumber})
-        AND LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${allocation.buyerName}))
+        AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${allocation.buyerName}))
         AND due_amount > 0
       ORDER BY sold_at ASC
     `);
@@ -4108,9 +4112,10 @@ export class DatabaseStorage implements IStorage {
     const farmerSelfDue = receivablesDue + selfSalesDue;
     
     // Get other buyer dues (excluding self-sales which are farmer's own)
+    // Use CurrentDueBuyerName logic: BUT if transfer is reversed (is_transfer_reversed = 1), use original buyer_name
     const result = await db.execute(sql`
       SELECT 
-        COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) as "buyerName",
+        CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END as "buyerName",
         COALESCE(SUM(due_amount), 0)::float as "totalDue",
         MAX(sold_at) as "latestSaleDate"
       FROM sales_history
@@ -4120,8 +4125,8 @@ export class DatabaseStorage implements IStorage {
         AND TRIM(contact_number) = TRIM(${contactNumber})
         AND due_amount > 0
         AND COALESCE(is_self_sale, 0) = 0
-        AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) IS NOT NULL
-      GROUP BY COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name)
+        AND CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END IS NOT NULL
+      GROUP BY CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END
       HAVING SUM(due_amount) > 0
       ORDER BY MAX(sold_at) DESC
     `);
@@ -4247,6 +4252,7 @@ export class DatabaseStorage implements IStorage {
         }
       } else {
         // Regular buyer allocation: apply to sales from this buyer
+        // Use CurrentDueBuyerName logic: BUT if transfer is reversed (is_transfer_reversed = 1), use original buyer_name
         const salesResult = await db.execute(sql`
           SELECT id, due_amount
           FROM sales_history
@@ -4254,7 +4260,7 @@ export class DatabaseStorage implements IStorage {
             AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
             AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
             AND TRIM(contact_number) = TRIM(${data.contactNumber})
-            AND LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${buyerName}))
+            AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${buyerName}))
             AND due_amount > 0
           ORDER BY sold_at ASC
         `);
@@ -4448,7 +4454,7 @@ export class DatabaseStorage implements IStorage {
            AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
            AND TRIM(contact_number) = TRIM(${contactNumber}))
           OR
-          (LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${selfSalePattern})))
+          (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
         )
     `);
     
@@ -4577,7 +4583,7 @@ export class DatabaseStorage implements IStorage {
                  AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
                  AND TRIM(contact_number) = TRIM(${contactNumber}))
                 OR
-                (LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${selfSalePattern})))
+                (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
               )`,
               sql`(due_amount > 0 OR extra_due_to_merchant > 0)`
             ))
@@ -4655,7 +4661,7 @@ export class DatabaseStorage implements IStorage {
                  AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
                  AND TRIM(contact_number) = TRIM(${contactNumber}))
                 OR
-                (LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${selfSalePattern})))
+                (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
               )`,
               sql`due_amount > 0`
             ))
