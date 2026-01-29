@@ -2231,7 +2231,7 @@ export class DatabaseStorage implements IStorage {
             paid_amount = ROUND((paid_amount + ${applyToDue})::numeric, 2),
             extra_due_to_merchant = ROUND((extra_due_to_merchant - ${applyToExtra})::numeric, 2),
             payment_status = CASE 
-              WHEN ROUND((due_amount - ${applyToDue})::numeric, 2) + ROUND((extra_due_to_merchant - ${applyToExtra})::numeric, 2) <= 0 THEN 'paid'
+              WHEN ROUND((due_amount - ${applyToDue})::numeric, 2) + ROUND((extra_due_to_merchant - ${applyToExtra})::numeric, 2) < 1 THEN 'paid'
               WHEN ROUND((paid_amount + ${applyToDue})::numeric, 2) > 0 THEN 'partial'
               ELSE payment_status
             END
@@ -2394,9 +2394,12 @@ export class DatabaseStorage implements IStorage {
         const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
         const newDueAmount = totalCharges - newPaidAmount;
         
+        // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
+        const paymentStatusToSet = newDueAmount < 1 ? "paid" : "partial";
+        
         await db.update(salesHistory)
           .set({
-            paymentStatus: "partial",
+            paymentStatus: paymentStatusToSet,
             paidAmount: newPaidAmount,
             dueAmount: newDueAmount,
             paymentMode: paymentMode,
@@ -3058,9 +3061,12 @@ export class DatabaseStorage implements IStorage {
           const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
           const newDueAmount = totalCharges - newPaidAmount;
           
+          // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
+          const paymentStatusToSet = newDueAmount < 1 ? "paid" : "partial";
+          
           await db.update(salesHistory)
             .set({
-              paymentStatus: "partial",
+              paymentStatus: paymentStatusToSet,
               paidAmount: newPaidAmount,
               dueAmount: newDueAmount,
               paymentMode: paymentMode,
@@ -3153,7 +3159,7 @@ export class DatabaseStorage implements IStorage {
           paid_amount = paid_amount + ${discountToApply},
           discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
           payment_status = CASE 
-            WHEN due_amount - ${discountToApply} <= 0 THEN 'paid'
+            WHEN due_amount - ${discountToApply} < 1 THEN 'paid'
             ELSE 'partial'
           END
         WHERE id = ${saleId}
@@ -3935,7 +3941,7 @@ export class DatabaseStorage implements IStorage {
             paid_amount = paid_amount + ${discountToApply},
             discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
             payment_status = CASE 
-              WHEN due_amount - ${discountToApply} <= 0 THEN 'paid'
+              WHEN due_amount - ${discountToApply} < 1 THEN 'paid'
               ELSE 'partial'
             END
           WHERE id = ${saleId}
