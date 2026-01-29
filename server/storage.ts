@@ -309,6 +309,16 @@ export interface IStorage {
   deleteBankAccount(id: string): Promise<boolean>;
 }
 
+/**
+ * Global utility function to round amounts to 1 decimal place.
+ * This prevents floating-point precision issues across all financial calculations.
+ * @param amount The amount to round
+ * @returns Amount rounded to 1 decimal place
+ */
+export function roundAmount(amount: number): number {
+  return Math.round(amount * 10) / 10;
+}
+
 export class DatabaseStorage implements IStorage {
   async initializeDefaultData(): Promise<void> {
     const existingStorage = await db.select().from(coldStorages).where(eq(coldStorages.id, "cs-default"));
@@ -1317,8 +1327,8 @@ export class DatabaseStorage implements IStorage {
       saleDueAmount = totalChargeWithExtras;
     } else if (paymentStatus === "partial") {
       const rawPaid = Math.max(0, paidAmount || 0);
-      salePaidAmount = Math.min(rawPaid, totalChargeWithExtras);
-      saleDueAmount = totalChargeWithExtras - salePaidAmount;
+      salePaidAmount = roundAmount(Math.min(rawPaid, totalChargeWithExtras));
+      saleDueAmount = roundAmount(totalChargeWithExtras - salePaidAmount);
     }
 
     const bagsToRemove = lot.remainingSize;
@@ -1329,8 +1339,8 @@ export class DatabaseStorage implements IStorage {
       soldAt: new Date(),
       upForSale: 0,
       remainingSize: 0,
-      totalPaidCharge: (lot.totalPaidCharge || 0) + salePaidAmount,
-      totalDueCharge: (lot.totalDueCharge || 0) + saleDueAmount,
+      totalPaidCharge: roundAmount((lot.totalPaidCharge || 0) + salePaidAmount),
+      totalDueCharge: roundAmount((lot.totalDueCharge || 0) + saleDueAmount),
     }).where(eq(lots.id, lotId)).returning();
 
     // Create edit history for the final sale
@@ -2149,7 +2159,7 @@ export class DatabaseStorage implements IStorage {
     let farmerIdentity: { farmerName: string; contactNumber: string; village: string };
     let totalDueBefore = 0;
     let allFarmerReceivables: typeof openingReceivables.$inferSelect[] = [];
-    let selfSalesWithDues: { id: string; due_amount: number; extra_due_to_merchant: number }[] = [];
+    let selfSalesWithDues: { id: string; due_amount: number; extra_due_to_merchant: number; paid_amount: number }[] = [];
     
     if (isSelfSalePayment) {
       // Use explicitly provided farmer details (preferred) or throw error
@@ -2166,7 +2176,7 @@ export class DatabaseStorage implements IStorage {
       // Get self-sales with dues for this farmer
       // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
       const selfSalesResult = await db.execute(sql`
-        SELECT id, due_amount, extra_due_to_merchant
+        SELECT id, due_amount, extra_due_to_merchant, paid_amount
         FROM sales_history
         WHERE cold_storage_id = ${data.coldStorageId}
           AND is_self_sale = 1
@@ -2176,7 +2186,7 @@ export class DatabaseStorage implements IStorage {
           AND (due_amount > 0 OR extra_due_to_merchant > 0)
         ORDER BY sold_at ASC
       `);
-      selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number }[];
+      selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number; paid_amount: number }[];
       
       // Calculate total due
       for (const sale of selfSalesWithDues) {
@@ -2229,7 +2239,7 @@ export class DatabaseStorage implements IStorage {
       // Also get self-sales with dues for this farmer (to include in total due calculation)
       // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
       const selfSalesResult = await db.execute(sql`
-        SELECT id, due_amount, extra_due_to_merchant
+        SELECT id, due_amount, extra_due_to_merchant, paid_amount
         FROM sales_history
         WHERE cold_storage_id = ${data.coldStorageId}
           AND is_self_sale = 1
@@ -2239,7 +2249,7 @@ export class DatabaseStorage implements IStorage {
           AND (due_amount > 0 OR extra_due_to_merchant > 0)
         ORDER BY sold_at ASC
       `);
-      selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number }[];
+      selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number; paid_amount: number }[];
       
       for (const sale of selfSalesWithDues) {
         totalDueBefore += (sale.due_amount || 0) + (sale.extra_due_to_merchant || 0);
@@ -2264,21 +2274,21 @@ export class DatabaseStorage implements IStorage {
     // First apply to receivables (if any)
     for (const receivable of allFarmerReceivables) {
       if (remainingAmount <= 0) break;
-      const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
+      const remainingDue = roundAmount(receivable.dueAmount - (receivable.paidAmount || 0));
       if (remainingDue <= 0) continue;
       
       const amountToApply = Math.min(remainingAmount, remainingDue);
       
       if (amountToApply > 0) {
         await db.update(openingReceivables)
-          .set({ paidAmount: (receivable.paidAmount || 0) + amountToApply })
+          .set({ paidAmount: roundAmount((receivable.paidAmount || 0) + amountToApply) })
           .where(and(
             eq(openingReceivables.id, receivable.id),
             eq(openingReceivables.coldStorageId, data.coldStorageId)
           ));
         
-        remainingAmount -= amountToApply;
-        totalApplied += amountToApply;
+        remainingAmount = roundAmount(remainingAmount - amountToApply);
+        totalApplied = roundAmount(totalApplied + amountToApply);
         recordsUpdated++;
       }
     }
@@ -2287,7 +2297,7 @@ export class DatabaseStorage implements IStorage {
     for (const sale of selfSalesWithDues) {
       if (remainingAmount <= 0) break;
       
-      const saleTotalDue = (sale.due_amount || 0) + (sale.extra_due_to_merchant || 0);
+      const saleTotalDue = roundAmount((sale.due_amount || 0) + (sale.extra_due_to_merchant || 0));
       if (saleTotalDue <= 0) continue;
       
       const amountToApply = Math.min(remainingAmount, saleTotalDue);
@@ -2299,31 +2309,34 @@ export class DatabaseStorage implements IStorage {
         const extraDue = sale.extra_due_to_merchant || 0;
         
         const applyToDue = Math.min(toApply, dueAmount);
-        toApply -= applyToDue;
+        toApply = roundAmount(toApply - applyToDue);
         const applyToExtra = Math.min(toApply, extraDue);
+        const newDueAmount = roundAmount(dueAmount - applyToDue);
+        const newExtraDue = roundAmount(extraDue - applyToExtra);
+        const newPaidAmount = roundAmount((sale.paid_amount || 0) + applyToDue);
         
         await db.execute(sql`
           UPDATE sales_history
           SET 
-            due_amount = ROUND((due_amount - ${applyToDue})::numeric, 2),
-            paid_amount = ROUND((paid_amount + ${applyToDue})::numeric, 2),
-            extra_due_to_merchant = ROUND((extra_due_to_merchant - ${applyToExtra})::numeric, 2),
+            due_amount = ${newDueAmount},
+            paid_amount = ${newPaidAmount},
+            extra_due_to_merchant = ${newExtraDue},
             payment_status = CASE 
-              WHEN ROUND((due_amount - ${applyToDue})::numeric, 2) + ROUND((extra_due_to_merchant - ${applyToExtra})::numeric, 2) < 1 THEN 'paid'
-              WHEN ROUND((paid_amount + ${applyToDue})::numeric, 2) > 0 THEN 'partial'
+              WHEN ${newDueAmount} + ${newExtraDue} < 1 THEN 'paid'
+              WHEN ${newPaidAmount} > 0 THEN 'partial'
               ELSE payment_status
             END
           WHERE id = ${sale.id}
         `);
         
-        remainingAmount -= amountToApply;
-        totalApplied += amountToApply;
+        remainingAmount = roundAmount(remainingAmount - amountToApply);
+        totalApplied = roundAmount(totalApplied + amountToApply);
         recordsUpdated++;
       }
     }
     
     // Calculate total due after payment
-    const totalDueAfter = Math.max(0, totalDueBefore - totalApplied);
+    const totalDueAfter = roundAmount(Math.max(0, totalDueBefore - totalApplied));
     
     // Generate transaction ID
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
@@ -2407,7 +2420,7 @@ export class DatabaseStorage implements IStorage {
       for (const receivable of buyerReceivables) {
         if (remainingAmount <= 0) break;
 
-        const receivableDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+        const receivableDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
         if (receivableDue <= 0) continue;
 
         if (remainingAmount >= receivableDue) {
@@ -2416,16 +2429,16 @@ export class DatabaseStorage implements IStorage {
             .set({ paidAmount: receivable.dueAmount })
             .where(eq(openingReceivables.id, receivable.id));
           
-          remainingAmount -= receivableDue;
-          appliedAmount += receivableDue;
+          remainingAmount = roundAmount(remainingAmount - receivableDue);
+          appliedAmount = roundAmount(appliedAmount + receivableDue);
         } else {
           // Can only partially pay this receivable
-          const newPaidAmount = (receivable.paidAmount || 0) + remainingAmount;
+          const newPaidAmount = roundAmount((receivable.paidAmount || 0) + remainingAmount);
           await db.update(openingReceivables)
             .set({ paidAmount: newPaidAmount })
             .where(eq(openingReceivables.id, receivable.id));
           
-          appliedAmount += remainingAmount;
+          appliedAmount = roundAmount(appliedAmount + remainingAmount);
           remainingAmount = 0;
         }
       }
@@ -2449,7 +2462,7 @@ export class DatabaseStorage implements IStorage {
       // coldStorageCharge already includes base + kata + extraHammali + grading
       // Do NOT add them again to avoid double-counting
       const totalCharges = sale.coldStorageCharge || 0;
-      const saleDueAmount = totalCharges - (sale.paidAmount || 0);
+      const saleDueAmount = roundAmount(totalCharges - (sale.paidAmount || 0));
       
       if (saleDueAmount <= 0) continue;
 
@@ -2465,13 +2478,13 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(salesHistory.id, sale.id));
         
-        remainingAmount -= saleDueAmount;
-        appliedAmount += saleDueAmount;
+        remainingAmount = roundAmount(remainingAmount - saleDueAmount);
+        appliedAmount = roundAmount(appliedAmount + saleDueAmount);
         salesUpdated++;
       } else {
         // Can only partially pay this sale
-        const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
-        const newDueAmount = totalCharges - newPaidAmount;
+        const newPaidAmount = roundAmount((sale.paidAmount || 0) + remainingAmount);
+        const newDueAmount = roundAmount(totalCharges - newPaidAmount);
         
         // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
         const paymentStatusToSet = newDueAmount < 1 ? "paid" : "partial";
@@ -2485,7 +2498,7 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(salesHistory.id, sale.id));
         
-        appliedAmount += remainingAmount;
+        appliedAmount = roundAmount(appliedAmount + remainingAmount);
         remainingAmount = 0;
         salesUpdated++;
       }
@@ -2516,17 +2529,17 @@ export class DatabaseStorage implements IStorage {
             .set({ extraDueToMerchant: 0 })
             .where(eq(salesHistory.id, sale.id));
           
-          remainingAmount -= extraDue;
-          appliedAmount += extraDue;
+          remainingAmount = roundAmount(remainingAmount - extraDue);
+          appliedAmount = roundAmount(appliedAmount + extraDue);
           salesUpdated++;
         } else {
           // Can only partially pay this extra due
-          const newExtraDue = extraDue - remainingAmount;
+          const newExtraDue = roundAmount(extraDue - remainingAmount);
           await db.update(salesHistory)
             .set({ extraDueToMerchant: newExtraDue })
             .where(eq(salesHistory.id, sale.id));
           
-          appliedAmount += remainingAmount;
+          appliedAmount = roundAmount(appliedAmount + remainingAmount);
           remainingAmount = 0;
           salesUpdated++;
         }
@@ -2902,17 +2915,17 @@ export class DatabaseStorage implements IStorage {
         .orderBy(openingReceivables.createdAt);
       
       for (const receivable of currentReceivables) {
-        const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
+        const remainingDue = roundAmount(receivable.dueAmount - (receivable.paidAmount || 0));
         if (remainingDue <= 0) continue;
         
         const amountToApply = Math.min(remainingAmount, remainingDue);
         
         if (amountToApply > 0) {
           await db.update(openingReceivables)
-            .set({ paidAmount: (receivable.paidAmount || 0) + amountToApply })
+            .set({ paidAmount: roundAmount((receivable.paidAmount || 0) + amountToApply) })
             .where(eq(openingReceivables.id, receivable.id));
           
-          remainingAmount -= amountToApply;
+          remainingAmount = roundAmount(remainingAmount - amountToApply);
           receivablesUpdated++;
         }
         
@@ -2939,7 +2952,7 @@ export class DatabaseStorage implements IStorage {
           
           const dueAmount = sale.dueAmount || 0;
           const extraDue = sale.extraDueToMerchant || 0;
-          const totalSaleDue = dueAmount + extraDue;
+          const totalSaleDue = roundAmount(dueAmount + extraDue);
           
           if (totalSaleDue <= 0) continue;
           
@@ -2948,13 +2961,13 @@ export class DatabaseStorage implements IStorage {
           // Apply to due_amount first, then to extra_due_to_merchant
           let toApply = amountToApply;
           const applyToDue = Math.min(toApply, dueAmount);
-          toApply -= applyToDue;
+          toApply = roundAmount(toApply - applyToDue);
           const applyToExtra = Math.min(toApply, extraDue);
           
-          const newDueAmount = Math.round((dueAmount - applyToDue) * 100) / 100;
-          const newExtraDue = Math.round((extraDue - applyToExtra) * 100) / 100;
+          const newDueAmount = roundAmount(dueAmount - applyToDue);
+          const newExtraDue = roundAmount(extraDue - applyToExtra);
           // paidAmount should include both applied to due and applied to extra (total payment applied)
-          const newPaidAmount = Math.round(((sale.paidAmount || 0) + applyToDue + applyToExtra) * 100) / 100;
+          const newPaidAmount = roundAmount((sale.paidAmount || 0) + applyToDue + applyToExtra);
           
           // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
           const paymentStatusToSet = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
@@ -2968,7 +2981,7 @@ export class DatabaseStorage implements IStorage {
             })
             .where(eq(salesHistory.id, sale.id));
           
-          remainingAmount -= amountToApply;
+          remainingAmount = roundAmount(remainingAmount - amountToApply);
           receivablesUpdated++;
         }
       }
@@ -3179,7 +3192,7 @@ export class DatabaseStorage implements IStorage {
       for (const receivable of buyerReceivables) {
         if (remainingAmount <= 0) break;
 
-        const receivableDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+        const receivableDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
         if (receivableDue <= 0) continue;
 
         if (remainingAmount >= receivableDue) {
@@ -3187,15 +3200,15 @@ export class DatabaseStorage implements IStorage {
             .set({ paidAmount: receivable.dueAmount })
             .where(eq(openingReceivables.id, receivable.id));
           
-          remainingAmount -= receivableDue;
-          appliedAmount += receivableDue;
+          remainingAmount = roundAmount(remainingAmount - receivableDue);
+          appliedAmount = roundAmount(appliedAmount + receivableDue);
         } else {
-          const newPaidAmount = (receivable.paidAmount || 0) + remainingAmount;
+          const newPaidAmount = roundAmount((receivable.paidAmount || 0) + remainingAmount);
           await db.update(openingReceivables)
             .set({ paidAmount: newPaidAmount })
             .where(eq(openingReceivables.id, receivable.id));
           
-          appliedAmount += remainingAmount;
+          appliedAmount = roundAmount(appliedAmount + remainingAmount);
           remainingAmount = 0;
         }
       }
@@ -3217,7 +3230,7 @@ export class DatabaseStorage implements IStorage {
         if (remainingAmount <= 0) break;
 
         const totalCharges = sale.coldStorageCharge || 0;
-        const saleDueAmount = totalCharges - (sale.paidAmount || 0);
+        const saleDueAmount = roundAmount(totalCharges - (sale.paidAmount || 0));
         
         if (saleDueAmount <= 0) continue;
 
@@ -3232,11 +3245,11 @@ export class DatabaseStorage implements IStorage {
             })
             .where(eq(salesHistory.id, sale.id));
           
-          remainingAmount -= saleDueAmount;
-          appliedAmount += saleDueAmount;
+          remainingAmount = roundAmount(remainingAmount - saleDueAmount);
+          appliedAmount = roundAmount(appliedAmount + saleDueAmount);
         } else {
-          const newPaidAmount = (sale.paidAmount || 0) + remainingAmount;
-          const newDueAmount = totalCharges - newPaidAmount;
+          const newPaidAmount = roundAmount((sale.paidAmount || 0) + remainingAmount);
+          const newDueAmount = roundAmount(totalCharges - newPaidAmount);
           
           // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
           const paymentStatusToSet = newDueAmount < 1 ? "paid" : "partial";
@@ -3250,7 +3263,7 @@ export class DatabaseStorage implements IStorage {
             })
             .where(eq(salesHistory.id, sale.id));
           
-          appliedAmount += remainingAmount;
+          appliedAmount = roundAmount(appliedAmount + remainingAmount);
           remainingAmount = 0;
         }
       }
@@ -3278,15 +3291,15 @@ export class DatabaseStorage implements IStorage {
             .set({ extraDueToMerchant: 0 })
             .where(eq(salesHistory.id, sale.id));
           
-          remainingAmount -= extraDue;
-          appliedAmount += extraDue;
+          remainingAmount = roundAmount(remainingAmount - extraDue);
+          appliedAmount = roundAmount(appliedAmount + extraDue);
         } else {
-          const newExtraDue = extraDue - remainingAmount;
+          const newExtraDue = roundAmount(extraDue - remainingAmount);
           await db.update(salesHistory)
             .set({ extraDueToMerchant: newExtraDue })
             .where(eq(salesHistory.id, sale.id));
           
-          appliedAmount += remainingAmount;
+          appliedAmount = roundAmount(appliedAmount + remainingAmount);
           remainingAmount = 0;
         }
       }
@@ -3329,21 +3342,22 @@ export class DatabaseStorage implements IStorage {
       const saleId = row.id;
       const currentDue = row.due_amount;
       const discountToApply = Math.min(remainingAmount, currentDue);
+      const newDue = roundAmount(currentDue - discountToApply);
       
       await db.execute(sql`
         UPDATE sales_history
         SET 
-          due_amount = due_amount - ${discountToApply},
+          due_amount = ${newDue},
           paid_amount = paid_amount + ${discountToApply},
           discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
           payment_status = CASE 
-            WHEN due_amount - ${discountToApply} < 1 THEN 'paid'
+            WHEN ${newDue} < 1 THEN 'paid'
             ELSE 'partial'
           END
         WHERE id = ${saleId}
       `);
       
-      remainingAmount -= discountToApply;
+      remainingAmount = roundAmount(remainingAmount - discountToApply);
     }
   }
 
@@ -3375,8 +3389,8 @@ export class DatabaseStorage implements IStorage {
         
         if (existingTotal > 0) {
           // Preserve the paid ratio
-          newPaidAmount = Math.min(existingPaid, totalCharges);
-          newDueAmount = totalCharges - newPaidAmount;
+          newPaidAmount = roundAmount(Math.min(existingPaid, totalCharges));
+          newDueAmount = roundAmount(totalCharges - newPaidAmount);
         } else {
           // Default to all due
           newDueAmount = totalCharges;
@@ -4214,10 +4228,10 @@ export class DatabaseStorage implements IStorage {
           
           if (discountToApply > 0) {
             await db.update(openingReceivables)
-              .set({ paidAmount: (row.paid_amount || 0) + discountToApply })
+              .set({ paidAmount: roundAmount((row.paid_amount || 0) + discountToApply) })
               .where(eq(openingReceivables.id, receivableId));
             
-            remainingAmount -= discountToApply;
+            remainingAmount = roundAmount(remainingAmount - discountToApply);
             totalSalesUpdated++;
           }
         }
@@ -4242,21 +4256,22 @@ export class DatabaseStorage implements IStorage {
             const saleId = row.id;
             const currentDue = row.due_amount;
             const discountToApply = Math.min(remainingAmount, currentDue);
+            const newDue = roundAmount(currentDue - discountToApply);
             
             await db.execute(sql`
               UPDATE sales_history
               SET 
-                due_amount = due_amount - ${discountToApply},
+                due_amount = ${newDue},
                 paid_amount = paid_amount + ${discountToApply},
                 discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
                 payment_status = CASE 
-                  WHEN due_amount - ${discountToApply} < 1 THEN 'paid'
+                  WHEN ${newDue} < 1 THEN 'paid'
                   ELSE 'partial'
                 END
               WHERE id = ${saleId}
             `);
             
-            remainingAmount -= discountToApply;
+            remainingAmount = roundAmount(remainingAmount - discountToApply);
             totalSalesUpdated++;
           }
         }
@@ -4281,21 +4296,22 @@ export class DatabaseStorage implements IStorage {
           const saleId = row.id;
           const currentDue = row.due_amount;
           const discountToApply = Math.min(remainingAmount, currentDue);
+          const newDue = roundAmount(currentDue - discountToApply);
           
           await db.execute(sql`
             UPDATE sales_history
             SET 
-              due_amount = due_amount - ${discountToApply},
+              due_amount = ${newDue},
               paid_amount = paid_amount + ${discountToApply},
               discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
               payment_status = CASE 
-                WHEN due_amount - ${discountToApply} < 1 THEN 'paid'
+                WHEN ${newDue} < 1 THEN 'paid'
                 ELSE 'partial'
               END
             WHERE id = ${saleId}
           `);
           
-          remainingAmount -= discountToApply;
+          remainingAmount = roundAmount(remainingAmount - discountToApply);
           totalSalesUpdated++;
         }
       }
@@ -4569,14 +4585,14 @@ export class DatabaseStorage implements IStorage {
         
         for (const receivable of currentReceivables) {
           if (remainingAmount <= 0) break;
-          const remainingDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+          const remainingDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
           const amountToApply = Math.min(remainingAmount, remainingDue);
           
           if (amountToApply > 0) {
             await db.update(openingReceivables)
-              .set({ paidAmount: (receivable.paidAmount || 0) + amountToApply })
+              .set({ paidAmount: roundAmount((receivable.paidAmount || 0) + amountToApply) })
               .where(eq(openingReceivables.id, receivable.id));
-            remainingAmount -= amountToApply;
+            remainingAmount = roundAmount(remainingAmount - amountToApply);
             receivablesUpdated++;
           }
         }
@@ -4603,16 +4619,16 @@ export class DatabaseStorage implements IStorage {
             if (remainingAmount <= 0) break;
             const dueAmount = sale.dueAmount || 0;
             const extraDue = sale.extraDueToMerchant || 0;
-            const totalDue = dueAmount + extraDue;
+            const totalDue = roundAmount(dueAmount + extraDue);
             if (totalDue <= 0) continue;
             
             const amountToApply = Math.min(remainingAmount, totalDue);
             const applyToDue = Math.min(amountToApply, dueAmount);
             const applyToExtra = Math.min(amountToApply - applyToDue, extraDue);
             
-            const newDueAmount = Math.round((dueAmount - applyToDue) * 100) / 100;
-            const newExtraDue = Math.round((extraDue - applyToExtra) * 100) / 100;
-            const newPaidAmount = Math.round(((sale.paidAmount || 0) + applyToDue + applyToExtra) * 100) / 100;
+            const newDueAmount = roundAmount(dueAmount - applyToDue);
+            const newExtraDue = roundAmount(extraDue - applyToExtra);
+            const newPaidAmount = roundAmount((sale.paidAmount || 0) + applyToDue + applyToExtra);
             const paymentStatus = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
             
             await db.update(salesHistory)
@@ -4624,7 +4640,7 @@ export class DatabaseStorage implements IStorage {
               })
               .where(eq(salesHistory.id, sale.id));
             
-            remainingAmount -= amountToApply;
+            remainingAmount = roundAmount(remainingAmount - amountToApply);
             selfSalesUpdated++;
           }
         }
@@ -4647,14 +4663,14 @@ export class DatabaseStorage implements IStorage {
         
         for (const receivable of discountReceivables) {
           if (remainingAmount <= 0) break;
-          const remainingDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+          const remainingDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
           const amountToApply = Math.min(remainingAmount, remainingDue);
           
           if (amountToApply > 0) {
             await db.update(openingReceivables)
-              .set({ paidAmount: (receivable.paidAmount || 0) + amountToApply })
+              .set({ paidAmount: roundAmount((receivable.paidAmount || 0) + amountToApply) })
               .where(eq(openingReceivables.id, receivable.id));
-            remainingAmount -= amountToApply;
+            remainingAmount = roundAmount(remainingAmount - amountToApply);
             receivablesUpdated++;
           }
         }
@@ -4683,9 +4699,9 @@ export class DatabaseStorage implements IStorage {
             if (currentDue <= 0) continue;
             
             const discountToApply = Math.min(remainingAmount, currentDue);
-            const newDueAmount = Math.round((currentDue - discountToApply) * 100) / 100;
-            const newPaidAmount = Math.round(((sale.paidAmount || 0) + discountToApply) * 100) / 100;
-            const newDiscountAllocated = Math.round(((sale.discountAllocated || 0) + discountToApply) * 100) / 100;
+            const newDueAmount = roundAmount(currentDue - discountToApply);
+            const newPaidAmount = roundAmount((sale.paidAmount || 0) + discountToApply);
+            const newDiscountAllocated = roundAmount((sale.discountAllocated || 0) + discountToApply);
             const paymentStatus = newDueAmount < 1 ? "paid" : "partial";
             
             await db.update(salesHistory)
@@ -4697,7 +4713,7 @@ export class DatabaseStorage implements IStorage {
               })
               .where(eq(salesHistory.id, sale.id));
             
-            remainingAmount -= discountToApply;
+            remainingAmount = roundAmount(remainingAmount - discountToApply);
             selfSalesUpdated++;
           }
         }
@@ -4863,8 +4879,8 @@ export class DatabaseStorage implements IStorage {
       const receivableId = row.id;
       const currentDue = row.due_amount;
       const currentPaid = row.paid_amount || 0;
-      const remainingDue = currentDue - currentPaid;
-      const amountToTransfer = Math.min(remainingAmount, remainingDue);
+      const remainingDue = roundAmount(currentDue - currentPaid);
+      const amountToTransfer = roundAmount(Math.min(remainingAmount, remainingDue));
 
       // Transfer the receivable amount to the buyer by increasing paid_amount (reduces farmer's receivable)
       await db.execute(sql`
@@ -4873,8 +4889,8 @@ export class DatabaseStorage implements IStorage {
         WHERE id = ${receivableId}
       `);
 
-      receivablesTransferred += amountToTransfer;
-      remainingAmount -= amountToTransfer;
+      receivablesTransferred = roundAmount(receivablesTransferred + amountToTransfer);
+      remainingAmount = roundAmount(remainingAmount - amountToTransfer);
     }
 
     // Step 2: Apply remaining to self-sales (FIFO by soldAt)
@@ -4896,8 +4912,8 @@ export class DatabaseStorage implements IStorage {
 
         const saleId = row.id;
         const currentDue = row.due_amount;
-        const amountToTransfer = Math.min(remainingAmount, currentDue);
-        const newDueAmount = currentDue - amountToTransfer;
+        const amountToTransfer = roundAmount(Math.min(remainingAmount, currentDue));
+        const newDueAmount = roundAmount(currentDue - amountToTransfer);
 
         // Transfer the due to the new buyer - reduce due_amount and set transfer info
         // Only mark as fully transferred (clearance_type = 'transfer') when due reaches 0
@@ -4912,8 +4928,8 @@ export class DatabaseStorage implements IStorage {
           WHERE id = ${saleId}
         `);
 
-        selfSalesTransferred += amountToTransfer;
-        remainingAmount -= amountToTransfer;
+        selfSalesTransferred = roundAmount(selfSalesTransferred + amountToTransfer);
+        remainingAmount = roundAmount(remainingAmount - amountToTransfer);
       }
     }
 
@@ -4941,8 +4957,10 @@ export class DatabaseStorage implements IStorage {
         AND TRIM(contact_number) = TRIM(${data.contactNumber})
         AND due_amount > 0
     `);
-    const dueBalanceAfter = parseFloat((remainingReceivablesResult.rows[0] as { total: string | number })?.total?.toString() || "0") +
-                           parseFloat((remainingSelfSalesResult.rows[0] as { total: string | number })?.total?.toString() || "0");
+    const dueBalanceAfter = roundAmount(
+      parseFloat((remainingReceivablesResult.rows[0] as { total: string | number })?.total?.toString() || "0") +
+      parseFloat((remainingSelfSalesResult.rows[0] as { total: string | number })?.total?.toString() || "0")
+    );
 
     // Store the transfer in the farmer_to_buyer_transfers table for cash flow history
     await db.insert(farmerToBuyerTransfers).values({
@@ -4953,12 +4971,12 @@ export class DatabaseStorage implements IStorage {
       village: data.village.trim(),
       contactNumber: data.contactNumber.trim(),
       toBuyerName: data.toBuyerName,
-      totalAmount: data.amount,
-      receivablesTransferred,
-      selfSalesTransferred,
+      totalAmount: roundAmount(data.amount),
+      receivablesTransferred: roundAmount(receivablesTransferred),
+      selfSalesTransferred: roundAmount(selfSalesTransferred),
       transferDate: data.transferDate,
       remarks: data.remarks || null,
-      dueBalanceAfter: Math.floor(dueBalanceAfter * 10) / 10, // Truncate to 1 decimal
+      dueBalanceAfter,
     });
 
     return {
@@ -5046,9 +5064,9 @@ export class DatabaseStorage implements IStorage {
         if (remainingToRestore <= 0) break;
 
         const saleId = row.id;
-        const maxCanRestore = row.total_price - row.due_amount;
+        const maxCanRestore = roundAmount(row.total_price - row.due_amount);
         const amountToRestore = Math.min(remainingToRestore, maxCanRestore);
-        const newDueAmount = row.due_amount + amountToRestore;
+        const newDueAmount = roundAmount(row.due_amount + amountToRestore);
 
         await db.execute(sql`
           UPDATE sales_history
@@ -5061,7 +5079,7 @@ export class DatabaseStorage implements IStorage {
           WHERE id = ${saleId}
         `);
 
-        remainingToRestore -= amountToRestore;
+        remainingToRestore = roundAmount(remainingToRestore - amountToRestore);
       }
     }
 
