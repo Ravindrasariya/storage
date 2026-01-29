@@ -145,6 +145,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/buyers/lookup"] });
       queryClient.invalidateQueries({ queryKey: ["/api/up-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
       toast({
         title: t("success"),
         description: "Partial sale recorded successfully",

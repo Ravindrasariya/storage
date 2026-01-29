@@ -569,6 +569,10 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record buyer transfer", variant: "destructive" });
@@ -593,10 +597,14 @@ export default function CashManagement() {
       setFarmerTransferRemarks("");
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-receivables-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("farmerToBuyerTransferFailed") || "Failed to record farmer to buyer transfer", variant: "destructive" });
@@ -637,6 +645,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record payment", variant: "destructive" });
@@ -665,6 +674,10 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record expense", variant: "destructive" });
