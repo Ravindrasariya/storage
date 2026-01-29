@@ -488,22 +488,26 @@ export default function CashManagement() {
     let remaining = totalDiscount;
     const newAllocations: { buyerName: string; amount: string; maxAmount: number }[] = [];
     
+    // Helper to truncate to 1 decimal place
+    const truncateToOneDecimal = (num: number) => Math.floor(num * 10) / 10;
+    
     for (const buyer of buyerDuesForFarmer) {
       if (remaining <= 0) {
         // No more discount to allocate, add with 0 amount
         newAllocations.push({
           buyerName: buyer.buyerName,
           amount: "",
-          maxAmount: buyer.totalDue,
+          maxAmount: truncateToOneDecimal(buyer.totalDue),
         });
       } else {
         const allocation = Math.min(remaining, buyer.totalDue);
+        const truncatedAllocation = truncateToOneDecimal(allocation);
         newAllocations.push({
           buyerName: buyer.buyerName,
-          amount: allocation > 0 ? allocation.toString() : "",
-          maxAmount: buyer.totalDue,
+          amount: truncatedAllocation > 0 ? truncatedAllocation.toString() : "",
+          maxAmount: truncateToOneDecimal(buyer.totalDue),
         });
-        remaining -= allocation;
+        remaining -= truncatedAllocation;
       }
     }
     
@@ -2594,22 +2598,23 @@ export default function CashManagement() {
                                   className="w-28"
                                   placeholder="0"
                                   min={0}
-                                  max={buyer.totalDue}
+                                  max={Math.floor(buyer.totalDue * 10) / 10}
                                   value={allocationItem?.amount || ""}
                                   onChange={(e) => {
                                     const newAllocations = [...discountBuyerAllocations];
                                     const existingIdx = newAllocations.findIndex(a => a.buyerName === buyer.buyerName);
+                                    const truncatedMax = Math.floor(buyer.totalDue * 10) / 10;
                                     if (existingIdx >= 0) {
                                       newAllocations[existingIdx] = { 
                                         buyerName: buyer.buyerName, 
                                         amount: e.target.value,
-                                        maxAmount: buyer.totalDue
+                                        maxAmount: truncatedMax
                                       };
                                     } else {
                                       newAllocations.push({ 
                                         buyerName: buyer.buyerName, 
                                         amount: e.target.value,
-                                        maxAmount: buyer.totalDue
+                                        maxAmount: truncatedMax
                                       });
                                     }
                                     setDiscountBuyerAllocations(newAllocations);
