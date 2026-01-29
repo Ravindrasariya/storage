@@ -47,8 +47,9 @@ Preferred communication style: Simple, everyday language.
 - **Cash Flow Transaction IDs**: Unique `CF + YYYYMMDD + number` IDs for all cash flow entries, generated atomically per cold store.
 - **Due After Tracking**: Records remaining buyer/farmer dues after each cash receipt or discount transaction, displayed in transaction lists and CSV exports.
 - **Start-of-Year Settings**: Configurable opening balances (cash in hand) and receivables (buyer/farmer dues) for current and previous two years, integrated with buyer autocomplete.
-- **Farmer Receivables**: Specific tracking for farmers including contact, village, district, state. Cash Inward supports farmer payer type with FIFO payment allocation across all farmer receivables.
+- **Farmer Receivables**: Specific tracking for farmers including contact, village, district, state. Cash Inward supports farmer payer type with FIFO payment allocation across all farmer receivables and self-sales.
 - **Self-Sale Feature**: Allows farmers to buy their own produce, tracked as "Farmer" payer type dues, separate from "Cold Merchant" dues, and integrated into the farmer payment FIFO system.
+- **Farmer FIFO Recomputation**: Comprehensive `recomputeFarmerPayments` function triggered by: farmer payment, farmer payment reversal, self-sale reversal, and self-sale edit. FIFO order: receivables first (by createdAt), then self-sales (by soldAt). Uses petty balance threshold (<₹1 = paid).
 - **Dynamic Bank Accounts**: Unlimited user-defined bank accounts (current, limit, saving) with CRUD operations. Cash transactions reference account IDs, maintaining backward compatibility.
 
 ## External Dependencies

@@ -2752,12 +2752,18 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Step 1b: Reset all self-sales for this farmer to original due amounts
+    // Reset due_amount to cold_storage_charge (the original billed amount)
+    // Reset extra_due_to_merchant to extra_due_to_merchant_original (original value set at creation)
     await db.execute(sql`
       UPDATE sales_history
       SET 
         paid_amount = 0,
         due_amount = cold_storage_charge,
-        payment_status = 'due'
+        extra_due_to_merchant = COALESCE(extra_due_to_merchant_original, 0),
+        payment_status = CASE 
+          WHEN cold_storage_charge + COALESCE(extra_due_to_merchant_original, 0) < 1 THEN 'paid'
+          ELSE 'due'
+        END
       WHERE cold_storage_id = ${coldStorageId}
         AND is_self_sale = 1
         AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
@@ -2847,7 +2853,8 @@ export class DatabaseStorage implements IStorage {
           
           const newDueAmount = Math.round((dueAmount - applyToDue) * 100) / 100;
           const newExtraDue = Math.round((extraDue - applyToExtra) * 100) / 100;
-          const newPaidAmount = Math.round(((sale.paidAmount || 0) + applyToDue) * 100) / 100;
+          // paidAmount should include both applied to due and applied to extra (total payment applied)
+          const newPaidAmount = Math.round(((sale.paidAmount || 0) + applyToDue + applyToExtra) * 100) / 100;
           
           // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
           const paymentStatusToSet = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
