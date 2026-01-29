@@ -918,7 +918,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -1096,6 +1096,8 @@ export async function registerRoutes(
         advanceDeduction: lot.advanceDeduction || 0,
         freightDeduction: lot.freightDeduction || 0,
         otherDeduction: lot.otherDeduction || 0,
+        // Self sale flag (farmer buying own produce)
+        isSelfSale: isSelfSale ? 1 : 0,
       });
 
       const updatedLot = await storage.getLot(req.params.id);
