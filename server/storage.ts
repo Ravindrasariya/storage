@@ -1999,28 +1999,29 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
         eq(openingReceivables.year, year),
-        eq(openingReceivables.payerType, "farmer")
+        sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`
       ));
 
     // Also get farmer dues from self sales (where farmer is the buyer)
-    // Use due_amount which is already correctly calculated and tracked
+    // Uses LOWER/TRIM for case-insensitive, space-trimmed grouping
     const selfSalesResult = await db.execute(sql`
       SELECT 
-        farmer_name,
-        contact_number,
-        village,
+        TRIM(farmer_name) as farmer_name,
+        TRIM(contact_number) as contact_number,
+        TRIM(village) as village,
         COALESCE(SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)), 0)::float as total_due
       FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
         AND is_self_sale = 1
         AND sale_year = ${year}
         AND (due_amount > 0 OR extra_due_to_merchant > 0)
-      GROUP BY farmer_name, contact_number, village
+      GROUP BY LOWER(TRIM(farmer_name)), LOWER(TRIM(village)), TRIM(contact_number)
       HAVING SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)) > 0
     `);
     const selfSales = selfSalesResult.rows as { farmer_name: string; contact_number: string; village: string; total_due: number }[];
 
     // Map to track farmer dues by unique key (farmerName + contactNumber + village)
+    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching
     const farmerDuesMap = new Map<string, { id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }>();
 
     // Add receivables from openingReceivables
@@ -2029,35 +2030,37 @@ export class DatabaseStorage implements IStorage {
       const remainingDue = f.dueAmount - (f.paidAmount || 0);
       if (remainingDue <= 0) continue;
       
-      const key = `${f.farmerName.toLowerCase()}_${f.contactNumber}_${f.village.toLowerCase()}`;
+      // Normalize key with trim and lowercase for consistent matching
+      const key = `${f.farmerName.trim().toLowerCase()}_${f.contactNumber.trim()}_${f.village.trim().toLowerCase()}`;
       const existing = farmerDuesMap.get(key);
       if (existing) {
         existing.totalDue += remainingDue;
       } else {
         farmerDuesMap.set(key, {
           id: f.id,
-          farmerName: f.farmerName,
-          contactNumber: f.contactNumber,
-          village: f.village,
+          farmerName: f.farmerName.trim(),
+          contactNumber: f.contactNumber.trim(),
+          village: f.village.trim(),
           totalDue: remainingDue
         });
       }
     }
 
-    // Add dues from self sales
+    // Add dues from self sales (already trimmed by SQL query)
     for (const sale of selfSales) {
       if (!sale.farmer_name || !sale.contact_number || !sale.village) continue;
-      const key = `${sale.farmer_name.toLowerCase()}_${sale.contact_number}_${sale.village.toLowerCase()}`;
+      // Normalize key with trim and lowercase for consistent matching
+      const key = `${sale.farmer_name.trim().toLowerCase()}_${sale.contact_number.trim()}_${sale.village.trim().toLowerCase()}`;
       const existing = farmerDuesMap.get(key);
       if (existing) {
         existing.totalDue += sale.total_due;
       } else {
         // Generate a synthetic id for self-sale farmers (they have no receivable entry)
         farmerDuesMap.set(key, {
-          id: `self_sale_${sale.farmer_name}_${sale.contact_number}_${sale.village}`,
-          farmerName: sale.farmer_name,
-          contactNumber: sale.contact_number,
-          village: sale.village,
+          id: `self_sale_${sale.farmer_name.trim()}_${sale.contact_number.trim()}_${sale.village.trim()}`,
+          farmerName: sale.farmer_name.trim(),
+          contactNumber: sale.contact_number.trim(),
+          village: sale.village.trim(),
           totalDue: sale.total_due
         });
       }
