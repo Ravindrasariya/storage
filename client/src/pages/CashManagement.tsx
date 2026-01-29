@@ -702,17 +702,20 @@ export default function CashManagement() {
         description: t("entryReversed"),
         variant: "success",
       });
+      // Comprehensive cache invalidation for receipt reversal
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      // Invalidate farmer receivables cache for farmer payment reversals
       queryClient.invalidateQueries({ 
         predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues")
       });
@@ -733,9 +736,17 @@ export default function CashManagement() {
         description: t("entryReversed"),
         variant: "success",
       });
+      // Comprehensive cache invalidation for expense reversal
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
     onError: () => {
@@ -788,11 +799,17 @@ export default function CashManagement() {
         description: t("entryReversed"),
         variant: "success",
       });
+      // Comprehensive cache invalidation for discount reversal
       queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
@@ -814,11 +831,17 @@ export default function CashManagement() {
         description: t("entryReversed"),
         variant: "success",
       });
+      // Comprehensive cache invalidation for farmer-to-buyer transfer reversal
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-to-buyer-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
@@ -865,8 +888,48 @@ export default function CashManagement() {
         description: t("entryReversed"),
         variant: "success",
       });
+      // Comprehensive cache invalidation for internal transfer reversal
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
+    },
+  });
+
+  // Reverse buyer-to-buyer transfer mutation
+  const reverseBuyerToBuyerTransferMutation = useMutation({
+    mutationFn: async (saleId: string) => {
+      const response = await apiRequest("DELETE", `/api/buyer-transfers/${saleId}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: t("success"),
+        description: t("entryReversed"),
+        variant: "success",
+      });
+      // Comprehensive cache invalidation for B2B transfer reversal
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -3875,13 +3938,15 @@ export default function CashManagement() {
                 )}
               </div>
 
-              {/* Reverse Button */}
-              {canEdit && selectedTransaction.type !== "buyerTransfer" && (
+              {/* Reverse Button - for all reversible transaction types */}
+              {canEdit && (
                 selectedTransaction.type === "discount" 
                   ? (selectedTransaction.data as Discount).isReversed !== 1 
                   : selectedTransaction.type === "farmerToBuyerTransfer"
                     ? (selectedTransaction.data as FarmerToBuyerTransfer).isReversed !== 1
-                    : (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed !== 1
+                    : selectedTransaction.type === "buyerTransfer"
+                      ? true
+                      : (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed !== 1
               ) && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -3909,6 +3974,8 @@ export default function CashManagement() {
                             reverseDiscountMutation.mutate(selectedTransaction.data.id);
                           } else if (selectedTransaction.type === "farmerToBuyerTransfer") {
                             reverseFarmerToBuyerTransferMutation.mutate(selectedTransaction.data.id);
+                          } else if (selectedTransaction.type === "buyerTransfer") {
+                            reverseBuyerToBuyerTransferMutation.mutate(selectedTransaction.data.id);
                           } else {
                             reverseTransferMutation.mutate(selectedTransaction.data.id);
                           }
