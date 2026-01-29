@@ -3968,37 +3968,37 @@ export class DatabaseStorage implements IStorage {
   async getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]> {
     const result = await db.execute(sql`
       WITH combined_dues AS (
-        -- Sales history dues (self-sales where payer_type = 'Farmer')
+        -- Sales history dues (all sales with outstanding dues)
         SELECT 
           TRIM(farmer_name) as farmer_name,
           TRIM(village) as village,
           TRIM(contact_number) as contact_number,
-          due_amount
+          due_amount as remaining_due
         FROM sales_history
         WHERE cold_storage_id = ${coldStorageId}
           AND due_amount > 0
         
         UNION ALL
         
-        -- Opening receivables (farmer type only)
+        -- Opening receivables (farmer type only) - subtract paid_amount from due_amount
         SELECT 
           TRIM(farmer_name) as farmer_name,
           TRIM(village) as village,
           TRIM(contact_number) as contact_number,
-          due_amount
+          (due_amount - COALESCE(paid_amount, 0)) as remaining_due
         FROM opening_receivables
         WHERE cold_storage_id = ${coldStorageId}
           AND LOWER(TRIM(payer_type)) = 'farmer'
-          AND due_amount > 0
+          AND (due_amount - COALESCE(paid_amount, 0)) > 0
       )
       SELECT 
         MAX(farmer_name) as "farmerName",
         MAX(village) as "village",
         MAX(contact_number) as "contactNumber",
-        COALESCE(SUM(due_amount), 0)::float as "totalDue"
+        COALESCE(SUM(remaining_due), 0)::float as "totalDue"
       FROM combined_dues
       GROUP BY LOWER(farmer_name), LOWER(village), contact_number
-      HAVING SUM(due_amount) > 0
+      HAVING SUM(remaining_due) > 0
       ORDER BY MAX(farmer_name)
     `);
     return result.rows as { farmerName: string; village: string; contactNumber: string; totalDue: number }[];
