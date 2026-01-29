@@ -187,6 +187,9 @@ export const salesHistory = pgTable("sales_history", {
   otherDeduction: real("other_deduction").default(0), // Other miscellaneous deductions
   // Self sale flag - when farmer is the buyer (Self checkbox checked)
   isSelfSale: integer("is_self_sale").default(0), // 1 = farmer buying own produce, dues tracked under farmer not cold_merchant
+  // Transfer reversal tracking
+  isTransferReversed: integer("is_transfer_reversed").default(0), // 0 = active transfer, 1 = reversed
+  transferReversedAt: timestamp("transfer_reversed_at"), // When the transfer was reversed
 });
 
 // Edit history for tracking changes
