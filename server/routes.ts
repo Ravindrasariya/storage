@@ -1931,6 +1931,7 @@ export async function registerRoutes(
         transferDate: validatedData.transferDate,
         transferRemarks: validatedData.remarks || null,
         transferTransactionId: transferTransactionId,
+        transferAmount: validatedData.amount, // Store original transfer amount for display
         // DO NOT update paymentStatus, paidAmount, or dueAmount - transfer is liability move, not payment
       });
       

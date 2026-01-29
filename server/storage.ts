@@ -188,6 +188,7 @@ export interface IStorage {
     transferDate: Date;
     transferRemarks: string | null;
     transferTransactionId?: string;
+    transferAmount?: number;
     paymentStatus?: string;
     paidAmount?: number;
     dueAmount?: number;
@@ -1488,6 +1489,7 @@ export class DatabaseStorage implements IStorage {
     transferDate: Date;
     transferRemarks: string | null;
     transferTransactionId?: string;
+    transferAmount?: number;
     paymentStatus?: string;
     paidAmount?: number;
     dueAmount?: number;
@@ -1507,6 +1509,11 @@ export class DatabaseStorage implements IStorage {
     // Add CF transaction ID for buyer-to-buyer transfers
     if (updates.transferTransactionId) {
       updateData.transferTransactionId = updates.transferTransactionId;
+    }
+    
+    // Store the original transfer amount (preserved for display even after FIFO payments)
+    if (updates.transferAmount !== undefined) {
+      updateData.transferAmount = updates.transferAmount;
     }
     
     // Only update payment fields if explicitly provided (for liability transfers, we don't update these)

@@ -168,6 +168,7 @@ export const salesHistory = pgTable("sales_history", {
   transferDate: timestamp("transfer_date"), // When the transfer occurred
   transferRemarks: text("transfer_remarks"), // Notes about the transfer
   transferTransactionId: varchar("transfer_transaction_id"), // CF transaction ID for buyer-to-buyer transfers (format: CFYYYYMMDD + natural number)
+  transferAmount: real("transfer_amount"), // Original B2B transfer amount (preserved even after FIFO payments)
   // Charge calculation context (recorded at time of sale for edit dialog)
   chargeBasis: text("charge_basis"), // 'actual' or 'totalRemaining' - how charges were calculated
   chargeUnitAtSale: text("charge_unit_at_sale"), // 'bag' or 'quintal' - charge unit used at time of sale (prevents unit mismatch on edit)

@@ -1400,18 +1400,19 @@ export default function CashManagement() {
         ];
       } else {
         const bt = transaction.data as SalesHistory;
+        const btIsReversed = bt.isTransferReversed === 1;
         return [
           bt.transferTransactionId || "",
           dateStr,
           t("buyerToBuyer"),
           `${bt.buyerName} → ${bt.transferToBuyerName}`,
-          (bt.dueAmount || 0).toString(),
+          (bt.transferAmount || bt.dueAmount || 0).toString(),
           t("liabilityTransfer"),
           "",
           "",
           "",
           bt.transferRemarks || "",
-          t("active"),
+          btIsReversed ? t("reversed") : t("active"),
         ];
       }
     });
@@ -3531,7 +3532,7 @@ export default function CashManagement() {
                             }`}>
                               {transaction.type === "inflow" ? "+" : transaction.type === "outflow" || transaction.type === "discount" ? "-" : ""}₹{
                                 transaction.type === "buyerTransfer" 
-                                  ? formatCurrency((transaction.data as SalesHistory).dueAmount || 0)
+                                  ? formatCurrency((transaction.data as SalesHistory).transferAmount || (transaction.data as SalesHistory).dueAmount || 0)
                                   : transaction.type === "farmerToBuyerTransfer"
                                     ? formatCurrency((transaction.data as FarmerToBuyerTransfer).totalAmount || 0)
                                     : transaction.type === "discount"
@@ -3796,7 +3797,7 @@ export default function CashManagement() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("liabilityTransferred")}:</span>
-                      <span className="font-bold text-purple-600">₹{formatCurrency((selectedTransaction.data as SalesHistory).dueAmount || 0)}</span>
+                      <span className="font-bold text-purple-600">₹{formatCurrency((selectedTransaction.data as SalesHistory).transferAmount || (selectedTransaction.data as SalesHistory).dueAmount || 0)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Date:</span>
