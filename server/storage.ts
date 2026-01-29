@@ -1951,7 +1951,8 @@ export class DatabaseStorage implements IStorage {
   async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
     // Get all sales with due or partial payment status that have a buyer name
     // Include sales where either buyerName or transferToBuyerName is set
-    // Exclude self sales (isSelfSale = 1) - those are farmer dues, not merchant dues
+    // Include both regular sales AND self-sales that have been transferred to a buyer
+    // (Self-sales with transfer_to_buyer_name set means the debt was transferred from farmer to buyer)
     // NOTE: Using raw SQL instead of Drizzle ORM's eq() because eq() combined with sql`` 
     // template literals in and() clauses was not reliably filtering by coldStorageId
     const rawResult = await db.execute(sql`
@@ -1959,7 +1960,10 @@ export class DatabaseStorage implements IStorage {
       WHERE cold_storage_id = ${coldStorageId}
       AND payment_status IN ('due', 'partial')
       AND ((buyer_name IS NOT NULL AND buyer_name != '') OR (transfer_to_buyer_name IS NOT NULL AND transfer_to_buyer_name != ''))
-      AND (is_self_sale = 0 OR is_self_sale IS NULL)
+      AND (
+        (is_self_sale = 0 OR is_self_sale IS NULL)
+        OR (is_self_sale = 1 AND transfer_to_buyer_name IS NOT NULL AND transfer_to_buyer_name != '')
+      )
     `);
     const sales = rawResult.rows as any[];
 
@@ -2084,6 +2088,8 @@ export class DatabaseStorage implements IStorage {
       ));
 
     // Also get farmer dues from self sales (where farmer is the buyer)
+    // EXCLUDE self-sales that have been transferred to a buyer (transfer_to_buyer_name is set)
+    // because those debts now belong to the buyer, not the farmer
     // Uses TRIM for space-trimmed grouping, aggregation handles case differences via JavaScript
     const selfSalesResult = await db.execute(sql`
       SELECT 
@@ -2096,6 +2102,7 @@ export class DatabaseStorage implements IStorage {
         AND is_self_sale = 1
         AND sale_year = ${year}
         AND (due_amount > 0 OR extra_due_to_merchant > 0)
+        AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
       GROUP BY TRIM(farmer_name), TRIM(village), TRIM(contact_number)
       HAVING SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)) >= 1
     `);
@@ -4057,9 +4064,11 @@ export class DatabaseStorage implements IStorage {
   async getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]> {
     // Only include farmer's OWN dues: opening receivables + self-sales
     // Excludes regular sales to buyers (those are tracked on buyer side)
+    // EXCLUDE self-sales that have been transferred to a buyer (transfer_to_buyer_name is set)
     const result = await db.execute(sql`
       WITH combined_dues AS (
         -- Self-sales only (is_self_sale = 1) - farmer bought their own produce
+        -- EXCLUDE self-sales that have been transferred to a buyer (those debts now belong to buyer)
         SELECT 
           TRIM(farmer_name) as farmer_name,
           TRIM(village) as village,
@@ -4069,6 +4078,7 @@ export class DatabaseStorage implements IStorage {
         WHERE cold_storage_id = ${coldStorageId}
           AND COALESCE(is_self_sale, 0) = 1
           AND due_amount > 0
+          AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
         
         UNION ALL
         
@@ -4117,6 +4127,7 @@ export class DatabaseStorage implements IStorage {
     const receivablesDue = (receivablesDuesResult.rows[0] as any)?.total_due || 0;
     
     // Get farmer's self-sale dues (where is_self_sale = 1)
+    // EXCLUDE self-sales that have been transferred to a buyer (transfer_to_buyer_name is set)
     const selfSalesDuesResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(due_amount), 0)::float as total_due,
@@ -4128,6 +4139,7 @@ export class DatabaseStorage implements IStorage {
         AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
         AND TRIM(contact_number) = TRIM(${contactNumber})
         AND due_amount > 0
+        AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
     `);
     const selfSalesDue = (selfSalesDuesResult.rows[0] as any)?.total_due || 0;
     const selfSalesLatestDate = (selfSalesDuesResult.rows[0] as any)?.latest_date || new Date();
