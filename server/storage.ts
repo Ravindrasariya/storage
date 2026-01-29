@@ -1540,19 +1540,20 @@ export class DatabaseStorage implements IStorage {
       return { success: false, message: "This sale does not have a buyer-to-buyer transfer to reverse" };
     }
     
+    // Check if transfer is already reversed
+    if (sale.isTransferReversed === 1) {
+      return { success: false, message: "This buyer-to-buyer transfer has already been reversed" };
+    }
+    
     const fromBuyer = sale.buyerName || "";
     const toBuyer = sale.transferToBuyerName;
     const coldStorageId = sale.coldStorageId;
     
-    // Clear transfer fields - reverse the transfer
+    // Mark transfer as reversed (keep fields for history display, just mark as reversed)
     await db.update(salesHistory)
       .set({
-        clearanceType: null,
-        transferToBuyerName: null,
-        transferGroupId: null,
-        transferDate: null,
-        transferRemarks: null,
-        transferTransactionId: null,
+        isTransferReversed: 1,
+        transferReversedAt: new Date(),
       })
       .where(eq(salesHistory.id, saleId));
     
