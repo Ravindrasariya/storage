@@ -1710,47 +1710,8 @@ export default function CashManagement() {
         )}
       </div>
 
-      {/* Balance Cards - Row 1: Account Balances */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-        <Card data-testid="stat-cash-in-hand">
-          <CardContent className="p-2">
-            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
-              <Wallet className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">{t("cashInHand")}</span>
-            </div>
-            <div className={`text-sm font-bold ${summary.cashInHand >= 0 ? "text-blue-600" : "text-red-600"}`}>
-              {isLoading ? "..." : `₹${summary.cashInHand.toLocaleString()}`}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card data-testid="stat-total-account-balance">
-          <CardContent className="p-2">
-            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
-              <Building2 className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">{t("netInAccounts")}</span>
-            </div>
-            <div className={`text-sm font-bold ${summary.totalAccountBalance >= 0 ? "text-blue-600" : "text-red-600"}`}>
-              {isLoading ? "..." : `₹${summary.totalAccountBalance.toLocaleString()}`}
-            </div>
-            {Object.keys(summary.accountBalances).length > 0 && (
-              <div className="mt-1 text-xs space-y-0.5">
-                {Object.values(summary.accountBalances).map(acc => (
-                  <div key={acc.accountId} className="flex justify-between items-center">
-                    <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
-                    <span className={acc.balance >= 0 ? "text-blue-600" : "text-red-600"}>
-                      ₹{acc.balance.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Summary Cards - Row 2: Received & Expenses */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+      {/* Summary Cards - Row 1: Cash Flow */}
+      <div className="grid grid-cols-3 gap-2 mb-2">
         <Card data-testid="stat-total-cash-received">
           <CardContent className="p-2">
             <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
@@ -1775,6 +1736,21 @@ export default function CashManagement() {
           </CardContent>
         </Card>
 
+        <Card data-testid="stat-cash-in-hand">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <Wallet className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("cashInHand")}</span>
+            </div>
+            <div className={`text-sm font-bold ${summary.cashInHand >= 0 ? "text-blue-600" : "text-red-600"}`}>
+              {isLoading ? "..." : `₹${summary.cashInHand.toLocaleString()}`}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Summary Cards - Row 2: Account Flow with Breakdowns */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
         <Card data-testid="stat-total-account-received">
           <CardContent className="p-2">
             <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
@@ -1784,6 +1760,18 @@ export default function CashManagement() {
             <div className="text-sm font-bold text-green-600">
               {isLoading ? "..." : `₹${summary.totalAccountReceived.toLocaleString()}`}
             </div>
+            {Object.keys(summary.accountBalances).length > 0 && (
+              <div className="mt-1 text-xs space-y-0.5">
+                {Object.values(summary.accountBalances).filter(acc => acc.received > 0).map(acc => (
+                  <div key={acc.accountId} className="flex justify-between items-center">
+                    <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
+                    <span className="text-green-600">
+                      ₹{acc.received.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1796,6 +1784,42 @@ export default function CashManagement() {
             <div className="text-sm font-bold text-red-600">
               {isLoading ? "..." : `₹${summary.totalAccountExpenses.toLocaleString()}`}
             </div>
+            {Object.keys(summary.accountBalances).length > 0 && (
+              <div className="mt-1 text-xs space-y-0.5">
+                {Object.values(summary.accountBalances).filter(acc => acc.expenses > 0).map(acc => (
+                  <div key={acc.accountId} className="flex justify-between items-center">
+                    <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
+                    <span className="text-red-600">
+                      ₹{acc.expenses.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-total-account-balance">
+          <CardContent className="p-2">
+            <div className="flex items-center gap-1 text-muted-foreground text-xs mb-0.5">
+              <Building2 className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{t("netInAccounts")}</span>
+            </div>
+            <div className={`text-sm font-bold ${summary.totalAccountBalance >= 0 ? "text-blue-600" : "text-red-600"}`}>
+              {isLoading ? "..." : `₹${summary.totalAccountBalance.toLocaleString()}`}
+            </div>
+            {Object.keys(summary.accountBalances).length > 0 && (
+              <div className="mt-1 text-xs space-y-0.5">
+                {Object.values(summary.accountBalances).map(acc => (
+                  <div key={acc.accountId} className="flex justify-between items-center">
+                    <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
+                    <span className={acc.balance >= 0 ? "text-blue-600" : "text-red-600"}>
+                      ₹{acc.balance.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
