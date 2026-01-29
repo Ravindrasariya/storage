@@ -4900,7 +4900,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Generate transaction ID for cash flow record (same format as other cash flow entries)
-    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId, data.transferDate);
+    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
 
     // Calculate remaining farmer dues after this transfer
     const remainingReceivablesResult = await db.execute(sql`
