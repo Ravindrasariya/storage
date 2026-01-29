@@ -1981,6 +1981,9 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid transfer data", details: error.errors });
       }
+      if (error instanceof Error && error.message.includes("exceeds total available due")) {
+        return res.status(400).json({ error: error.message });
+      }
       console.error("Farmer to buyer transfer error:", error);
       res.status(500).json({ error: "Failed to record farmer to buyer transfer" });
     }

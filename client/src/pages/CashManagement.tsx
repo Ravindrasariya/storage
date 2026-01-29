@@ -575,6 +575,34 @@ export default function CashManagement() {
     },
   });
 
+  const createFarmerToBuyerTransferMutation = useMutation({
+    mutationFn: async (data: { farmerName: string; village: string; contactNumber: string; toBuyerName: string; amount: number; transferDate: string; remarks?: string }) => {
+      const response = await apiRequest("POST", "/api/farmer-to-buyer-transfer", data);
+      return response.json();
+    },
+    onSuccess: (result: { success: boolean; receivablesTransferred: number; selfSalesTransferred: number }) => {
+      toast({
+        title: t("success"),
+        description: t("farmerToBuyerTransferRecorded") || `Transferred ₹${result.receivablesTransferred + result.selfSalesTransferred} from farmer to buyer`,
+        variant: "success",
+      });
+      setFarmerTransferFrom("");
+      setFarmerTransferToBuyer("");
+      setFarmerTransferAmount("");
+      setFarmerTransferDate(format(new Date(), "yyyy-MM-dd"));
+      setFarmerTransferRemarks("");
+      clearPersistedState(coldStorageId);
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-receivables-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("farmerToBuyerTransferFailed") || "Failed to record farmer to buyer transfer", variant: "destructive" });
+    },
+  });
+
   const createReceiptMutation = useMutation({
     mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; farmerDetails?: { farmerName: string; contactNumber: string; village: string }; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
@@ -1063,6 +1091,42 @@ export default function CashManagement() {
       amount: parseFloat(buyerTransferAmount),
       transferDate: new Date(buyerTransferDate).toISOString(),
       remarks: buyerTransferRemarks || undefined,
+    });
+  };
+
+  const handleFarmerToBuyerTransferSubmit = () => {
+    if (!farmerTransferFrom || !farmerTransferToBuyer || !farmerTransferAmount) {
+      toast({ title: t("error"), description: t("fillRequiredFields") || "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+    const amount = parseFloat(farmerTransferAmount);
+    if (amount <= 0) {
+      toast({ title: t("error"), description: t("amountMustBePositive") || "Amount must be greater than zero", variant: "destructive" });
+      return;
+    }
+
+    // Validate amount doesn't exceed farmer's total due
+    const farmer = farmersWithDues.find(f => `${f.farmerName}|${f.village}|${f.contactNumber}` === farmerTransferFrom);
+    if (farmer && amount > farmer.totalDue + 0.01) {
+      toast({ title: t("error"), description: t("amountExceedsDue") || `Amount exceeds available due (₹${formatCurrency(farmer.totalDue)})`, variant: "destructive" });
+      return;
+    }
+
+    // Parse farmer composite key: "farmerName|village|contactNumber"
+    const [farmerName, village, contactNumber] = farmerTransferFrom.split("|");
+    if (!farmerName || !village || !contactNumber) {
+      toast({ title: t("error"), description: "Invalid farmer selection", variant: "destructive" });
+      return;
+    }
+
+    createFarmerToBuyerTransferMutation.mutate({
+      farmerName,
+      village,
+      contactNumber,
+      toBuyerName: farmerTransferToBuyer,
+      amount,
+      transferDate: new Date(farmerTransferDate).toISOString(),
+      remarks: farmerTransferRemarks || undefined,
     });
   };
 
@@ -2858,13 +2922,14 @@ export default function CashManagement() {
                 {/* Transfer Type Selection */}
                 <div className="space-y-2">
                   <Label>{t("transferType")} *</Label>
-                  <Select value={transferTypeMode} onValueChange={(v) => setTransferTypeMode(v as "internal" | "buyer")}>
+                  <Select value={transferTypeMode} onValueChange={(v) => setTransferTypeMode(v as "internal" | "buyer" | "farmer")}>
                     <SelectTrigger data-testid="select-transfer-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="internal">{t("internalTransfer")}</SelectItem>
                       <SelectItem value="buyer">{t("buyerToBuyer")}</SelectItem>
+                      <SelectItem value="farmer">{t("farmerToBuyer") || "Farmer to Buyer"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2987,7 +3052,7 @@ export default function CashManagement() {
                       </p>
                     )}
                   </>
-                ) : (
+                ) : transferTypeMode === "buyer" ? (
                   <>
                     {/* Buyer-to-Buyer Transfer Form */}
                     <div className="space-y-2">
@@ -3100,7 +3165,109 @@ export default function CashManagement() {
                       </p>
                     )}
                   </>
-                )}
+                ) : transferTypeMode === "farmer" ? (
+                  <>
+                    {/* Farmer-to-Buyer Transfer Form */}
+                    <div className="space-y-2">
+                      <Label>{t("fromFarmer") || "From Farmer"} *</Label>
+                      <Select value={farmerTransferFrom} onValueChange={(v) => {
+                        setFarmerTransferFrom(v);
+                        const farmer = farmersWithDues.find(f => `${f.farmerName}|${f.village}|${f.contactNumber}` === v);
+                        if (farmer) {
+                          setFarmerTransferAmount(Math.floor(farmer.totalDue * 10) / 10 + "");
+                        }
+                      }}>
+                        <SelectTrigger data-testid="select-farmer-transfer-from">
+                          <SelectValue placeholder={t("selectFarmer") || "Select Farmer"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {farmersWithDues.filter(f => f.totalDue > 0).map((farmer) => (
+                            <SelectItem key={`${farmer.farmerName}|${farmer.village}|${farmer.contactNumber}`} value={`${farmer.farmerName}|${farmer.village}|${farmer.contactNumber}`}>
+                              {farmer.farmerName} - {farmer.contactNumber} - {farmer.village} (₹{formatCurrency(farmer.totalDue)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t("toBuyer")} *</Label>
+                      <Select value={farmerTransferToBuyer} onValueChange={setFarmerTransferToBuyer}>
+                        <SelectTrigger data-testid="select-farmer-transfer-to-buyer">
+                          <SelectValue placeholder={t("selectBuyer")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allBuyers.map((buyer) => (
+                            <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
+                              {buyer.buyerName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t("transferAmount")} (₹) *</Label>
+                      <Input
+                        type="number"
+                        value={farmerTransferAmount}
+                        onChange={(e) => setFarmerTransferAmount(e.target.value)}
+                        placeholder="0"
+                        data-testid="input-farmer-transfer-amount"
+                      />
+                      {farmerTransferFrom && (() => {
+                        const farmer = farmersWithDues.find(f => `${f.farmerName}|${f.village}|${f.contactNumber}` === farmerTransferFrom);
+                        if (farmer) {
+                          return (
+                            <p className="text-xs text-muted-foreground">
+                              {t("maxAmount") || "Max"}: ₹{formatCurrency(farmer.totalDue)}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        {t("transferDate")}
+                      </Label>
+                      <Input
+                        type="date"
+                        value={farmerTransferDate}
+                        onChange={(e) => setFarmerTransferDate(e.target.value)}
+                        data-testid="input-farmer-transfer-date"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t("remarks")}</Label>
+                      <Input
+                        value={farmerTransferRemarks}
+                        onChange={(e) => setFarmerTransferRemarks(e.target.value)}
+                        placeholder={t("remarks")}
+                        data-testid="input-farmer-transfer-remarks"
+                      />
+                    </div>
+
+                    <Button
+                      onClick={handleFarmerToBuyerTransferSubmit}
+                      disabled={!canEdit || !farmerTransferFrom || !farmerTransferToBuyer || !farmerTransferAmount || createFarmerToBuyerTransferMutation.isPending}
+                      className="w-full"
+                      variant="default"
+                      data-testid="button-record-farmer-to-buyer-transfer"
+                    >
+                      <ArrowLeftRight className="h-4 w-4 mr-2" />
+                      {createFarmerToBuyerTransferMutation.isPending ? t("saving") : t("transferDebt")}
+                    </Button>
+                    {!canEdit && (
+                      <p className="text-xs text-muted-foreground text-center mt-2">
+                        {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
+                      </p>
+                    )}
+                  </>
+                ) : null}
               </>
             ) : null}
           </CardContent>

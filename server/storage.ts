@@ -4422,6 +4422,36 @@ export class DatabaseStorage implements IStorage {
     transferDate: Date;
     remarks?: string | null;
   }): Promise<{ success: boolean; receivablesTransferred: number; selfSalesTransferred: number; transactionId: string }> {
+    // First, calculate total available due for this farmer
+    const receivablesTotalResult = await db.execute(sql`
+      SELECT COALESCE(SUM(due_amount - COALESCE(paid_amount, 0)), 0) as total
+      FROM opening_receivables
+      WHERE cold_storage_id = ${data.coldStorageId}
+        AND payer_type = 'farmer'
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+        AND TRIM(contact_number) = TRIM(${data.contactNumber})
+        AND (due_amount - COALESCE(paid_amount, 0)) > 0
+    `);
+    const selfSalesTotalResult = await db.execute(sql`
+      SELECT COALESCE(SUM(due_amount), 0) as total
+      FROM sales_history
+      WHERE cold_storage_id = ${data.coldStorageId}
+        AND COALESCE(is_self_sale, 0) = 1
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+        AND TRIM(contact_number) = TRIM(${data.contactNumber})
+        AND due_amount > 0
+    `);
+    const receivablesTotal = parseFloat((receivablesTotalResult.rows[0] as { total: string | number })?.total?.toString() || "0");
+    const selfSalesTotal = parseFloat((selfSalesTotalResult.rows[0] as { total: string | number })?.total?.toString() || "0");
+    const totalAvailable = receivablesTotal + selfSalesTotal;
+
+    // Validate transfer amount doesn't exceed total available due
+    if (data.amount > totalAvailable + 0.01) { // Small tolerance for floating point
+      throw new Error(`Transfer amount (${data.amount}) exceeds total available due (${totalAvailable})`);
+    }
+
     let remainingAmount = data.amount;
     let receivablesTransferred = 0;
     let selfSalesTransferred = 0;
@@ -4470,7 +4500,6 @@ export class DatabaseStorage implements IStorage {
           AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
           AND TRIM(contact_number) = TRIM(${data.contactNumber})
           AND due_amount > 0
-          AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
         ORDER BY sold_at ASC
       `);
 
@@ -4480,15 +4509,18 @@ export class DatabaseStorage implements IStorage {
         const saleId = row.id;
         const currentDue = row.due_amount;
         const amountToTransfer = Math.min(remainingAmount, currentDue);
+        const newDueAmount = currentDue - amountToTransfer;
 
-        // Transfer the due to the new buyer
+        // Transfer the due to the new buyer - reduce due_amount and set transfer info
+        // Only mark as fully transferred (clearance_type = 'transfer') when due reaches 0
         await db.execute(sql`
           UPDATE sales_history
           SET 
+            due_amount = ${newDueAmount},
             transfer_to_buyer_name = ${data.toBuyerName},
             transfer_date = ${data.transferDate},
             transfer_remarks = ${data.remarks || null},
-            clearance_type = 'transfer'
+            clearance_type = CASE WHEN ${newDueAmount} <= 0 THEN 'transfer' ELSE clearance_type END
           WHERE id = ${saleId}
         `);
 
