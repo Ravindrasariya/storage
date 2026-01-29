@@ -272,7 +272,7 @@ export interface IStorage {
   deleteOpeningPayable(id: string): Promise<boolean>;
   // Discounts
   getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]>;
-  getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date }[]>;
+  getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[]>;
   createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }>;
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
@@ -4006,7 +4006,44 @@ export class DatabaseStorage implements IStorage {
 
   // Get buyer dues for a specific farmer (sorted by latest sale date)
   // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
-  async getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date }[]> {
+  // Returns farmer's own dues (receivables + self-sales) as the first entry
+  async getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[]> {
+    // Format farmer's own entry name: "FarmerName - Phone - Village"
+    const farmerSelfBuyerName = `${farmerName.trim()} - ${contactNumber.trim()} - ${village.trim()}`;
+    
+    // First, get farmer's own dues from opening_receivables
+    const receivablesDuesResult = await db.execute(sql`
+      SELECT COALESCE(SUM(due_amount - COALESCE(paid_amount, 0)), 0)::float as total_due
+      FROM opening_receivables
+      WHERE cold_storage_id = ${coldStorageId}
+        AND LOWER(TRIM(payer_type)) = 'farmer'
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+        AND TRIM(contact_number) = TRIM(${contactNumber})
+        AND (due_amount - COALESCE(paid_amount, 0)) > 0
+    `);
+    const receivablesDue = (receivablesDuesResult.rows[0] as any)?.total_due || 0;
+    
+    // Get farmer's self-sale dues (where is_self_sale = 1)
+    const selfSalesDuesResult = await db.execute(sql`
+      SELECT 
+        COALESCE(SUM(due_amount), 0)::float as total_due,
+        MAX(sold_at) as latest_date
+      FROM sales_history
+      WHERE cold_storage_id = ${coldStorageId}
+        AND COALESCE(is_self_sale, 0) = 1
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+        AND TRIM(contact_number) = TRIM(${contactNumber})
+        AND due_amount > 0
+    `);
+    const selfSalesDue = (selfSalesDuesResult.rows[0] as any)?.total_due || 0;
+    const selfSalesLatestDate = (selfSalesDuesResult.rows[0] as any)?.latest_date || new Date();
+    
+    // Total farmer's own dues
+    const farmerSelfDue = receivablesDue + selfSalesDue;
+    
+    // Get other buyer dues (excluding self-sales which are farmer's own)
     const result = await db.execute(sql`
       SELECT 
         COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) as "buyerName",
@@ -4018,15 +4055,40 @@ export class DatabaseStorage implements IStorage {
         AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
         AND TRIM(contact_number) = TRIM(${contactNumber})
         AND due_amount > 0
+        AND COALESCE(is_self_sale, 0) = 0
         AND COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) IS NOT NULL
       GROUP BY COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name)
       HAVING SUM(due_amount) > 0
       ORDER BY MAX(sold_at) DESC
     `);
-    return result.rows as { buyerName: string; totalDue: number; latestSaleDate: Date }[];
+    
+    const buyers = result.rows as { buyerName: string; totalDue: number; latestSaleDate: Date }[];
+    
+    // Build result array with farmer self entry first (if has dues)
+    const resultArray: { buyerName: string; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[] = [];
+    
+    if (farmerSelfDue > 0) {
+      resultArray.push({
+        buyerName: farmerSelfBuyerName,
+        totalDue: farmerSelfDue,
+        latestSaleDate: selfSalesLatestDate,
+        isFarmerSelf: true
+      });
+    }
+    
+    // Add other buyers
+    for (const buyer of buyers) {
+      resultArray.push({
+        ...buyer,
+        isFarmerSelf: false
+      });
+    }
+    
+    return resultArray;
   }
 
   // Create discount with FIFO allocation to reduce sales dues
+  // For farmer self allocations: receivables first (by createdAt), then self-sales (by soldAt)
   async createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }> {
     // Generate transaction ID unique per cold store
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
@@ -4037,55 +4099,131 @@ export class DatabaseStorage implements IStorage {
     
     let totalSalesUpdated = 0;
     
+    // Format the farmer self buyer name for comparison
+    const farmerSelfBuyerName = `${data.farmerName.trim()} - ${data.contactNumber.trim()} - ${data.village.trim()}`;
+    
     // Apply FIFO discount for each buyer allocation
     for (const allocation of allocations) {
       let remainingAmount = allocation.amount;
       const buyerName = allocation.buyerName;
       
-      // Get sales for this farmer from this buyer, ordered by oldest first (FIFO)
-      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
-      const salesResult = await db.execute(sql`
-        SELECT id, due_amount
-        FROM sales_history
-        WHERE cold_storage_id = ${data.coldStorageId}
-          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
-          AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
-          AND TRIM(contact_number) = TRIM(${data.contactNumber})
-          AND LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${buyerName}))
-          AND due_amount > 0
-        ORDER BY sold_at ASC
-      `);
+      // Check if this is a farmer self allocation (farmer receiving discount for their own dues)
+      const isFarmerSelfAllocation = buyerName.toLowerCase().trim() === farmerSelfBuyerName.toLowerCase();
       
-      for (const row of salesResult.rows as { id: string; due_amount: number }[]) {
-        if (remainingAmount <= 0) break;
+      if (isFarmerSelfAllocation) {
+        // Farmer self allocation: apply to receivables first, then self-sales
         
-        const saleId = row.id;
-        const currentDue = row.due_amount;
-        const discountToApply = Math.min(remainingAmount, currentDue);
-        
-        // Update the sale's due and paid amounts, and track discount allocation
-        await db.execute(sql`
-          UPDATE sales_history
-          SET 
-            due_amount = due_amount - ${discountToApply},
-            paid_amount = paid_amount + ${discountToApply},
-            discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
-            payment_status = CASE 
-              WHEN due_amount - ${discountToApply} < 1 THEN 'paid'
-              ELSE 'partial'
-            END
-          WHERE id = ${saleId}
+        // Step 1: Apply to opening_receivables (FIFO by createdAt)
+        const receivablesResult = await db.execute(sql`
+          SELECT id, due_amount, paid_amount
+          FROM opening_receivables
+          WHERE cold_storage_id = ${data.coldStorageId}
+            AND LOWER(TRIM(payer_type)) = 'farmer'
+            AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+            AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+            AND TRIM(contact_number) = TRIM(${data.contactNumber})
+            AND (due_amount - COALESCE(paid_amount, 0)) > 0
+          ORDER BY created_at ASC
         `);
         
-        remainingAmount -= discountToApply;
-        totalSalesUpdated++;
+        for (const row of receivablesResult.rows as { id: string; due_amount: number; paid_amount: number | null }[]) {
+          if (remainingAmount <= 0) break;
+          
+          const receivableId = row.id;
+          const currentDue = row.due_amount - (row.paid_amount || 0);
+          const discountToApply = Math.min(remainingAmount, currentDue);
+          
+          if (discountToApply > 0) {
+            await db.update(openingReceivables)
+              .set({ paidAmount: (row.paid_amount || 0) + discountToApply })
+              .where(eq(openingReceivables.id, receivableId));
+            
+            remainingAmount -= discountToApply;
+            totalSalesUpdated++;
+          }
+        }
+        
+        // Step 2: Apply remaining to self-sales (FIFO by soldAt)
+        if (remainingAmount > 0) {
+          const selfSalesResult = await db.execute(sql`
+            SELECT id, due_amount
+            FROM sales_history
+            WHERE cold_storage_id = ${data.coldStorageId}
+              AND COALESCE(is_self_sale, 0) = 1
+              AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+              AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+              AND TRIM(contact_number) = TRIM(${data.contactNumber})
+              AND due_amount > 0
+            ORDER BY sold_at ASC
+          `);
+          
+          for (const row of selfSalesResult.rows as { id: string; due_amount: number }[]) {
+            if (remainingAmount <= 0) break;
+            
+            const saleId = row.id;
+            const currentDue = row.due_amount;
+            const discountToApply = Math.min(remainingAmount, currentDue);
+            
+            await db.execute(sql`
+              UPDATE sales_history
+              SET 
+                due_amount = due_amount - ${discountToApply},
+                paid_amount = paid_amount + ${discountToApply},
+                discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
+                payment_status = CASE 
+                  WHEN due_amount - ${discountToApply} < 1 THEN 'paid'
+                  ELSE 'partial'
+                END
+              WHERE id = ${saleId}
+            `);
+            
+            remainingAmount -= discountToApply;
+            totalSalesUpdated++;
+          }
+        }
+      } else {
+        // Regular buyer allocation: apply to sales from this buyer
+        const salesResult = await db.execute(sql`
+          SELECT id, due_amount
+          FROM sales_history
+          WHERE cold_storage_id = ${data.coldStorageId}
+            AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+            AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+            AND TRIM(contact_number) = TRIM(${data.contactNumber})
+            AND LOWER(TRIM(COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name))) = LOWER(TRIM(${buyerName}))
+            AND due_amount > 0
+          ORDER BY sold_at ASC
+        `);
+        
+        for (const row of salesResult.rows as { id: string; due_amount: number }[]) {
+          if (remainingAmount <= 0) break;
+          
+          const saleId = row.id;
+          const currentDue = row.due_amount;
+          const discountToApply = Math.min(remainingAmount, currentDue);
+          
+          await db.execute(sql`
+            UPDATE sales_history
+            SET 
+              due_amount = due_amount - ${discountToApply},
+              paid_amount = paid_amount + ${discountToApply},
+              discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
+              payment_status = CASE 
+                WHEN due_amount - ${discountToApply} < 1 THEN 'paid'
+                ELSE 'partial'
+              END
+            WHERE id = ${saleId}
+          `);
+          
+          remainingAmount -= discountToApply;
+          totalSalesUpdated++;
+        }
       }
     }
     
-    // Calculate remaining farmer dues after discount
-    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
-    const remainingDuesResult = await db.execute(sql`
-      SELECT COALESCE(SUM(due_amount), 0) as total_due
+    // Calculate remaining farmer dues after discount (includes both receivables and sales)
+    const remainingSalesDuesResult = await db.execute(sql`
+      SELECT COALESCE(SUM(due_amount), 0)::float as total_due
       FROM sales_history
       WHERE cold_storage_id = ${data.coldStorageId}
         AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
@@ -4093,7 +4231,21 @@ export class DatabaseStorage implements IStorage {
         AND TRIM(contact_number) = TRIM(${data.contactNumber})
         AND due_amount > 0
     `);
-    const dueBalanceAfter = (remainingDuesResult.rows[0] as any)?.total_due || 0;
+    const salesDue = (remainingSalesDuesResult.rows[0] as any)?.total_due || 0;
+    
+    const remainingReceivablesDuesResult = await db.execute(sql`
+      SELECT COALESCE(SUM(due_amount - COALESCE(paid_amount, 0)), 0)::float as total_due
+      FROM opening_receivables
+      WHERE cold_storage_id = ${data.coldStorageId}
+        AND LOWER(TRIM(payer_type)) = 'farmer'
+        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
+        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
+        AND TRIM(contact_number) = TRIM(${data.contactNumber})
+        AND (due_amount - COALESCE(paid_amount, 0)) > 0
+    `);
+    const receivablesDue = (remainingReceivablesDuesResult.rows[0] as any)?.total_due || 0;
+    
+    const dueBalanceAfter = salesDue + receivablesDue;
 
     // Insert the discount record
     const [discount] = await db.insert(discounts)
