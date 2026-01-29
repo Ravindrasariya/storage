@@ -3978,9 +3978,11 @@ export class DatabaseStorage implements IStorage {
   // Aggregates by farmer composite key (name + phone + village)
   // Uses LOWER/TRIM for case-insensitive, space-trimmed matching
   async getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]> {
+    // Only include farmer's OWN dues: opening receivables + self-sales
+    // Excludes regular sales to buyers (those are tracked on buyer side)
     const result = await db.execute(sql`
       WITH combined_dues AS (
-        -- Sales history dues (all sales with outstanding dues)
+        -- Self-sales only (is_self_sale = 1) - farmer bought their own produce
         SELECT 
           TRIM(farmer_name) as farmer_name,
           TRIM(village) as village,
@@ -3988,6 +3990,7 @@ export class DatabaseStorage implements IStorage {
           due_amount as remaining_due
         FROM sales_history
         WHERE cold_storage_id = ${coldStorageId}
+          AND COALESCE(is_self_sale, 0) = 1
           AND due_amount > 0
         
         UNION ALL
