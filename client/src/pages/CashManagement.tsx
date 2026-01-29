@@ -1298,11 +1298,12 @@ export default function CashManagement() {
     ];
 
     const rows = transactions.map(transaction => {
-      const isReversed = transaction.type !== "buyerTransfer" && (
-        transaction.type === "farmerToBuyerTransfer" 
+      const isReversed = transaction.type === "buyerTransfer" 
+        ? (transaction.data as SalesHistory).isTransferReversed === 1
+        : (transaction.type === "farmerToBuyerTransfer" 
           ? (transaction.data as FarmerToBuyerTransfer).isReversed === 1 
           : (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1
-      );
+        );
       const dateStr = format(new Date(transaction.timestamp), "dd/MM/yyyy");
       
       if (transaction.type === "inflow") {
@@ -3461,11 +3462,12 @@ export default function CashManagement() {
                   {allTransactions.map((transaction, index) => {
                     const isReversed = transaction.type === "discount" 
                       ? (transaction.data as Discount).isReversed === 1 
-                      : transaction.type !== "buyerTransfer" && (
-                          transaction.type === "farmerToBuyerTransfer"
+                      : transaction.type === "buyerTransfer"
+                        ? (transaction.data as SalesHistory).isTransferReversed === 1
+                        : (transaction.type === "farmerToBuyerTransfer"
                             ? (transaction.data as FarmerToBuyerTransfer).isReversed === 1
                             : (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1
-                        );
+                          );
                     return (
                       <div
                         key={`${transaction.type}-${transaction.data.id}`}
@@ -3662,7 +3664,9 @@ export default function CashManagement() {
                 ? (selectedTransaction.data as Discount).isReversed === 1 
                 : selectedTransaction.type === "farmerToBuyerTransfer"
                 ? (selectedTransaction.data as FarmerToBuyerTransfer).isReversed === 1
-                : selectedTransaction.type !== "buyerTransfer" && (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1) ? (
+                : selectedTransaction.type === "buyerTransfer"
+                ? (selectedTransaction.data as SalesHistory).isTransferReversed === 1
+                : (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1) ? (
                   <>
                     <Badge variant="secondary" className="text-base px-4 py-1">
                       {t("reversed")}
@@ -3671,14 +3675,18 @@ export default function CashManagement() {
                       ? (selectedTransaction.data as Discount).reversedAt 
                       : selectedTransaction.type === "farmerToBuyerTransfer"
                         ? (selectedTransaction.data as FarmerToBuyerTransfer).reversedAt
-                        : (selectedTransaction.data as CashReceipt | Expense).reversedAt) && (
+                        : selectedTransaction.type === "buyerTransfer"
+                          ? (selectedTransaction.data as SalesHistory).transferReversedAt
+                          : (selectedTransaction.data as CashReceipt | Expense).reversedAt) && (
                       <span className="text-xs text-muted-foreground">
                         {format(new Date(
                           selectedTransaction.type === "discount" 
                             ? (selectedTransaction.data as Discount).reversedAt! 
                             : selectedTransaction.type === "farmerToBuyerTransfer"
                               ? (selectedTransaction.data as FarmerToBuyerTransfer).reversedAt!
-                              : (selectedTransaction.data as CashReceipt | Expense).reversedAt!
+                              : selectedTransaction.type === "buyerTransfer"
+                                ? (selectedTransaction.data as SalesHistory).transferReversedAt!
+                                : (selectedTransaction.data as CashReceipt | Expense).reversedAt!
                         ), "dd/MM/yyyy")}
                       </span>
                     )}
@@ -3945,7 +3953,7 @@ export default function CashManagement() {
                   : selectedTransaction.type === "farmerToBuyerTransfer"
                     ? (selectedTransaction.data as FarmerToBuyerTransfer).isReversed !== 1
                     : selectedTransaction.type === "buyerTransfer"
-                      ? true
+                      ? (selectedTransaction.data as SalesHistory).isTransferReversed !== 1
                       : (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed !== 1
               ) && (
                 <AlertDialog>
