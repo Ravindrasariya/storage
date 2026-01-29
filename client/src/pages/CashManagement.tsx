@@ -2193,7 +2193,12 @@ export default function CashManagement() {
             {Object.keys(summary.accountBalances).length > 0 && (
               <div className="mt-1 text-xs space-y-0.5">
                 {Object.values(summary.accountBalances)
-                  .filter(acc => acc.balance !== 0)
+                  .filter(acc => {
+                    // Hide legacy default accounts (limit/current) only when balance is 0
+                    const isLegacyAccount = acc.accountId === "limit" || acc.accountId === "current";
+                    if (isLegacyAccount && acc.balance === 0) return false;
+                    return true;
+                  })
                   .map(acc => (
                   <div key={acc.accountId} className="flex justify-between items-center">
                     <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
