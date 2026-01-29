@@ -488,6 +488,8 @@ const translations: Translations = {
   openingBalanceAmount: { en: "Opening Balance", hi: "प्रारंभिक शेष" },
   openingCashInHand: { en: "Opening Cash in Hand", hi: "प्रारंभिक हाथ में नकद" },
   deleteBankAccountWarning: { en: "Are you sure you want to delete this bank account?", hi: "क्या आप वाकई इस बैंक खाते को हटाना चाहते हैं?" },
+  confirmDelete: { en: "Confirm Delete", hi: "हटाने की पुष्टि करें" },
+  delete: { en: "Delete", hi: "हटाएं" },
   accountExpense: { en: "Account Expense", hi: "खाते से खर्च" },
   netInAccounts: { en: "Net in Accounts", hi: "खातों में शेष" },
   unassigned: { en: "Unassigned", hi: "असाइन नहीं किया गया" },

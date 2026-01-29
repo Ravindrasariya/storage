@@ -335,10 +335,15 @@ export default function CashManagement() {
     enabled: showSettings,
   });
 
-  // Bank accounts for settings dialog
+  // Bank accounts - always fetch for current year (used in dropdowns)
   const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
+    queryKey: ["/api/bank-accounts", currentYear],
+  });
+  
+  // Bank accounts for settings dialog (may be different year)
+  const { data: settingsBankAccounts = [] } = useQuery<BankAccount[]>({
     queryKey: ["/api/bank-accounts", settingsYear],
-    enabled: showSettings,
+    enabled: showSettings && settingsYear !== currentYear,
   });
 
   // All buyers for Buyer To dropdown
@@ -3420,9 +3425,9 @@ export default function CashManagement() {
                   <h3 className="font-semibold">{t("bankAccounts")}</h3>
                 </div>
                 
-                {/* List of bank accounts */}
+                {/* List of bank accounts - use settingsBankAccounts if different year, otherwise bankAccounts */}
                 <div className="space-y-2">
-                  {bankAccounts.map((account) => (
+                  {(settingsYear !== currentYear ? settingsBankAccounts : bankAccounts).map((account) => (
                     <Card key={account.id} className="p-3">
                       {editingBankAccountId === account.id ? (
                         // Edit mode
