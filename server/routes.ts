@@ -1989,6 +1989,33 @@ export async function registerRoutes(
     }
   });
 
+  // Get all farmer-to-buyer transfers for cash flow history
+  app.get("/api/farmer-to-buyer-transfers", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const transfers = await storage.getFarmerToBuyerTransfers(coldStorageId);
+      res.json(transfers);
+    } catch (error) {
+      console.error("Error getting farmer-to-buyer transfers:", error);
+      res.status(500).json({ error: "Failed to get farmer-to-buyer transfers" });
+    }
+  });
+
+  // Reverse a farmer-to-buyer transfer
+  app.delete("/api/farmer-to-buyer-transfers/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const result = await storage.reverseFarmerToBuyerTransfer(id);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message || "Failed to reverse transfer" });
+      }
+      res.json({ success: true, message: "Transfer reversed successfully" });
+    } catch (error) {
+      console.error("Error reversing farmer-to-buyer transfer:", error);
+      res.status(500).json({ error: "Failed to reverse farmer-to-buyer transfer" });
+    }
+  });
+
   const createCashReceiptSchema = z.object({
     payerType: z.enum(["cold_merchant", "sales_goods", "kata", "others", "farmer"]),
     buyerName: z.string().optional(),
