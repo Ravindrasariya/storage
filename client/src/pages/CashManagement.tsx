@@ -2910,7 +2910,11 @@ export default function CashManagement() {
                               </div>
                               {buyerDuesForFarmer
                                 .filter(b => !b.isFarmerSelf && b.totalDue > 0)
-                                .sort((a, b) => new Date(b.latestSaleDate).getTime() - new Date(a.latestSaleDate).getTime())
+                                .sort((a, b) => {
+                                  const dateA = a.latestSaleDate ? new Date(a.latestSaleDate).getTime() : 0;
+                                  const dateB = b.latestSaleDate ? new Date(b.latestSaleDate).getTime() : 0;
+                                  return dateB - dateA;
+                                })
                                 .map((buyer, idx) => {
                                 const allocationItem = discountBuyerAllocations.find(a => a.buyerName === buyer.buyerName);
                                 return (
