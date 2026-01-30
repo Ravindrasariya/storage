@@ -80,8 +80,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const buyerSuggestions = useMemo(() => {
     if (!buyersData || !buyerName.trim()) return [];
     const query = buyerName.toLowerCase();
+    // Filter out self-sale entries which have format "Farmer Name - Phone - Village"
+    // Check if entry splits into 3 parts with middle part being mostly digits (phone number)
+    const isSelfSaleEntry = (name: string) => {
+      const parts = name.split(" - ");
+      if (parts.length !== 3) return false;
+      const middlePart = parts[1].replace(/\s+/g, ""); // Remove spaces
+      // Check if middle part is mostly digits (at least 70% digits and at least 8 digits)
+      const digitCount = (middlePart.match(/\d/g) || []).length;
+      return digitCount >= 8 && digitCount / middlePart.length >= 0.7;
+    };
     return buyersData
       .filter(b => b.buyerName.toLowerCase().includes(query))
+      .filter(b => !isSelfSaleEntry(b.buyerName))
       .slice(0, 8);
   }, [buyersData, buyerName]);
 
