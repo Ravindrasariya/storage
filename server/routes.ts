@@ -1975,30 +1975,11 @@ export async function registerRoutes(
       // farmerKey format: "farmerName|village|contactNumber"
       const [farmerName, village, contactNumber] = farmerKey.split("|");
       
-      // Enable debug logging with F2B_DEBUG=true environment variable
-      const debugEnabled = process.env.F2B_DEBUG === 'true';
-      
-      if (debugEnabled) {
-        console.log(`[F2B-DEBUG] Searching self-sales, parsed key parts: ${farmerKey.split('|').length}`);
-      }
-      
       if (!farmerName || !village || !contactNumber) {
         return res.status(400).json({ error: "Invalid farmer key format" });
       }
       
       const allSales = await storage.getSalesHistory(coldStorageId);
-      
-      // First, find all self-sales in the database for debugging
-      const allSelfSales = allSales.filter(s => Number(s.isSelfSale) === 1);
-      
-      if (debugEnabled) {
-        console.log(`[F2B-DEBUG] Total self-sales in database: ${allSelfSales.length}`);
-        // Log each self-sale with masked data for privacy
-        allSelfSales.forEach(s => {
-          const maskedContact = s.contactNumber ? `***${s.contactNumber.slice(-4)}` : 'N/A';
-          console.log(`[F2B-DEBUG] Self-sale: id=${s.id}, due=${s.dueAmount}, contact=***${maskedContact}, transferred=${!!s.transferToBuyerName}, reversed=${s.isTransferReversed}`);
-        });
-      }
       
       // Filter to only include self-sales for this farmer with dues
       // Also exclude self-sales that have already been transferred to a buyer
@@ -2019,11 +2000,6 @@ export async function registerRoutes(
         const contactMatch = normalizedDbContact === normalizedReqContact;
         const hasDue = (s.dueAmount || 0) > 0;
         
-        // Log matching details for self-sales only (debug mode)
-        if (debugEnabled && isSelfSale) {
-          console.log(`[F2B-DEBUG] Sale ${s.id}: name=${nameMatch}, village=${villageMatch}, contact=${contactMatch}, due=${hasDue}, notTransferred=${isNotTransferred}, reversed=${isTransferReversed}`);
-        }
-        
         return (
           isSelfSale &&
           (isNotTransferred || isTransferReversed) &&
@@ -2034,9 +2010,6 @@ export async function registerRoutes(
         );
       });
       
-      if (debugEnabled) {
-        console.log(`[F2B-DEBUG] Matching self-sales found: ${selfSalesWithDues.length}`);
-      }
       res.json(selfSalesWithDues);
     } catch (error) {
       console.error("Error fetching farmer self-sales:", error);
