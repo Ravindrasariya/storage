@@ -3665,6 +3665,8 @@ export class DatabaseStorage implements IStorage {
     await db.delete(cashOpeningBalances).where(eq(cashOpeningBalances.coldStorageId, id));
     await db.delete(openingReceivables).where(eq(openingReceivables.coldStorageId, id));
     await db.delete(openingPayables).where(eq(openingPayables.coldStorageId, id));
+    await db.delete(farmerToBuyerTransfers).where(eq(farmerToBuyerTransfers.coldStorageId, id));
+    await db.delete(bankAccounts).where(eq(bankAccounts.coldStorageId, id));
     
     // Delete maintenance records
     await db.delete(maintenanceRecords).where(eq(maintenanceRecords.coldStorageId, id));
