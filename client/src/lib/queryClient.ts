@@ -67,7 +67,15 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    // Build URL by joining query key parts with "/"
+    // The first part is the base path (e.g., "/api/sales-history/self-sales")
+    // Additional parts are path parameters that need to be URL-encoded
+    // This handles special characters like "/" in names (e.g., "s/o" in farmer names)
+    const url = queryKey.length === 1 
+      ? String(queryKey[0])
+      : `${queryKey[0]}/${queryKey.slice(1).map(part => encodeURIComponent(String(part))).join("/")}`;
+    
+    const res = await fetch(url, {
       credentials: "include",
       headers: getAuthHeaders(),
     });
