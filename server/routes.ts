@@ -3049,14 +3049,26 @@ export async function registerRoutes(
   });
 
   // Reset cold storage (factory reset - deletes all data)
+  // Requires TWO passwords for extra safety: ADMIN_PASSWORD and RESET_PASSWORD
   app.post("/api/admin/cold-storages/:id/reset", verifyAdminSession, async (req, res) => {
     try {
-      const { adminPassword } = req.body;
-      // Verify admin password
-      const expectedPassword = process.env.ADMIN_PASSWORD || "admin123";
-      if (adminPassword !== expectedPassword) {
+      const { adminPassword, resetPassword } = req.body;
+      
+      // Verify admin password (first layer)
+      const expectedAdminPassword = process.env.ADMIN_PASSWORD || "admin123";
+      if (adminPassword !== expectedAdminPassword) {
         return res.status(401).json({ error: "Invalid admin password" });
       }
+      
+      // Verify reset password (second layer - separate from admin password)
+      const expectedResetPassword = process.env.RESET_PASSWORD;
+      if (!expectedResetPassword) {
+        return res.status(500).json({ error: "Reset password not configured. Please set RESET_PASSWORD secret." });
+      }
+      if (resetPassword !== expectedResetPassword) {
+        return res.status(401).json({ error: "Invalid reset password" });
+      }
+      
       await storage.resetColdStorage(req.params.id);
       res.json({ success: true });
     } catch (error) {

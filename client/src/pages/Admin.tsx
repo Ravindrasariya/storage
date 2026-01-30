@@ -226,10 +226,10 @@ function AdminDashboard() {
     },
   });
 
-  // Reset cold storage mutation (factory reset with password verification)
+  // Reset cold storage mutation (factory reset with TWO password verification)
   const resetStorageMutation = useMutation({
-    mutationFn: async ({ id, adminPassword }: { id: string; adminPassword: string }) => {
-      const response = await adminApiRequest("POST", `/api/admin/cold-storages/${id}/reset`, { adminPassword });
+    mutationFn: async ({ id, adminPassword, resetPassword }: { id: string; adminPassword: string; resetPassword: string }) => {
+      const response = await adminApiRequest("POST", `/api/admin/cold-storages/${id}/reset`, { adminPassword, resetPassword });
       return response.json();
     },
     onSuccess: () => {
@@ -332,7 +332,7 @@ function AdminDashboard() {
               onCancelEdit={() => setEditingStorage(null)}
               onSave={(data) => updateStorageMutation.mutate({ id: storage.id, data })}
               onStatusChange={(status, password) => updateStatusMutation.mutate({ id: storage.id, status, adminPassword: password })}
-              onReset={(password) => resetStorageMutation.mutate({ id: storage.id, adminPassword: password })}
+              onReset={(adminPassword, resetPassword) => resetStorageMutation.mutate({ id: storage.id, adminPassword, resetPassword })}
               isSaving={updateStorageMutation.isPending}
               isStatusChanging={updateStatusMutation.isPending}
               isResetting={resetStorageMutation.isPending}
@@ -359,7 +359,7 @@ function AdminDashboard() {
               onCancelEdit={() => setEditingStorage(null)}
               onSave={(data) => updateStorageMutation.mutate({ id: storage.id, data })}
               onStatusChange={(status, password) => updateStatusMutation.mutate({ id: storage.id, status, adminPassword: password })}
-              onReset={(password) => resetStorageMutation.mutate({ id: storage.id, adminPassword: password })}
+              onReset={(adminPassword, resetPassword) => resetStorageMutation.mutate({ id: storage.id, adminPassword, resetPassword })}
               isSaving={updateStorageMutation.isPending}
               isStatusChanging={updateStatusMutation.isPending}
               isResetting={resetStorageMutation.isPending}
@@ -389,7 +389,7 @@ function AdminDashboard() {
               onCancelEdit={() => setEditingStorage(null)}
               onSave={(data) => updateStorageMutation.mutate({ id: storage.id, data })}
               onStatusChange={(status, password) => updateStatusMutation.mutate({ id: storage.id, status, adminPassword: password })}
-              onReset={(password) => resetStorageMutation.mutate({ id: storage.id, adminPassword: password })}
+              onReset={(adminPassword, resetPassword) => resetStorageMutation.mutate({ id: storage.id, adminPassword, resetPassword })}
               isSaving={updateStorageMutation.isPending}
               isStatusChanging={updateStatusMutation.isPending}
               isResetting={resetStorageMutation.isPending}
@@ -416,7 +416,7 @@ interface ColdStorageRowProps {
   onCancelEdit: () => void;
   onSave: (data: Partial<ColdStorage>) => void;
   onStatusChange: (status: string, password: string) => void;
-  onReset: (password: string) => void;
+  onReset: (adminPassword: string, resetPassword: string) => void;
   isSaving: boolean;
   isStatusChanging: boolean;
   isResetting: boolean;
@@ -452,6 +452,7 @@ function ColdStorageRow({
   const [showReinstateDialog, setShowReinstateDialog] = useState(false);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
   const handleSave = () => {
@@ -460,12 +461,17 @@ function ColdStorageRow({
 
   const handleResetConfirm = () => {
     if (!adminPassword) {
-      setPasswordError("Password is required");
+      setPasswordError("Admin password is required");
       return;
     }
-    onReset(adminPassword);
+    if (!resetPassword) {
+      setPasswordError("Reset password is required");
+      return;
+    }
+    onReset(adminPassword, resetPassword);
     setShowResetDialog(false);
     setAdminPassword("");
+    setResetPassword("");
     setPasswordError("");
   };
 
@@ -614,7 +620,7 @@ function ColdStorageRow({
           </div>
         </div>
 
-        {/* Reset Confirmation Dialog */}
+        {/* Reset Confirmation Dialog - Requires TWO passwords */}
         <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -629,20 +635,34 @@ function ColdStorageRow({
                   <li>All bill number counters (reset to 1)</li>
                 </ul>
                 <p className="mt-3 font-semibold text-red-600">This action cannot be undone!</p>
+                <p className="mt-2 text-sm">Two passwords required for extra safety.</p>
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <div className="space-y-2 mt-2">
-              <Label>Enter Admin Password to confirm</Label>
-              <Input
-                type="password"
-                value={adminPassword}
-                onChange={(e) => { setAdminPassword(e.target.value); setPasswordError(""); }}
-                placeholder="Admin password"
-              />
+            <div className="space-y-4 mt-2">
+              <div className="space-y-2">
+                <Label>Password 1: Admin Password</Label>
+                <Input
+                  type="password"
+                  value={adminPassword}
+                  onChange={(e) => { setAdminPassword(e.target.value); setPasswordError(""); }}
+                  placeholder="Enter admin password"
+                  data-testid="input-reset-admin-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Password 2: Reset Password</Label>
+                <Input
+                  type="password"
+                  value={resetPassword}
+                  onChange={(e) => { setResetPassword(e.target.value); setPasswordError(""); }}
+                  placeholder="Enter reset password"
+                  data-testid="input-reset-password"
+                />
+              </div>
               {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
             </div>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => { setAdminPassword(""); setPasswordError(""); }}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel onClick={() => { setAdminPassword(""); setResetPassword(""); setPasswordError(""); }}>Cancel</AlertDialogCancel>
               <AlertDialogAction 
                 onClick={handleResetConfirm} 
                 className="bg-red-600 hover:bg-red-700"
