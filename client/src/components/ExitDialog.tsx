@@ -230,7 +230,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                 <span className="text-muted-foreground">Pos:</span> <span className="font-medium">{sale.position}</span>
               </div>
               <div className="col-span-3 truncate">
-                <span className="text-muted-foreground">Buyer:</span> <span className="font-medium">{sale.buyerName || "-"}</span>
+                <span className="text-muted-foreground">Buyer:</span> <span className="font-medium">{sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")}</span>
               </div>
             </div>
 
@@ -365,7 +365,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
               </div>
               <div className="details-row">
                 <span className="details-label">खरीदार / Buyer:</span>
-                <span className="details-value">{sale.buyerName || "-"}</span>
+                <span className="details-value">{sale.isSelfSale === 1 ? (language === "hi" ? "स्वयं" : "Self") : (sale.buyerName || "-")}</span>
               </div>
               <div className="separator"></div>
               <div className="details-row-double">

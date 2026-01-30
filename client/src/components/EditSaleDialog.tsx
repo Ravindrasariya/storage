@@ -457,7 +457,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
               )}
               <div className="col-span-2">
                 <span className="text-muted-foreground">{t("buyerName")}:</span>
-                <p className="font-medium">{sale.buyerName || "-"}</p>
+                <p className="font-medium">{sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")}</p>
               </div>
               {/* Entry Deductions (read-only, set at lot entry time) */}
               {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (

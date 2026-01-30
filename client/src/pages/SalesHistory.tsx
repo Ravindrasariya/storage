@@ -617,16 +617,16 @@ export default function SalesHistoryPage() {
                       <TableCell className="text-xs">
                         {sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed !== 1 ? (
                           <div className="flex flex-col">
-                            <span className="line-through text-muted-foreground">{sale.buyerName || "-"}</span>
+                            <span className="line-through text-muted-foreground">{sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")}</span>
                             <span className="text-purple-600 font-medium">{sale.transferToBuyerName}</span>
                           </div>
                         ) : sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed === 1 ? (
                           <div className="flex flex-col">
-                            <span>{sale.buyerName || "-"}</span>
+                            <span>{sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")}</span>
                             <span className="line-through text-gray-400 text-xs">{sale.transferToBuyerName}</span>
                           </div>
                         ) : (
-                          sale.buyerName || "-"
+                          sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")
                         )}
                       </TableCell>
                       <TableCell className="text-right">

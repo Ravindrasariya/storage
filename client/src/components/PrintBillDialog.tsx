@@ -389,7 +389,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </div>
           <div className="info-row">
             <span className="info-label">खरीदार:</span>
-            <span className="info-value">{sale.buyerName || "-"}</span>
+            <span className="info-value">{sale.isSelfSale === 1 ? "स्वयं" : (sale.buyerName || "-")}</span>
           </div>
         </div>
       </div>
@@ -580,7 +580,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </div>
           <div className="info-row">
             <span className="info-label">खरीदार:</span>
-            <span className="info-value">{sale.buyerName || "-"}</span>
+            <span className="info-value">{sale.isSelfSale === 1 ? "स्वयं" : (sale.buyerName || "-")}</span>
           </div>
         </div>
       </div>
