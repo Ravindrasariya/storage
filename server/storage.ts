@@ -1177,6 +1177,40 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
+    // Add F2B transfer amounts to buyer dues
+    // F2B transfers move farmer liability to buyers, so add transferred amounts to buyer's totalChargeDue
+    const f2bTransfers = await this.getFarmerToBuyerTransfers(coldStorageId);
+    for (const transfer of f2bTransfers) {
+      // Skip reversed transfers
+      if (transfer.isReversed === 1) continue;
+      
+      // Apply year filter if provided
+      if (year) {
+        const transferYear = new Date(transfer.transferDate).getFullYear();
+        if (transferYear !== year) continue;
+      }
+      
+      const buyerName = transfer.toBuyerName?.trim() || "Unknown";
+      const normalizedKey = buyerName.toLowerCase();
+      const transferAmount = roundAmount(transfer.totalAmount || 0);
+      
+      const existing = merchantMap.get(normalizedKey);
+      if (existing) {
+        existing.totalChargeDue += transferAmount;
+      } else {
+        // Buyer doesn't exist from sales - create new entry for F2B transfer
+        merchantMap.set(normalizedKey, {
+          displayName: buyerName,
+          bagsPurchased: 0,
+          totalValue: 0,
+          totalChargePaid: 0,
+          totalChargeDue: transferAmount,
+          cashPaid: 0,
+          accountPaid: 0,
+        });
+      }
+    }
+    
     // Extract unique buyer display names (sorted case-insensitively)
     const merchantEntries = Array.from(merchantMap.values());
     merchantEntries.sort((a, b) => a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase()));
