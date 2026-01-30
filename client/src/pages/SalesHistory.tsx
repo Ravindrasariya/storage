@@ -609,9 +609,6 @@ export default function SalesHistoryPage() {
                           {sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed !== 1 && (
                             <ArrowLeftRight className="h-4 w-4 text-purple-600" />
                           )}
-                          {sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed === 1 && (
-                            <Badge variant="secondary" className="text-xs ml-1">{t("reversed")}</Badge>
-                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-xs">
