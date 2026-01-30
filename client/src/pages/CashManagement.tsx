@@ -793,7 +793,9 @@ export default function CashManagement() {
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-all-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/buyer-dues-for-farmer") });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
