@@ -3992,13 +3992,38 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
+    // Also fetch cold merchant buyers from opening receivables
+    const coldMerchantReceivables = await db.select({
+      buyerName: openingReceivables.buyerName,
+    })
+      .from(openingReceivables)
+      .where(
+        and(
+          eq(openingReceivables.coldStorageId, coldStorageId),
+          eq(openingReceivables.payerType, "cold_merchant"),
+          sql`${openingReceivables.buyerName} IS NOT NULL AND ${openingReceivables.buyerName} != ''`
+        )
+      );
+
     // Deduplicate by normalized buyer name
     const seen = new Map<string, { buyerName: string }>();
+    
+    // Add buyers from sales history
     for (const sale of allSales) {
       if (sale.buyerName) {
         const key = sale.buyerName.trim().toLowerCase();
         if (!seen.has(key)) {
           seen.set(key, { buyerName: sale.buyerName.trim() });
+        }
+      }
+    }
+    
+    // Add buyers from cold merchant receivables (only if not already in the map)
+    for (const rec of coldMerchantReceivables) {
+      if (rec.buyerName) {
+        const key = rec.buyerName.trim().toLowerCase();
+        if (!seen.has(key)) {
+          seen.set(key, { buyerName: rec.buyerName.trim() });
         }
       }
     }
