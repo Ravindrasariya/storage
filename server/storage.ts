@@ -3895,6 +3895,7 @@ export class DatabaseStorage implements IStorage {
     const startOfYear = new Date(currentYear, 0, 1);
     const endOfYear = new Date(currentYear + 1, 0, 1);
 
+    // Fetch farmers from lots table
     const allLots = await db.select({
       farmerName: lots.farmerName,
       village: lots.village,
@@ -3912,8 +3913,29 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
+    // Also fetch farmers from opening receivables (farmer type)
+    const farmerReceivables = await db.select({
+      farmerName: openingReceivables.farmerName,
+      village: openingReceivables.village,
+      tehsil: openingReceivables.tehsil,
+      district: openingReceivables.district,
+      state: openingReceivables.state,
+      contactNumber: openingReceivables.contactNumber,
+    })
+      .from(openingReceivables)
+      .where(
+        and(
+          eq(openingReceivables.coldStorageId, coldStorageId),
+          eq(openingReceivables.payerType, "farmer"),
+          sql`${openingReceivables.farmerName} IS NOT NULL AND ${openingReceivables.farmerName} != ''`,
+          sql`${openingReceivables.contactNumber} IS NOT NULL AND ${openingReceivables.contactNumber} != ''`
+        )
+      );
+
     // Deduplicate by normalized key (lowercase trimmed contactNumber + farmerName + village)
     const seen = new Map<string, { farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }>();
+    
+    // Add lot entries first
     for (const lot of allLots) {
       const key = `${lot.contactNumber.trim().toLowerCase()}|${lot.farmerName.trim().toLowerCase()}|${lot.village.trim().toLowerCase()}`;
       if (!seen.has(key)) {
@@ -3924,6 +3946,22 @@ export class DatabaseStorage implements IStorage {
           district: lot.district.trim(),
           state: lot.state.trim(),
           contactNumber: lot.contactNumber.trim(),
+        });
+      }
+    }
+    
+    // Add farmer receivables (only if not already in the map)
+    for (const fr of farmerReceivables) {
+      if (!fr.farmerName || !fr.contactNumber || !fr.village) continue;
+      const key = `${fr.contactNumber.trim().toLowerCase()}|${fr.farmerName.trim().toLowerCase()}|${fr.village.trim().toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.set(key, {
+          farmerName: fr.farmerName.trim(),
+          village: fr.village.trim(),
+          tehsil: (fr.tehsil || "").trim(),
+          district: (fr.district || "").trim(),
+          state: (fr.state || "").trim(),
+          contactNumber: fr.contactNumber.trim(),
         });
       }
     }
