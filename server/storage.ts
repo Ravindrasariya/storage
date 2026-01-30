@@ -277,6 +277,7 @@ export interface IStorage {
   deleteOpeningPayable(id: string): Promise<boolean>;
   // Discounts
   getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]>;
+  getFarmersWithAllDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number; farmerLiableDue: number; buyerLiableDue: number }[]>;
   getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[]>;
   createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }>;
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
@@ -4158,6 +4159,91 @@ export class DatabaseStorage implements IStorage {
       ORDER BY MAX(farmer_name)
     `);
     return result.rows as { farmerName: string; village: string; contactNumber: string; totalDue: number }[];
+  }
+
+  // Get farmers with ALL dues (farmer-liable + buyer-liable)
+  // Used for Discount mode where total dues matter
+  async getFarmersWithAllDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number; farmerLiableDue: number; buyerLiableDue: number }[]> {
+    const result = await db.execute(sql`
+      WITH farmer_liable_dues AS (
+        -- Self-sales only (is_self_sale = 1) - farmer bought their own produce
+        -- EXCLUDE self-sales that have been transferred to a buyer
+        SELECT 
+          TRIM(farmer_name) as farmer_name,
+          TRIM(village) as village,
+          TRIM(contact_number) as contact_number,
+          due_amount as remaining_due
+        FROM sales_history
+        WHERE cold_storage_id = ${coldStorageId}
+          AND COALESCE(is_self_sale, 0) = 1
+          AND due_amount > 0
+          AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
+        
+        UNION ALL
+        
+        -- Opening receivables (farmer type only)
+        SELECT 
+          TRIM(farmer_name) as farmer_name,
+          TRIM(village) as village,
+          TRIM(contact_number) as contact_number,
+          (due_amount - COALESCE(paid_amount, 0)) as remaining_due
+        FROM opening_receivables
+        WHERE cold_storage_id = ${coldStorageId}
+          AND LOWER(TRIM(payer_type)) = 'farmer'
+          AND (due_amount - COALESCE(paid_amount, 0)) > 0
+      ),
+      buyer_liable_dues AS (
+        -- Regular sales where buyer is liable (is_self_sale != 1)
+        SELECT 
+          TRIM(farmer_name) as farmer_name,
+          TRIM(village) as village,
+          TRIM(contact_number) as contact_number,
+          due_amount as remaining_due
+        FROM sales_history
+        WHERE cold_storage_id = ${coldStorageId}
+          AND COALESCE(is_self_sale, 0) = 0
+          AND due_amount > 0
+      ),
+      farmer_liable_aggregated AS (
+        SELECT 
+          LOWER(farmer_name) as farmer_key_name,
+          LOWER(village) as farmer_key_village,
+          contact_number as farmer_key_contact,
+          MAX(farmer_name) as farmer_name,
+          MAX(village) as village,
+          MAX(contact_number) as contact_number,
+          COALESCE(SUM(remaining_due), 0)::float as farmer_liable_due
+        FROM farmer_liable_dues
+        GROUP BY LOWER(farmer_name), LOWER(village), contact_number
+      ),
+      buyer_liable_aggregated AS (
+        SELECT 
+          LOWER(farmer_name) as farmer_key_name,
+          LOWER(village) as farmer_key_village,
+          contact_number as farmer_key_contact,
+          MAX(farmer_name) as farmer_name,
+          MAX(village) as village,
+          MAX(contact_number) as contact_number,
+          COALESCE(SUM(remaining_due), 0)::float as buyer_liable_due
+        FROM buyer_liable_dues
+        GROUP BY LOWER(farmer_name), LOWER(village), contact_number
+      )
+      SELECT 
+        COALESCE(f.farmer_name, b.farmer_name) as "farmerName",
+        COALESCE(f.village, b.village) as "village",
+        COALESCE(f.farmer_key_contact, b.farmer_key_contact) as "contactNumber",
+        (COALESCE(f.farmer_liable_due, 0) + COALESCE(b.buyer_liable_due, 0))::float as "totalDue",
+        COALESCE(f.farmer_liable_due, 0)::float as "farmerLiableDue",
+        COALESCE(b.buyer_liable_due, 0)::float as "buyerLiableDue"
+      FROM farmer_liable_aggregated f
+      FULL OUTER JOIN buyer_liable_aggregated b 
+        ON f.farmer_key_name = b.farmer_key_name 
+        AND f.farmer_key_village = b.farmer_key_village
+        AND f.farmer_key_contact = b.farmer_key_contact
+      WHERE (COALESCE(f.farmer_liable_due, 0) + COALESCE(b.buyer_liable_due, 0)) >= 1
+      ORDER BY COALESCE(f.farmer_name, b.farmer_name)
+    `);
+    return result.rows as { farmerName: string; village: string; contactNumber: string; totalDue: number; farmerLiableDue: number; buyerLiableDue: number }[];
   }
 
   // Get buyer dues for a specific farmer (sorted by latest sale date)

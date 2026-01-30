@@ -434,20 +434,26 @@ export default function CashManagement() {
     },
   });
 
-  // Discount queries - farmers with dues (enabled for discount mode OR farmer-to-buyer transfer)
+  // Farmers with dues (farmer-liable only) - for F2B transfer and inward cash
   const { data: farmersWithDues = [] } = useQuery<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]>({
     queryKey: ["/api/farmers-with-dues"],
-    enabled: expensePaymentMode === "discount" || transferTypeMode === "farmer",
+    enabled: transferTypeMode === "farmer",
   });
 
-  // Parse selected farmer key to get details
+  // Farmers with ALL dues (farmer-liable + buyer-liable) - for discount mode
+  const { data: farmersWithAllDues = [] } = useQuery<{ farmerName: string; village: string; contactNumber: string; totalDue: number; farmerLiableDue: number; buyerLiableDue: number }[]>({
+    queryKey: ["/api/farmers-with-all-dues"],
+    enabled: expensePaymentMode === "discount",
+  });
+
+  // Parse selected farmer key to get details (use allDues for discount)
   const selectedFarmerDetails = useMemo(() => {
     if (!discountFarmerKey) return null;
-    const farmer = farmersWithDues.find(f => 
+    const farmer = farmersWithAllDues.find(f => 
       `${f.farmerName}|${f.village}|${f.contactNumber}` === discountFarmerKey
     );
     return farmer || null;
-  }, [discountFarmerKey, farmersWithDues]);
+  }, [discountFarmerKey, farmersWithAllDues]);
 
   // Farmer autocomplete suggestions for receivables form
   const receivableFarmerNameSuggestions = useMemo(() => {
@@ -488,7 +494,7 @@ export default function CashManagement() {
   };
 
   // Buyer dues for selected farmer
-  const { data: buyerDuesForFarmer = [] } = useQuery<{ buyerName: string; totalDue: number; latestSaleDate: string }[]>({
+  const { data: buyerDuesForFarmer = [] } = useQuery<{ buyerName: string; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[]>({
     queryKey: ["/api/buyer-dues", discountFarmerKey],
     queryFn: async () => {
       if (!selectedFarmerDetails) return [];
@@ -2807,7 +2813,7 @@ export default function CashManagement() {
                           <SelectValue placeholder="Select farmer..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {farmersWithDues.filter(f => f.totalDue >= 1).map((f) => (
+                          {farmersWithAllDues.filter(f => f.totalDue >= 1).map((f) => (
                             <SelectItem 
                               key={`${f.farmerName}|${f.village}|${f.contactNumber}`}
                               value={`${f.farmerName}|${f.village}|${f.contactNumber}`}
@@ -2844,49 +2850,110 @@ export default function CashManagement() {
 
                     {selectedFarmerDetails && buyerDuesForFarmer.length > 0 && (
                       <div className="space-y-2">
-                        <Label>Allocate to Buyers *</Label>
+                        <Label>{t("allocateDiscount") || "Allocate Discount"} *</Label>
                         <div className="border rounded-md p-3 space-y-3 max-h-60 overflow-y-auto">
-                          {buyerDuesForFarmer.map((buyer, idx) => {
-                            const allocationItem = discountBuyerAllocations.find(a => a.buyerName === buyer.buyerName);
-                            return (
-                              <div key={buyer.buyerName} className="flex items-center gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-sm truncate">{buyer.buyerName}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Due: ₹{formatCurrency(buyer.totalDue)}
-                                  </p>
-                                </div>
-                                <Input
-                                  type="number"
-                                  className="w-28"
-                                  placeholder="0"
-                                  min={0}
-                                  max={Math.floor(buyer.totalDue * 10) / 10}
-                                  value={allocationItem?.amount || ""}
-                                  onChange={(e) => {
-                                    const newAllocations = [...discountBuyerAllocations];
-                                    const existingIdx = newAllocations.findIndex(a => a.buyerName === buyer.buyerName);
-                                    const truncatedMax = Math.floor(buyer.totalDue * 10) / 10;
-                                    if (existingIdx >= 0) {
-                                      newAllocations[existingIdx] = { 
-                                        buyerName: buyer.buyerName, 
-                                        amount: e.target.value,
-                                        maxAmount: truncatedMax
-                                      };
-                                    } else {
-                                      newAllocations.push({ 
-                                        buyerName: buyer.buyerName, 
-                                        amount: e.target.value,
-                                        maxAmount: truncatedMax
-                                      });
-                                    }
-                                    setDiscountBuyerAllocations(newAllocations);
-                                  }}
-                                  data-testid={`input-allocation-${idx}`}
-                                />
+                          {/* Farmer Liability Section - filter dues > 0 */}
+                          {buyerDuesForFarmer.some(b => b.isFarmerSelf && b.totalDue > 0) && (
+                            <>
+                              <div className="text-xs font-semibold text-muted-foreground border-b pb-1">
+                                {t("farmerLiability") || "Farmer Liability"} ({t("selfOwes") || "Self Owes"})
                               </div>
-                            );
-                          })}
+                              {buyerDuesForFarmer.filter(b => b.isFarmerSelf && b.totalDue > 0).map((buyer, idx) => {
+                                const allocationItem = discountBuyerAllocations.find(a => a.buyerName === buyer.buyerName);
+                                return (
+                                  <div key={buyer.buyerName} className="flex items-center gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-sm truncate">{t("self") || "Self"}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {t("due") || "Due"}: ₹{formatCurrency(buyer.totalDue)}
+                                      </p>
+                                    </div>
+                                    <Input
+                                      type="number"
+                                      className="w-28"
+                                      placeholder="0"
+                                      min={0}
+                                      max={Math.floor(buyer.totalDue * 10) / 10}
+                                      value={allocationItem?.amount || ""}
+                                      onChange={(e) => {
+                                        const newAllocations = [...discountBuyerAllocations];
+                                        const existingIdx = newAllocations.findIndex(a => a.buyerName === buyer.buyerName);
+                                        const truncatedMax = Math.floor(buyer.totalDue * 10) / 10;
+                                        if (existingIdx >= 0) {
+                                          newAllocations[existingIdx] = { 
+                                            buyerName: buyer.buyerName, 
+                                            amount: e.target.value,
+                                            maxAmount: truncatedMax
+                                          };
+                                        } else {
+                                          newAllocations.push({ 
+                                            buyerName: buyer.buyerName, 
+                                            amount: e.target.value,
+                                            maxAmount: truncatedMax
+                                          });
+                                        }
+                                        setDiscountBuyerAllocations(newAllocations);
+                                      }}
+                                      data-testid={`input-allocation-farmer-self`}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </>
+                          )}
+                          
+                          {/* Buyer Liability Section - filter dues > 0, sort by latest sale date desc */}
+                          {buyerDuesForFarmer.some(b => !b.isFarmerSelf && b.totalDue > 0) && (
+                            <>
+                              <div className="text-xs font-semibold text-muted-foreground border-b pb-1 mt-2">
+                                {t("buyerLiability") || "Buyer Liability"} ({t("buyersOwe") || "Buyers Owe"})
+                              </div>
+                              {buyerDuesForFarmer
+                                .filter(b => !b.isFarmerSelf && b.totalDue > 0)
+                                .sort((a, b) => new Date(b.latestSaleDate).getTime() - new Date(a.latestSaleDate).getTime())
+                                .map((buyer, idx) => {
+                                const allocationItem = discountBuyerAllocations.find(a => a.buyerName === buyer.buyerName);
+                                return (
+                                  <div key={buyer.buyerName} className="flex items-center gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-sm truncate">{buyer.buyerName}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {t("due") || "Due"}: ₹{formatCurrency(buyer.totalDue)}
+                                      </p>
+                                    </div>
+                                    <Input
+                                      type="number"
+                                      className="w-28"
+                                      placeholder="0"
+                                      min={0}
+                                      max={Math.floor(buyer.totalDue * 10) / 10}
+                                      value={allocationItem?.amount || ""}
+                                      onChange={(e) => {
+                                        const newAllocations = [...discountBuyerAllocations];
+                                        const existingIdx = newAllocations.findIndex(a => a.buyerName === buyer.buyerName);
+                                        const truncatedMax = Math.floor(buyer.totalDue * 10) / 10;
+                                        if (existingIdx >= 0) {
+                                          newAllocations[existingIdx] = { 
+                                            buyerName: buyer.buyerName, 
+                                            amount: e.target.value,
+                                            maxAmount: truncatedMax
+                                          };
+                                        } else {
+                                          newAllocations.push({ 
+                                            buyerName: buyer.buyerName, 
+                                            amount: e.target.value,
+                                            maxAmount: truncatedMax
+                                          });
+                                        }
+                                        setDiscountBuyerAllocations(newAllocations);
+                                      }}
+                                      data-testid={`input-allocation-buyer-${idx}`}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </>
+                          )}
                         </div>
                         {discountAmount && (
                           <p className={`text-xs ${

@@ -2315,7 +2315,8 @@ export async function registerRoutes(
 
   // ==================== DISCOUNT ROUTES ====================
 
-  // Get farmers with outstanding dues
+  // Get farmers with outstanding dues (farmer-liable only: receivables + self-sales)
+  // Used for Inward Cash farmer payments and F2B transfers
   app.get("/api/farmers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -2323,6 +2324,18 @@ export async function registerRoutes(
       res.json(farmers);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch farmers with dues" });
+    }
+  });
+
+  // Get farmers with ALL outstanding dues (farmer-liable + buyer-liable)
+  // Used for Discount mode where total dues matter
+  app.get("/api/farmers-with-all-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const farmers = await storage.getFarmersWithAllDues(coldStorageId);
+      res.json(farmers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch farmers with all dues" });
     }
   });
 
