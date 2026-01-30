@@ -1862,9 +1862,9 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const allSales = await storage.getSalesHistory(coldStorageId);
-      // Filter to include only records where a buyer-to-buyer transfer was made
+      // Filter to include only B2B transfers - exclude self-sales (F2B transfers are handled separately)
       const buyerTransfers = allSales.filter(s => 
-        s.clearanceType === 'transfer' && s.transferToBuyerName
+        s.clearanceType === 'transfer' && s.transferToBuyerName && s.isSelfSale !== 1
       );
       res.json(buyerTransfers);
     } catch (error) {
