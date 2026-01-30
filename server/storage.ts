@@ -3935,6 +3935,8 @@ export class DatabaseStorage implements IStorage {
     const twoYearsAgo = new Date();
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
 
+    // Only fetch non-self-sale records for buyer dropdown
+    // Self-sales have farmer names as buyer names which shouldn't appear in "Filter by Buyer"
     const allSales = await db.select({
       buyerName: salesHistory.buyerName,
       isSelfSale: salesHistory.isSelfSale,
@@ -3944,37 +3946,28 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(salesHistory.coldStorageId, coldStorageId),
           gte(salesHistory.soldAt, twoYearsAgo),
-          sql`${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != ''`
+          sql`${salesHistory.buyerName} IS NOT NULL AND ${salesHistory.buyerName} != ''`,
+          // Exclude self-sale records - these have farmer names as buyers
+          sql`(${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)`
         )
       );
 
     // Deduplicate by normalized buyer name
-    // Track if the buyer is ONLY from self-sale transactions
-    const seen = new Map<string, { buyerName: string; isSelfSale: boolean; hasNonSelfSale: boolean }>();
+    const seen = new Map<string, { buyerName: string }>();
     for (const sale of allSales) {
       if (sale.buyerName) {
         const key = sale.buyerName.trim().toLowerCase();
-        const existing = seen.get(key);
-        if (!existing) {
-          seen.set(key, { 
-            buyerName: sale.buyerName.trim(), 
-            isSelfSale: sale.isSelfSale === 1,
-            hasNonSelfSale: sale.isSelfSale !== 1
-          });
-        } else {
-          // If this buyer has ANY non-self-sale record, mark hasNonSelfSale as true
-          if (sale.isSelfSale !== 1) {
-            existing.hasNonSelfSale = true;
-          }
+        if (!seen.has(key)) {
+          seen.set(key, { buyerName: sale.buyerName.trim() });
         }
       }
     }
 
-    // Return isSelfSale=true only if ALL records for this buyer are self-sales
+    // Return unique buyer names (isSelfSale is always false since we filtered them out)
     return Array.from(seen.values())
-      .map(({ buyerName, isSelfSale, hasNonSelfSale }) => ({
+      .map(({ buyerName }) => ({
         buyerName,
-        isSelfSale: isSelfSale && !hasNonSelfSale
+        isSelfSale: false
       }))
       .sort((a, b) => a.buyerName.localeCompare(b.buyerName));
   }
