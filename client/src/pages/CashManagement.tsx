@@ -402,10 +402,11 @@ export default function CashManagement() {
     enabled: showSettings && settingsYear !== currentYear,
   });
 
-  // All buyers for Buyer To dropdown
-  const { data: allBuyers = [] } = useQuery<{ buyerName: string }[]>({
+  // All buyers for Buyer To dropdown (excluding self-sales)
+  const { data: allBuyersRaw = [] } = useQuery<{ buyerName: string; isSelfSale: boolean }[]>({
     queryKey: ["/api/buyers/lookup"],
   });
+  const allBuyers = useMemo(() => allBuyersRaw.filter(b => !b.isSelfSale), [allBuyersRaw]);
 
   // Sales with dues for selected buyer (for buyer-to-buyer transfer)
   const { data: buyerSalesWithDues = [] } = useQuery<SalesHistory[]>({
