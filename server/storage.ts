@@ -1076,7 +1076,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMerchantStats(coldStorageId: string, year?: number): Promise<MerchantStats> {
-    const allSales = await this.getSalesHistory(coldStorageId, year ? { year } : undefined);
+    const allSalesRaw = await this.getSalesHistory(coldStorageId, year ? { year } : undefined);
+    // Filter out self-sales - farmer names from self-sales should not appear in merchant analysis
+    const allSales = allSalesRaw.filter(s => s.isSelfSale !== 1);
     
     // Group sales by buyer name (case-insensitive with trimming)
     const merchantMap = new Map<string, {
