@@ -1980,14 +1980,36 @@ export async function registerRoutes(
       }
       
       const allSales = await storage.getSalesHistory(coldStorageId);
+      
       // Filter to only include self-sales for this farmer with dues
-      const selfSalesWithDues = allSales.filter(s => 
-        s.isSelfSale === 1 &&
-        s.farmerName?.trim().toLowerCase() === farmerName.trim().toLowerCase() &&
-        s.village?.trim().toLowerCase() === village.trim().toLowerCase() &&
-        s.contactNumber?.trim() === contactNumber.trim() &&
-        (s.dueAmount || 0) > 0
-      );
+      // Also exclude self-sales that have already been transferred to a buyer
+      const selfSalesWithDues = allSales.filter(s => {
+        // Use Number conversion for isSelfSale to handle various types (1, "1", true)
+        const isSelfSale = Number(s.isSelfSale) === 1;
+        // Check if already transferred to a buyer
+        const isNotTransferred = !s.transferToBuyerName || s.transferToBuyerName.trim() === "";
+        // Also check if transfer was reversed (if reversed, the self-sale is available again)
+        const isTransferReversed = Number(s.isTransferReversed) === 1;
+        
+        // Check name matching (case-insensitive, trim whitespace)
+        const nameMatch = s.farmerName?.trim().toLowerCase() === farmerName.trim().toLowerCase();
+        const villageMatch = s.village?.trim().toLowerCase() === village.trim().toLowerCase();
+        // Contact number matching: normalize by removing spaces/dashes
+        const normalizedDbContact = s.contactNumber?.replace(/[\s-]/g, '').trim() || '';
+        const normalizedReqContact = contactNumber.replace(/[\s-]/g, '').trim();
+        const contactMatch = normalizedDbContact === normalizedReqContact;
+        const hasDue = (s.dueAmount || 0) > 0;
+        
+        return (
+          isSelfSale &&
+          (isNotTransferred || isTransferReversed) &&
+          nameMatch &&
+          villageMatch &&
+          contactMatch &&
+          hasDue
+        );
+      });
+      
       res.json(selfSalesWithDues);
     } catch (error) {
       console.error("Error fetching farmer self-sales:", error);
