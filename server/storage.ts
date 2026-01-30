@@ -282,18 +282,18 @@ export interface IStorage {
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
   getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
-  // Farmer to Buyer debt transfer
+  // Farmer to Buyer debt transfer - only transfers specific self-sale (not receivables)
   getFarmerToBuyerTransfers(coldStorageId: string): Promise<FarmerToBuyerTransfer[]>;
   createFarmerToBuyerTransfer(data: {
     coldStorageId: string;
+    saleId: string;
     farmerName: string;
     village: string;
     contactNumber: string;
     toBuyerName: string;
-    amount: number;
     transferDate: Date;
     remarks?: string | null;
-  }): Promise<{ success: boolean; receivablesTransferred: number; selfSalesTransferred: number; transactionId: string }>;
+  }): Promise<{ success: boolean; selfSalesTransferred: number; transactionId: string }>;
   reverseFarmerToBuyerTransfer(transferId: string): Promise<{ success: boolean; message?: string }>;
   // Update farmer details in all salesHistory entries for a given lotId
   // Also updates buyerName if it matches the "self" pattern (farmer as buyer)
@@ -4881,138 +4881,54 @@ export class DatabaseStorage implements IStorage {
     return result.length;
   }
 
-  // Farmer to Buyer debt transfer - FIFO applies to receivables first, then self-sales
+  // Farmer to Buyer debt transfer - only transfers specific self-sale (not receivables)
   async createFarmerToBuyerTransfer(data: {
     coldStorageId: string;
+    saleId: string;
     farmerName: string;
     village: string;
     contactNumber: string;
     toBuyerName: string;
-    amount: number;
     transferDate: Date;
     remarks?: string | null;
-  }): Promise<{ success: boolean; receivablesTransferred: number; selfSalesTransferred: number; transactionId: string }> {
-    // First, calculate total available due for this farmer
-    const receivablesTotalResult = await db.execute(sql`
-      SELECT COALESCE(SUM(due_amount - COALESCE(paid_amount, 0)), 0) as total
-      FROM opening_receivables
-      WHERE cold_storage_id = ${data.coldStorageId}
-        AND payer_type = 'farmer'
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
-        AND TRIM(contact_number) = TRIM(${data.contactNumber})
-        AND (due_amount - COALESCE(paid_amount, 0)) > 0
-    `);
-    const selfSalesTotalResult = await db.execute(sql`
-      SELECT COALESCE(SUM(due_amount), 0) as total
+  }): Promise<{ success: boolean; selfSalesTransferred: number; transactionId: string }> {
+    // Get the specific self-sale to transfer - validate it belongs to the specified farmer
+    const saleResult = await db.execute(sql`
+      SELECT id, due_amount, farmer_name, lot_no, quantity_sold, bag_type
       FROM sales_history
-      WHERE cold_storage_id = ${data.coldStorageId}
+      WHERE id = ${data.saleId}
+        AND cold_storage_id = ${data.coldStorageId}
         AND COALESCE(is_self_sale, 0) = 1
         AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
         AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
         AND TRIM(contact_number) = TRIM(${data.contactNumber})
         AND due_amount > 0
     `);
-    const receivablesTotal = parseFloat((receivablesTotalResult.rows[0] as { total: string | number })?.total?.toString() || "0");
-    const selfSalesTotal = parseFloat((selfSalesTotalResult.rows[0] as { total: string | number })?.total?.toString() || "0");
-    const totalAvailable = receivablesTotal + selfSalesTotal;
-
-    // Validate transfer amount doesn't exceed total available due
-    if (data.amount > totalAvailable + 0.01) { // Small tolerance for floating point
-      throw new Error(`Transfer amount (${data.amount}) exceeds total available due (${totalAvailable})`);
+    
+    if (saleResult.rows.length === 0) {
+      throw new Error("Self-sale not found, doesn't belong to this farmer, or has no dues");
     }
-
-    let remainingAmount = data.amount;
-    let receivablesTransferred = 0;
-    let selfSalesTransferred = 0;
-
-    // Step 1: Apply to opening_receivables first (FIFO by createdAt)
-    const receivablesResult = await db.execute(sql`
-      SELECT id, due_amount, paid_amount
-      FROM opening_receivables
-      WHERE cold_storage_id = ${data.coldStorageId}
-        AND payer_type = 'farmer'
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
-        AND TRIM(contact_number) = TRIM(${data.contactNumber})
-        AND (due_amount - COALESCE(paid_amount, 0)) > 0
-      ORDER BY created_at ASC
+    
+    const sale = saleResult.rows[0] as { id: string; due_amount: number; farmer_name: string; lot_no: string; quantity_sold: number; bag_type: string };
+    const transferAmount = roundAmount(sale.due_amount);
+    
+    // Transfer the entire due amount to the new buyer
+    // Set due_amount to 0 and update transferToBuyerName
+    await db.execute(sql`
+      UPDATE sales_history
+      SET 
+        due_amount = 0,
+        transfer_to_buyer_name = ${data.toBuyerName},
+        transfer_date = ${data.transferDate},
+        transfer_remarks = ${data.remarks || null},
+        clearance_type = 'transfer'
+      WHERE id = ${data.saleId}
     `);
 
-    for (const row of receivablesResult.rows as { id: string; due_amount: number; paid_amount: number }[]) {
-      if (remainingAmount <= 0) break;
-
-      const receivableId = row.id;
-      const currentDue = row.due_amount;
-      const currentPaid = row.paid_amount || 0;
-      const remainingDue = roundAmount(currentDue - currentPaid);
-      const amountToTransfer = roundAmount(Math.min(remainingAmount, remainingDue));
-
-      // Transfer the receivable amount to the buyer by increasing paid_amount (reduces farmer's receivable)
-      await db.execute(sql`
-        UPDATE opening_receivables
-        SET paid_amount = paid_amount + ${amountToTransfer}
-        WHERE id = ${receivableId}
-      `);
-
-      receivablesTransferred = roundAmount(receivablesTransferred + amountToTransfer);
-      remainingAmount = roundAmount(remainingAmount - amountToTransfer);
-    }
-
-    // Step 2: Apply remaining to self-sales (FIFO by soldAt)
-    if (remainingAmount > 0) {
-      const selfSalesResult = await db.execute(sql`
-        SELECT id, due_amount
-        FROM sales_history
-        WHERE cold_storage_id = ${data.coldStorageId}
-          AND COALESCE(is_self_sale, 0) = 1
-          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
-          AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
-          AND TRIM(contact_number) = TRIM(${data.contactNumber})
-          AND due_amount > 0
-        ORDER BY sold_at ASC
-      `);
-
-      for (const row of selfSalesResult.rows as { id: string; due_amount: number }[]) {
-        if (remainingAmount <= 0) break;
-
-        const saleId = row.id;
-        const currentDue = row.due_amount;
-        const amountToTransfer = roundAmount(Math.min(remainingAmount, currentDue));
-        const newDueAmount = roundAmount(currentDue - amountToTransfer);
-
-        // Transfer the due to the new buyer - reduce due_amount and set transfer info
-        // Only mark as fully transferred (clearance_type = 'transfer') when due reaches 0
-        await db.execute(sql`
-          UPDATE sales_history
-          SET 
-            due_amount = ${newDueAmount},
-            transfer_to_buyer_name = ${data.toBuyerName},
-            transfer_date = ${data.transferDate},
-            transfer_remarks = ${data.remarks || null},
-            clearance_type = CASE WHEN ${newDueAmount} <= 0 THEN 'transfer' ELSE clearance_type END
-          WHERE id = ${saleId}
-        `);
-
-        selfSalesTransferred = roundAmount(selfSalesTransferred + amountToTransfer);
-        remainingAmount = roundAmount(remainingAmount - amountToTransfer);
-      }
-    }
-
-    // Generate transaction ID for cash flow record (same format as other cash flow entries)
+    // Generate transaction ID for cash flow record
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
 
-    // Calculate remaining farmer dues after this transfer
-    const remainingReceivablesResult = await db.execute(sql`
-      SELECT COALESCE(SUM(due_amount - COALESCE(paid_amount, 0)), 0)::float as total
-      FROM opening_receivables
-      WHERE cold_storage_id = ${data.coldStorageId}
-        AND payer_type = 'farmer'
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
-        AND TRIM(contact_number) = TRIM(${data.contactNumber})
-        AND (due_amount - COALESCE(paid_amount, 0)) > 0
-    `);
+    // Calculate remaining farmer dues after this transfer (only self-sales, not receivables)
     const remainingSelfSalesResult = await db.execute(sql`
       SELECT COALESCE(SUM(due_amount), 0)::float as total
       FROM sales_history
@@ -5024,7 +4940,6 @@ export class DatabaseStorage implements IStorage {
         AND due_amount > 0
     `);
     const dueBalanceAfter = roundAmount(
-      parseFloat((remainingReceivablesResult.rows[0] as { total: string | number })?.total?.toString() || "0") +
       parseFloat((remainingSelfSalesResult.rows[0] as { total: string | number })?.total?.toString() || "0")
     );
 
@@ -5037,9 +4952,9 @@ export class DatabaseStorage implements IStorage {
       village: data.village.trim(),
       contactNumber: data.contactNumber.trim(),
       toBuyerName: data.toBuyerName,
-      totalAmount: roundAmount(data.amount),
-      receivablesTransferred: roundAmount(receivablesTransferred),
-      selfSalesTransferred: roundAmount(selfSalesTransferred),
+      totalAmount: transferAmount,
+      receivablesTransferred: 0, // No receivables transferred anymore
+      selfSalesTransferred: transferAmount,
       transferDate: data.transferDate,
       remarks: data.remarks || null,
       dueBalanceAfter,
@@ -5047,8 +4962,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       success: true,
-      receivablesTransferred,
-      selfSalesTransferred,
+      selfSalesTransferred: transferAmount,
       transactionId,
     };
   }

@@ -1967,13 +1967,41 @@ export async function registerRoutes(
     }
   });
 
-  // Farmer to Buyer debt transfer schema
+  // Get farmer's self-sales with dues (for F2B transfer selection)
+  app.get("/api/sales-history/self-sales/:farmerKey", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const farmerKey = decodeURIComponent(req.params.farmerKey);
+      // farmerKey format: "farmerName|village|contactNumber"
+      const [farmerName, village, contactNumber] = farmerKey.split("|");
+      
+      if (!farmerName || !village || !contactNumber) {
+        return res.status(400).json({ error: "Invalid farmer key format" });
+      }
+      
+      const allSales = await storage.getSalesHistory(coldStorageId);
+      // Filter to only include self-sales for this farmer with dues
+      const selfSalesWithDues = allSales.filter(s => 
+        s.isSelfSale === 1 &&
+        s.farmerName?.trim().toLowerCase() === farmerName.trim().toLowerCase() &&
+        s.village?.trim().toLowerCase() === village.trim().toLowerCase() &&
+        s.contactNumber?.trim() === contactNumber.trim() &&
+        (s.dueAmount || 0) > 0
+      );
+      res.json(selfSalesWithDues);
+    } catch (error) {
+      console.error("Error fetching farmer self-sales:", error);
+      res.status(500).json({ error: "Failed to fetch farmer self-sales" });
+    }
+  });
+
+  // Farmer to Buyer debt transfer schema - now uses saleId for specific self-sale transfer
   const farmerToBuyerTransferSchema = z.object({
+    saleId: z.string().min(1),
     farmerName: z.string().min(1),
     village: z.string().min(1),
     contactNumber: z.string().min(1),
     toBuyerName: z.string().min(1),
-    amount: z.number().positive(),
     transferDate: z.string().transform((val) => new Date(val)),
     remarks: z.string().optional(),
   });
@@ -1985,11 +2013,11 @@ export async function registerRoutes(
       
       const result = await storage.createFarmerToBuyerTransfer({
         coldStorageId,
+        saleId: validatedData.saleId,
         farmerName: validatedData.farmerName,
         village: validatedData.village,
         contactNumber: validatedData.contactNumber,
         toBuyerName: validatedData.toBuyerName,
-        amount: validatedData.amount,
         transferDate: validatedData.transferDate,
         remarks: validatedData.remarks || null,
       });
