@@ -2415,10 +2415,11 @@ export async function registerRoutes(
       
       res.json(result);
     } catch (error) {
+      console.error("Discount creation error:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid discount data", details: error.errors });
       }
-      res.status(500).json({ error: "Failed to create discount" });
+      res.status(500).json({ error: "Failed to create discount", details: String(error) });
     }
   });
 
