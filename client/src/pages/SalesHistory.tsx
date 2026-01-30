@@ -606,24 +606,24 @@ export default function SalesHistoryPage() {
                       <TableCell className="text-right font-medium">
                         <div className="flex items-center justify-end gap-1">
                           <Currency amount={calculateTotalColdCharges(sale)} />
-                          {sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed !== 1 && (
+                          {sale.transferToBuyerName && sale.transferToBuyerName.trim() && Number(sale.isTransferReversed) !== 1 && (
                             <ArrowLeftRight className="h-4 w-4 text-purple-600" />
                           )}
                         </div>
                       </TableCell>
                       <TableCell className="text-xs">
-                        {sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed !== 1 ? (
+                        {sale.transferToBuyerName && sale.transferToBuyerName.trim() && Number(sale.isTransferReversed) !== 1 ? (
                           <div className="flex flex-col">
-                            <span className="line-through text-muted-foreground">{sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")}</span>
+                            <span className="line-through text-muted-foreground">{Number(sale.isSelfSale) === 1 ? t("self") : (sale.buyerName || "-")}</span>
                             <span className="text-purple-600 font-medium">{sale.transferToBuyerName}</span>
                           </div>
-                        ) : sale.transferToBuyerName && sale.transferToBuyerName.trim() && sale.isTransferReversed === 1 ? (
+                        ) : sale.transferToBuyerName && sale.transferToBuyerName.trim() && Number(sale.isTransferReversed) === 1 ? (
                           <div className="flex flex-col">
-                            <span>{sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")}</span>
+                            <span>{Number(sale.isSelfSale) === 1 ? t("self") : (sale.buyerName || "-")}</span>
                             <span className="line-through text-gray-400 text-xs">{sale.transferToBuyerName}</span>
                           </div>
                         ) : (
-                          sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")
+                          Number(sale.isSelfSale) === 1 ? t("self") : (sale.buyerName || "-")
                         )}
                       </TableCell>
                       <TableCell className="text-right">

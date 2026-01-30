@@ -1310,10 +1310,10 @@ export default function CashManagement() {
 
     const rows = transactions.map(transaction => {
       const isReversed = transaction.type === "buyerTransfer" 
-        ? (transaction.data as SalesHistory).isTransferReversed === 1
+        ? Number((transaction.data as SalesHistory).isTransferReversed) === 1
         : (transaction.type === "farmerToBuyerTransfer" 
-          ? (transaction.data as FarmerToBuyerTransfer).isReversed === 1 
-          : (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1
+          ? Number((transaction.data as FarmerToBuyerTransfer).isReversed) === 1 
+          : Number((transaction.data as CashReceipt | Expense | CashTransfer).isReversed) === 1
         );
       const dateStr = format(new Date(transaction.timestamp), "dd/MM/yyyy");
       
@@ -1411,7 +1411,7 @@ export default function CashManagement() {
         ];
       } else {
         const bt = transaction.data as SalesHistory;
-        const btIsReversed = bt.isTransferReversed === 1;
+        const btIsReversed = Number(bt.isTransferReversed) === 1;
         return [
           bt.transferTransactionId || "",
           dateStr,
@@ -3559,12 +3559,12 @@ export default function CashManagement() {
                 <div className="space-y-2 px-4 py-2">
                   {allTransactions.map((transaction, index) => {
                     const isReversed = transaction.type === "discount" 
-                      ? (transaction.data as Discount).isReversed === 1 
+                      ? Number((transaction.data as Discount).isReversed) === 1 
                       : transaction.type === "buyerTransfer"
-                        ? (transaction.data as SalesHistory).isTransferReversed === 1
+                        ? Number((transaction.data as SalesHistory).isTransferReversed) === 1
                         : (transaction.type === "farmerToBuyerTransfer"
-                            ? (transaction.data as FarmerToBuyerTransfer).isReversed === 1
-                            : (transaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1
+                            ? Number((transaction.data as FarmerToBuyerTransfer).isReversed) === 1
+                            : Number((transaction.data as CashReceipt | Expense | CashTransfer).isReversed) === 1
                           );
                     return (
                       <div
@@ -3759,12 +3759,12 @@ export default function CashManagement() {
               {/* Status Badge */}
               <div className="flex flex-col items-center gap-1">
                 {(selectedTransaction.type === "discount" 
-                ? (selectedTransaction.data as Discount).isReversed === 1 
+                ? Number((selectedTransaction.data as Discount).isReversed) === 1 
                 : selectedTransaction.type === "farmerToBuyerTransfer"
-                ? (selectedTransaction.data as FarmerToBuyerTransfer).isReversed === 1
+                ? Number((selectedTransaction.data as FarmerToBuyerTransfer).isReversed) === 1
                 : selectedTransaction.type === "buyerTransfer"
-                ? (selectedTransaction.data as SalesHistory).isTransferReversed === 1
-                : (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed === 1) ? (
+                ? Number((selectedTransaction.data as SalesHistory).isTransferReversed) === 1
+                : Number((selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed) === 1) ? (
                   <>
                     <Badge variant="secondary" className="text-base px-4 py-1">
                       {t("reversed")}
@@ -4047,12 +4047,12 @@ export default function CashManagement() {
               {/* Reverse Button - for all reversible transaction types */}
               {canEdit && (
                 selectedTransaction.type === "discount" 
-                  ? (selectedTransaction.data as Discount).isReversed !== 1 
+                  ? Number((selectedTransaction.data as Discount).isReversed) !== 1 
                   : selectedTransaction.type === "farmerToBuyerTransfer"
-                    ? (selectedTransaction.data as FarmerToBuyerTransfer).isReversed !== 1
+                    ? Number((selectedTransaction.data as FarmerToBuyerTransfer).isReversed) !== 1
                     : selectedTransaction.type === "buyerTransfer"
-                      ? (selectedTransaction.data as SalesHistory).isTransferReversed !== 1
-                      : (selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed !== 1
+                      ? Number((selectedTransaction.data as SalesHistory).isTransferReversed) !== 1
+                      : Number((selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed) !== 1
               ) && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>

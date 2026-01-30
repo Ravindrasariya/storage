@@ -5121,7 +5121,7 @@ export class DatabaseStorage implements IStorage {
           AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${transfer.farmerName}))
           AND LOWER(TRIM(village)) = LOWER(TRIM(${transfer.village}))
           AND TRIM(contact_number) = TRIM(${transfer.contactNumber})
-          AND transfer_to_buyer_name = ${transfer.toBuyerName}
+          AND LOWER(TRIM(transfer_to_buyer_name)) = LOWER(TRIM(${transfer.toBuyerName}))
         ORDER BY sold_at DESC
       `);
 
@@ -5154,11 +5154,9 @@ export class DatabaseStorage implements IStorage {
         await db.execute(sql`
           UPDATE sales_history
           SET 
-            due_amount = ${newDueAmount},
-            transfer_to_buyer_name = NULL,
-            transfer_date = NULL,
-            transfer_remarks = NULL,
-            clearance_type = NULL
+            due_amount = ${newDueAmount}::real,
+            is_transfer_reversed = 1,
+            transfer_reversed_at = NOW()
           WHERE id = ${saleId}
         `);
 
