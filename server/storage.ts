@@ -2362,12 +2362,12 @@ export class DatabaseStorage implements IStorage {
         await db.execute(sql`
           UPDATE sales_history
           SET 
-            due_amount = ${newDueAmount},
-            paid_amount = ${newPaidAmount},
-            extra_due_to_merchant = ${newExtraDue},
+            due_amount = (${newDueAmount})::real,
+            paid_amount = (${newPaidAmount})::real,
+            extra_due_to_merchant = (${newExtraDue})::real,
             payment_status = CASE 
-              WHEN ${newDueAmount} + ${newExtraDue} < 1 THEN 'paid'
-              WHEN ${newPaidAmount} > 0 THEN 'partial'
+              WHEN (${newDueAmount})::real + (${newExtraDue})::real < 1.0 THEN 'paid'
+              WHEN (${newPaidAmount})::real > 0 THEN 'partial'
               ELSE payment_status
             END
           WHERE id = ${sale.id}
@@ -3391,11 +3391,11 @@ export class DatabaseStorage implements IStorage {
       await db.execute(sql`
         UPDATE sales_history
         SET 
-          due_amount = ${newDue},
-          paid_amount = paid_amount + ${discountToApply},
-          discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
+          due_amount = (${newDue})::real,
+          paid_amount = paid_amount + (${discountToApply})::real,
+          discount_allocated = COALESCE(discount_allocated, 0) + (${discountToApply})::real,
           payment_status = CASE 
-            WHEN ${newDue} < 1 THEN 'paid'
+            WHEN (${newDue})::real < 1.0 THEN 'paid'
             ELSE 'partial'
           END
         WHERE id = ${saleId}
@@ -4413,11 +4413,11 @@ export class DatabaseStorage implements IStorage {
             await db.execute(sql`
               UPDATE sales_history
               SET 
-                due_amount = ${newDue},
-                paid_amount = paid_amount + ${discountToApply},
-                discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
+                due_amount = (${newDue})::real,
+                paid_amount = paid_amount + (${discountToApply})::real,
+                discount_allocated = COALESCE(discount_allocated, 0) + (${discountToApply})::real,
                 payment_status = CASE 
-                  WHEN ${newDue} < 1 THEN 'paid'
+                  WHEN (${newDue})::real < 1.0 THEN 'paid'
                   ELSE 'partial'
                 END
               WHERE id = ${saleId}
@@ -4453,11 +4453,11 @@ export class DatabaseStorage implements IStorage {
           await db.execute(sql`
             UPDATE sales_history
             SET 
-              due_amount = ${newDue},
-              paid_amount = paid_amount + ${discountToApply},
-              discount_allocated = COALESCE(discount_allocated, 0) + ${discountToApply},
+              due_amount = (${newDue})::real,
+              paid_amount = paid_amount + (${discountToApply})::real,
+              discount_allocated = COALESCE(discount_allocated, 0) + (${discountToApply})::real,
               payment_status = CASE 
-                WHEN ${newDue} < 1 THEN 'paid'
+                WHEN (${newDue})::real < 1.0 THEN 'paid'
                 ELSE 'partial'
               END
             WHERE id = ${saleId}
