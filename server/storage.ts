@@ -261,7 +261,7 @@ export interface IStorage {
   // Farmer lookup for auto-complete
   getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]>;
   // Buyer lookup for auto-complete (last 2 years)
-  getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string }[]>;
+  getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string; isSelfSale: boolean }[]>;
   // Bag type label lookup for auto-complete
   getBagTypeLabels(coldStorageId: string): Promise<{ label: string }[]>;
   // Opening Balances
@@ -3894,12 +3894,13 @@ export class DatabaseStorage implements IStorage {
     return Array.from(seen.values());
   }
 
-  async getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string }[]> {
+  async getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string; isSelfSale: boolean }[]> {
     const twoYearsAgo = new Date();
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
 
     const allSales = await db.select({
       buyerName: salesHistory.buyerName,
+      isSelfSale: salesHistory.isSelfSale,
     })
       .from(salesHistory)
       .where(
@@ -3911,17 +3912,34 @@ export class DatabaseStorage implements IStorage {
       );
 
     // Deduplicate by normalized buyer name
-    const seen = new Map<string, { buyerName: string }>();
+    // Track if the buyer is ONLY from self-sale transactions
+    const seen = new Map<string, { buyerName: string; isSelfSale: boolean; hasNonSelfSale: boolean }>();
     for (const sale of allSales) {
       if (sale.buyerName) {
         const key = sale.buyerName.trim().toLowerCase();
-        if (!seen.has(key)) {
-          seen.set(key, { buyerName: sale.buyerName.trim() });
+        const existing = seen.get(key);
+        if (!existing) {
+          seen.set(key, { 
+            buyerName: sale.buyerName.trim(), 
+            isSelfSale: sale.isSelfSale === 1,
+            hasNonSelfSale: sale.isSelfSale !== 1
+          });
+        } else {
+          // If this buyer has ANY non-self-sale record, mark hasNonSelfSale as true
+          if (sale.isSelfSale !== 1) {
+            existing.hasNonSelfSale = true;
+          }
         }
       }
     }
 
-    return Array.from(seen.values()).sort((a, b) => a.buyerName.localeCompare(b.buyerName));
+    // Return isSelfSale=true only if ALL records for this buyer are self-sales
+    return Array.from(seen.values())
+      .map(({ buyerName, isSelfSale, hasNonSelfSale }) => ({
+        buyerName,
+        isSelfSale: isSelfSale && !hasNonSelfSale
+      }))
+      .sort((a, b) => a.buyerName.localeCompare(b.buyerName));
   }
 
   // Bag type label lookup

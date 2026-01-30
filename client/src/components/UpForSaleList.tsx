@@ -63,7 +63,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [selectedFarmerFilter, setSelectedFarmerFilter] = useState<{ name: string; phone: string; village: string } | null>(null);
   const farmerFilterRef = useRef<HTMLDivElement>(null);
 
-  const { data: buyersData } = useQuery<{ buyerName: string }[]>({
+  const { data: buyersData } = useQuery<{ buyerName: string; isSelfSale: boolean }[]>({
     queryKey: ["/api/buyers/lookup"],
   });
   
@@ -80,19 +80,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const buyerSuggestions = useMemo(() => {
     if (!buyersData || !buyerName.trim()) return [];
     const query = buyerName.toLowerCase();
-    // Filter out self-sale entries which have format "Farmer Name - Phone - Village"
-    // Check if entry splits into 3 parts with middle part being mostly digits (phone number)
-    const isSelfSaleEntry = (name: string) => {
-      const parts = name.split(" - ");
-      if (parts.length !== 3) return false;
-      const middlePart = parts[1].replace(/\s+/g, ""); // Remove spaces
-      // Check if middle part is mostly digits (at least 70% digits and at least 8 digits)
-      const digitCount = (middlePart.match(/\d/g) || []).length;
-      return digitCount >= 8 && digitCount / middlePart.length >= 0.7;
-    };
+    // Filter out self-sale entries using the isSelfSale flag from the API
     return buyersData
       .filter(b => b.buyerName.toLowerCase().includes(query))
-      .filter(b => !isSelfSaleEntry(b.buyerName))
+      .filter(b => !b.isSelfSale)
       .slice(0, 8);
   }, [buyersData, buyerName]);
 
