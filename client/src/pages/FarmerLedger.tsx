@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
@@ -16,6 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCurrency } from "@/components/Currency";
 import { format } from "date-fns";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import type { FarmerLedgerEntry, FarmerLedgerEditHistoryEntry } from "@shared/schema";
 
 interface FarmerWithDues extends FarmerLedgerEntry {
@@ -209,6 +211,92 @@ export default function FarmerLedger() {
     return "text-rose-600 dark:text-rose-500";
   };
 
+  const handlePrint = useCallback(() => {
+    const farmersToExport = showArchived 
+      ? [...filteredFarmers.active, ...filteredFarmers.archived]
+      : filteredFarmers.active;
+
+    if (farmersToExport.length === 0) {
+      toast({ title: t("noFarmersFound"), variant: "destructive" });
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    
+    doc.setFontSize(16);
+    doc.text(t("farmerLedger"), pageWidth / 2, 15, { align: 'center' });
+    
+    doc.setFontSize(10);
+    const filterInfo: string[] = [];
+    if (nameSearch) filterInfo.push(`${t("name")}: ${nameSearch}`);
+    if (villageSearch) filterInfo.push(`${t("village")}: ${villageSearch}`);
+    if (yearFilter !== 'all') filterInfo.push(`${t("year")}: ${yearFilter}`);
+    if (filterInfo.length > 0) {
+      doc.text(filterInfo.join(' | '), pageWidth / 2, 22, { align: 'center' });
+    }
+    doc.text(`${t("farmers")}: ${farmersToExport.length} | ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, pageWidth / 2, filterInfo.length > 0 ? 28 : 22, { align: 'center' });
+
+    const tableData = farmersToExport.map(farmer => [
+      farmer.farmerId,
+      farmer.name,
+      farmer.village,
+      farmer.contactNumber || '',
+      formatDueValue(farmer.pyReceivables),
+      formatDueValue(farmer.selfDue),
+      formatDueValue(farmer.merchantDue),
+      formatDueValue(farmer.totalDue),
+      farmer.isFlagged === 1 ? t("flagged") : ''
+    ]);
+
+    const totals = farmersToExport.reduce((acc, f) => ({
+      pyReceivables: acc.pyReceivables + f.pyReceivables,
+      selfDue: acc.selfDue + f.selfDue,
+      merchantDue: acc.merchantDue + f.merchantDue,
+      totalDue: acc.totalDue + f.totalDue,
+    }), { pyReceivables: 0, selfDue: 0, merchantDue: 0, totalDue: 0 });
+
+    tableData.push([
+      '', t("total"), '', '',
+      formatDueValue(totals.pyReceivables),
+      formatDueValue(totals.selfDue),
+      formatDueValue(totals.merchantDue),
+      formatDueValue(totals.totalDue),
+      ''
+    ]);
+
+    autoTable(doc, {
+      head: [[
+        t("farmerId"), t("name"), t("village"), t("contact"),
+        t("pyReceivables"), t("selfDue"), t("merchantDues"), t("totalDues"), t("status")
+      ]],
+      body: tableData,
+      startY: filterInfo.length > 0 ? 32 : 26,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 28 },
+        4: { halign: 'right', cellWidth: 25 },
+        5: { halign: 'right', cellWidth: 22 },
+        6: { halign: 'right', cellWidth: 25 },
+        7: { halign: 'right', cellWidth: 25 },
+        8: { cellWidth: 20 },
+      },
+      didParseCell: (data) => {
+        if (data.row.index === tableData.length - 1) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [240, 240, 240];
+        }
+      }
+    });
+
+    doc.save(`farmer-ledger-${format(new Date(), 'yyyyMMdd-HHmm')}.pdf`);
+    toast({ title: t("saved") });
+  }, [filteredFarmers, showArchived, nameSearch, villageSearch, yearFilter, t, toast, formatDueValue]);
+
   const SortHeader = ({ field, children, className = "", center = false }: { field: SortField; children: React.ReactNode; className?: string; center?: boolean }) => (
     <th 
       className={`px-2 py-2 text-xs font-medium cursor-pointer hover:bg-muted/50 select-none ${center ? 'text-center' : 'text-left'} ${className}`}
@@ -327,7 +415,7 @@ export default function FarmerLedger() {
             {t("sync")}
           </Button>
         )}
-        <Button variant="outline" size="icon" data-testid="button-print">
+        <Button variant="outline" size="icon" onClick={handlePrint} data-testid="button-print">
           <Printer className="w-4 h-4" />
         </Button>
       </div>
