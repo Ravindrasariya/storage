@@ -592,6 +592,17 @@ const translations: Translations = {
   searchFarmers: { en: "Search farmers...", hi: "किसान खोजें..." },
   saved: { en: "Saved", hi: "सहेजा गया" },
   archived: { en: "Archived", hi: "संग्रहीत" },
+  trackFarmerDues: { en: "Track farmer dues and payments", hi: "किसान बकाया और भुगतान ट्रैक करें" },
+  harvestDue: { en: "Harvest Due", hi: "फसल बकाया" },
+  seedDue: { en: "Seed Due", hi: "बीज बकाया" },
+  coldDue: { en: "Cold Due", hi: "कोल्ड बकाया" },
+  netDue: { en: "Net Due", hi: "शुद्ध बकाया" },
+  searchByName: { en: "Search by name...", hi: "नाम से खोजें..." },
+  searchByVillage: { en: "Search by village...", hi: "गांव से खोजें..." },
+  showArchived: { en: "Show Archived", hi: "संग्रहीत दिखाएं" },
+  sync: { en: "Sync", hi: "सिंक" },
+  contact: { en: "Contact", hi: "संपर्क" },
+  actions: { en: "Actions", hi: "क्रियाएं" },
 };
 
 interface I18nContextType {

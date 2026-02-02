@@ -5,15 +5,14 @@ import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Users, RefreshCw, Search, Flag, Archive, RotateCcw, Pencil, ChevronDown, ChevronUp, Filter, X } from "lucide-react";
+import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCurrency } from "@/components/Currency";
 import { format } from "date-fns";
 import type { FarmerLedgerEntry, FarmerLedgerEditHistoryEntry } from "@shared/schema";
@@ -36,16 +35,21 @@ interface FarmerLedgerData {
   };
 }
 
+type SortField = 'farmerId' | 'name' | 'village' | 'contactNumber' | 'pyReceivables' | 'selfDue' | 'merchantDue' | 'totalDue';
+type SortDirection = 'asc' | 'desc';
+
 export default function FarmerLedger() {
   const { t } = useI18n();
   const { toast } = useToast();
   const { canEdit, coldStorage } = useAuth();
   const coldStorageId = coldStorage?.id || "";
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
-  const [showWithDuesOnly, setShowWithDuesOnly] = useState(false);
+  const [nameSearch, setNameSearch] = useState("");
+  const [villageSearch, setVillageSearch] = useState("");
+  const [yearFilter, setYearFilter] = useState("all");
   const [showArchived, setShowArchived] = useState(false);
+  const [sortField, setSortField] = useState<SortField>('farmerId');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [editingFarmer, setEditingFarmer] = useState<FarmerWithDues | null>(null);
   const [editFormData, setEditFormData] = useState({
     name: "",
@@ -121,27 +125,46 @@ export default function FarmerLedger() {
     },
   });
 
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
   const filteredFarmers = useMemo(() => {
     if (!ledgerData?.farmers) return { active: [], archived: [] };
 
-    const filtered = ledgerData.farmers.filter(farmer => {
-      const matchesSearch = !searchTerm || 
-        farmer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        farmer.village.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        farmer.farmerId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        farmer.contactNumber.includes(searchTerm);
+    let filtered = ledgerData.farmers.filter(farmer => {
+      const matchesName = !nameSearch || 
+        farmer.name.toLowerCase().includes(nameSearch.toLowerCase());
+      const matchesVillage = !villageSearch || 
+        farmer.village.toLowerCase().includes(villageSearch.toLowerCase());
       
-      const matchesFlagged = !showFlaggedOnly || farmer.isFlagged === 1;
-      const matchesDues = !showWithDuesOnly || farmer.totalDue > 0;
+      return matchesName && matchesVillage;
+    });
+
+    filtered = [...filtered].sort((a, b) => {
+      let aVal: string | number = a[sortField];
+      let bVal: string | number = b[sortField];
       
-      return matchesSearch && matchesFlagged && matchesDues;
+      if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = (bVal as string).toLowerCase();
+      }
+      
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
     });
 
     return {
       active: filtered.filter(f => f.isArchived !== 1),
       archived: filtered.filter(f => f.isArchived === 1),
     };
-  }, [ledgerData?.farmers, searchTerm, showFlaggedOnly, showWithDuesOnly]);
+  }, [ledgerData?.farmers, nameSearch, villageSearch, sortField, sortDirection]);
 
   const handleEditClick = (farmer: FarmerWithDues) => {
     setEditFormData({
@@ -171,27 +194,40 @@ export default function FarmerLedger() {
     totalDue: 0,
   };
 
+  const formatDueValue = (value: number | undefined | null): string => {
+    const num = value ?? 0;
+    if (isNaN(num)) return formatCurrency(0);
+    return formatCurrency(num);
+  };
+
+  const getDueColorClass = (value: number | undefined | null): string => {
+    const num = value ?? 0;
+    if (isNaN(num) || num === 0) return "";
+    if (num > 0) return "text-green-600";
+    return "text-red-600";
+  };
+
+  const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <th 
+      className="px-3 py-2 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:bg-muted/50 select-none"
+      onClick={() => handleSort(field)}
+      data-testid={`header-${field}`}
+    >
+      <div className="flex items-center gap-1">
+        {children}
+        <ArrowUpDown className={`w-3 h-3 ${sortField === field ? 'text-foreground' : 'text-muted-foreground/50'}`} />
+      </div>
+    </th>
+  );
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between p-4 border-b">
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Users className="w-5 h-5" />
-          {t("farmerLedger")}
-        </h1>
-        {canEdit && (
-          <Button
-            size="sm"
-            onClick={() => syncMutation.mutate()}
-            disabled={syncMutation.isPending}
-            data-testid="button-sync-farmers"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-            {syncMutation.isPending ? t("syncingFarmers") : t("syncFarmers")}
-          </Button>
-        )}
+      <div className="p-4 border-b">
+        <h1 className="text-xl font-semibold">{t("farmerLedger")}</h1>
+        <p className="text-sm text-muted-foreground">{t("trackFarmerDues")}</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("farmers")}</CardTitle>
@@ -205,75 +241,77 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("pyReceivables")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-py-receivables">{formatCurrency(summary.totalPyReceivables)}</div>
+            <div className="text-2xl font-bold" data-testid="text-py-receivables">{formatDueValue(summary.totalPyReceivables)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("selfDue")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("harvestDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-self-due">{formatCurrency(summary.totalSelfDue)}</div>
+            <div className="text-2xl font-bold text-green-600" data-testid="text-harvest-due">{formatDueValue(summary.totalMerchantDue)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("merchantDue")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("seedDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-merchant-due">{formatCurrency(summary.totalMerchantDue)}</div>
+            <div className="text-2xl font-bold text-red-600" data-testid="text-seed-due">{formatDueValue(summary.totalSelfDue)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("totalDue")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("coldDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary" data-testid="text-total-due">{formatCurrency(summary.totalDue)}</div>
+            <div className="text-2xl font-bold text-green-600" data-testid="text-cold-due">{formatDueValue(0)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("netDue")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600" data-testid="text-net-due">{formatDueValue(summary.totalDue)}</div>
           </CardContent>
         </Card>
       </div>
 
       <div className="px-4 pb-3 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-muted-foreground" />
+        </div>
+        <Select value={yearFilter} onValueChange={setYearFilter}>
+          <SelectTrigger className="w-[120px]" data-testid="select-year-filter">
+            <SelectValue placeholder={t("allYears")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allYears")}</SelectItem>
+            <SelectItem value="2026">2026</SelectItem>
+            <SelectItem value="2025">2025</SelectItem>
+            <SelectItem value="2024">2024</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="relative">
           <Input
-            placeholder={t("searchFarmers")}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-            data-testid="input-search-farmers"
+            placeholder={t("searchByName")}
+            value={nameSearch}
+            onChange={(e) => setNameSearch(e.target.value)}
+            className="w-[160px]"
+            data-testid="input-search-name"
           />
-          {searchTerm && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-              onClick={() => setSearchTerm("")}
-              data-testid="button-clear-search"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          )}
         </div>
-        <div className="flex items-center gap-2">
-          <Switch
-            id="flagged-filter"
-            checked={showFlaggedOnly}
-            onCheckedChange={setShowFlaggedOnly}
-            data-testid="switch-flagged-only"
+        <div className="relative">
+          <Input
+            placeholder={t("searchByVillage")}
+            value={villageSearch}
+            onChange={(e) => setVillageSearch(e.target.value)}
+            className="w-[160px]"
+            data-testid="input-search-village"
           />
-          <Label htmlFor="flagged-filter" className="text-sm cursor-pointer">{t("showFlaggedOnly")}</Label>
         </div>
-        <div className="flex items-center gap-2">
-          <Switch
-            id="dues-filter"
-            checked={showWithDuesOnly}
-            onCheckedChange={setShowWithDuesOnly}
-            data-testid="switch-dues-only"
-          />
-          <Label htmlFor="dues-filter" className="text-sm cursor-pointer">{t("showWithDuesOnly")}</Label>
-        </div>
+        <div className="flex-1" />
         <div className="flex items-center gap-2">
           <Switch
             id="archived-filter"
@@ -281,8 +319,23 @@ export default function FarmerLedger() {
             onCheckedChange={setShowArchived}
             data-testid="switch-show-archived"
           />
-          <Label htmlFor="archived-filter" className="text-sm cursor-pointer">{t("archivedFarmers")}</Label>
+          <Label htmlFor="archived-filter" className="text-sm cursor-pointer">{t("showArchived")}</Label>
         </div>
+        {canEdit && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            data-testid="button-sync-farmers"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+            {t("sync")}
+          </Button>
+        )}
+        <Button variant="outline" size="icon" data-testid="button-print">
+          <Printer className="w-4 h-4" />
+        </Button>
       </div>
 
       <ScrollArea className="flex-1 px-4">
@@ -295,109 +348,116 @@ export default function FarmerLedger() {
             {t("noFarmersFound")}
           </div>
         ) : (
-          <div className="space-y-4 pb-4">
-            <div className="space-y-2">
-              <h3 className="font-medium text-sm text-muted-foreground">{t("activeFarmers")} ({filteredFarmers.active.length})</h3>
-              {filteredFarmers.active.map(farmer => (
-                <Card key={farmer.id} className="hover-elevate" data-testid={`card-farmer-${farmer.id}`}>
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium" data-testid={`text-farmer-name-${farmer.id}`}>{farmer.name}</span>
-                          <Badge variant="outline" className="text-xs" data-testid={`badge-farmer-id-${farmer.id}`}>{farmer.farmerId}</Badge>
-                          {farmer.isFlagged === 1 && (
-                            <Badge variant="destructive" className="text-xs" data-testid={`badge-flagged-${farmer.id}`}>
-                              <Flag className="w-3 h-3 mr-1" />
-                              {t("flagged")}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          {farmer.village}{farmer.district && `, ${farmer.district}`} | {farmer.contactNumber}
-                        </div>
-                        <div className="flex flex-wrap gap-4 mt-2 text-sm">
-                          <span>{t("pyReceivables")}: <span className="font-medium">{formatCurrency(farmer.pyReceivables)}</span></span>
-                          <span>{t("selfDue")}: <span className="font-medium">{formatCurrency(farmer.selfDue)}</span></span>
-                          <span>{t("merchantDue")}: <span className="font-medium">{formatCurrency(farmer.merchantDue)}</span></span>
-                          <span className="text-primary">{t("totalDue")}: <span className="font-bold">{formatCurrency(farmer.totalDue)}</span></span>
-                        </div>
-                      </div>
-                      {canEdit && (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => flagMutation.mutate(farmer.id)}
-                            data-testid={`button-flag-${farmer.id}`}
-                          >
-                            <Flag className={`w-4 h-4 ${farmer.isFlagged === 1 ? 'text-destructive' : ''}`} />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleEditClick(farmer)}
-                            data-testid={`button-edit-${farmer.id}`}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => archiveMutation.mutate(farmer.id)}
-                            data-testid={`button-archive-${farmer.id}`}
-                          >
-                            <Archive className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {showArchived && filteredFarmers.archived.length > 0 && (
-              <Collapsible defaultOpen={false}>
-                <CollapsibleTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between" data-testid="button-toggle-archived">
-                    <span>{t("archivedFarmers")} ({filteredFarmers.archived.length})</span>
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-2 pt-2">
-                  {filteredFarmers.archived.map(farmer => (
-                    <Card key={farmer.id} className="opacity-70" data-testid={`card-archived-farmer-${farmer.id}`}>
-                      <CardContent className="p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium">{farmer.name}</span>
-                              <Badge variant="secondary" className="text-xs">{farmer.farmerId}</Badge>
-                              <Badge variant="outline" className="text-xs">{t("archived")}</Badge>
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1">
-                              {farmer.village}{farmer.district && `, ${farmer.district}`} | {farmer.contactNumber}
-                            </div>
-                          </div>
+          <div className="pb-4">
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-8"></th>
+                    <SortHeader field="farmerId">{t("farmerId")}</SortHeader>
+                    <SortHeader field="name">{t("name")}</SortHeader>
+                    <SortHeader field="village">{t("village")}</SortHeader>
+                    <SortHeader field="contactNumber">{t("contact")}</SortHeader>
+                    <SortHeader field="pyReceivables">{t("pyReceivables")}</SortHeader>
+                    <SortHeader field="merchantDue"><span className="text-green-600">{t("harvestDue")}</span></SortHeader>
+                    <SortHeader field="selfDue"><span className="text-red-600">{t("seedDue")}</span></SortHeader>
+                    <SortHeader field="totalDue">{t("netDue")}</SortHeader>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">{t("coldDue")}</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">{t("actions")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredFarmers.active.map(farmer => (
+                    <tr key={farmer.id} className="hover:bg-muted/30" data-testid={`row-farmer-${farmer.id}`}>
+                      <td className="px-3 py-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="w-6 h-6"
+                          onClick={() => handleEditClick(farmer)}
+                          data-testid={`button-edit-${farmer.id}`}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs" data-testid={`text-farmer-id-${farmer.id}`}>{farmer.farmerId}</td>
+                      <td className="px-3 py-2 font-medium" data-testid={`text-farmer-name-${farmer.id}`}>{farmer.name}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{farmer.village}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{farmer.contactNumber}</td>
+                      <td className="px-3 py-2 text-right">{formatDueValue(farmer.pyReceivables)}</td>
+                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.merchantDue)}`}>{formatDueValue(farmer.merchantDue)}</td>
+                      <td className={`px-3 py-2 text-right ${getDueColorClass(-farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
+                      <td className={`px-3 py-2 text-right font-medium ${getDueColorClass(farmer.totalDue)}`}>{formatDueValue(farmer.totalDue)}</td>
+                      <td className="px-3 py-2 text-right">{formatDueValue(0)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <Switch
+                            checked={farmer.isFlagged === 1}
+                            onCheckedChange={() => flagMutation.mutate(farmer.id)}
+                            data-testid={`switch-flag-${farmer.id}`}
+                          />
                           {canEdit && (
                             <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => reinstateMutation.mutate(farmer.id)}
-                              data-testid={`button-reinstate-${farmer.id}`}
+                              size="icon"
+                              variant="ghost"
+                              className="w-6 h-6"
+                              onClick={() => archiveMutation.mutate(farmer.id)}
+                              data-testid={`button-archive-${farmer.id}`}
                             >
-                              <RotateCcw className="w-4 h-4 mr-2" />
-                              {t("reinstateFarmer")}
+                              <Archive className="w-3 h-3" />
                             </Button>
                           )}
                         </div>
-                      </CardContent>
-                    </Card>
+                      </td>
+                    </tr>
                   ))}
-                </CollapsibleContent>
-              </Collapsible>
-            )}
+                  {showArchived && filteredFarmers.archived.map(farmer => (
+                    <tr key={farmer.id} className="hover:bg-muted/30 opacity-60 bg-muted/20" data-testid={`row-archived-farmer-${farmer.id}`}>
+                      <td className="px-3 py-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="w-6 h-6"
+                          onClick={() => handleEditClick(farmer)}
+                          data-testid={`button-edit-archived-${farmer.id}`}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">{farmer.farmerId}</td>
+                      <td className="px-3 py-2 font-medium">{farmer.name}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{farmer.village}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{farmer.contactNumber}</td>
+                      <td className="px-3 py-2 text-right">{formatDueValue(farmer.pyReceivables)}</td>
+                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.merchantDue)}`}>{formatDueValue(farmer.merchantDue)}</td>
+                      <td className={`px-3 py-2 text-right ${getDueColorClass(-farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
+                      <td className={`px-3 py-2 text-right font-medium ${getDueColorClass(farmer.totalDue)}`}>{formatDueValue(farmer.totalDue)}</td>
+                      <td className="px-3 py-2 text-right">{formatDueValue(0)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <Switch
+                            checked={farmer.isFlagged === 1}
+                            disabled
+                            data-testid={`switch-flag-archived-${farmer.id}`}
+                          />
+                          {canEdit && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="w-6 h-6"
+                              onClick={() => reinstateMutation.mutate(farmer.id)}
+                              data-testid={`button-reinstate-${farmer.id}`}
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </ScrollArea>
