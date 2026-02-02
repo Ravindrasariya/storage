@@ -21,6 +21,7 @@ interface FarmerWithDues extends FarmerLedgerEntry {
   pyReceivables: number;
   selfDue: number;
   merchantDue: number;
+  coldDue: number;
   totalDue: number;
 }
 
@@ -28,14 +29,15 @@ interface FarmerLedgerData {
   farmers: FarmerWithDues[];
   summary: {
     totalFarmers: number;
-    totalPyReceivables: number;
-    totalSelfDue: number;
-    totalMerchantDue: number;
+    pyReceivables: number;
+    selfDue: number;
+    merchantDue: number;
+    coldDue?: number;
     totalDue: number;
   };
 }
 
-type SortField = 'farmerId' | 'name' | 'village' | 'contactNumber' | 'pyReceivables' | 'selfDue' | 'merchantDue' | 'totalDue';
+type SortField = 'farmerId' | 'name' | 'village' | 'contactNumber' | 'pyReceivables' | 'selfDue' | 'merchantDue' | 'totalDue' | 'coldDue';
 type SortDirection = 'asc' | 'desc';
 
 export default function FarmerLedger() {
@@ -137,18 +139,23 @@ export default function FarmerLedger() {
   const filteredFarmers = useMemo(() => {
     if (!ledgerData?.farmers) return { active: [], archived: [] };
 
-    let filtered = ledgerData.farmers.filter(farmer => {
-      const matchesName = !nameSearch || 
-        farmer.name.toLowerCase().includes(nameSearch.toLowerCase());
-      const matchesVillage = !villageSearch || 
-        farmer.village.toLowerCase().includes(villageSearch.toLowerCase());
-      
-      return matchesName && matchesVillage;
-    });
+    let filtered = ledgerData.farmers
+      .map(farmer => ({
+        ...farmer,
+        coldDue: farmer.coldDue ?? 0,
+      }))
+      .filter(farmer => {
+        const matchesName = !nameSearch || 
+          farmer.name.toLowerCase().includes(nameSearch.toLowerCase());
+        const matchesVillage = !villageSearch || 
+          farmer.village.toLowerCase().includes(villageSearch.toLowerCase());
+        
+        return matchesName && matchesVillage;
+      });
 
     filtered = [...filtered].sort((a, b) => {
-      let aVal: string | number = a[sortField];
-      let bVal: string | number = b[sortField];
+      let aVal: string | number = a[sortField] ?? 0;
+      let bVal: string | number = b[sortField] ?? 0;
       
       if (typeof aVal === 'string') {
         aVal = aVal.toLowerCase();
@@ -188,9 +195,10 @@ export default function FarmerLedger() {
 
   const summary = ledgerData?.summary || {
     totalFarmers: 0,
-    totalPyReceivables: 0,
-    totalSelfDue: 0,
-    totalMerchantDue: 0,
+    pyReceivables: 0,
+    selfDue: 0,
+    merchantDue: 0,
+    coldDue: 0,
     totalDue: 0,
   };
 
@@ -241,7 +249,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("pyReceivables")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-py-receivables">{formatDueValue(summary.totalPyReceivables)}</div>
+            <div className="text-2xl font-bold" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -249,7 +257,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("harvestDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600" data-testid="text-harvest-due">{formatDueValue(summary.totalMerchantDue)}</div>
+            <div className={`text-2xl font-bold ${getDueColorClass(summary.merchantDue)}`} data-testid="text-harvest-due">{formatDueValue(summary.merchantDue)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -257,7 +265,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("seedDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600" data-testid="text-seed-due">{formatDueValue(summary.totalSelfDue)}</div>
+            <div className={`text-2xl font-bold ${getDueColorClass(-summary.selfDue)}`} data-testid="text-seed-due">{formatDueValue(summary.selfDue)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -265,7 +273,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("coldDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600" data-testid="text-cold-due">{formatDueValue(0)}</div>
+            <div className={`text-2xl font-bold ${getDueColorClass(summary.coldDue || 0)}`} data-testid="text-cold-due">{formatDueValue(summary.coldDue || 0)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -273,7 +281,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("netDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600" data-testid="text-net-due">{formatDueValue(summary.totalDue)}</div>
+            <div className={`text-2xl font-bold ${getDueColorClass(summary.totalDue)}`} data-testid="text-net-due">{formatDueValue(summary.totalDue)}</div>
           </CardContent>
         </Card>
       </div>
@@ -362,7 +370,7 @@ export default function FarmerLedger() {
                     <SortHeader field="merchantDue"><span className="text-green-600">{t("harvestDue")}</span></SortHeader>
                     <SortHeader field="selfDue"><span className="text-red-600">{t("seedDue")}</span></SortHeader>
                     <SortHeader field="totalDue">{t("netDue")}</SortHeader>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">{t("coldDue")}</th>
+                    <SortHeader field="coldDue">{t("coldDue")}</SortHeader>
                     <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">{t("actions")}</th>
                   </tr>
                 </thead>
@@ -388,7 +396,7 @@ export default function FarmerLedger() {
                       <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.merchantDue)}`}>{formatDueValue(farmer.merchantDue)}</td>
                       <td className={`px-3 py-2 text-right ${getDueColorClass(-farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
                       <td className={`px-3 py-2 text-right font-medium ${getDueColorClass(farmer.totalDue)}`}>{formatDueValue(farmer.totalDue)}</td>
-                      <td className="px-3 py-2 text-right">{formatDueValue(0)}</td>
+                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.coldDue)}`}>{formatDueValue(farmer.coldDue)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-center gap-1">
                           <Switch
@@ -432,7 +440,7 @@ export default function FarmerLedger() {
                       <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.merchantDue)}`}>{formatDueValue(farmer.merchantDue)}</td>
                       <td className={`px-3 py-2 text-right ${getDueColorClass(-farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
                       <td className={`px-3 py-2 text-right font-medium ${getDueColorClass(farmer.totalDue)}`}>{formatDueValue(farmer.totalDue)}</td>
-                      <td className="px-3 py-2 text-right">{formatDueValue(0)}</td>
+                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.coldDue)}`}>{formatDueValue(farmer.coldDue)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-center gap-1">
                           <Switch
