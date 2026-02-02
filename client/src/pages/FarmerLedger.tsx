@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer } from "lucide-react";
@@ -208,15 +209,15 @@ export default function FarmerLedger() {
     return "text-rose-600 dark:text-rose-500";
   };
 
-  const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+  const SortHeader = ({ field, children, className = "", center = false }: { field: SortField; children: React.ReactNode; className?: string; center?: boolean }) => (
     <th 
-      className="px-3 py-2 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:bg-muted/50 select-none"
+      className={`px-2 py-2 text-xs font-medium cursor-pointer hover:bg-muted/50 select-none ${center ? 'text-center' : 'text-left'} ${className}`}
       onClick={() => handleSort(field)}
       data-testid={`header-${field}`}
     >
-      <div className="flex items-center gap-1">
+      <div className={`flex items-center gap-1 ${center ? 'justify-center' : ''}`}>
         {children}
-        <ArrowUpDown className={`w-3 h-3 ${sortField === field ? 'text-foreground' : 'text-muted-foreground/50'}`} />
+        <ArrowUpDown className={`w-3 h-3 shrink-0 ${sortField === field ? 'opacity-100' : 'opacity-40'}`} />
       </div>
     </th>
   );
@@ -239,34 +240,34 @@ export default function FarmerLedger() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("pyReceivables")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables)}</div>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("selfDue")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-orange-500 dark:text-orange-400">{t("selfDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getDueColorClass(summary.selfDue)}`} data-testid="text-self-due">{formatDueValue(summary.selfDue)}</div>
+            <div className="text-2xl font-bold text-orange-500 dark:text-orange-400" data-testid="text-self-due">{formatDueValue(summary.selfDue)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("merchantDues")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-500">{t("merchantDues")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getDueColorClass(summary.merchantDue)}`} data-testid="text-merchant-due">{formatDueValue(summary.merchantDue)}</div>
+            <div className="text-2xl font-bold text-orange-700 dark:text-orange-500" data-testid="text-merchant-due">{formatDueValue(summary.merchantDue)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("totalDues")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-red-600 dark:text-red-500">{t("totalDues")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getDueColorClass(summary.totalDue)}`} data-testid="text-total-due">{formatDueValue(summary.totalDue)}</div>
+            <div className="text-2xl font-bold text-red-600 dark:text-red-500" data-testid="text-total-due">{formatDueValue(summary.totalDue)}</div>
           </CardContent>
         </Card>
       </div>
@@ -343,25 +344,37 @@ export default function FarmerLedger() {
         ) : (
           <div className="pb-4">
             <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm table-fixed">
+                <colgroup>
+                  <col className="w-10" />
+                  <col className="w-[140px]" />
+                  <col className="w-[180px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[100px]" />
+                  <col className="w-[90px]" />
+                  <col className="w-[80px]" />
+                  <col className="w-[90px]" />
+                  <col className="w-[80px]" />
+                  <col className="w-[90px]" />
+                </colgroup>
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground w-8"></th>
-                    <SortHeader field="farmerId">{t("farmerId")}</SortHeader>
-                    <SortHeader field="name">{t("name")}</SortHeader>
-                    <SortHeader field="village">{t("village")}</SortHeader>
-                    <SortHeader field="contactNumber">{t("contact")}</SortHeader>
-                    <SortHeader field="pyReceivables">{t("pyReceivables")}</SortHeader>
-                    <SortHeader field="selfDue">{t("selfDue")}</SortHeader>
-                    <SortHeader field="merchantDue">{t("merchantDues")}</SortHeader>
-                    <SortHeader field="totalDue">{t("totalDues")}</SortHeader>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">{t("actions")}</th>
+                    <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground"></th>
+                    <SortHeader field="farmerId" className="text-muted-foreground">{t("farmerId")}</SortHeader>
+                    <SortHeader field="name" className="text-muted-foreground">{t("name")}</SortHeader>
+                    <SortHeader field="village" className="text-muted-foreground">{t("village")}</SortHeader>
+                    <SortHeader field="contactNumber" className="text-muted-foreground">{t("contact")}</SortHeader>
+                    <SortHeader field="pyReceivables" className="text-blue-600 dark:text-blue-400" center>{t("pyReceivables")}</SortHeader>
+                    <SortHeader field="selfDue" className="text-orange-500 dark:text-orange-400" center>{t("selfDue")}</SortHeader>
+                    <SortHeader field="merchantDue" className="text-orange-700 dark:text-orange-500" center>{t("merchantDues")}</SortHeader>
+                    <SortHeader field="totalDue" className="text-red-600 dark:text-red-500" center>{t("totalDues")}</SortHeader>
+                    <th className="px-2 py-2 text-center text-xs font-medium text-muted-foreground">{t("actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {filteredFarmers.active.map(farmer => (
                     <tr key={farmer.id} className="hover:bg-muted/30" data-testid={`row-farmer-${farmer.id}`}>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-2">
                         <Button
                           size="icon"
                           variant="ghost"
@@ -372,22 +385,22 @@ export default function FarmerLedger() {
                           <Pencil className="w-3 h-3" />
                         </Button>
                       </td>
-                      <td className="px-3 py-2" data-testid={`text-farmer-id-${farmer.id}`}>
-                        <div className="flex items-center gap-1.5">
+                      <td className="px-2 py-2" data-testid={`text-farmer-id-${farmer.id}`}>
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono text-xs">{farmer.farmerId}</span>
                           {farmer.isFlagged === 1 && (
-                            <span className="text-[10px] font-semibold text-red-600 dark:text-red-500">{t("flagged")}</span>
+                            <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">{t("flagged")}</Badge>
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2 font-medium" data-testid={`text-farmer-name-${farmer.id}`}>{farmer.name}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{farmer.village}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{farmer.contactNumber}</td>
-                      <td className="px-3 py-2 text-right">{formatDueValue(farmer.pyReceivables)}</td>
-                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
-                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.merchantDue)}`}>{formatDueValue(farmer.merchantDue)}</td>
-                      <td className={`px-3 py-2 text-right font-medium ${getDueColorClass(farmer.totalDue)}`}>{formatDueValue(farmer.totalDue)}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-2 font-medium truncate" data-testid={`text-farmer-name-${farmer.id}`}>{farmer.name}</td>
+                      <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
+                      <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
+                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">{formatDueValue(farmer.pyReceivables)}</td>
+                      <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
+                      <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
+                      <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>
+                      <td className="px-2 py-2">
                         <div className="flex items-center justify-center gap-1">
                           <Switch
                             checked={farmer.isFlagged === 1}
@@ -411,7 +424,7 @@ export default function FarmerLedger() {
                   ))}
                   {showArchived && filteredFarmers.archived.map(farmer => (
                     <tr key={farmer.id} className="hover:bg-muted/30 opacity-60 bg-muted/20" data-testid={`row-archived-farmer-${farmer.id}`}>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-2">
                         <Button
                           size="icon"
                           variant="ghost"
@@ -422,22 +435,22 @@ export default function FarmerLedger() {
                           <Pencil className="w-3 h-3" />
                         </Button>
                       </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5">
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono text-xs">{farmer.farmerId}</span>
                           {farmer.isFlagged === 1 && (
-                            <span className="text-[10px] font-semibold text-red-600 dark:text-red-500">{t("flagged")}</span>
+                            <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">{t("flagged")}</Badge>
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2 font-medium">{farmer.name}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{farmer.village}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{farmer.contactNumber}</td>
-                      <td className="px-3 py-2 text-right">{formatDueValue(farmer.pyReceivables)}</td>
-                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
-                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.merchantDue)}`}>{formatDueValue(farmer.merchantDue)}</td>
-                      <td className={`px-3 py-2 text-right font-medium ${getDueColorClass(farmer.totalDue)}`}>{formatDueValue(farmer.totalDue)}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-2 font-medium truncate">{farmer.name}</td>
+                      <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
+                      <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
+                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">{formatDueValue(farmer.pyReceivables)}</td>
+                      <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
+                      <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
+                      <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>
+                      <td className="px-2 py-2">
                         <div className="flex items-center justify-center gap-1">
                           <Switch
                             checked={farmer.isFlagged === 1}
