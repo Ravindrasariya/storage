@@ -410,6 +410,41 @@ export const bankAccounts = pgTable("bank_accounts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Farmer Ledger - master farmer records per cold storage
+// Composite key: name + contact + village (case-insensitive, trimmed)
+export const farmerLedger = pgTable("farmer_ledger", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  farmerId: text("farmer_id").notNull(), // Format: FMYYYYMMDD1, FMYYYYMMDD2, etc.
+  name: text("name").notNull(),
+  contactNumber: text("contact_number").notNull(),
+  village: text("village").notNull(),
+  tehsil: text("tehsil"),
+  district: text("district"),
+  state: text("state"),
+  isFlagged: integer("is_flagged").notNull().default(0), // 0 = normal, 1 = flagged for negative behavior
+  isArchived: integer("is_archived").notNull().default(0), // 0 = active, 1 = archived
+  archivedAt: timestamp("archived_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Farmer Ledger Edit History - tracks edits and merges
+export const farmerLedgerEditHistory = pgTable("farmer_ledger_edit_history", {
+  id: varchar("id").primaryKey(),
+  farmerLedgerId: varchar("farmer_ledger_id").notNull(), // The farmer ledger entry that was edited
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  editType: text("edit_type").notNull(), // 'edit' or 'merge'
+  // For edits: what changed
+  beforeValues: text("before_values"), // JSON of old values
+  afterValues: text("after_values"), // JSON of new values
+  // For merges: which farmer was merged into this one
+  mergedFromId: varchar("merged_from_id"), // The farmer ID that was merged (now archived)
+  mergedFromFarmerId: text("merged_from_farmer_id"), // The FMYYYYMMDD format ID that was merged
+  aggregatedRecords: integer("aggregated_records"), // Number of records aggregated
+  modifiedBy: text("modified_by"), // User who made the change
+  modifiedAt: timestamp("modified_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
@@ -430,6 +465,8 @@ export const insertOpeningPayableSchema = createInsertSchema(openingPayables).om
 export const insertDiscountSchema = createInsertSchema(discounts).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertFarmerToBuyerTransferSchema = createInsertSchema(farmerToBuyerTransfers).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({ id: true, createdAt: true });
+export const insertFarmerLedgerSchema = createInsertSchema(farmerLedger).omit({ id: true, createdAt: true, archivedAt: true });
+export const insertFarmerLedgerEditHistorySchema = createInsertSchema(farmerLedgerEditHistory).omit({ id: true, modifiedAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -472,6 +509,10 @@ export type FarmerToBuyerTransfer = typeof farmerToBuyerTransfers.$inferSelect;
 export type InsertFarmerToBuyerTransfer = z.infer<typeof insertFarmerToBuyerTransferSchema>;
 export type BankAccount = typeof bankAccounts.$inferSelect;
 export type InsertBankAccount = z.infer<typeof insertBankAccountSchema>;
+export type FarmerLedgerEntry = typeof farmerLedger.$inferSelect;
+export type InsertFarmerLedger = z.infer<typeof insertFarmerLedgerSchema>;
+export type FarmerLedgerEditHistoryEntry = typeof farmerLedgerEditHistory.$inferSelect;
+export type InsertFarmerLedgerEditHistory = z.infer<typeof insertFarmerLedgerEditHistorySchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({
