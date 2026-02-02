@@ -21,7 +21,6 @@ interface FarmerWithDues extends FarmerLedgerEntry {
   pyReceivables: number;
   selfDue: number;
   merchantDue: number;
-  coldDue: number;
   totalDue: number;
 }
 
@@ -32,12 +31,11 @@ interface FarmerLedgerData {
     pyReceivables: number;
     selfDue: number;
     merchantDue: number;
-    coldDue?: number;
     totalDue: number;
   };
 }
 
-type SortField = 'farmerId' | 'name' | 'village' | 'contactNumber' | 'pyReceivables' | 'selfDue' | 'merchantDue' | 'totalDue' | 'coldDue';
+type SortField = 'farmerId' | 'name' | 'village' | 'contactNumber' | 'pyReceivables' | 'selfDue' | 'merchantDue' | 'totalDue';
 type SortDirection = 'asc' | 'desc';
 
 export default function FarmerLedger() {
@@ -140,10 +138,6 @@ export default function FarmerLedger() {
     if (!ledgerData?.farmers) return { active: [], archived: [] };
 
     let filtered = ledgerData.farmers
-      .map(farmer => ({
-        ...farmer,
-        coldDue: farmer.coldDue ?? 0,
-      }))
       .filter(farmer => {
         const matchesName = !nameSearch || 
           farmer.name.toLowerCase().includes(nameSearch.toLowerCase());
@@ -198,7 +192,6 @@ export default function FarmerLedger() {
     pyReceivables: 0,
     selfDue: 0,
     merchantDue: 0,
-    coldDue: 0,
     totalDue: 0,
   };
 
@@ -235,7 +228,7 @@ export default function FarmerLedger() {
         <p className="text-sm text-muted-foreground">{t("trackFarmerDues")}</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("farmers")}</CardTitle>
@@ -254,34 +247,26 @@ export default function FarmerLedger() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("harvestDue")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("selfDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getDueColorClass(summary.merchantDue)}`} data-testid="text-harvest-due">{formatDueValue(summary.merchantDue)}</div>
+            <div className={`text-2xl font-bold ${getDueColorClass(summary.selfDue)}`} data-testid="text-self-due">{formatDueValue(summary.selfDue)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("seedDue")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("merchantDues")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getDueColorClass(-summary.selfDue)}`} data-testid="text-seed-due">{formatDueValue(summary.selfDue)}</div>
+            <div className={`text-2xl font-bold ${getDueColorClass(summary.merchantDue)}`} data-testid="text-merchant-due">{formatDueValue(summary.merchantDue)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("coldDue")}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t("totalDues")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getDueColorClass(summary.coldDue || 0)}`} data-testid="text-cold-due">{formatDueValue(summary.coldDue || 0)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("netDue")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${getDueColorClass(summary.totalDue)}`} data-testid="text-net-due">{formatDueValue(summary.totalDue)}</div>
+            <div className={`text-2xl font-bold ${getDueColorClass(summary.totalDue)}`} data-testid="text-total-due">{formatDueValue(summary.totalDue)}</div>
           </CardContent>
         </Card>
       </div>
@@ -367,10 +352,9 @@ export default function FarmerLedger() {
                     <SortHeader field="village">{t("village")}</SortHeader>
                     <SortHeader field="contactNumber">{t("contact")}</SortHeader>
                     <SortHeader field="pyReceivables">{t("pyReceivables")}</SortHeader>
-                    <SortHeader field="merchantDue"><span className="text-green-600">{t("harvestDue")}</span></SortHeader>
-                    <SortHeader field="selfDue"><span className="text-red-600">{t("seedDue")}</span></SortHeader>
-                    <SortHeader field="totalDue">{t("netDue")}</SortHeader>
-                    <SortHeader field="coldDue">{t("coldDue")}</SortHeader>
+                    <SortHeader field="selfDue">{t("selfDue")}</SortHeader>
+                    <SortHeader field="merchantDue">{t("merchantDues")}</SortHeader>
+                    <SortHeader field="totalDue">{t("totalDues")}</SortHeader>
                     <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">{t("actions")}</th>
                   </tr>
                 </thead>
@@ -393,10 +377,9 @@ export default function FarmerLedger() {
                       <td className="px-3 py-2 text-muted-foreground">{farmer.village}</td>
                       <td className="px-3 py-2 text-muted-foreground">{farmer.contactNumber}</td>
                       <td className="px-3 py-2 text-right">{formatDueValue(farmer.pyReceivables)}</td>
+                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
                       <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.merchantDue)}`}>{formatDueValue(farmer.merchantDue)}</td>
-                      <td className={`px-3 py-2 text-right ${getDueColorClass(-farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
                       <td className={`px-3 py-2 text-right font-medium ${getDueColorClass(farmer.totalDue)}`}>{formatDueValue(farmer.totalDue)}</td>
-                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.coldDue)}`}>{formatDueValue(farmer.coldDue)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-center gap-1">
                           <Switch
@@ -437,10 +420,9 @@ export default function FarmerLedger() {
                       <td className="px-3 py-2 text-muted-foreground">{farmer.village}</td>
                       <td className="px-3 py-2 text-muted-foreground">{farmer.contactNumber}</td>
                       <td className="px-3 py-2 text-right">{formatDueValue(farmer.pyReceivables)}</td>
+                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
                       <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.merchantDue)}`}>{formatDueValue(farmer.merchantDue)}</td>
-                      <td className={`px-3 py-2 text-right ${getDueColorClass(-farmer.selfDue)}`}>{formatDueValue(farmer.selfDue)}</td>
                       <td className={`px-3 py-2 text-right font-medium ${getDueColorClass(farmer.totalDue)}`}>{formatDueValue(farmer.totalDue)}</td>
-                      <td className={`px-3 py-2 text-right ${getDueColorClass(farmer.coldDue)}`}>{formatDueValue(farmer.coldDue)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-center gap-1">
                           <Switch
