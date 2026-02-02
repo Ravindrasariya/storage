@@ -2607,6 +2607,16 @@ export async function registerRoutes(
         if (!farmerName || !contactNumber || !village || !district || !state) {
           return res.status(400).json({ error: "Farmer name, contact, village, district, and state are required for farmer type" });
         }
+        
+        // Ensure farmer ledger entry exists
+        await storage.ensureFarmerLedgerEntry(coldStorageId, {
+          name: farmerName,
+          contactNumber,
+          village,
+          tehsil,
+          district,
+          state,
+        });
       }
 
       const receivable = await storage.createOpeningReceivable({
