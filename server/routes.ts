@@ -332,10 +332,21 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const validatedData = lotFormSchema.parse(req.body);
       
+      // Ensure farmer ledger entry exists and get the ID
+      const farmerLedgerId = await storage.ensureFarmerLedgerEntry(coldStorageId, {
+        name: validatedData.farmerName,
+        contactNumber: validatedData.contactNumber,
+        village: validatedData.village,
+        tehsil: validatedData.tehsil,
+        district: validatedData.district,
+        state: validatedData.state,
+      });
+      
       const lot = await storage.createLot({
         ...validatedData,
         coldStorageId: coldStorageId,
         remainingSize: validatedData.size,
+        farmerLedgerId,
       });
       
       res.status(201).json(lot);
@@ -387,6 +398,16 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const { farmer, lots: lotDataArray, bagTypeCategory } = batchLotSchema.parse(req.body);
       
+      // Ensure farmer ledger entry exists and get the ID
+      const farmerLedgerId = await storage.ensureFarmerLedgerEntry(coldStorageId, {
+        name: farmer.farmerName,
+        contactNumber: farmer.contactNumber,
+        village: farmer.village,
+        tehsil: farmer.tehsil,
+        district: farmer.district,
+        state: farmer.state,
+      });
+      
       // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
       const lotsToCreate = lotDataArray.map(lotData => {
         // Convert deductions array to separate fields
@@ -418,6 +439,7 @@ export async function registerRoutes(
           advanceDeduction,
           freightDeduction,
           otherDeduction,
+          farmerLedgerId,
         };
       });
       
