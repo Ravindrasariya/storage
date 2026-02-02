@@ -60,7 +60,8 @@ function Navigation() {
           <Link key={item.href} href={item.href}>
             <Button
               variant={isActive ? "default" : "ghost"}
-              className={`gap-2 justify-start w-full sm:w-auto ${isActive ? "bg-chart-1 hover:bg-chart-1/90" : ""}`}
+              size="sm"
+              className={`gap-1.5 justify-start shrink-0 whitespace-nowrap ${isActive ? "bg-chart-1 hover:bg-chart-1/90" : ""}`}
               onClick={onClick}
               data-testid={`nav-${item.href.replace("/", "") || "dashboard"}`}
             >
@@ -88,7 +89,7 @@ function Navigation() {
           </div>
         </div>
 
-        <nav className="hidden md:flex items-center gap-0.5 flex-1">
+        <nav className="hidden md:flex items-center gap-0.5 flex-1 overflow-x-auto scrollbar-hide">
           <NavLinks />
         </nav>
 
