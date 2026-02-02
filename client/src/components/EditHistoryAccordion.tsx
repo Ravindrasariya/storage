@@ -44,6 +44,15 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+function isEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" || trimmed === "-";
+  }
+  return false;
+}
+
 function getChangedFields(previousData: string, newData: string): { field: string; oldValue: unknown; newValue: unknown }[] {
   try {
     const prev = JSON.parse(previousData);
@@ -52,8 +61,13 @@ function getChangedFields(previousData: string, newData: string): { field: strin
     
     const allKeys = Array.from(new Set([...Object.keys(prev), ...Object.keys(next)]));
     for (const key of allKeys) {
-      if (JSON.stringify(prev[key]) !== JSON.stringify(next[key])) {
-        changes.push({ field: key, oldValue: prev[key], newValue: next[key] });
+      const oldVal = prev[key];
+      const newVal = next[key];
+      if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+        if (isEmpty(oldVal) && isEmpty(newVal)) continue;
+        if (!isEmpty(oldVal)) {
+          changes.push({ field: key, oldValue: oldVal, newValue: newVal });
+        }
       }
     }
     return changes;
