@@ -61,6 +61,12 @@ import {
   type FarmerToBuyerTransfer,
   type BankAccount,
   type InsertBankAccount,
+  farmerLedger,
+  farmerLedgerEditHistory,
+  type FarmerLedgerEntry,
+  type InsertFarmerLedger,
+  type FarmerLedgerEditHistoryEntry,
+  type InsertFarmerLedgerEditHistory,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -308,6 +314,29 @@ export interface IStorage {
   createBankAccount(data: InsertBankAccount): Promise<BankAccount>;
   updateBankAccount(id: string, updates: Partial<BankAccount>): Promise<BankAccount | undefined>;
   deleteBankAccount(id: string): Promise<boolean>;
+  // Farmer Ledger
+  getFarmerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
+    farmers: (FarmerLedgerEntry & {
+      pyReceivables: number;
+      selfDue: number;
+      merchantDue: number;
+      totalDue: number;
+    })[];
+    summary: {
+      totalFarmers: number;
+      pyReceivables: number;
+      selfDue: number;
+      merchantDue: number;
+      totalDue: number;
+    };
+  }>;
+  syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }>;
+  generateFarmerId(coldStorageId: string): Promise<string>;
+  updateFarmerLedger(id: string, updates: Partial<FarmerLedgerEntry>, modifiedBy: string): Promise<{ farmer: FarmerLedgerEntry | undefined; merged: boolean; mergedFromId?: string }>;
+  archiveFarmerLedger(id: string, modifiedBy: string): Promise<boolean>;
+  reinstateFarmerLedger(id: string, modifiedBy: string): Promise<boolean>;
+  toggleFarmerFlag(id: string, modifiedBy: string): Promise<FarmerLedgerEntry | undefined>;
+  getFarmerLedgerEditHistory(farmerLedgerId: string): Promise<FarmerLedgerEditHistoryEntry[]>;
 }
 
 /**
@@ -5273,6 +5302,480 @@ export class DatabaseStorage implements IStorage {
     await db.delete(bankAccounts)
       .where(eq(bankAccounts.id, id));
     return true;
+  }
+
+  // ============ FARMER LEDGER ============
+
+  // Generate farmer composite key for deduplication
+  private getFarmerCompositeKey(name: string, contactNumber: string, village: string): string {
+    return `${name.trim().toLowerCase()}_${contactNumber.trim()}_${village.trim().toLowerCase()}`;
+  }
+
+  // Generate unique farmer ID in format FMYYYYMMDD1, FMYYYYMMDD2, etc.
+  async generateFarmerId(coldStorageId: string): Promise<string> {
+    const now = new Date();
+    const dateKey = now.getFullYear().toString() +
+      String(now.getMonth() + 1).padStart(2, '0') +
+      String(now.getDate()).padStart(2, '0');
+    
+    // Find existing farmer IDs for this date
+    const existingFarmers = await db.select({ farmerId: farmerLedger.farmerId })
+      .from(farmerLedger)
+      .where(and(
+        eq(farmerLedger.coldStorageId, coldStorageId),
+        sql`${farmerLedger.farmerId} LIKE ${'FM' + dateKey + '%'}`
+      ));
+    
+    // Extract the max counter for this date
+    let maxCounter = 0;
+    for (const f of existingFarmers) {
+      const numPart = f.farmerId.replace('FM' + dateKey, '');
+      const counter = parseInt(numPart, 10);
+      if (!isNaN(counter) && counter > maxCounter) {
+        maxCounter = counter;
+      }
+    }
+    
+    return `FM${dateKey}${maxCounter + 1}`;
+  }
+
+  // Sync farmers from all touchpoints: lots, receivables
+  async syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }> {
+    let added = 0;
+    let updated = 0;
+    
+    // Get existing farmers for deduplication
+    const existingFarmers = await db.select()
+      .from(farmerLedger)
+      .where(eq(farmerLedger.coldStorageId, coldStorageId));
+    
+    const existingKeys = new Map<string, FarmerLedgerEntry>();
+    for (const f of existingFarmers) {
+      const key = this.getFarmerCompositeKey(f.name, f.contactNumber, f.village);
+      existingKeys.set(key, f);
+    }
+    
+    // Collect all unique farmers from touchpoints
+    const farmersToProcess = new Map<string, {
+      name: string;
+      contactNumber: string;
+      village: string;
+      tehsil?: string;
+      district?: string;
+      state?: string;
+    }>();
+    
+    // 1. From lots
+    const lotsData = await db.select({
+      farmerName: lots.farmerName,
+      contactNumber: lots.contactNumber,
+      village: lots.village,
+      tehsil: lots.tehsil,
+      district: lots.district,
+      state: lots.state,
+    })
+      .from(lots)
+      .where(eq(lots.coldStorageId, coldStorageId));
+    
+    for (const lot of lotsData) {
+      const key = this.getFarmerCompositeKey(lot.farmerName, lot.contactNumber, lot.village);
+      if (!farmersToProcess.has(key)) {
+        farmersToProcess.set(key, {
+          name: lot.farmerName.trim(),
+          contactNumber: lot.contactNumber.trim(),
+          village: lot.village.trim(),
+          tehsil: lot.tehsil?.trim(),
+          district: lot.district?.trim(),
+          state: lot.state?.trim(),
+        });
+      }
+    }
+    
+    // 2. From opening receivables (farmer type)
+    const receivables = await db.select({
+      farmerName: openingReceivables.farmerName,
+      contactNumber: openingReceivables.contactNumber,
+      village: openingReceivables.village,
+      tehsil: openingReceivables.tehsil,
+      district: openingReceivables.district,
+      state: openingReceivables.state,
+    })
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, 'farmer')
+      ));
+    
+    for (const rec of receivables) {
+      if (rec.farmerName && rec.contactNumber && rec.village) {
+        const key = this.getFarmerCompositeKey(rec.farmerName, rec.contactNumber, rec.village);
+        if (!farmersToProcess.has(key)) {
+          farmersToProcess.set(key, {
+            name: rec.farmerName.trim(),
+            contactNumber: rec.contactNumber.trim(),
+            village: rec.village.trim(),
+            tehsil: rec.tehsil?.trim(),
+            district: rec.district?.trim(),
+            state: rec.state?.trim(),
+          });
+        }
+      }
+    }
+    
+    // Process each farmer
+    for (const [key, farmerData] of Array.from(farmersToProcess.entries())) {
+      if (!existingKeys.has(key)) {
+        // New farmer - add to ledger
+        const farmerId = await this.generateFarmerId(coldStorageId);
+        await db.insert(farmerLedger).values({
+          id: randomUUID(),
+          coldStorageId,
+          farmerId,
+          name: farmerData.name,
+          contactNumber: farmerData.contactNumber,
+          village: farmerData.village,
+          tehsil: farmerData.tehsil || null,
+          district: farmerData.district || null,
+          state: farmerData.state || null,
+          isFlagged: 0,
+          isArchived: 0,
+        });
+        added++;
+      } else {
+        // Farmer exists - update additional fields if they have more complete info
+        const existing = existingKeys.get(key)!;
+        const updates: Partial<FarmerLedgerEntry> = {};
+        
+        if (!existing.tehsil && farmerData.tehsil) updates.tehsil = farmerData.tehsil;
+        if (!existing.district && farmerData.district) updates.district = farmerData.district;
+        if (!existing.state && farmerData.state) updates.state = farmerData.state;
+        
+        if (Object.keys(updates).length > 0) {
+          await db.update(farmerLedger)
+            .set(updates)
+            .where(eq(farmerLedger.id, existing.id));
+          updated++;
+        }
+      }
+    }
+    
+    return { added, updated };
+  }
+
+  // Get farmer ledger with calculated dues
+  async getFarmerLedger(coldStorageId: string, includeArchived: boolean = false): Promise<{
+    farmers: (FarmerLedgerEntry & {
+      pyReceivables: number;
+      selfDue: number;
+      merchantDue: number;
+      totalDue: number;
+    })[];
+    summary: {
+      totalFarmers: number;
+      pyReceivables: number;
+      selfDue: number;
+      merchantDue: number;
+      totalDue: number;
+    };
+  }> {
+    // Get all farmers
+    let farmers: FarmerLedgerEntry[];
+    if (includeArchived) {
+      farmers = await db.select()
+        .from(farmerLedger)
+        .where(eq(farmerLedger.coldStorageId, coldStorageId))
+        .orderBy(farmerLedger.farmerId);
+    } else {
+      farmers = await db.select()
+        .from(farmerLedger)
+        .where(and(
+          eq(farmerLedger.coldStorageId, coldStorageId),
+          eq(farmerLedger.isArchived, 0)
+        ))
+        .orderBy(farmerLedger.farmerId);
+    }
+    
+    // Calculate dues for each farmer
+    const farmersWithDues = await Promise.all(farmers.map(async (farmer) => {
+      // PY Receivables - from opening receivables (farmer type)
+      const pyReceivablesData = await db.select({
+        dueAmount: openingReceivables.dueAmount,
+        paidAmount: openingReceivables.paidAmount,
+      })
+        .from(openingReceivables)
+        .where(and(
+          eq(openingReceivables.coldStorageId, coldStorageId),
+          eq(openingReceivables.payerType, 'farmer'),
+          sql`LOWER(TRIM(${openingReceivables.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
+          sql`TRIM(${openingReceivables.contactNumber}) = ${farmer.contactNumber.trim()}`,
+          sql`LOWER(TRIM(${openingReceivables.village})) = ${farmer.village.trim().toLowerCase()}`
+        ));
+      
+      const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
+      
+      // Self Due - from self-sales (isSelfSale = 1) where farmer bought their own produce
+      const selfSalesData = await db.select({
+        dueAmount: salesHistory.dueAmount,
+      })
+        .from(salesHistory)
+        .where(and(
+          eq(salesHistory.coldStorageId, coldStorageId),
+          eq(salesHistory.isSelfSale, 1),
+          sql`LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
+          sql`TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}`,
+          sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`
+        ));
+      
+      const selfDue = selfSalesData.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+      
+      // Merchant Due - cold storage dues from regular sales (not self-sale)
+      // Uses dueAmount field which tracks remaining cold storage dues for the farmer
+      const merchantSalesData = await db.select({
+        dueAmount: salesHistory.dueAmount,
+        paymentStatus: salesHistory.paymentStatus,
+      })
+        .from(salesHistory)
+        .where(and(
+          eq(salesHistory.coldStorageId, coldStorageId),
+          sql`(${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)`,
+          sql`LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
+          sql`TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}`,
+          sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`
+        ));
+      
+      // Merchant due is the sum of unpaid cold storage charges
+      const merchantDue = merchantSalesData.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+      
+      const totalDue = pyReceivables + selfDue + merchantDue;
+      
+      return {
+        ...farmer,
+        pyReceivables: roundAmount(pyReceivables),
+        selfDue: roundAmount(selfDue),
+        merchantDue: roundAmount(merchantDue),
+        totalDue: roundAmount(totalDue),
+      };
+    }));
+    
+    // Calculate summary
+    const summary = {
+      totalFarmers: farmersWithDues.filter(f => f.isArchived === 0).length,
+      pyReceivables: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.pyReceivables, 0)),
+      selfDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.selfDue, 0)),
+      merchantDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.merchantDue, 0)),
+      totalDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.totalDue, 0)),
+    };
+    
+    return { farmers: farmersWithDues, summary };
+  }
+
+  // Update farmer in ledger with merge handling
+  async updateFarmerLedger(
+    id: string,
+    updates: Partial<FarmerLedgerEntry>,
+    modifiedBy: string
+  ): Promise<{ farmer: FarmerLedgerEntry | undefined; merged: boolean; mergedFromId?: string }> {
+    // Get the farmer being updated
+    const [farmer] = await db.select()
+      .from(farmerLedger)
+      .where(eq(farmerLedger.id, id));
+    
+    if (!farmer) {
+      return { farmer: undefined, merged: false };
+    }
+    
+    // Calculate the new composite key
+    const newName = updates.name || farmer.name;
+    const newContact = updates.contactNumber || farmer.contactNumber;
+    const newVillage = updates.village || farmer.village;
+    const newKey = this.getFarmerCompositeKey(newName, newContact, newVillage);
+    const oldKey = this.getFarmerCompositeKey(farmer.name, farmer.contactNumber, farmer.village);
+    
+    // Check if edit would cause a duplicate
+    if (newKey !== oldKey) {
+      const existing = await db.select()
+        .from(farmerLedger)
+        .where(and(
+          eq(farmerLedger.coldStorageId, farmer.coldStorageId),
+          sql`LOWER(TRIM(${farmerLedger.name})) = ${newName.trim().toLowerCase()}`,
+          sql`TRIM(${farmerLedger.contactNumber}) = ${newContact.trim()}`,
+          sql`LOWER(TRIM(${farmerLedger.village})) = ${newVillage.trim().toLowerCase()}`,
+          sql`${farmerLedger.id} != ${id}`
+        ));
+      
+      if (existing.length > 0) {
+        // Merge needed - merge this farmer into the existing one with lower ID
+        const existingFarmer = existing[0];
+        
+        // Determine which one survives (lower farmerId number)
+        const survivorFarmerId = farmer.farmerId < existingFarmer.farmerId ? farmer.farmerId : existingFarmer.farmerId;
+        const mergedFarmerId = farmer.farmerId < existingFarmer.farmerId ? existingFarmer.farmerId : farmer.farmerId;
+        const survivorId = farmer.farmerId < existingFarmer.farmerId ? farmer.id : existingFarmer.id;
+        const mergedId = farmer.farmerId < existingFarmer.farmerId ? existingFarmer.id : farmer.id;
+        
+        // Archive the merged farmer
+        await db.update(farmerLedger)
+          .set({
+            isArchived: 1,
+            archivedAt: new Date(),
+          })
+          .where(eq(farmerLedger.id, mergedId));
+        
+        // Update the survivor with any additional details
+        const survivorUpdates: Partial<FarmerLedgerEntry> = {};
+        const mergedFarmer = farmer.farmerId < existingFarmer.farmerId ? existingFarmer : farmer;
+        if (!farmer.tehsil && mergedFarmer.tehsil) survivorUpdates.tehsil = mergedFarmer.tehsil;
+        if (!farmer.district && mergedFarmer.district) survivorUpdates.district = mergedFarmer.district;
+        if (!farmer.state && mergedFarmer.state) survivorUpdates.state = mergedFarmer.state;
+        
+        if (Object.keys(survivorUpdates).length > 0) {
+          await db.update(farmerLedger)
+            .set(survivorUpdates)
+            .where(eq(farmerLedger.id, survivorId));
+        }
+        
+        // Record the merge in edit history
+        await db.insert(farmerLedgerEditHistory).values({
+          id: randomUUID(),
+          farmerLedgerId: survivorId,
+          coldStorageId: farmer.coldStorageId,
+          editType: 'merge',
+          mergedFromId: mergedId,
+          mergedFromFarmerId: mergedFarmerId,
+          aggregatedRecords: 1,
+          modifiedBy,
+        });
+        
+        const [updatedFarmer] = await db.select()
+          .from(farmerLedger)
+          .where(eq(farmerLedger.id, survivorId));
+        
+        return { farmer: updatedFarmer, merged: true, mergedFromId: mergedFarmerId };
+      }
+    }
+    
+    // No merge needed - regular update
+    const beforeValues = JSON.stringify({
+      name: farmer.name,
+      contactNumber: farmer.contactNumber,
+      village: farmer.village,
+      tehsil: farmer.tehsil,
+      district: farmer.district,
+      state: farmer.state,
+    });
+    
+    const [updatedFarmer] = await db.update(farmerLedger)
+      .set(updates)
+      .where(eq(farmerLedger.id, id))
+      .returning();
+    
+    const afterValues = JSON.stringify({
+      name: updatedFarmer.name,
+      contactNumber: updatedFarmer.contactNumber,
+      village: updatedFarmer.village,
+      tehsil: updatedFarmer.tehsil,
+      district: updatedFarmer.district,
+      state: updatedFarmer.state,
+    });
+    
+    // Record the edit in history
+    await db.insert(farmerLedgerEditHistory).values({
+      id: randomUUID(),
+      farmerLedgerId: id,
+      coldStorageId: farmer.coldStorageId,
+      editType: 'edit',
+      beforeValues,
+      afterValues,
+      modifiedBy,
+    });
+    
+    return { farmer: updatedFarmer, merged: false };
+  }
+
+  // Archive a farmer
+  async archiveFarmerLedger(id: string, modifiedBy: string): Promise<boolean> {
+    const [farmer] = await db.update(farmerLedger)
+      .set({
+        isArchived: 1,
+        archivedAt: new Date(),
+      })
+      .where(eq(farmerLedger.id, id))
+      .returning();
+    
+    if (farmer) {
+      await db.insert(farmerLedgerEditHistory).values({
+        id: randomUUID(),
+        farmerLedgerId: id,
+        coldStorageId: farmer.coldStorageId,
+        editType: 'edit',
+        beforeValues: JSON.stringify({ isArchived: 0 }),
+        afterValues: JSON.stringify({ isArchived: 1 }),
+        modifiedBy,
+      });
+    }
+    
+    return !!farmer;
+  }
+
+  // Reinstate an archived farmer
+  async reinstateFarmerLedger(id: string, modifiedBy: string): Promise<boolean> {
+    const [farmer] = await db.update(farmerLedger)
+      .set({
+        isArchived: 0,
+        archivedAt: null,
+      })
+      .where(eq(farmerLedger.id, id))
+      .returning();
+    
+    if (farmer) {
+      await db.insert(farmerLedgerEditHistory).values({
+        id: randomUUID(),
+        farmerLedgerId: id,
+        coldStorageId: farmer.coldStorageId,
+        editType: 'edit',
+        beforeValues: JSON.stringify({ isArchived: 1 }),
+        afterValues: JSON.stringify({ isArchived: 0 }),
+        modifiedBy,
+      });
+    }
+    
+    return !!farmer;
+  }
+
+  // Toggle farmer flag
+  async toggleFarmerFlag(id: string, modifiedBy: string): Promise<FarmerLedgerEntry | undefined> {
+    const [farmer] = await db.select()
+      .from(farmerLedger)
+      .where(eq(farmerLedger.id, id));
+    
+    if (!farmer) return undefined;
+    
+    const newFlagValue = farmer.isFlagged === 1 ? 0 : 1;
+    
+    const [updated] = await db.update(farmerLedger)
+      .set({ isFlagged: newFlagValue })
+      .where(eq(farmerLedger.id, id))
+      .returning();
+    
+    await db.insert(farmerLedgerEditHistory).values({
+      id: randomUUID(),
+      farmerLedgerId: id,
+      coldStorageId: farmer.coldStorageId,
+      editType: 'edit',
+      beforeValues: JSON.stringify({ isFlagged: farmer.isFlagged }),
+      afterValues: JSON.stringify({ isFlagged: newFlagValue }),
+      modifiedBy,
+    });
+    
+    return updated;
+  }
+
+  // Get edit history for a farmer
+  async getFarmerLedgerEditHistory(farmerLedgerId: string): Promise<FarmerLedgerEditHistoryEntry[]> {
+    return await db.select()
+      .from(farmerLedgerEditHistory)
+      .where(eq(farmerLedgerEditHistory.farmerLedgerId, farmerLedgerId))
+      .orderBy(desc(farmerLedgerEditHistory.modifiedAt));
   }
 }
 
