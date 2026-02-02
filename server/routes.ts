@@ -2732,6 +2732,98 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== FARMER LEDGER ROUTES ====================
+
+  // Get farmer ledger with dues breakdown
+  app.get("/api/farmer-ledger", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const includeArchived = req.query.includeArchived === 'true';
+      const result = await storage.getFarmerLedger(coldStorageId, includeArchived);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching farmer ledger:", error);
+      res.status(500).json({ error: "Failed to fetch farmer ledger" });
+    }
+  });
+
+  // Sync farmers from touchpoints (lots, receivables)
+  app.post("/api/farmer-ledger/sync", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      await storage.syncFarmersFromTouchpoints(coldStorageId);
+      res.json({ success: true, message: "Farmers synced successfully" });
+    } catch (error) {
+      console.error("Error syncing farmers:", error);
+      res.status(500).json({ error: "Failed to sync farmers" });
+    }
+  });
+
+  // Update farmer details
+  app.patch("/api/farmer-ledger/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const modifiedBy = req.authContext?.userName || 'system';
+      const result = await storage.updateFarmerLedger(id, updates, modifiedBy);
+      res.json(result);
+    } catch (error) {
+      console.error("Error updating farmer:", error);
+      res.status(500).json({ error: "Failed to update farmer" });
+    }
+  });
+
+  // Toggle farmer flag
+  app.post("/api/farmer-ledger/:id/flag", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const modifiedBy = req.authContext?.userName || 'system';
+      const result = await storage.toggleFarmerFlag(id, modifiedBy);
+      res.json(result);
+    } catch (error) {
+      console.error("Error toggling farmer flag:", error);
+      res.status(500).json({ error: "Failed to toggle farmer flag" });
+    }
+  });
+
+  // Archive farmer (soft delete)
+  app.post("/api/farmer-ledger/:id/archive", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const modifiedBy = req.authContext?.userName || 'system';
+      const result = await storage.archiveFarmerLedger(id, modifiedBy);
+      res.json({ success: result });
+    } catch (error) {
+      console.error("Error archiving farmer:", error);
+      res.status(500).json({ error: "Failed to archive farmer" });
+    }
+  });
+
+  // Reinstate archived farmer
+  app.post("/api/farmer-ledger/:id/reinstate", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const modifiedBy = req.authContext?.userName || 'system';
+      const result = await storage.reinstateFarmerLedger(id, modifiedBy);
+      res.json({ success: result });
+    } catch (error) {
+      console.error("Error reinstating farmer:", error);
+      res.status(500).json({ error: "Failed to reinstate farmer" });
+    }
+  });
+
+  // Get farmer edit history
+  app.get("/api/farmer-ledger/:id/history", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const history = await storage.getFarmerLedgerEditHistory(id);
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching farmer history:", error);
+      res.status(500).json({ error: "Failed to fetch farmer history" });
+    }
+  });
+
   // Recalculate all sales records to fix paidAmount/dueAmount
   app.post("/api/admin/recalculate-sales-charges", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
