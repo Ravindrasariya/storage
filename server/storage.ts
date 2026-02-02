@@ -337,6 +337,14 @@ export interface IStorage {
   reinstateFarmerLedger(id: string, modifiedBy: string): Promise<boolean>;
   toggleFarmerFlag(id: string, modifiedBy: string): Promise<FarmerLedgerEntry | undefined>;
   getFarmerLedgerEditHistory(farmerLedgerId: string): Promise<FarmerLedgerEditHistoryEntry[]>;
+  ensureFarmerLedgerEntry(coldStorageId: string, farmerData: {
+    name: string;
+    contactNumber: string;
+    village: string;
+    tehsil?: string;
+    district?: string;
+    state?: string;
+  }): Promise<string>;
 }
 
 /**
@@ -5460,6 +5468,67 @@ export class DatabaseStorage implements IStorage {
     }
     
     return { added, updated };
+  }
+
+  // Ensure farmer ledger entry exists - find by composite key or create new
+  // Returns the farmerLedger.id (UUID) for linking to lots
+  async ensureFarmerLedgerEntry(coldStorageId: string, farmerData: {
+    name: string;
+    contactNumber: string;
+    village: string;
+    tehsil?: string;
+    district?: string;
+    state?: string;
+  }): Promise<string> {
+    const key = this.getFarmerCompositeKey(farmerData.name, farmerData.contactNumber, farmerData.village);
+    
+    // Check if farmer already exists with this composite key
+    const existingFarmers = await db.select()
+      .from(farmerLedger)
+      .where(and(
+        eq(farmerLedger.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${farmerLedger.name})) = ${farmerData.name.trim().toLowerCase()}`,
+        sql`TRIM(${farmerLedger.contactNumber}) = ${farmerData.contactNumber.trim()}`,
+        sql`LOWER(TRIM(${farmerLedger.village})) = ${farmerData.village.trim().toLowerCase()}`
+      ));
+    
+    if (existingFarmers.length > 0) {
+      // Farmer exists - optionally update missing fields
+      const existing = existingFarmers[0];
+      const updates: Partial<FarmerLedgerEntry> = {};
+      
+      if (!existing.tehsil && farmerData.tehsil) updates.tehsil = farmerData.tehsil.trim();
+      if (!existing.district && farmerData.district) updates.district = farmerData.district.trim();
+      if (!existing.state && farmerData.state) updates.state = farmerData.state.trim();
+      
+      if (Object.keys(updates).length > 0) {
+        await db.update(farmerLedger)
+          .set(updates)
+          .where(eq(farmerLedger.id, existing.id));
+      }
+      
+      return existing.id;
+    }
+    
+    // Create new farmer ledger entry
+    const farmerId = await this.generateFarmerId(coldStorageId);
+    const newId = randomUUID();
+    
+    await db.insert(farmerLedger).values({
+      id: newId,
+      coldStorageId,
+      farmerId,
+      name: farmerData.name.trim(),
+      contactNumber: farmerData.contactNumber.trim(),
+      village: farmerData.village.trim(),
+      tehsil: farmerData.tehsil?.trim() || null,
+      district: farmerData.district?.trim() || null,
+      state: farmerData.state?.trim() || null,
+      isFlagged: 0,
+      isArchived: 0,
+    });
+    
+    return newId;
   }
 
   // Get farmer ledger with calculated dues
