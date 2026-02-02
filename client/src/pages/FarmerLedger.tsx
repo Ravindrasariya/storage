@@ -50,6 +50,7 @@ export default function FarmerLedger() {
   const [nameSearch, setNameSearch] = useState("");
   const [villageSearch, setVillageSearch] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [sortField, setSortField] = useState<SortField>('farmerId');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -197,6 +198,14 @@ export default function FarmerLedger() {
     merchantDue: 0,
     totalDue: 0,
   };
+
+  const nameSuggestions = useMemo(() => {
+    if (!nameSearch || nameSearch.length < 1 || !ledgerData?.farmers) return [];
+    const searchLower = nameSearch.toLowerCase();
+    return ledgerData.farmers
+      .filter(f => f.name.toLowerCase().includes(searchLower))
+      .slice(0, 8);
+  }, [nameSearch, ledgerData?.farmers]);
 
   const formatDueValue = (value: number | undefined | null): string => {
     const num = value ?? 0;
@@ -379,10 +388,36 @@ export default function FarmerLedger() {
           <Input
             placeholder={t("searchByName")}
             value={nameSearch}
-            onChange={(e) => setNameSearch(e.target.value)}
+            onChange={(e) => {
+              setNameSearch(e.target.value);
+              setShowNameSuggestions(true);
+            }}
+            onFocus={() => setShowNameSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
             className="w-[160px]"
             data-testid="input-search-name"
           />
+          {showNameSuggestions && nameSuggestions.length > 0 && (
+            <div className="absolute top-full left-0 mt-1 w-[280px] max-w-[90vw] bg-popover border rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
+              {nameSuggestions.map(farmer => (
+                <div
+                  key={farmer.id}
+                  className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0"
+                  onMouseDown={() => {
+                    setNameSearch(farmer.name);
+                    setShowNameSuggestions(false);
+                  }}
+                  data-testid={`suggestion-farmer-${farmer.id}`}
+                >
+                  <div className="font-medium text-sm">{farmer.name}</div>
+                  <div className="text-xs text-muted-foreground flex gap-3">
+                    <span>{farmer.contactNumber || '-'}</span>
+                    <span>{farmer.village}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="relative">
           <Input
