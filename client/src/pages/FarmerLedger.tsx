@@ -455,7 +455,7 @@ export default function FarmerLedger() {
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 px-4">
+      <div className="flex-1 overflow-hidden flex flex-col px-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -465,9 +465,10 @@ export default function FarmerLedger() {
             {t("noFarmersFound")}
           </div>
         ) : (
-          <div className="pb-4">
-            {/* Mobile Card View */}
-            <div className="md:hidden space-y-3">
+          <>
+            {/* Mobile Card View - with vertical scroll */}
+            <ScrollArea className="flex-1 md:hidden">
+              <div className="pb-4 space-y-3">
               {filteredFarmers.active.map(farmer => (
                 <Card key={farmer.id} className="p-3" data-testid={`card-farmer-${farmer.id}`}>
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -558,11 +559,12 @@ export default function FarmerLedger() {
                   </div>
                 </Card>
               ))}
-            </div>
+              </div>
+            </ScrollArea>
 
-            {/* Tablet/Desktop Table View */}
-            <div className="hidden md:block border rounded-lg overflow-x-auto">
-              <table className="w-full text-sm min-w-[900px]">
+            {/* Tablet/Desktop Table View - with both scrolls */}
+            <div className="hidden md:flex flex-col flex-1 min-h-0 border rounded-lg overflow-auto pb-4">
+              <table className="text-sm" style={{ minWidth: '1000px', width: '100%' }}>
                 <colgroup>
                   <col className="w-10" />
                   <col className="w-[140px]" />
@@ -693,9 +695,9 @@ export default function FarmerLedger() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </>
         )}
-      </ScrollArea>
+      </div>
 
       <Dialog open={!!editingFarmer} onOpenChange={(open) => !open && setEditingFarmer(null)}>
         <DialogContent className="max-w-md">
