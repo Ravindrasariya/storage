@@ -203,9 +203,9 @@ export default function FarmerLedger() {
 
   const getDueColorClass = (value: number | undefined | null): string => {
     const num = value ?? 0;
-    if (isNaN(num) || num === 0) return "";
-    if (num > 0) return "text-green-600";
-    return "text-red-600";
+    if (isNaN(num) || num === 0) return "text-muted-foreground";
+    if (num > 0) return "text-amber-600 dark:text-amber-500";
+    return "text-rose-600 dark:text-rose-500";
   };
 
   const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
@@ -372,7 +372,14 @@ export default function FarmerLedger() {
                           <Pencil className="w-3 h-3" />
                         </Button>
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs" data-testid={`text-farmer-id-${farmer.id}`}>{farmer.farmerId}</td>
+                      <td className="px-3 py-2" data-testid={`text-farmer-id-${farmer.id}`}>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs">{farmer.farmerId}</span>
+                          {farmer.isFlagged === 1 && (
+                            <span className="text-[10px] font-semibold text-red-600 dark:text-red-500">{t("flagged")}</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-3 py-2 font-medium" data-testid={`text-farmer-name-${farmer.id}`}>{farmer.name}</td>
                       <td className="px-3 py-2 text-muted-foreground">{farmer.village}</td>
                       <td className="px-3 py-2 text-muted-foreground">{farmer.contactNumber}</td>
@@ -415,7 +422,14 @@ export default function FarmerLedger() {
                           <Pencil className="w-3 h-3" />
                         </Button>
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs">{farmer.farmerId}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs">{farmer.farmerId}</span>
+                          {farmer.isFlagged === 1 && (
+                            <span className="text-[10px] font-semibold text-red-600 dark:text-red-500">{t("flagged")}</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-3 py-2 font-medium">{farmer.name}</td>
                       <td className="px-3 py-2 text-muted-foreground">{farmer.village}</td>
                       <td className="px-3 py-2 text-muted-foreground">{farmer.contactNumber}</td>
