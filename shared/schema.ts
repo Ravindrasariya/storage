@@ -110,6 +110,7 @@ export const lots = pgTable("lots", {
   advanceDeduction: real("advance_deduction").default(0), // Advance paid to farmer
   freightDeduction: real("freight_deduction").default(0), // Freight / Gadi Bhada charges
   otherDeduction: real("other_deduction").default(0), // Other miscellaneous deductions
+  farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
 });
 
 // Sales History - permanent record of all sales
