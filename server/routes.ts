@@ -752,6 +752,15 @@ export async function registerRoutes(
         position: lot.position,
         quality: lot.quality,
         lotNo: lot.lotNo,
+        farmerName: lot.farmerName,
+        village: lot.village,
+        tehsil: lot.tehsil,
+        district: lot.district,
+        state: lot.state,
+        contactNumber: lot.contactNumber,
+        advanceDeduction: lot.advanceDeduction,
+        freightDeduction: lot.freightDeduction,
+        otherDeduction: lot.otherDeduction,
       };
 
       // Update the lot (including lotNo and entrySequence if changed)
@@ -822,12 +831,28 @@ export async function registerRoutes(
         }
       }
 
-      if (isLocationOrQualityEdit) {
+      if (isLocationOrQualityEdit || farmerFieldsChanged) {
+        const newData = {
+          chamberId: validated.chamberId ?? lot.chamberId,
+          floor: validated.floor ?? lot.floor,
+          position: validated.position ?? lot.position,
+          quality: validated.quality ?? lot.quality,
+          lotNo: validated.lotNo ?? lot.lotNo,
+          farmerName: validated.farmerName ?? lot.farmerName,
+          village: validated.village ?? lot.village,
+          tehsil: validated.tehsil ?? lot.tehsil,
+          district: validated.district ?? lot.district,
+          state: validated.state ?? lot.state,
+          contactNumber: validated.contactNumber ?? lot.contactNumber,
+          advanceDeduction: validated.advanceDeduction ?? lot.advanceDeduction,
+          freightDeduction: validated.freightDeduction ?? lot.freightDeduction,
+          otherDeduction: validated.otherDeduction ?? lot.otherDeduction,
+        };
         await storage.createEditHistory({
           lotId: lot.id,
           changeType: "edit",
           previousData: JSON.stringify(previousData),
-          newData: JSON.stringify(validated),
+          newData: JSON.stringify(newData),
         });
       }
 
