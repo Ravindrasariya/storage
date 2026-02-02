@@ -343,8 +343,103 @@ export default function FarmerLedger() {
           </div>
         ) : (
           <div className="pb-4">
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm table-fixed">
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {filteredFarmers.active.map(farmer => (
+                <Card key={farmer.id} className="p-3" data-testid={`card-farmer-${farmer.id}`}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs text-muted-foreground">{farmer.farmerId}</span>
+                      {farmer.isFlagged === 1 && (
+                        <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">{t("flagged")}</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Switch
+                        checked={farmer.isFlagged === 1}
+                        onCheckedChange={() => flagMutation.mutate(farmer.id)}
+                        data-testid={`switch-flag-mobile-${farmer.id}`}
+                      />
+                      <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => handleEditClick(farmer)}>
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                      {canEdit && (
+                        <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => archiveMutation.mutate(farmer.id)}>
+                          <Archive className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="font-medium text-base mb-1">{farmer.name}</div>
+                  <div className="text-sm text-muted-foreground mb-2">{farmer.village} | {farmer.contactNumber}</div>
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                    <div>
+                      <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
+                      <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables)}</div>
+                    </div>
+                    <div>
+                      <div className="text-orange-500 dark:text-orange-400 font-medium">{t("selfDue")}</div>
+                      <div className="text-orange-500 dark:text-orange-400 font-bold">{formatDueValue(farmer.selfDue)}</div>
+                    </div>
+                    <div>
+                      <div className="text-orange-700 dark:text-orange-500 font-medium">{t("merchantDues")}</div>
+                      <div className="text-orange-700 dark:text-orange-500 font-bold">{formatDueValue(farmer.merchantDue)}</div>
+                    </div>
+                    <div>
+                      <div className="text-red-600 dark:text-red-500 font-medium">{t("totalDues")}</div>
+                      <div className="text-red-600 dark:text-red-500 font-bold">{formatDueValue(farmer.totalDue)}</div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+              {showArchived && filteredFarmers.archived.map(farmer => (
+                <Card key={farmer.id} className="p-3 opacity-60 bg-muted/20" data-testid={`card-archived-farmer-${farmer.id}`}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs text-muted-foreground">{farmer.farmerId}</span>
+                      {farmer.isFlagged === 1 && (
+                        <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">{t("flagged")}</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Switch checked={farmer.isFlagged === 1} disabled />
+                      <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => handleEditClick(farmer)}>
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                      {canEdit && (
+                        <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => reinstateMutation.mutate(farmer.id)}>
+                          <RotateCcw className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="font-medium text-base mb-1">{farmer.name}</div>
+                  <div className="text-sm text-muted-foreground mb-2">{farmer.village} | {farmer.contactNumber}</div>
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                    <div>
+                      <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
+                      <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables)}</div>
+                    </div>
+                    <div>
+                      <div className="text-orange-500 dark:text-orange-400 font-medium">{t("selfDue")}</div>
+                      <div className="text-orange-500 dark:text-orange-400 font-bold">{formatDueValue(farmer.selfDue)}</div>
+                    </div>
+                    <div>
+                      <div className="text-orange-700 dark:text-orange-500 font-medium">{t("merchantDues")}</div>
+                      <div className="text-orange-700 dark:text-orange-500 font-bold">{formatDueValue(farmer.merchantDue)}</div>
+                    </div>
+                    <div>
+                      <div className="text-red-600 dark:text-red-500 font-medium">{t("totalDues")}</div>
+                      <div className="text-red-600 dark:text-red-500 font-bold">{formatDueValue(farmer.totalDue)}</div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Tablet/Desktop Table View */}
+            <div className="hidden md:block border rounded-lg overflow-x-auto">
+              <table className="w-full text-sm min-w-[900px]">
                 <colgroup>
                   <col className="w-10" />
                   <col className="w-[140px]" />
