@@ -75,24 +75,24 @@ function Navigation() {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex items-center justify-between gap-4 px-4 py-3 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-chart-1">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 text-chart-1">
             <Snowflake className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
-            <div>
-              <span className="font-bold text-sm sm:text-lg leading-tight">{t("appTitle")}</span>
-              <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">
+            <div className="max-w-[100px] sm:max-w-none">
+              <span className="font-bold text-sm sm:text-base leading-tight">{t("appTitle")}</span>
+              <p className="text-[10px] text-muted-foreground leading-tight">
                 by <span className="text-green-600 dark:text-green-400 font-medium">Krashu</span><span className="text-orange-500 dark:text-orange-400 font-medium">Ved</span>
               </p>
             </div>
           </div>
         </div>
 
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden md:flex items-center gap-0.5 flex-1">
           <NavLinks />
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           <LanguageToggle />
           <ThemeToggle />
           
