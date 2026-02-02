@@ -50,6 +50,7 @@ function isEmpty(value: unknown): boolean {
     const trimmed = value.trim();
     return trimmed === "" || trimmed === "-";
   }
+  if (typeof value === "number") return false;
   return false;
 }
 
@@ -65,9 +66,7 @@ function getChangedFields(previousData: string, newData: string): { field: strin
       const newVal = next[key];
       if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
         if (isEmpty(oldVal) && isEmpty(newVal)) continue;
-        if (!isEmpty(oldVal)) {
-          changes.push({ field: key, oldValue: oldVal, newValue: newVal });
-        }
+        changes.push({ field: key, oldValue: oldVal, newValue: newVal });
       }
     }
     return changes;
