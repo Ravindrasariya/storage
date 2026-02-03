@@ -5712,6 +5712,8 @@ export class DatabaseStorage implements IStorage {
       const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
       
       // Self Due - from self-sales (isSelfSale = 1) where farmer bought their own produce
+      // EXCLUDE self-sales that have been transferred to a buyer (those are now buyer dues)
+      // BUT INCLUDE if transfer was reversed (isTransferReversed = 1) - farmer owes again
       const selfSalesData = await db.select({
         dueAmount: salesHistory.dueAmount,
       })
@@ -5721,15 +5723,21 @@ export class DatabaseStorage implements IStorage {
           eq(salesHistory.isSelfSale, 1),
           sql`LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
           sql`TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}`,
-          sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`
+          sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`,
+          sql`(
+            (${salesHistory.transferToBuyerName} IS NULL OR TRIM(${salesHistory.transferToBuyerName}) = '')
+            OR ${salesHistory.isTransferReversed} = 1
+          )`
         ));
       
       const selfDue = selfSalesData.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
-      // Merchant Due - cold storage dues from regular sales (not self-sale)
-      // Uses dueAmount field which tracks remaining cold storage dues for the farmer
+      // Merchant Due - cold storage dues from regular sales (not self-sale) that buyers owe
+      // Uses currentDueMerchant logic: if transferred, new buyer owes; if transfer reversed, original buyer owes
+      // This shows what is owed FOR the farmer's produce (coldStorageCharge - paidAmount)
       const merchantSalesData = await db.select({
-        dueAmount: salesHistory.dueAmount,
+        coldStorageCharge: salesHistory.coldStorageCharge,
+        paidAmount: salesHistory.paidAmount,
         paymentStatus: salesHistory.paymentStatus,
       })
         .from(salesHistory)
@@ -5738,11 +5746,16 @@ export class DatabaseStorage implements IStorage {
           sql`(${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)`,
           sql`LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
           sql`TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}`,
-          sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`
+          sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`,
+          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
         ));
       
-      // Merchant due is the sum of unpaid cold storage charges
-      const merchantDue = merchantSalesData.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+      // Merchant due is coldStorageCharge - paidAmount for sales with remaining dues
+      const merchantDue = merchantSalesData.reduce((sum, s) => {
+        const charge = s.coldStorageCharge || 0;
+        const paid = s.paidAmount || 0;
+        return sum + Math.max(0, charge - paid);
+      }, 0);
       
       const totalDue = pyReceivables + selfDue + merchantDue;
       
