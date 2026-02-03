@@ -2011,139 +2011,17 @@ export class DatabaseStorage implements IStorage {
 
   // Cash Receipts methods
   async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
-    // Get all sales with due or partial payment status that have a buyer name
-    // Include sales where either buyerName or transferToBuyerName is set
-    // Include both regular sales AND self-sales that have been transferred to a buyer
-    // (Self-sales with transfer_to_buyer_name set means the debt was transferred from farmer to buyer)
-    // NOTE: Using raw SQL instead of Drizzle ORM's eq() because eq() combined with sql`` 
-    // template literals in and() clauses was not reliably filtering by coldStorageId
-    const rawResult = await db.execute(sql`
-      SELECT * FROM sales_history
-      WHERE cold_storage_id = ${coldStorageId}
-      AND payment_status IN ('due', 'partial')
-      AND ((buyer_name IS NOT NULL AND buyer_name != '') OR (transfer_to_buyer_name IS NOT NULL AND transfer_to_buyer_name != ''))
-      AND (
-        (is_self_sale = 0 OR is_self_sale IS NULL)
-        OR (is_self_sale = 1 AND transfer_to_buyer_name IS NOT NULL AND transfer_to_buyer_name != '')
-      )
-    `);
-    const sales = rawResult.rows as any[];
-
-    // Group by CurrentDueBuyerName (transferToBuyerName if set, else buyerName) and sum the due amounts
-    const buyerDues = new Map<string, { displayName: string; totalDue: number }>();
+    // Use Buyer Ledger's netDue for consistent dues across the application
+    // netDue = pyReceivables + salesDue + dueTransferIn - dueTransferOut
+    // Only include buyers with positive net due (actual dues to collect)
+    const ledgerData = await this.getBuyerLedger(coldStorageId, false);
     
-    // Separate map for extraDueToMerchant - tracked by ORIGINAL buyerName (not transferred)
-    const extraDueByOriginalBuyer = new Map<string, number>();
-    
-    for (const sale of sales) {
-      // Raw SQL returns snake_case - access via any cast
-      const saleRow = sale as any;
-      const isSelfSale = saleRow.is_self_sale === 1;
-      // CurrentDueBuyerName logic: use transferToBuyerName if not blank AND transfer is not reversed, else buyerName
-      const isTransferReversed = saleRow.is_transfer_reversed === 1;
-      const transferTo = isTransferReversed ? "" : (saleRow.transfer_to_buyer_name || saleRow.transferToBuyerName || "").trim();
-      const buyer = (saleRow.buyer_name || saleRow.buyerName || "").trim();
-      
-      // For self-sales: only count if transferred and NOT reversed
-      // If transfer is reversed, the due goes back to farmer (not buyer), so skip it
-      if (isSelfSale && (!transferTo || isTransferReversed)) {
-        continue;
-      }
-      
-      const currentDueBuyerName = transferTo || buyer;
-      if (!currentDueBuyerName) continue;
-      const normalizedKey = currentDueBuyerName.toLowerCase();
-      
-      // coldStorageCharge already includes base + kata + extraHammali + grading
-      // Do NOT add them again to avoid double-counting
-      const totalCharges = saleRow.cold_storage_charge || saleRow.coldStorageCharge || 0;
-      const dueAmount = totalCharges - (saleRow.paid_amount || saleRow.paidAmount || 0);
-      if (dueAmount > 0) {
-        const existing = buyerDues.get(normalizedKey);
-        if (existing) {
-          existing.totalDue += dueAmount;
-        } else {
-          buyerDues.set(normalizedKey, { displayName: currentDueBuyerName, totalDue: dueAmount });
-        }
-      }
-      
-      // Track extraDueToMerchant separately by ORIGINAL buyerName (not affected by transfers)
-      const extraDueToMerchant = saleRow.extra_due_to_merchant || saleRow.extraDueToMerchant || 0;
-      if (extraDueToMerchant > 0 && buyer) {
-        const originalKey = buyer.toLowerCase();
-        const currentExtra = extraDueByOriginalBuyer.get(originalKey) || 0;
-        extraDueByOriginalBuyer.set(originalKey, currentExtra + extraDueToMerchant);
-      }
-    }
-    
-    // Also get extraDueToMerchant from ALL sales (not just due/partial) by original buyer
-    // since this is a separate charge that may exist even when cold charges are paid
-    // Exclude self sales - those are farmer dues
-    const extraDueResult = await db.execute(sql`
-      SELECT * FROM sales_history
-      WHERE cold_storage_id = ${coldStorageId}
-      AND extra_due_to_merchant > 0
-      AND buyer_name IS NOT NULL AND buyer_name != ''
-      AND (is_self_sale = 0 OR is_self_sale IS NULL)
-    `);
-    const allSalesForExtraDue = extraDueResult.rows as any[];
-    
-    for (const sale of allSalesForExtraDue) {
-      const buyer = (sale.buyer_name || "").trim();
-      if (!buyer) continue;
-      const originalKey = buyer.toLowerCase();
-      // Check if not already added (avoid double counting)
-      if (!sales.some(s => s.id === sale.id)) {
-        const currentExtra = extraDueByOriginalBuyer.get(originalKey) || 0;
-        extraDueByOriginalBuyer.set(originalKey, currentExtra + (sale.extra_due_to_merchant || 0));
-      }
-    }
-    
-    // Add extraDueToMerchant to buyer dues by original buyer name
-    for (const [normalizedKey, extraDue] of Array.from(extraDueByOriginalBuyer.entries())) {
-      const existing = buyerDues.get(normalizedKey);
-      if (existing) {
-        existing.totalDue += extraDue;
-      } else {
-        // Find display name from sales
-        const sale = allSalesForExtraDue.find(s => (s.buyer_name?.trim().toLowerCase()) === normalizedKey) ||
-                     sales.find(s => (s.buyer_name?.trim().toLowerCase()) === normalizedKey);
-        const displayName = sale?.buyer_name?.trim() || normalizedKey;
-        buyerDues.set(normalizedKey, { displayName, totalDue: extraDue });
-      }
-    }
-
-    // Add opening receivables for current year (cold_merchant type)
-    const currentYear = new Date().getFullYear();
-    const receivables = await db.select()
-      .from(openingReceivables)
-      .where(and(
-        eq(openingReceivables.coldStorageId, coldStorageId),
-        eq(openingReceivables.year, currentYear),
-        eq(openingReceivables.payerType, "cold_merchant"),
-        sql`${openingReceivables.buyerName} IS NOT NULL AND ${openingReceivables.buyerName} != ''`
-      ));
-
-    // Add receivables to buyer dues (using remaining amount after FIFO payments)
-    for (const receivable of receivables) {
-      const trimmedName = (receivable.buyerName || "").trim();
-      if (!trimmedName) continue;
-      const normalizedKey = trimmedName.toLowerCase();
-      // Use remaining due amount (dueAmount - paidAmount) after FIFO allocation
-      const remainingDue = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
-      
-      if (remainingDue > 0) {
-        const existing = buyerDues.get(normalizedKey);
-        if (existing) {
-          existing.totalDue += remainingDue;
-        } else {
-          buyerDues.set(normalizedKey, { displayName: trimmedName, totalDue: remainingDue });
-        }
-      }
-    }
-
-    return Array.from(buyerDues.values())
-      .map(({ displayName, totalDue }) => ({ buyerName: displayName, totalDue }))
+    return ledgerData.buyers
+      .filter(buyer => buyer.netDue > 0) // Only include buyers with positive dues
+      .map(buyer => ({
+        buyerName: buyer.buyerName,
+        totalDue: buyer.netDue
+      }))
       .sort((a, b) => a.buyerName.toLowerCase().localeCompare(b.buyerName.toLowerCase()));
   }
 
