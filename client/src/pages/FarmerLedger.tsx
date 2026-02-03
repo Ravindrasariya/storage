@@ -808,8 +808,30 @@ export default function FarmerLedger() {
                           </span>
                           <span>{format(new Date(entry.modifiedAt), 'dd/MM/yyyy HH:mm')}</span>
                         </div>
-                        {entry.mergedFromId && (
-                          <div className="text-destructive">{t("mergedFrom")}: {entry.mergedFromFarmerId || entry.mergedFromId}</div>
+                        {entry.editType === 'merge' && (entry.mergedFromFarmerId || entry.mergedFromId) && (
+                          <div className="mt-1 p-2 bg-muted/50 rounded-md space-y-1">
+                            <div className="font-medium text-destructive">
+                              {t("mergedFrom")}: {entry.mergedFromFarmerId || entry.mergedFromId}
+                            </div>
+                            {(entry.mergedLotsCount !== null || entry.mergedReceivablesCount !== null || entry.mergedSalesCount !== null) && (
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+                                {(entry.mergedLotsCount !== null && entry.mergedLotsCount > 0) && (
+                                  <span>{t("lotsTransferred")}: {entry.mergedLotsCount}</span>
+                                )}
+                                {(entry.mergedReceivablesCount !== null && entry.mergedReceivablesCount > 0) && (
+                                  <span>{t("receivablesTransferred")}: {entry.mergedReceivablesCount}</span>
+                                )}
+                                {(entry.mergedSalesCount !== null && entry.mergedSalesCount > 0) && (
+                                  <span>{t("salesTransferred")}: {entry.mergedSalesCount}</span>
+                                )}
+                              </div>
+                            )}
+                            {entry.mergedTotalDues && parseFloat(entry.mergedTotalDues) > 0 && (
+                              <div className="font-medium">
+                                {t("totalDuesTransferred")}: ₹{parseFloat(entry.mergedTotalDues).toLocaleString('en-IN')}
+                              </div>
+                            )}
+                          </div>
                         )}
                         {changes.length > 0 && (
                           <div className="mt-1 space-y-1">

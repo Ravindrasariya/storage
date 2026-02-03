@@ -5804,6 +5804,71 @@ export class DatabaseStorage implements IStorage {
         const mergedFarmerId = farmer.farmerId < existingFarmer.farmerId ? existingFarmer.farmerId : farmer.farmerId;
         const survivorId = farmer.farmerId < existingFarmer.farmerId ? farmer.id : existingFarmer.id;
         const mergedId = farmer.farmerId < existingFarmer.farmerId ? existingFarmer.id : farmer.id;
+        const survivorFarmerEntry = farmer.farmerId < existingFarmer.farmerId ? farmer : existingFarmer;
+        const mergedFarmerEntry = farmer.farmerId < existingFarmer.farmerId ? existingFarmer : farmer;
+        
+        // Count records being transferred and calculate dues
+        const mergedLots = await db.select()
+          .from(lots)
+          .where(eq(lots.farmerLedgerId, mergedId));
+        
+        const mergedReceivables = await db.select()
+          .from(openingReceivables)
+          .where(eq(openingReceivables.farmerLedgerId, mergedId));
+        
+        const mergedSales = await db.select()
+          .from(salesHistory)
+          .where(eq(salesHistory.farmerLedgerId, mergedId));
+        
+        // Calculate total dues being transferred
+        let totalDuesTransferred = 0;
+        for (const lot of mergedLots) {
+          totalDuesTransferred += lot.totalDueCharge || 0;
+        }
+        for (const rec of mergedReceivables) {
+          totalDuesTransferred += rec.dueAmount || 0;
+        }
+        for (const sale of mergedSales) {
+          if (sale.isSelfSale) {
+            totalDuesTransferred += sale.dueAmount || 0;
+          }
+        }
+        
+        // Transfer lots from merged farmer to survivor
+        if (mergedLots.length > 0) {
+          await db.update(lots)
+            .set({ 
+              farmerLedgerId: survivorId,
+              farmerName: survivorFarmerEntry.name,
+              contactNumber: survivorFarmerEntry.contactNumber,
+              village: survivorFarmerEntry.village,
+            })
+            .where(eq(lots.farmerLedgerId, mergedId));
+        }
+        
+        // Transfer receivables from merged farmer to survivor
+        if (mergedReceivables.length > 0) {
+          await db.update(openingReceivables)
+            .set({ 
+              farmerLedgerId: survivorId,
+              farmerName: survivorFarmerEntry.name,
+              contactNumber: survivorFarmerEntry.contactNumber,
+              village: survivorFarmerEntry.village,
+            })
+            .where(eq(openingReceivables.farmerLedgerId, mergedId));
+        }
+        
+        // Transfer sales from merged farmer to survivor
+        if (mergedSales.length > 0) {
+          await db.update(salesHistory)
+            .set({ 
+              farmerLedgerId: survivorId,
+              farmerName: survivorFarmerEntry.name,
+              contactNumber: survivorFarmerEntry.contactNumber,
+              village: survivorFarmerEntry.village,
+            })
+            .where(eq(salesHistory.farmerLedgerId, mergedId));
+        }
         
         // Archive the merged farmer
         await db.update(farmerLedger)
@@ -5813,12 +5878,11 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(farmerLedger.id, mergedId));
         
-        // Update the survivor with any additional details
+        // Update the survivor with any additional details from merged farmer
         const survivorUpdates: Partial<FarmerLedgerEntry> = {};
-        const mergedFarmer = farmer.farmerId < existingFarmer.farmerId ? existingFarmer : farmer;
-        if (!farmer.tehsil && mergedFarmer.tehsil) survivorUpdates.tehsil = mergedFarmer.tehsil;
-        if (!farmer.district && mergedFarmer.district) survivorUpdates.district = mergedFarmer.district;
-        if (!farmer.state && mergedFarmer.state) survivorUpdates.state = mergedFarmer.state;
+        if (!survivorFarmerEntry.tehsil && mergedFarmerEntry.tehsil) survivorUpdates.tehsil = mergedFarmerEntry.tehsil;
+        if (!survivorFarmerEntry.district && mergedFarmerEntry.district) survivorUpdates.district = mergedFarmerEntry.district;
+        if (!survivorFarmerEntry.state && mergedFarmerEntry.state) survivorUpdates.state = mergedFarmerEntry.state;
         
         if (Object.keys(survivorUpdates).length > 0) {
           await db.update(farmerLedger)
@@ -5826,7 +5890,8 @@ export class DatabaseStorage implements IStorage {
             .where(eq(farmerLedger.id, survivorId));
         }
         
-        // Record the merge in edit history
+        // Record the merge in edit history with detailed info
+        const totalRecordsTransferred = mergedLots.length + mergedReceivables.length + mergedSales.length;
         await db.insert(farmerLedgerEditHistory).values({
           id: randomUUID(),
           farmerLedgerId: survivorId,
@@ -5834,7 +5899,11 @@ export class DatabaseStorage implements IStorage {
           editType: 'merge',
           mergedFromId: mergedId,
           mergedFromFarmerId: mergedFarmerId,
-          aggregatedRecords: 1,
+          aggregatedRecords: totalRecordsTransferred,
+          mergedLotsCount: mergedLots.length,
+          mergedReceivablesCount: mergedReceivables.length,
+          mergedSalesCount: mergedSales.length,
+          mergedTotalDues: totalDuesTransferred.toFixed(2),
           modifiedBy,
         });
         

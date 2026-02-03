@@ -447,6 +447,11 @@ export const farmerLedgerEditHistory = pgTable("farmer_ledger_edit_history", {
   mergedFromId: varchar("merged_from_id"), // The farmer ID that was merged (now archived)
   mergedFromFarmerId: text("merged_from_farmer_id"), // The FMYYYYMMDD format ID that was merged
   aggregatedRecords: integer("aggregated_records"), // Number of records aggregated
+  // Detailed merge info
+  mergedLotsCount: integer("merged_lots_count"), // Number of lots transferred
+  mergedReceivablesCount: integer("merged_receivables_count"), // Number of receivables transferred
+  mergedSalesCount: integer("merged_sales_count"), // Number of sales transferred
+  mergedTotalDues: text("merged_total_dues"), // Total dues transferred as string to preserve precision
   modifiedBy: text("modified_by"), // User who made the change
   modifiedAt: timestamp("modified_at").notNull().defaultNow(),
 });
