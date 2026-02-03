@@ -386,45 +386,45 @@ export default function FarmerLedger() {
         <p className="text-sm text-muted-foreground">{t("trackFarmerDues")}</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t("farmers")}</CardTitle>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 px-4 py-2">
+        <Card className="py-1">
+          <CardHeader className="py-1 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">{t("farmers")}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold" data-testid="text-farmer-count">{summary.totalFarmers}</div>
+          <CardContent className="py-1 px-3">
+            <div className="text-base font-bold" data-testid="text-farmer-count">{summary.totalFarmers}</div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
+        <Card className="py-1">
+          <CardHeader className="py-1 px-3">
+            <CardTitle className="text-xs font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables)}</div>
+          <CardContent className="py-1 px-3">
+            <div className="text-base font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables)}</div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-orange-500 dark:text-orange-400">{t("selfDue")}</CardTitle>
+        <Card className="py-1">
+          <CardHeader className="py-1 px-3">
+            <CardTitle className="text-xs font-medium text-orange-500 dark:text-orange-400">{t("selfDue")}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold text-orange-500 dark:text-orange-400" data-testid="text-self-due">{formatDueValue(summary.selfDue)}</div>
+          <CardContent className="py-1 px-3">
+            <div className="text-base font-bold text-orange-500 dark:text-orange-400" data-testid="text-self-due">{formatDueValue(summary.selfDue)}</div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-500">{t("merchantDues")}</CardTitle>
+        <Card className="py-1">
+          <CardHeader className="py-1 px-3">
+            <CardTitle className="text-xs font-medium text-orange-700 dark:text-orange-500">{t("merchantDues")}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold text-orange-700 dark:text-orange-500" data-testid="text-merchant-due">{formatDueValue(summary.merchantDue)}</div>
+          <CardContent className="py-1 px-3">
+            <div className="text-base font-bold text-orange-700 dark:text-orange-500" data-testid="text-merchant-due">{formatDueValue(summary.merchantDue)}</div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-600 dark:text-red-500">{t("totalDues")}</CardTitle>
+        <Card className="py-1">
+          <CardHeader className="py-1 px-3">
+            <CardTitle className="text-xs font-medium text-red-600 dark:text-red-500">{t("totalDues")}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold text-red-600 dark:text-red-500" data-testid="text-total-due">{formatDueValue(summary.totalDue)}</div>
+          <CardContent className="py-1 px-3">
+            <div className="text-base font-bold text-red-600 dark:text-red-500" data-testid="text-total-due">{formatDueValue(summary.totalDue)}</div>
           </CardContent>
         </Card>
       </div>
