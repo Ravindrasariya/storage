@@ -1979,16 +1979,21 @@ export async function registerRoutes(
   });
 
   // Get farmer's self-sales with dues (for F2B transfer selection)
-  app.get("/api/sales-history/self-sales/:farmerKey", requireAuth, async (req: AuthenticatedRequest, res) => {
+  // Now accepts farmerId (preferred) - looks up farmer details from farmer ledger
+  app.get("/api/sales-history/self-sales/:farmerId", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const farmerKey = decodeURIComponent(req.params.farmerKey);
-      // farmerKey format: "farmerName|village|contactNumber"
-      const [farmerName, village, contactNumber] = farmerKey.split("|");
+      const farmerId = decodeURIComponent(req.params.farmerId);
       
-      if (!farmerName || !village || !contactNumber) {
-        return res.status(400).json({ error: "Invalid farmer key format" });
+      // Get farmer details from farmer ledger using farmerId
+      const farmerLedger = await storage.getFarmerLedger(coldStorageId);
+      const farmer = farmerLedger.farmers.find(f => f.farmerId === farmerId);
+      
+      if (!farmer) {
+        return res.status(404).json({ error: "Farmer not found" });
       }
+      
+      const { farmerName, village, contactNumber } = farmer;
       
       const allSales = await storage.getSalesHistory(coldStorageId);
       
@@ -2029,8 +2034,10 @@ export async function registerRoutes(
   });
 
   // Farmer to Buyer debt transfer schema - now uses saleId for specific self-sale transfer
+  // Now accepts farmerId (preferred) along with farmer details for backward compatibility
   const farmerToBuyerTransferSchema = z.object({
     saleId: z.string().min(1),
+    farmerId: z.string().optional(),
     farmerName: z.string().min(1),
     village: z.string().min(1),
     contactNumber: z.string().min(1),
