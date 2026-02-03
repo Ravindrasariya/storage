@@ -239,6 +239,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyers/lookup"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       onOpenChange(false);
     },
     onError: () => {
@@ -267,6 +271,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/up-for-sale"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       setShowReverseConfirm(false);
       onOpenChange(false);
     },

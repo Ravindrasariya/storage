@@ -152,6 +152,10 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       toast({
         title: t("success"),
         description: "Partial sale recorded successfully",
