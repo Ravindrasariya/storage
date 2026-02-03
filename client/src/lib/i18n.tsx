@@ -614,6 +614,31 @@ const translations: Translations = {
   sync: { en: "Sync", hi: "सिंक" },
   contact: { en: "Contact", hi: "संपर्क" },
   actions: { en: "Actions", hi: "क्रियाएं" },
+  
+  // Buyer Ledger
+  buyerLedger: { en: "Buyer Ledger", hi: "खरीदार खाता" },
+  buyers: { en: "Buyers", hi: "खरीदार" },
+  buyerId: { en: "Buyer ID", hi: "खरीदार आईडी" },
+  salesDue: { en: "Sales Due", hi: "बिक्री बकाया" },
+  transferIn: { en: "Transfer In", hi: "ट्रांसफर इन" },
+  transferOut: { en: "Transfer Out", hi: "ट्रांसफर आउट" },
+  netDue: { en: "Net Due", hi: "शुद्ध बकाया" },
+  pyRec: { en: "PY Rec", hi: "पिछ्ला प्राप्य" },
+  trfIn: { en: "Trf In", hi: "ट्र्फ इन" },
+  buyersSynced: { en: "Buyers synced successfully", hi: "खरीदार सफलतापूर्वक सिंक हो गए" },
+  buyersSyncFailed: { en: "Failed to sync buyers", hi: "खरीदार सिंक करने में विफल" },
+  noBuyersFound: { en: "No buyers found", hi: "कोई खरीदार नहीं मिला" },
+  archivedBuyers: { en: "Archived Buyers", hi: "संग्रहीत खरीदार" },
+  buyerArchived: { en: "Buyer archived", hi: "खरीदार संग्रहित" },
+  buyerReinstated: { en: "Buyer reinstated", hi: "खरीदार पुनर्स्थापित" },
+  editBuyer: { en: "Edit Buyer", hi: "खरीदार संपादित करें" },
+  editBuyerDesc: { en: "Update buyer details. Changing name may trigger a merge.", hi: "खरीदार विवरण अपडेट करें। नाम बदलने से विलय हो सकता है।" },
+  confirmMerge: { en: "Confirm Merge", hi: "विलय की पुष्टि करें" },
+  mergeWarning: { en: "This will merge all records to the existing buyer.", hi: "यह सभी रिकॉर्ड मौजूदा खरीदार में विलय कर देगा।" },
+  salesRecords: { en: "Sales Records", hi: "बिक्री रिकॉर्ड" },
+  transferRecords: { en: "Transfer Records", hi: "ट्रांसफर रिकॉर्ड" },
+  willMergeInto: { en: "Will merge into", hi: "में विलय होगा" },
+  edited: { en: "Edited", hi: "संपादित" },
 };
 
 interface I18nContextType {

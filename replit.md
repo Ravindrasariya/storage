@@ -51,6 +51,9 @@ Preferred communication style: Simple, everyday language.
 - **Self-Sale Feature**: Allows farmers to buy their own produce, tracked as "Farmer" payer type dues, separate from "Cold Merchant" dues, and integrated into the farmer payment FIFO system.
 - **Farmer FIFO Recomputation**: Comprehensive `recomputeFarmerPayments` function triggered by: farmer payment, farmer payment reversal, self-sale reversal, and self-sale edit. FIFO order: receivables first (by createdAt), then self-sales (by soldAt). Uses petty balance threshold (<₹1 = paid).
 - **Dynamic Bank Accounts**: Unlimited user-defined bank accounts (current, limit, saving) with CRUD operations. Cash transactions reference account IDs, maintaining backward compatibility.
+- **Buyer Ledger**: Central registry for all buyers (merchants) with auto-generated IDs (BYYYYYMMDD1 format). Tracks PY Receivables (opening receivables), Sales Due (unpaid sales), and Due Transfer In (farmer-to-buyer transfers). Supports merge detection on name changes, edit history, and archive/reinstate. Key is buyer name only (case-insensitive, trimmed).
+- **Farmer Ledger**: Central registry for all farmers with auto-generated IDs (FMYYYYMMDD1 format). Key is (name, contact, village). Tracks PY Receivables, Self Due, and Merchant Due.
+- **Lot Numbering**: Auto-resets to 1 each calendar year using on-the-fly max+1 calculation. Separate counters for Wafer vs Seed/Ration categories.
 
 ## External Dependencies
 

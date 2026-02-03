@@ -23,6 +23,7 @@ import {
   Banknote,
   Loader2,
   Users,
+  ShoppingCart,
 } from "lucide-react";
 import Dashboard from "@/pages/Dashboard";
 import LotEntry from "@/pages/LotEntry";
@@ -31,6 +32,7 @@ import Analytics from "@/pages/Analytics";
 import SalesHistory from "@/pages/SalesHistory";
 import CashManagement from "@/pages/CashManagement";
 import FarmerLedger from "@/pages/FarmerLedger";
+import BuyerLedger from "@/pages/BuyerLedger";
 import Admin from "@/pages/Admin";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
@@ -50,6 +52,7 @@ function Navigation() {
     { href: "/sales-history", label: t("salesHistory"), icon: History },
     { href: "/cash-management", label: t("cashManagement"), icon: Banknote },
     { href: "/farmer-ledger", label: t("farmerLedger"), icon: Users },
+    { href: "/buyer-ledger", label: t("buyerLedger"), icon: ShoppingCart },
   ];
 
   const NavLinks = ({ onClick }: { onClick?: () => void }) => (
@@ -133,6 +136,7 @@ function ProtectedRoutes() {
       <Route path="/sales-history" component={SalesHistory} />
       <Route path="/cash-management" component={CashManagement} />
       <Route path="/farmer-ledger" component={FarmerLedger} />
+      <Route path="/buyer-ledger" component={BuyerLedger} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
