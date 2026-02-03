@@ -582,7 +582,7 @@ export default function BuyerLedger() {
             <div className="hidden md:flex flex-col flex-1 overflow-hidden border rounded-lg">
               <div className="overflow-x-auto">
                 <div className="min-w-[900px]">
-                  <div className="grid grid-cols-[32px_90px_minmax(120px,1fr)_100px_100px_100px_90px_100px_100px_70px] gap-2 p-2 bg-muted/50 text-sm font-bold border-b">
+                  <div className="grid grid-cols-[32px_90px_150px_100px_100px_100px_90px_100px_100px_100px] gap-2 p-2 bg-muted/50 text-sm font-bold border-b">
                     <div></div>
                     <SortButton field="buyerId" label={t("buyerId")} />
                     <SortButton field="buyerName" label={t("buyerName")} />
@@ -603,7 +603,7 @@ export default function BuyerLedger() {
                     {filteredBuyers.active.map(buyer => (
                       <div 
                         key={buyer.id}
-                        className="grid grid-cols-[32px_90px_minmax(120px,1fr)_100px_100px_100px_90px_100px_100px_70px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
+                        className="grid grid-cols-[32px_90px_150px_100px_100px_100px_90px_100px_100px_100px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
                         data-testid={`row-buyer-${buyer.id}`}
                       >
                         <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => handleEditClick(buyer)} data-testid={`button-edit-${buyer.id}`}>
@@ -644,7 +644,7 @@ export default function BuyerLedger() {
                         {filteredBuyers.archived.map(buyer => (
                           <div 
                             key={buyer.id}
-                            className="grid grid-cols-[32px_90px_minmax(120px,1fr)_100px_100px_100px_90px_100px_100px_70px] gap-2 p-2 border-b items-center text-sm opacity-60"
+                            className="grid grid-cols-[32px_90px_150px_100px_100px_100px_90px_100px_100px_100px] gap-2 p-2 border-b items-center text-sm opacity-60"
                             data-testid={`row-buyer-archived-${buyer.id}`}
                           >
                             <div></div>
