@@ -5604,10 +5604,11 @@ export class DatabaseStorage implements IStorage {
       
       const selfDue = selfSalesData.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
-      // Merchant Due - cold storage dues from:
-      // 1. Regular sales (not self-sale) that buyers owe
-      // 2. Transferred self-sales (farmer transferred to buyer, so cold storage charges become merchant due)
-      // Uses currentDueMerchant logic: tracks coldStorageCharge - paidAmount
+      // Merchant Due - comprises two components:
+      // 1. Cold storage charges from regular sales (buyer owes cold storage, which comes to farmer)
+      // 2. F2B transferred amounts (self-sale debt transferred to buyer)
+      
+      // Component 1: Cold storage charges from regular sales (NOT self-sales)
       const merchantSalesData = await db.select({
         coldStorageCharge: salesHistory.coldStorageCharge,
         paidAmount: salesHistory.paidAmount,
@@ -5616,27 +5617,37 @@ export class DatabaseStorage implements IStorage {
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
-          sql`(
-            (${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)
-            OR (
-              ${salesHistory.isSelfSale} = 1 
-              AND ${salesHistory.transferToBuyerName} IS NOT NULL 
-              AND TRIM(${salesHistory.transferToBuyerName}) != ''
-              AND (${salesHistory.isTransferReversed} IS NULL OR ${salesHistory.isTransferReversed} != 1)
-            )
-          )`,
+          sql`(${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)`,
           sql`LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
           sql`TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}`,
           sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`,
           sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
         ));
       
-      // Merchant due is coldStorageCharge - paidAmount for sales with remaining dues
-      const merchantDue = merchantSalesData.reduce((sum, s) => {
+      const merchantSalesDue = merchantSalesData.reduce((sum, s) => {
         const charge = s.coldStorageCharge || 0;
         const paid = s.paidAmount || 0;
         return sum + Math.max(0, charge - paid);
       }, 0);
+      
+      // Component 2: F2B transferred amounts (self-sale debt now owed by buyer)
+      // Get active (non-reversed) F2B transfers for this farmer
+      const f2bTransfers = await db.select({
+        selfSalesTransferred: farmerToBuyerTransfers.selfSalesTransferred,
+      })
+        .from(farmerToBuyerTransfers)
+        .where(and(
+          eq(farmerToBuyerTransfers.coldStorageId, coldStorageId),
+          eq(farmerToBuyerTransfers.isReversed, 0),
+          sql`LOWER(TRIM(${farmerToBuyerTransfers.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
+          sql`TRIM(${farmerToBuyerTransfers.contactNumber}) = ${farmer.contactNumber.trim()}`,
+          sql`LOWER(TRIM(${farmerToBuyerTransfers.village})) = ${farmer.village.trim().toLowerCase()}`
+        ));
+      
+      const f2bTransferredAmount = f2bTransfers.reduce((sum, t) => sum + (t.selfSalesTransferred || 0), 0);
+      
+      // Total merchant due = regular sales cold charges + F2B transferred amounts
+      const merchantDue = merchantSalesDue + f2bTransferredAmount;
       
       const totalDue = pyReceivables + selfDue + merchantDue;
       
