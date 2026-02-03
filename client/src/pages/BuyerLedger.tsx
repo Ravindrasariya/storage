@@ -532,7 +532,7 @@ export default function BuyerLedger() {
                     </div>
                   </div>
                   <div className="font-medium text-base mb-1">{buyer.buyerName}</div>
-                  <div className="text-sm mb-2">{buyer.address || '-'} | {buyer.contactNumber || '-'}</div>
+                  <div className="text-sm font-medium mb-2">{buyer.address || '-'} | {buyer.contactNumber || '-'}</div>
                   <div className="grid grid-cols-4 gap-2 text-center text-xs">
                     <div>
                       <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
@@ -571,7 +571,7 @@ export default function BuyerLedger() {
                         )}
                       </div>
                       <div className="font-medium text-base mb-1">{buyer.buyerName}</div>
-                      <div className="text-sm">{buyer.address || '-'}</div>
+                      <div className="text-sm font-medium">{buyer.address || '-'}</div>
                     </Card>
                   ))}
                 </>
@@ -613,8 +613,8 @@ export default function BuyerLedger() {
                           </div>
                         </td>
                         <td className="p-2 font-medium">{buyer.buyerName}</td>
-                        <td className="p-2">{buyer.address || '-'}</td>
-                        <td className="p-2">{buyer.contactNumber || '-'}</td>
+                        <td className="p-2 font-medium">{buyer.address || '-'}</td>
+                        <td className="p-2 font-medium">{buyer.contactNumber || '-'}</td>
                         <td className="p-2 text-center font-medium text-blue-600 dark:text-blue-400">{formatDueValue(buyer.pyReceivables)}</td>
                         <td className="p-2 text-center font-medium text-green-600 dark:text-green-400">{formatDueValue(buyer.salesDue)}</td>
                         <td className="p-2 text-center font-medium" style={{color: buyer.dueTransferIn > 0 ? 'rgb(147, 51, 234)' : buyer.dueTransferIn < 0 ? 'rgb(239, 68, 68)' : undefined}}>{formatDueValue(buyer.dueTransferIn)}</td>
@@ -645,8 +645,8 @@ export default function BuyerLedger() {
                             <td className="p-2"></td>
                             <td className="p-2 font-mono text-xs text-muted-foreground">{buyer.buyerId}</td>
                             <td className="p-2 font-medium">{buyer.buyerName}</td>
-                            <td className="p-2">{buyer.address || '-'}</td>
-                            <td className="p-2">{buyer.contactNumber || '-'}</td>
+                            <td className="p-2 font-medium">{buyer.address || '-'}</td>
+                            <td className="p-2 font-medium">{buyer.contactNumber || '-'}</td>
                             <td className="p-2 text-center text-muted-foreground">-</td>
                             <td className="p-2 text-center text-muted-foreground">-</td>
                             <td className="p-2 text-center text-muted-foreground">-</td>
