@@ -5691,9 +5691,10 @@ export class DatabaseStorage implements IStorage {
       
       const selfDue = selfSalesData.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
-      // Merchant Due - cold storage dues from regular sales (not self-sale) that buyers owe
-      // Uses currentDueMerchant logic: if transferred, new buyer owes; if transfer reversed, original buyer owes
-      // This shows what is owed FOR the farmer's produce (coldStorageCharge - paidAmount)
+      // Merchant Due - cold storage dues from:
+      // 1. Regular sales (not self-sale) that buyers owe
+      // 2. Transferred self-sales (farmer transferred to buyer, so cold storage charges become merchant due)
+      // Uses currentDueMerchant logic: tracks coldStorageCharge - paidAmount
       const merchantSalesData = await db.select({
         coldStorageCharge: salesHistory.coldStorageCharge,
         paidAmount: salesHistory.paidAmount,
@@ -5702,7 +5703,15 @@ export class DatabaseStorage implements IStorage {
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
-          sql`(${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)`,
+          sql`(
+            (${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)
+            OR (
+              ${salesHistory.isSelfSale} = 1 
+              AND ${salesHistory.transferToBuyerName} IS NOT NULL 
+              AND TRIM(${salesHistory.transferToBuyerName}) != ''
+              AND (${salesHistory.isTransferReversed} IS NULL OR ${salesHistory.isTransferReversed} != 1)
+            )
+          )`,
           sql`LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
           sql`TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}`,
           sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`,
