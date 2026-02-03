@@ -6251,8 +6251,9 @@ export class DatabaseStorage implements IStorage {
       const buyerNameLower = buyer.buyerName.trim().toLowerCase();
       
       // PY Receivables: Sum of opening receivables for this buyer
+      // For cold_merchant type, the buyer name is stored in buyerName field
       const pyReceivables = buyerReceivables
-        .filter(r => r.farmerName?.trim().toLowerCase() === buyerNameLower) // farmerName is used as payer name
+        .filter(r => r.buyerName?.trim().toLowerCase() === buyerNameLower)
         .reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
       
       // Sales Due: Sum of unpaid NON-TRANSFERRED sales to this buyer

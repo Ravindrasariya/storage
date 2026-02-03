@@ -2611,9 +2611,13 @@ export async function registerRoutes(
         state: state || null,
       });
 
-      // Trigger FIFO recomputation for cold_merchant type with buyer name
-      // This ensures new receivables are integrated into the 3-pass FIFO allocation
+      // For cold_merchant type, ensure buyer exists in Buyer Ledger
+      // This ensures the buyer appears in Buyer Ledger with a proper buyer ID
       if (payerType === "cold_merchant" && buyerName) {
+        await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName });
+        
+        // Trigger FIFO recomputation
+        // This ensures new receivables are integrated into the 3-pass FIFO allocation
         await storage.recomputeBuyerPayments(buyerName, coldStorageId);
       }
 
