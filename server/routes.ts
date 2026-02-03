@@ -2903,6 +2903,33 @@ export async function registerRoutes(
     }
   });
 
+  // Get farmers with dues from Farmer Ledger for Cash Management dropdowns
+  // Returns pyReceivables + selfDue as totalDue (farmer-liable dues only)
+  app.get("/api/farmer-ledger/dues-for-dropdown", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.getFarmerLedger(coldStorageId, false); // exclude archived
+      
+      // Filter to only farmers with farmer-liable dues (pyReceivables + selfDue > 0)
+      const farmersWithDues = result.farmers
+        .filter(f => (f.pyReceivables + f.selfDue) > 0)
+        .map(f => ({
+          id: f.id,
+          farmerName: f.name,
+          village: f.village,
+          contactNumber: f.contactNumber,
+          pyReceivables: f.pyReceivables,
+          selfDue: f.selfDue,
+          totalDue: f.pyReceivables + f.selfDue,
+        }));
+      
+      res.json(farmersWithDues);
+    } catch (error) {
+      console.error("Error fetching farmer dues for dropdown:", error);
+      res.status(500).json({ error: "Failed to fetch farmer dues" });
+    }
+  });
+
   // Recalculate all sales records to fix paidAmount/dueAmount
   app.post("/api/admin/recalculate-sales-charges", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
