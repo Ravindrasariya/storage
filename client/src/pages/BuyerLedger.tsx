@@ -264,6 +264,13 @@ export default function BuyerLedger() {
     return formatCurrency(num);
   };
 
+  const getTransferInColor = (value: number | undefined | null): string => {
+    const num = value ?? 0;
+    if (num < 0) return "text-red-600 dark:text-red-500";
+    if (num > 0) return "text-green-600 dark:text-green-400";
+    return "text-muted-foreground";
+  };
+
   const getDueColorClass = (value: number | undefined | null): string => {
     const num = value ?? 0;
     if (isNaN(num) || num === 0) return "text-muted-foreground";
@@ -374,10 +381,10 @@ export default function BuyerLedger() {
         </Card>
         <Card className="py-1">
           <CardHeader className="py-1 px-3">
-            <CardTitle className="text-xs font-medium text-purple-600 dark:text-purple-400">{t("transferIn")}</CardTitle>
+            <CardTitle className={`text-xs font-medium ${getTransferInColor(summary.dueTransferIn)}`}>{t("transferIn")}</CardTitle>
           </CardHeader>
           <CardContent className="py-1 px-3">
-            <div className="text-base font-bold text-purple-600 dark:text-purple-400" data-testid="text-transfer-in">{formatDueValue(summary.dueTransferIn)}</div>
+            <div className={`text-base font-bold ${getTransferInColor(summary.dueTransferIn)}`} data-testid="text-transfer-in">{formatDueValue(summary.dueTransferIn)}</div>
           </CardContent>
         </Card>
         <Card className="py-1">
@@ -514,8 +521,8 @@ export default function BuyerLedger() {
                       <div className="text-green-600 dark:text-green-400 font-bold">{formatDueValue(buyer.salesDue)}</div>
                     </div>
                     <div>
-                      <div className="text-purple-600 dark:text-purple-400 font-medium">{t("transferIn")}</div>
-                      <div className="text-purple-600 dark:text-purple-400 font-bold">{formatDueValue(buyer.dueTransferIn)}</div>
+                      <div className={`${getTransferInColor(buyer.dueTransferIn)} font-medium`}>{t("transferIn")}</div>
+                      <div className={`${getTransferInColor(buyer.dueTransferIn)} font-bold`}>{formatDueValue(buyer.dueTransferIn)}</div>
                     </div>
                     <div>
                       <div className="text-red-600 dark:text-red-500 font-medium">{t("netDue")}</div>
@@ -582,7 +589,7 @@ export default function BuyerLedger() {
                       <div className="text-muted-foreground truncate">{buyer.contactNumber || '-'}</div>
                       <div className={`text-right font-medium text-blue-600 dark:text-blue-400`}>{formatDueValue(buyer.pyReceivables)}</div>
                       <div className={`text-right font-medium text-green-600 dark:text-green-400`}>{formatDueValue(buyer.salesDue)}</div>
-                      <div className={`text-right font-medium text-purple-600 dark:text-purple-400`}>{formatDueValue(buyer.dueTransferIn)}</div>
+                      <div className={`text-right font-medium ${getTransferInColor(buyer.dueTransferIn)}`}>{formatDueValue(buyer.dueTransferIn)}</div>
                       <div className={`text-right font-medium text-red-600 dark:text-red-500`}>{formatDueValue(buyer.netDue)}</div>
                       <div className="flex items-center justify-center gap-1">
                         <Switch

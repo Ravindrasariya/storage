@@ -6220,12 +6220,22 @@ export class DatabaseStorage implements IStorage {
         eq(openingReceivables.payerType, 'cold_merchant')
       ));
     
-    // Get sales history to calculate sales dues
+    // Get sales history to calculate sales dues (non-self-sales without active transfers)
     const allSales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
-        eq(salesHistory.isSelfSale, 0) // Only non-self-sales
+        eq(salesHistory.isSelfSale, 0)
+      ));
+    
+    // Get all sales with active transfers (for tracking transfer amounts)
+    // This includes both regular and self-sale transfers
+    const allTransferredSales = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`${salesHistory.transferToBuyerName} IS NOT NULL AND TRIM(${salesHistory.transferToBuyerName}) != ''`,
+        sql`(${salesHistory.isTransferReversed} IS NULL OR ${salesHistory.isTransferReversed} = 0)`
       ));
     
     // Get farmer to buyer transfers (transfers IN = dues from farmers transferred to this buyer)
@@ -6245,22 +6255,47 @@ export class DatabaseStorage implements IStorage {
         .filter(r => r.farmerName?.trim().toLowerCase() === buyerNameLower) // farmerName is used as payer name
         .reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
       
-      // Sales Due: Sum of unpaid sales to this buyer
+      // Sales Due: Sum of unpaid NON-TRANSFERRED sales to this buyer
+      // Transferred sales are tracked separately in Transfer In
       const salesDue = allSales
-        .filter(s => s.buyerName?.trim().toLowerCase() === buyerNameLower)
+        .filter(s => {
+          const saleBuyerLower = s.buyerName?.trim().toLowerCase();
+          const hasActiveTransfer = s.transferToBuyerName && s.transferToBuyerName.trim() && (s.isTransferReversed === 0 || s.isTransferReversed === null);
+          // Only include if this is the original buyer AND no active transfer
+          return saleBuyerLower === buyerNameLower && !hasActiveTransfer;
+        })
         .reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
       
-      // Due Transfer In: Transfers from farmers to this buyer
-      const dueTransferIn = transfersIn
+      // Transfer In from farmer-to-buyer transfers (separate table)
+      const farmerTransferIn = transfersIn
         .filter(t => t.toBuyerName.trim().toLowerCase() === buyerNameLower)
         .reduce((sum, t) => sum + t.totalAmount, 0);
       
-      // Due Transfer Out: For now, 0 (buyer to buyer transfers not implemented)
-      // This would be used if buyers transfer their receivables to other buyers
+      // Transfer In from buyer-to-buyer transfers (salesHistory with transferToBuyerName)
+      // Positive: When this buyer is the recipient (transferToBuyerName matches)
+      // Use current outstanding (dueAmount - paidAmount) = what the destination buyer still owes
+      const buyerTransferIn = allTransferredSales
+        .filter(s => s.transferToBuyerName!.trim().toLowerCase() === buyerNameLower)
+        .reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
+      
+      // Transfer Out: When this buyer is the source (buyerName matches, and isSelfSale=0)
+      // Use the same current outstanding basis for consistency
+      // This shows what the source buyer "gave away" that is still outstanding
+      const buyerTransferOut = allTransferredSales
+        .filter(s => s.buyerName?.trim().toLowerCase() === buyerNameLower && s.isSelfSale === 0)
+        .reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
+      
+      // dueTransferIn = Net of all transfers (positive for received, negative for sent out)
+      // For display: shows transfer activity from this buyer's perspective
+      const dueTransferIn = farmerTransferIn + buyerTransferIn - buyerTransferOut;
+      
+      // dueTransferOut is 0 since transfer-out is embedded in dueTransferIn as negative
       const dueTransferOut = 0;
       
-      // Net Due = PY Receivables + Sales Due + Due Transfer In - Due Transfer Out
-      const netDue = roundAmount(pyReceivables + salesDue + dueTransferIn - dueTransferOut);
+      // Net Due = PY Receivables + Sales Due + Farmer Transfers + Buyer Transfers Received
+      // Source buyer's transfer-out does NOT add to their liability (they don't owe it)
+      // Destination buyer's transfer-in IS their liability
+      const netDue = roundAmount(pyReceivables + salesDue + farmerTransferIn + buyerTransferIn);
       
       return {
         ...buyer,
