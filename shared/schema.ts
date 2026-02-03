@@ -113,6 +113,7 @@ export const lots = pgTable("lots", {
   freightDeduction: real("freight_deduction").default(0), // Freight / Gadi Bhada charges
   otherDeduction: real("other_deduction").default(0), // Other miscellaneous deductions
   farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
+  farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format) - populated by sync
 });
 
 // Sales History - permanent record of all sales
@@ -196,6 +197,7 @@ export const salesHistory = pgTable("sales_history", {
   transferReversedAt: timestamp("transfer_reversed_at"), // When the transfer was reversed
   // Farmer ledger reference (for linking to farmer ledger)
   farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
+  farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format) - populated by sync
 });
 
 // Edit history for tracking changes
@@ -338,6 +340,7 @@ export const openingReceivables = pgTable("opening_receivables", {
   remarks: text("remarks"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
+  farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format) - populated by sync
 });
 
 // Opening Payables - outstanding payables at start of year
