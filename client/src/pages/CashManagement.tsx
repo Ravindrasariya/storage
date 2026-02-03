@@ -438,9 +438,9 @@ export default function CashManagement() {
   // Farmers with dues from Farmer Ledger - for F2B transfer (uses same endpoint as inward cash)
   // The farmerLedgerDues query above is always enabled and provides data for both
 
-  // Farmers with ALL dues (farmer-liable + buyer-liable) - for discount mode
-  const { data: farmersWithAllDues = [] } = useQuery<{ farmerName: string; village: string; contactNumber: string; totalDue: number; farmerLiableDue: number; buyerLiableDue: number }[]>({
-    queryKey: ["/api/farmers-with-all-dues"],
+  // Farmers with ALL dues from Farmer Ledger (pyReceivables + selfDue + merchantDue) - for discount mode
+  const { data: farmersWithAllDues = [] } = useQuery<{ id: string; farmerName: string; village: string; contactNumber: string; pyReceivables: number; selfDue: number; merchantDue: number; totalDue: number }[]>({
+    queryKey: ["/api/farmer-ledger/dues-for-discount"],
     enabled: expensePaymentMode === "discount",
   });
 
@@ -491,8 +491,8 @@ export default function CashManagement() {
     setShowReceivableVillageSuggestions(false);
   };
 
-  // Buyer dues for selected farmer
-  const { data: buyerDuesForFarmer = [] } = useQuery<{ buyerName: string; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[]>({
+  // Buyer dues for selected farmer (only buyer-liable, not self)
+  const { data: buyerDuesRaw = [] } = useQuery<{ buyerName: string; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[]>({
     queryKey: ["/api/buyer-dues", discountFarmerKey],
     queryFn: async () => {
       if (!selectedFarmerDetails) return [];
@@ -507,6 +507,36 @@ export default function CashManagement() {
     },
     enabled: !!selectedFarmerDetails && expensePaymentMode === "discount",
   });
+
+  // Combine Farmer Ledger self dues with buyer dues
+  // Self bucket uses Farmer Ledger data (pyReceivables + selfDue)
+  const buyerDuesForFarmer = useMemo(() => {
+    if (!selectedFarmerDetails) return [];
+    
+    const result: { buyerName: string; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[] = [];
+    
+    // Add Self entry from Farmer Ledger (pyReceivables + selfDue)
+    // Note: Self entries are displayed in separate section, latestSaleDate used for sorting within buyer section only
+    const selfDue = selectedFarmerDetails.pyReceivables + selectedFarmerDetails.selfDue;
+    if (selfDue > 0) {
+      const farmerSelfBuyerName = `${selectedFarmerDetails.farmerName.trim()} - ${selectedFarmerDetails.contactNumber.trim()} - ${selectedFarmerDetails.village.trim()}`;
+      result.push({
+        buyerName: farmerSelfBuyerName,
+        totalDue: selfDue,
+        latestSaleDate: "1970-01-01T00:00:00.000Z", // Not used for Self section display
+        isFarmerSelf: true,
+      });
+    }
+    
+    // Add buyer dues (excluding any self entries from backend)
+    for (const buyer of buyerDuesRaw) {
+      if (!buyer.isFarmerSelf) {
+        result.push(buyer);
+      }
+    }
+    
+    return result;
+  }, [selectedFarmerDetails, buyerDuesRaw]);
 
   // Auto-populate discount allocations when discount amount changes
   useEffect(() => {
@@ -591,6 +621,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
@@ -620,6 +651,7 @@ export default function CashManagement() {
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-to-buyer-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
@@ -662,6 +694,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/sales-goods-buyers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
@@ -699,6 +732,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
@@ -723,6 +757,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
@@ -792,6 +827,7 @@ export default function CashManagement() {
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-all-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/buyer-dues-for-farmer") });
@@ -822,6 +858,7 @@ export default function CashManagement() {
       // Comprehensive cache invalidation for discount reversal
       queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
@@ -854,6 +891,7 @@ export default function CashManagement() {
       // Comprehensive cache invalidation for farmer-to-buyer transfer reversal
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-to-buyer-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
@@ -1008,6 +1046,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       // Invalidate all farmer receivables queries (any year)
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
     },
