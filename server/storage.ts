@@ -67,6 +67,12 @@ import {
   type InsertFarmerLedger,
   type FarmerLedgerEditHistoryEntry,
   type InsertFarmerLedgerEditHistory,
+  buyerLedger,
+  buyerLedgerEditHistory,
+  type BuyerLedgerEntry,
+  type InsertBuyerLedger,
+  type BuyerLedgerEditHistoryEntry,
+  type InsertBuyerLedgerEditHistory,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -351,6 +357,43 @@ export interface IStorage {
     district?: string;
     state?: string;
   }): Promise<{ id: string; farmerId: string }>;
+  // Buyer Ledger
+  getBuyerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
+    buyers: (BuyerLedgerEntry & {
+      pyReceivables: number;
+      dueTransferOut: number;
+      dueTransferIn: number;
+      salesDue: number;
+      netDue: number;
+    })[];
+    summary: {
+      totalBuyers: number;
+      pyReceivables: number;
+      dueTransferOut: number;
+      dueTransferIn: number;
+      salesDue: number;
+      netDue: number;
+    };
+  }>;
+  syncBuyersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }>;
+  generateBuyerId(coldStorageId: string): Promise<string>;
+  checkBuyerPotentialMerge(id: string, updates: Partial<BuyerLedgerEntry>): Promise<{
+    willMerge: boolean;
+    targetBuyer?: BuyerLedgerEntry;
+    salesCount: number;
+    transfersCount: number;
+    totalDues: number;
+  }>;
+  updateBuyerLedger(id: string, updates: Partial<BuyerLedgerEntry>, modifiedBy: string, confirmMerge?: boolean): Promise<{ buyer: BuyerLedgerEntry | undefined; merged: boolean; mergedFromId?: string; needsConfirmation?: boolean }>;
+  archiveBuyerLedger(id: string, modifiedBy: string): Promise<boolean>;
+  reinstateBuyerLedger(id: string, modifiedBy: string): Promise<boolean>;
+  toggleBuyerFlag(id: string, modifiedBy: string): Promise<BuyerLedgerEntry | undefined>;
+  getBuyerLedgerEditHistory(buyerLedgerId: string): Promise<BuyerLedgerEditHistoryEntry[]>;
+  ensureBuyerLedgerEntry(coldStorageId: string, buyerData: {
+    buyerName: string;
+    address?: string;
+    contactNumber?: string;
+  }): Promise<{ id: string; buyerId: string }>;
 }
 
 /**
@@ -6103,6 +6146,544 @@ export class DatabaseStorage implements IStorage {
       .from(farmerLedgerEditHistory)
       .where(eq(farmerLedgerEditHistory.farmerLedgerId, farmerLedgerId))
       .orderBy(desc(farmerLedgerEditHistory.modifiedAt));
+  }
+
+  // ==================== BUYER LEDGER METHODS ====================
+
+  // Helper to get buyer name normalized key (just name, case-insensitive, trimmed)
+  private getBuyerCompositeKey(buyerName: string): string {
+    return buyerName.trim().toLowerCase();
+  }
+
+  // Generate unique buyer ID: BYYYYYMMDD1, BYYYYYMMDD2, etc.
+  async generateBuyerId(coldStorageId: string): Promise<string> {
+    const today = new Date();
+    const datePrefix = `BY${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+    
+    // Get the count of buyers created today in this cold storage
+    const existingBuyers = await db.select()
+      .from(buyerLedger)
+      .where(and(
+        eq(buyerLedger.coldStorageId, coldStorageId),
+        sql`${buyerLedger.buyerId} LIKE ${datePrefix + '%'}`
+      ));
+    
+    // Find the highest sequence number used today
+    let maxSeq = 0;
+    for (const buyer of existingBuyers) {
+      const seq = parseInt(buyer.buyerId.substring(datePrefix.length), 10);
+      if (!isNaN(seq) && seq > maxSeq) {
+        maxSeq = seq;
+      }
+    }
+    
+    return `${datePrefix}${maxSeq + 1}`;
+  }
+
+  // Get buyer ledger with calculated dues
+  async getBuyerLedger(coldStorageId: string, includeArchived: boolean = false): Promise<{
+    buyers: (BuyerLedgerEntry & {
+      pyReceivables: number;
+      dueTransferOut: number;
+      dueTransferIn: number;
+      salesDue: number;
+      netDue: number;
+    })[];
+    summary: {
+      totalBuyers: number;
+      pyReceivables: number;
+      dueTransferOut: number;
+      dueTransferIn: number;
+      salesDue: number;
+      netDue: number;
+    };
+  }> {
+    // Get all buyers
+    let buyersQuery = db.select().from(buyerLedger)
+      .where(eq(buyerLedger.coldStorageId, coldStorageId));
+    
+    if (!includeArchived) {
+      buyersQuery = db.select().from(buyerLedger)
+        .where(and(
+          eq(buyerLedger.coldStorageId, coldStorageId),
+          eq(buyerLedger.isArchived, 0)
+        ));
+    }
+    
+    const buyers = await buyersQuery;
+    
+    // Get buyer receivables from openingReceivables where payerType is 'cold_merchant'
+    const buyerReceivables = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, 'cold_merchant')
+      ));
+    
+    // Get sales history to calculate sales dues
+    const allSales = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.isSelfSale, 0) // Only non-self-sales
+      ));
+    
+    // Get farmer to buyer transfers (transfers IN = dues from farmers transferred to this buyer)
+    const transfersIn = await db.select()
+      .from(farmerToBuyerTransfers)
+      .where(and(
+        eq(farmerToBuyerTransfers.coldStorageId, coldStorageId),
+        eq(farmerToBuyerTransfers.isReversed, 0)
+      ));
+    
+    // Calculate dues for each buyer
+    const buyersWithDues = buyers.map(buyer => {
+      const buyerNameLower = buyer.buyerName.trim().toLowerCase();
+      
+      // PY Receivables: Sum of opening receivables for this buyer
+      const pyReceivables = buyerReceivables
+        .filter(r => r.farmerName?.trim().toLowerCase() === buyerNameLower) // farmerName is used as payer name
+        .reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
+      
+      // Sales Due: Sum of unpaid sales to this buyer
+      const salesDue = allSales
+        .filter(s => s.buyerName?.trim().toLowerCase() === buyerNameLower)
+        .reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
+      
+      // Due Transfer In: Transfers from farmers to this buyer
+      const dueTransferIn = transfersIn
+        .filter(t => t.toBuyerName.trim().toLowerCase() === buyerNameLower)
+        .reduce((sum, t) => sum + t.totalAmount, 0);
+      
+      // Due Transfer Out: For now, 0 (buyer to buyer transfers not implemented)
+      // This would be used if buyers transfer their receivables to other buyers
+      const dueTransferOut = 0;
+      
+      // Net Due = PY Receivables + Sales Due + Due Transfer In - Due Transfer Out
+      const netDue = roundAmount(pyReceivables + salesDue + dueTransferIn - dueTransferOut);
+      
+      return {
+        ...buyer,
+        pyReceivables: roundAmount(pyReceivables),
+        dueTransferOut: roundAmount(dueTransferOut),
+        dueTransferIn: roundAmount(dueTransferIn),
+        salesDue: roundAmount(salesDue),
+        netDue,
+      };
+    });
+    
+    // Calculate summary
+    const summary = {
+      totalBuyers: buyersWithDues.length,
+      pyReceivables: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.pyReceivables, 0)),
+      dueTransferOut: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.dueTransferOut, 0)),
+      dueTransferIn: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.dueTransferIn, 0)),
+      salesDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.salesDue, 0)),
+      netDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.netDue, 0)),
+    };
+    
+    return { buyers: buyersWithDues, summary };
+  }
+
+  // Sync buyers from touchpoints (sales history, opening receivables)
+  async syncBuyersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }> {
+    let added = 0;
+    let updated = 0;
+    
+    // Get existing buyers
+    const existingBuyers = await db.select()
+      .from(buyerLedger)
+      .where(eq(buyerLedger.coldStorageId, coldStorageId));
+    
+    const existingKeys = new Map<string, BuyerLedgerEntry>();
+    for (const b of existingBuyers) {
+      const key = this.getBuyerCompositeKey(b.buyerName);
+      existingKeys.set(key, b);
+    }
+    
+    // Collect unique buyer names from touchpoints
+    const buyerNames = new Set<string>();
+    
+    // From sales history (buyerName field)
+    const allSales = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.isSelfSale, 0)
+      ));
+    
+    for (const sale of allSales) {
+      if (sale.buyerName && sale.buyerName.trim()) {
+        buyerNames.add(sale.buyerName.trim());
+      }
+    }
+    
+    // From opening receivables where payerType is 'cold_merchant'
+    const merchantReceivables = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, 'cold_merchant')
+      ));
+    
+    for (const rec of merchantReceivables) {
+      if (rec.farmerName && rec.farmerName.trim()) {
+        buyerNames.add(rec.farmerName.trim());
+      }
+    }
+    
+    // From farmer to buyer transfers (toBuyerName)
+    const transfers = await db.select()
+      .from(farmerToBuyerTransfers)
+      .where(eq(farmerToBuyerTransfers.coldStorageId, coldStorageId));
+    
+    for (const transfer of transfers) {
+      if (transfer.toBuyerName && transfer.toBuyerName.trim()) {
+        buyerNames.add(transfer.toBuyerName.trim());
+      }
+    }
+    
+    // Create buyer ledger entries for new buyers
+    for (const buyerName of Array.from(buyerNames)) {
+      const key = this.getBuyerCompositeKey(buyerName);
+      
+      if (!existingKeys.has(key)) {
+        // New buyer - create entry
+        const buyerId = await this.generateBuyerId(coldStorageId);
+        const newId = randomUUID();
+        
+        await db.insert(buyerLedger).values({
+          id: newId,
+          coldStorageId,
+          buyerId,
+          buyerName: buyerName.trim(),
+          isFlagged: 0,
+          isArchived: 0,
+        });
+        
+        added++;
+      }
+    }
+    
+    return { added, updated };
+  }
+
+  // Check potential merge before updating buyer
+  async checkBuyerPotentialMerge(id: string, updates: Partial<BuyerLedgerEntry>): Promise<{
+    willMerge: boolean;
+    targetBuyer?: BuyerLedgerEntry;
+    salesCount: number;
+    transfersCount: number;
+    totalDues: number;
+  }> {
+    const [currentBuyer] = await db.select()
+      .from(buyerLedger)
+      .where(eq(buyerLedger.id, id));
+    
+    if (!currentBuyer) {
+      return { willMerge: false, salesCount: 0, transfersCount: 0, totalDues: 0 };
+    }
+    
+    const newName = updates.buyerName || currentBuyer.buyerName;
+    const newKey = this.getBuyerCompositeKey(newName);
+    const currentKey = this.getBuyerCompositeKey(currentBuyer.buyerName);
+    
+    // Check if new key matches a different buyer
+    if (newKey !== currentKey) {
+      const [existingBuyer] = await db.select()
+        .from(buyerLedger)
+        .where(and(
+          eq(buyerLedger.coldStorageId, currentBuyer.coldStorageId),
+          sql`LOWER(TRIM(${buyerLedger.buyerName})) = ${newName.trim().toLowerCase()}`,
+          sql`${buyerLedger.id} != ${id}`
+        ));
+      
+      if (existingBuyer) {
+        // Count records that would be merged
+        const buyerNameLower = currentBuyer.buyerName.trim().toLowerCase();
+        
+        const salesCount = await db.select({ count: sql<number>`count(*)::int` })
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+            sql`LOWER(TRIM(${salesHistory.buyerName})) = ${buyerNameLower}`
+          ));
+        
+        const transfersCount = await db.select({ count: sql<number>`count(*)::int` })
+          .from(farmerToBuyerTransfers)
+          .where(and(
+            eq(farmerToBuyerTransfers.coldStorageId, currentBuyer.coldStorageId),
+            sql`LOWER(TRIM(${farmerToBuyerTransfers.toBuyerName})) = ${buyerNameLower}`
+          ));
+        
+        // Get dues for the current buyer
+        const ledgerData = await this.getBuyerLedger(currentBuyer.coldStorageId, true);
+        const currentBuyerData = ledgerData.buyers.find(b => b.id === id);
+        const totalDues = currentBuyerData?.netDue || 0;
+        
+        return {
+          willMerge: true,
+          targetBuyer: existingBuyer,
+          salesCount: salesCount[0]?.count || 0,
+          transfersCount: transfersCount[0]?.count || 0,
+          totalDues,
+        };
+      }
+    }
+    
+    return { willMerge: false, salesCount: 0, transfersCount: 0, totalDues: 0 };
+  }
+
+  // Update buyer ledger entry with potential merge
+  async updateBuyerLedger(id: string, updates: Partial<BuyerLedgerEntry>, modifiedBy: string, confirmMerge: boolean = false): Promise<{
+    buyer: BuyerLedgerEntry | undefined;
+    merged: boolean;
+    mergedFromId?: string;
+    needsConfirmation?: boolean;
+  }> {
+    const [currentBuyer] = await db.select()
+      .from(buyerLedger)
+      .where(eq(buyerLedger.id, id));
+    
+    if (!currentBuyer) {
+      return { buyer: undefined, merged: false };
+    }
+    
+    const mergeCheck = await this.checkBuyerPotentialMerge(id, updates);
+    
+    if (mergeCheck.willMerge) {
+      if (!confirmMerge) {
+        return { buyer: undefined, merged: false, needsConfirmation: true };
+      }
+      
+      // Perform merge - transfer all records to target buyer and archive current
+      const targetBuyer = mergeCheck.targetBuyer!;
+      const buyerNameLower = currentBuyer.buyerName.trim().toLowerCase();
+      
+      // Update sales history to new buyer name
+      await db.update(salesHistory)
+        .set({ buyerName: targetBuyer.buyerName })
+        .where(and(
+          eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+          sql`LOWER(TRIM(${salesHistory.buyerName})) = ${buyerNameLower}`
+        ));
+      
+      // Update farmer to buyer transfers
+      await db.update(farmerToBuyerTransfers)
+        .set({ toBuyerName: targetBuyer.buyerName })
+        .where(and(
+          eq(farmerToBuyerTransfers.coldStorageId, currentBuyer.coldStorageId),
+          sql`LOWER(TRIM(${farmerToBuyerTransfers.toBuyerName})) = ${buyerNameLower}`
+        ));
+      
+      // Archive the current buyer
+      await db.update(buyerLedger)
+        .set({
+          isArchived: 1,
+          archivedAt: new Date(),
+        })
+        .where(eq(buyerLedger.id, id));
+      
+      // Record merge history
+      await db.insert(buyerLedgerEditHistory).values({
+        id: randomUUID(),
+        buyerLedgerId: targetBuyer.id,
+        coldStorageId: currentBuyer.coldStorageId,
+        editType: 'merge',
+        mergedFromId: id,
+        mergedFromBuyerId: currentBuyer.buyerId,
+        mergedSalesCount: mergeCheck.salesCount,
+        mergedTransfersCount: mergeCheck.transfersCount,
+        mergedTotalDues: String(mergeCheck.totalDues),
+        modifiedBy,
+      });
+      
+      return { buyer: targetBuyer, merged: true, mergedFromId: currentBuyer.buyerId };
+    }
+    
+    // Regular update (no merge)
+    const beforeValues = JSON.stringify({
+      buyerName: currentBuyer.buyerName,
+      address: currentBuyer.address,
+      contactNumber: currentBuyer.contactNumber,
+    });
+    
+    const [updated] = await db.update(buyerLedger)
+      .set({
+        buyerName: updates.buyerName?.trim() || currentBuyer.buyerName,
+        address: updates.address?.trim() || currentBuyer.address,
+        contactNumber: updates.contactNumber?.trim() || currentBuyer.contactNumber,
+      })
+      .where(eq(buyerLedger.id, id))
+      .returning();
+    
+    const afterValues = JSON.stringify({
+      buyerName: updated.buyerName,
+      address: updated.address,
+      contactNumber: updated.contactNumber,
+    });
+    
+    await db.insert(buyerLedgerEditHistory).values({
+      id: randomUUID(),
+      buyerLedgerId: id,
+      coldStorageId: currentBuyer.coldStorageId,
+      editType: 'edit',
+      beforeValues,
+      afterValues,
+      modifiedBy,
+    });
+    
+    return { buyer: updated, merged: false };
+  }
+
+  // Archive a buyer
+  async archiveBuyerLedger(id: string, modifiedBy: string): Promise<boolean> {
+    const [buyer] = await db.update(buyerLedger)
+      .set({
+        isArchived: 1,
+        archivedAt: new Date(),
+      })
+      .where(eq(buyerLedger.id, id))
+      .returning();
+    
+    if (buyer) {
+      await db.insert(buyerLedgerEditHistory).values({
+        id: randomUUID(),
+        buyerLedgerId: id,
+        coldStorageId: buyer.coldStorageId,
+        editType: 'edit',
+        beforeValues: JSON.stringify({ isArchived: 0 }),
+        afterValues: JSON.stringify({ isArchived: 1 }),
+        modifiedBy,
+      });
+    }
+    
+    return !!buyer;
+  }
+
+  // Reinstate an archived buyer
+  async reinstateBuyerLedger(id: string, modifiedBy: string): Promise<boolean> {
+    const [buyer] = await db.update(buyerLedger)
+      .set({
+        isArchived: 0,
+        archivedAt: null,
+      })
+      .where(eq(buyerLedger.id, id))
+      .returning();
+    
+    if (buyer) {
+      await db.insert(buyerLedgerEditHistory).values({
+        id: randomUUID(),
+        buyerLedgerId: id,
+        coldStorageId: buyer.coldStorageId,
+        editType: 'edit',
+        beforeValues: JSON.stringify({ isArchived: 1 }),
+        afterValues: JSON.stringify({ isArchived: 0 }),
+        modifiedBy,
+      });
+    }
+    
+    return !!buyer;
+  }
+
+  // Toggle buyer flag
+  async toggleBuyerFlag(id: string, modifiedBy: string): Promise<BuyerLedgerEntry | undefined> {
+    const [buyer] = await db.select()
+      .from(buyerLedger)
+      .where(eq(buyerLedger.id, id));
+    
+    if (!buyer) return undefined;
+    
+    const newFlagValue = buyer.isFlagged === 1 ? 0 : 1;
+    
+    const [updated] = await db.update(buyerLedger)
+      .set({ isFlagged: newFlagValue })
+      .where(eq(buyerLedger.id, id))
+      .returning();
+    
+    await db.insert(buyerLedgerEditHistory).values({
+      id: randomUUID(),
+      buyerLedgerId: id,
+      coldStorageId: buyer.coldStorageId,
+      editType: 'edit',
+      beforeValues: JSON.stringify({ isFlagged: buyer.isFlagged }),
+      afterValues: JSON.stringify({ isFlagged: newFlagValue }),
+      modifiedBy,
+    });
+    
+    return updated;
+  }
+
+  // Get edit history for a buyer
+  async getBuyerLedgerEditHistory(buyerLedgerId: string): Promise<BuyerLedgerEditHistoryEntry[]> {
+    return await db.select()
+      .from(buyerLedgerEditHistory)
+      .where(eq(buyerLedgerEditHistory.buyerLedgerId, buyerLedgerId))
+      .orderBy(desc(buyerLedgerEditHistory.modifiedAt));
+  }
+
+  // Ensure buyer ledger entry exists - find by name or create new
+  async ensureBuyerLedgerEntry(coldStorageId: string, buyerData: {
+    buyerName: string;
+    address?: string;
+    contactNumber?: string;
+  }): Promise<{ id: string; buyerId: string }> {
+    const key = this.getBuyerCompositeKey(buyerData.buyerName);
+    
+    // Check if buyer already exists with this name
+    const [existingBuyer] = await db.select()
+      .from(buyerLedger)
+      .where(and(
+        eq(buyerLedger.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${buyerLedger.buyerName})) = ${buyerData.buyerName.trim().toLowerCase()}`
+      ));
+    
+    if (existingBuyer) {
+      // Buyer exists - optionally update missing fields
+      const updates: Partial<BuyerLedgerEntry> = {};
+      
+      if (!existingBuyer.address && buyerData.address) updates.address = buyerData.address.trim();
+      if (!existingBuyer.contactNumber && buyerData.contactNumber) updates.contactNumber = buyerData.contactNumber.trim();
+      
+      if (Object.keys(updates).length > 0) {
+        await db.update(buyerLedger)
+          .set(updates)
+          .where(eq(buyerLedger.id, existingBuyer.id));
+      }
+      
+      return { id: existingBuyer.id, buyerId: existingBuyer.buyerId };
+    }
+    
+    // Create new buyer ledger entry with retry logic for unique constraint violations
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const buyerId = await this.generateBuyerId(coldStorageId);
+      const newId = randomUUID();
+      
+      try {
+        await db.insert(buyerLedger).values({
+          id: newId,
+          coldStorageId,
+          buyerId,
+          buyerName: buyerData.buyerName.trim(),
+          address: buyerData.address?.trim() || null,
+          contactNumber: buyerData.contactNumber?.trim() || null,
+          isFlagged: 0,
+          isArchived: 0,
+        });
+        
+        return { id: newId, buyerId };
+      } catch (error: any) {
+        // Check if it's a unique constraint violation
+        if (error?.code === '23505' && (error?.constraint?.includes('buyer_id') || error?.constraint?.includes('cs_bid'))) {
+          console.log(`Buyer ID collision detected (attempt ${attempt + 1}/${maxRetries}), retrying...`);
+          continue;
+        }
+        throw error;
+      }
+    }
+    
+    throw new Error('Failed to generate unique buyer ID after multiple attempts');
   }
 }
 

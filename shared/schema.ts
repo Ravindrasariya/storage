@@ -462,6 +462,45 @@ export const farmerLedgerEditHistory = pgTable("farmer_ledger_edit_history", {
   modifiedAt: timestamp("modified_at").notNull().defaultNow(),
 });
 
+// Buyer Ledger - master buyer records per cold storage
+// Key to generate BuyerId is the Buyer Name (case-insensitive, trimmed)
+export const buyerLedger = pgTable("buyer_ledger", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  buyerId: text("buyer_id").notNull(), // Format: BYYYYYMMDD1, BYYYYYMMDD2, etc. Unique per cold storage
+  buyerName: text("buyer_name").notNull(),
+  address: text("address"),
+  contactNumber: text("contact_number"),
+  isFlagged: integer("is_flagged").notNull().default(0), // 0 = normal, 1 = flagged
+  isArchived: integer("is_archived").notNull().default(0), // 0 = active, 1 = archived
+  archivedAt: timestamp("archived_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Composite unique: buyerId is unique within each cold storage
+  uniqueBuyerIdPerColdStorage: uniqueIndex("buyer_ledger_cs_bid_idx").on(table.coldStorageId, table.buyerId),
+}));
+
+// Buyer Ledger Edit History - tracks edits and merges
+export const buyerLedgerEditHistory = pgTable("buyer_ledger_edit_history", {
+  id: varchar("id").primaryKey(),
+  buyerLedgerId: varchar("buyer_ledger_id").notNull(), // The buyer ledger entry that was edited
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  editType: text("edit_type").notNull(), // 'edit' or 'merge'
+  // For edits: what changed
+  beforeValues: text("before_values"), // JSON of old values
+  afterValues: text("after_values"), // JSON of new values
+  // For merges: which buyer was merged into this one
+  mergedFromId: varchar("merged_from_id"), // The buyer ID that was merged (now archived)
+  mergedFromBuyerId: text("merged_from_buyer_id"), // The BYYYYYMMDD format ID that was merged
+  aggregatedRecords: integer("aggregated_records"), // Number of records aggregated
+  // Detailed merge info
+  mergedSalesCount: integer("merged_sales_count"), // Number of sales transferred
+  mergedTransfersCount: integer("merged_transfers_count"), // Number of transfers transferred
+  mergedTotalDues: text("merged_total_dues"), // Total dues transferred as string to preserve precision
+  modifiedBy: text("modified_by"), // User who made the change
+  modifiedAt: timestamp("modified_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
@@ -484,6 +523,8 @@ export const insertFarmerToBuyerTransferSchema = createInsertSchema(farmerToBuye
 export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({ id: true, createdAt: true });
 export const insertFarmerLedgerSchema = createInsertSchema(farmerLedger).omit({ id: true, createdAt: true, archivedAt: true });
 export const insertFarmerLedgerEditHistorySchema = createInsertSchema(farmerLedgerEditHistory).omit({ id: true, modifiedAt: true });
+export const insertBuyerLedgerSchema = createInsertSchema(buyerLedger).omit({ id: true, createdAt: true, archivedAt: true });
+export const insertBuyerLedgerEditHistorySchema = createInsertSchema(buyerLedgerEditHistory).omit({ id: true, modifiedAt: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -530,6 +571,10 @@ export type FarmerLedgerEntry = typeof farmerLedger.$inferSelect;
 export type InsertFarmerLedger = z.infer<typeof insertFarmerLedgerSchema>;
 export type FarmerLedgerEditHistoryEntry = typeof farmerLedgerEditHistory.$inferSelect;
 export type InsertFarmerLedgerEditHistory = z.infer<typeof insertFarmerLedgerEditHistorySchema>;
+export type BuyerLedgerEntry = typeof buyerLedger.$inferSelect;
+export type InsertBuyerLedger = z.infer<typeof insertBuyerLedgerSchema>;
+export type BuyerLedgerEditHistoryEntry = typeof buyerLedgerEditHistory.$inferSelect;
+export type InsertBuyerLedgerEditHistory = z.infer<typeof insertBuyerLedgerEditHistorySchema>;
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({

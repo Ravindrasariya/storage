@@ -2907,6 +2907,130 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== BUYER LEDGER ROUTES ====================
+
+  // Get buyer ledger with dues breakdown
+  app.get("/api/buyer-ledger", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const includeArchived = req.query.includeArchived === 'true';
+      const result = await storage.getBuyerLedger(coldStorageId, includeArchived);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching buyer ledger:", error);
+      res.status(500).json({ error: "Failed to fetch buyer ledger" });
+    }
+  });
+
+  // Sync buyers from touchpoints (sales, receivables, transfers)
+  app.post("/api/buyer-ledger/sync", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.syncBuyersFromTouchpoints(coldStorageId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error syncing buyers:", error);
+      res.status(500).json({ error: "Failed to sync buyers" });
+    }
+  });
+
+  // Check if buyer update would cause a merge
+  app.post("/api/buyer-ledger/:id/check-merge", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const result = await storage.checkBuyerPotentialMerge(id, updates);
+      res.json(result);
+    } catch (error) {
+      console.error("Error checking buyer merge:", error);
+      res.status(500).json({ error: "Failed to check merge" });
+    }
+  });
+
+  // Update buyer details
+  app.patch("/api/buyer-ledger/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { confirmMerge, ...updates } = req.body;
+      const modifiedBy = req.authContext?.userName || 'system';
+      const result = await storage.updateBuyerLedger(id, updates, modifiedBy, confirmMerge);
+      res.json(result);
+    } catch (error) {
+      console.error("Error updating buyer:", error);
+      res.status(500).json({ error: "Failed to update buyer" });
+    }
+  });
+
+  // Toggle buyer flag
+  app.post("/api/buyer-ledger/:id/flag", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const modifiedBy = req.authContext?.userName || 'system';
+      const result = await storage.toggleBuyerFlag(id, modifiedBy);
+      res.json(result);
+    } catch (error) {
+      console.error("Error toggling buyer flag:", error);
+      res.status(500).json({ error: "Failed to toggle flag" });
+    }
+  });
+
+  // Archive buyer (soft delete)
+  app.post("/api/buyer-ledger/:id/archive", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const modifiedBy = req.authContext?.userName || 'system';
+      const result = await storage.archiveBuyerLedger(id, modifiedBy);
+      res.json({ success: result });
+    } catch (error) {
+      console.error("Error archiving buyer:", error);
+      res.status(500).json({ error: "Failed to archive buyer" });
+    }
+  });
+
+  // Reinstate archived buyer
+  app.post("/api/buyer-ledger/:id/reinstate", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const modifiedBy = req.authContext?.userName || 'system';
+      const result = await storage.reinstateBuyerLedger(id, modifiedBy);
+      res.json({ success: result });
+    } catch (error) {
+      console.error("Error reinstating buyer:", error);
+      res.status(500).json({ error: "Failed to reinstate buyer" });
+    }
+  });
+
+  // Get buyer edit history
+  app.get("/api/buyer-ledger/:id/history", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const history = await storage.getBuyerLedgerEditHistory(id);
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching buyer history:", error);
+      res.status(500).json({ error: "Failed to fetch buyer history" });
+    }
+  });
+
+  // Get buyers for dropdown (lookup)
+  app.get("/api/buyers/lookup", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.getBuyerLedger(coldStorageId, false); // exclude archived
+      const buyers = result.buyers.map(b => ({
+        id: b.id,
+        buyerId: b.buyerId,
+        buyerName: b.buyerName,
+        address: b.address,
+        contactNumber: b.contactNumber,
+      }));
+      res.json(buyers);
+    } catch (error) {
+      console.error("Error fetching buyers for lookup:", error);
+      res.status(500).json({ error: "Failed to fetch buyers" });
+    }
+  });
+
   // ==================== USER AUTH ROUTES ====================
   
   // Generate a simple random token
