@@ -4270,7 +4270,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db.execute(sql`
       WITH farmer_liable_dues AS (
         -- Self-sales only (is_self_sale = 1) - farmer bought their own produce
-        -- EXCLUDE self-sales that have been transferred to a buyer
+        -- EXCLUDE self-sales transferred to buyer UNLESS transfer was reversed
         SELECT 
           TRIM(farmer_name) as farmer_name,
           TRIM(village) as village,
@@ -4280,7 +4280,10 @@ export class DatabaseStorage implements IStorage {
         WHERE cold_storage_id = ${coldStorageId}
           AND COALESCE(is_self_sale, 0) = 1
           AND due_amount > 0
-          AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
+          AND (
+            (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
+            OR is_transfer_reversed = 1
+          )
         
         UNION ALL
         
@@ -4370,7 +4373,7 @@ export class DatabaseStorage implements IStorage {
     const receivablesDue = (receivablesDuesResult.rows[0] as any)?.total_due || 0;
     
     // Get farmer's self-sale dues (where is_self_sale = 1)
-    // EXCLUDE self-sales that have been transferred to a buyer (transfer_to_buyer_name is set)
+    // EXCLUDE self-sales transferred to buyer UNLESS transfer was reversed
     const selfSalesDuesResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(due_amount), 0)::float as total_due,
@@ -4382,7 +4385,10 @@ export class DatabaseStorage implements IStorage {
         AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
         AND TRIM(contact_number) = TRIM(${contactNumber})
         AND due_amount > 0
-        AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
+        AND (
+          (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
+          OR is_transfer_reversed = 1
+        )
     `);
     const selfSalesDue = (selfSalesDuesResult.rows[0] as any)?.total_due || 0;
     const selfSalesLatestDate = (selfSalesDuesResult.rows[0] as any)?.latest_date || new Date();
