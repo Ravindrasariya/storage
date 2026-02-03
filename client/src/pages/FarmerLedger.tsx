@@ -88,6 +88,7 @@ export default function FarmerLedger() {
     mutationFn: () => apiRequest('POST', '/api/farmer-ledger/sync'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/farmer-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/farmers/lookup'] });
       toast({ title: t("farmersSynced") });
     },
     onError: () => {
@@ -119,6 +120,7 @@ export default function FarmerLedger() {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['/api/farmer-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/farmers/lookup'] });
       if (result.merged) {
         toast({ title: t("mergedFrom") + " " + result.mergedFromId });
       } else {
@@ -144,6 +146,7 @@ export default function FarmerLedger() {
     mutationFn: (id: string) => apiRequest('POST', `/api/farmer-ledger/${id}/archive`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/farmer-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/farmers/lookup'] });
       toast({ title: t("farmerArchived") });
     },
   });
@@ -152,6 +155,7 @@ export default function FarmerLedger() {
     mutationFn: (id: string) => apiRequest('POST', `/api/farmer-ledger/${id}/reinstate`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/farmer-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/farmers/lookup'] });
       toast({ title: t("farmerReinstated") });
     },
   });
