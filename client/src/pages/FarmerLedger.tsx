@@ -760,7 +760,7 @@ export default function FarmerLedger() {
       </div>
 
       <Dialog open={!!editingFarmer} onOpenChange={(open) => !open && setEditingFarmer(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("editFarmer")}</DialogTitle>
             <DialogDescription>
@@ -896,11 +896,11 @@ export default function FarmerLedger() {
                         {changes.length > 0 && (
                           <div className="mt-1 space-y-1">
                             {changes.map((change, idx) => (
-                              <div key={idx} className="flex flex-wrap gap-1">
-                                <span className="font-medium">{change.field}:</span>
-                                <span className="text-muted-foreground line-through">{change.oldValue}</span>
-                                <span>→</span>
-                                <span className="font-semibold">{change.newValue}</span>
+                              <div key={idx} className="break-words">
+                                <span className="font-medium">{change.field}:</span>{" "}
+                                <span className="text-muted-foreground line-through break-all">{change.oldValue}</span>
+                                <span className="mx-1">→</span>
+                                <span className="font-semibold break-all">{change.newValue}</span>
                               </div>
                             ))}
                           </div>
