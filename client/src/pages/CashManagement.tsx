@@ -498,17 +498,13 @@ export default function CashManagement() {
   const { data: buyerDuesRaw = [] } = useQuery<{ buyerName: string; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[]>({
     queryKey: ["/api/buyer-dues", discountFarmerId],
     queryFn: async () => {
-      if (!selectedFarmerDetails) return [];
-      const params = new URLSearchParams({
-        farmerName: selectedFarmerDetails.farmerName,
-        village: selectedFarmerDetails.village,
-        contactNumber: selectedFarmerDetails.contactNumber,
-      });
+      if (!discountFarmerId) return [];
+      const params = new URLSearchParams({ farmerId: discountFarmerId });
       const response = await authFetch(`/api/buyer-dues?${params}`);
       if (!response.ok) throw new Error("Failed to fetch buyer dues");
       return response.json();
     },
-    enabled: !!selectedFarmerDetails && expensePaymentMode === "discount",
+    enabled: !!discountFarmerId && expensePaymentMode === "discount",
   });
 
   // Combine Farmer Ledger self dues with buyer dues
@@ -812,7 +808,7 @@ export default function CashManagement() {
 
   // Discount mutations
   const createDiscountMutation = useMutation({
-    mutationFn: async (data: { farmerName: string; village: string; contactNumber: string; totalAmount: number; discountDate: string; remarks?: string; buyerAllocations: { buyerName: string; amount: number }[] }) => {
+    mutationFn: async (data: { farmerId: string; totalAmount: number; discountDate: string; remarks?: string; buyerAllocations: { buyerName: string; amount: number }[] }) => {
       const response = await apiRequest("POST", "/api/discounts", data);
       return response.json();
     },
@@ -1213,9 +1209,7 @@ export default function CashManagement() {
     }
 
     createDiscountMutation.mutate({
-      farmerName: selectedFarmerDetails.farmerName,
-      village: selectedFarmerDetails.village,
-      contactNumber: selectedFarmerDetails.contactNumber,
+      farmerId: discountFarmerId,
       totalAmount: totalDiscount,
       discountDate: new Date(discountDate).toISOString(),
       remarks: discountRemarks || undefined,

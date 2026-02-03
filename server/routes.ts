@@ -1993,7 +1993,8 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Farmer not found" });
       }
       
-      const { farmerName, village, contactNumber } = farmer;
+      const farmerName = farmer.name;
+      const { village, contactNumber } = farmer;
       
       const allSales = await storage.getSalesHistory(coldStorageId);
       
@@ -2379,21 +2380,29 @@ export async function registerRoutes(
     }
   });
 
-  // Get buyer dues for a specific farmer
+  // Get buyer dues for a specific farmer - now accepts farmerId
   app.get("/api/buyer-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { farmerName, village, contactNumber } = req.query;
+      const { farmerId } = req.query;
       
-      if (!farmerName || !village || !contactNumber) {
-        return res.status(400).json({ error: "farmerName, village, and contactNumber are required" });
+      if (!farmerId) {
+        return res.status(400).json({ error: "farmerId is required" });
+      }
+      
+      // Look up farmer details from farmer ledger
+      const farmerLedger = await storage.getFarmerLedger(coldStorageId);
+      const farmer = farmerLedger.farmers.find(f => f.farmerId === farmerId);
+      
+      if (!farmer) {
+        return res.status(404).json({ error: "Farmer not found" });
       }
       
       const buyers = await storage.getBuyerDuesForFarmer(
         coldStorageId,
-        farmerName as string,
-        village as string,
-        contactNumber as string
+        farmer.name,
+        farmer.village,
+        farmer.contactNumber
       );
       res.json(buyers);
     } catch (error) {
@@ -2412,11 +2421,9 @@ export async function registerRoutes(
     }
   });
 
-  // Create discount validation schema
+  // Create discount validation schema - now accepts farmerId
   const createDiscountSchema = z.object({
-    farmerName: z.string().min(1),
-    village: z.string().min(1),
-    contactNumber: z.string().min(1),
+    farmerId: z.string().min(1),
     totalAmount: z.number().positive(),
     discountDate: z.string().transform((val) => new Date(val)),
     remarks: z.string().optional(),
@@ -2426,11 +2433,19 @@ export async function registerRoutes(
     })).min(1),
   });
 
-  // Create discount
+  // Create discount - now uses farmerId to look up farmer details
   app.post("/api/discounts", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = createDiscountSchema.parse(req.body);
+      
+      // Look up farmer details from farmer ledger
+      const farmerLedger = await storage.getFarmerLedger(coldStorageId);
+      const farmer = farmerLedger.farmers.find(f => f.farmerId === validatedData.farmerId);
+      
+      if (!farmer) {
+        return res.status(404).json({ error: "Farmer not found" });
+      }
       
       // Validate that allocations sum to totalAmount
       const allocationTotal = validatedData.buyerAllocations.reduce((sum, a) => sum + a.amount, 0);
@@ -2444,9 +2459,9 @@ export async function registerRoutes(
       
       const result = await storage.createDiscountWithFIFO({
         coldStorageId,
-        farmerName: validatedData.farmerName,
-        village: validatedData.village,
-        contactNumber: validatedData.contactNumber,
+        farmerName: farmer.name,
+        village: farmer.village,
+        contactNumber: farmer.contactNumber,
         totalAmount: validatedData.totalAmount,
         discountDate: validatedData.discountDate,
         remarks: validatedData.remarks || null,
