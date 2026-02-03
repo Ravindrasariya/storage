@@ -2060,10 +2060,18 @@ export class DatabaseStorage implements IStorage {
     for (const sale of sales) {
       // Raw SQL returns snake_case - access via any cast
       const saleRow = sale as any;
+      const isSelfSale = saleRow.is_self_sale === 1;
       // CurrentDueBuyerName logic: use transferToBuyerName if not blank AND transfer is not reversed, else buyerName
       const isTransferReversed = saleRow.is_transfer_reversed === 1;
       const transferTo = isTransferReversed ? "" : (saleRow.transfer_to_buyer_name || saleRow.transferToBuyerName || "").trim();
       const buyer = (saleRow.buyer_name || saleRow.buyerName || "").trim();
+      
+      // For self-sales: only count if transferred and NOT reversed
+      // If transfer is reversed, the due goes back to farmer (not buyer), so skip it
+      if (isSelfSale && (!transferTo || isTransferReversed)) {
+        continue;
+      }
+      
       const currentDueBuyerName = transferTo || buyer;
       if (!currentDueBuyerName) continue;
       const normalizedKey = currentDueBuyerName.toLowerCase();
