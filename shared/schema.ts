@@ -341,6 +341,8 @@ export const openingReceivables = pgTable("opening_receivables", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
   farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format) - populated by sync
+  buyerLedgerId: varchar("buyer_ledger_id"), // Reference to buyer_ledger table (for cold_merchant type)
+  buyerId: text("buyer_id"), // User-friendly buyer ID (BYYYYYMMDD format) - for cold_merchant type
 });
 
 // Opening Payables - outstanding payables at start of year

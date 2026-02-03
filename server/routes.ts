@@ -2595,6 +2595,39 @@ export async function registerRoutes(
         return;
       }
 
+      // For cold_merchant type, ensure buyer exists in Buyer Ledger BEFORE creating receivable
+      // This matches the farmer pattern where we get IDs first
+      if (payerType === "cold_merchant" && buyerName) {
+        const buyerEntry = await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName });
+        
+        const receivable = await storage.createOpeningReceivable({
+          coldStorageId,
+          year,
+          payerType,
+          buyerName: buyerName || null,
+          dueAmount,
+          remarks: remarks || null,
+          // Farmer-specific fields (not used for cold_merchant)
+          farmerName: null,
+          contactNumber: null,
+          village: null,
+          tehsil: null,
+          district: null,
+          state: null,
+          // Buyer-specific fields
+          buyerLedgerId: buyerEntry.id,
+          buyerId: buyerEntry.buyerId,
+        });
+        
+        // Trigger FIFO recomputation
+        // This ensures new receivables are integrated into the 3-pass FIFO allocation
+        await storage.recomputeBuyerPayments(buyerName, coldStorageId);
+        
+        res.json(receivable);
+        return;
+      }
+
+      // For other payer types (not farmer, not cold_merchant)
       const receivable = await storage.createOpeningReceivable({
         coldStorageId,
         year,
@@ -2610,16 +2643,6 @@ export async function registerRoutes(
         district: district || null,
         state: state || null,
       });
-
-      // For cold_merchant type, ensure buyer exists in Buyer Ledger
-      // This ensures the buyer appears in Buyer Ledger with a proper buyer ID
-      if (payerType === "cold_merchant" && buyerName) {
-        await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName });
-        
-        // Trigger FIFO recomputation
-        // This ensures new receivables are integrated into the 3-pass FIFO allocation
-        await storage.recomputeBuyerPayments(buyerName, coldStorageId);
-      }
 
       res.json(receivable);
     } catch (error) {
