@@ -63,6 +63,14 @@ export default function FarmerLedger() {
     district: "",
     state: "",
   });
+  const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
+  const [pendingMergeInfo, setPendingMergeInfo] = useState<{
+    targetFarmer?: FarmerLedgerEntry;
+    lotsCount: number;
+    receivablesCount: number;
+    salesCount: number;
+    totalDues: number;
+  } | null>(null);
 
   const { data: ledgerData, isLoading } = useQuery<FarmerLedgerData>({
     queryKey: ['/api/farmer-ledger', { includeArchived: showArchived }],
@@ -87,12 +95,29 @@ export default function FarmerLedger() {
     },
   });
 
-  const updateMutation = useMutation({
+  const checkMergeMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<FarmerLedgerEntry> }) => {
-      const response = await apiRequest('PATCH', `/api/farmer-ledger/${data.id}`, data.updates);
-      return response.json() as Promise<{ merged: boolean; mergedFromId?: string }>;
+      const response = await apiRequest('POST', `/api/farmer-ledger/${data.id}/check-merge`, data.updates);
+      return response.json() as Promise<{
+        willMerge: boolean;
+        targetFarmer?: FarmerLedgerEntry;
+        lotsCount: number;
+        receivablesCount: number;
+        salesCount: number;
+        totalDues: number;
+      }>;
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: Partial<FarmerLedgerEntry>; confirmMerge?: boolean }) => {
+      const response = await apiRequest('PATCH', `/api/farmer-ledger/${data.id}`, { ...data.updates, confirmMerge: data.confirmMerge });
+      return response.json() as Promise<{ merged: boolean; mergedFromId?: string; needsConfirmation?: boolean }>;
     },
     onSuccess: (result) => {
+      if (result.needsConfirmation) {
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/farmer-ledger'] });
       if (result.merged) {
         toast({ title: t("mergedFrom") + " " + result.mergedFromId });
@@ -100,6 +125,8 @@ export default function FarmerLedger() {
         toast({ title: t("saved") });
       }
       setEditingFarmer(null);
+      setMergeConfirmOpen(false);
+      setPendingMergeInfo(null);
     },
     onError: () => {
       toast({ title: t("saveFailed"), variant: "destructive" });
@@ -183,12 +210,45 @@ export default function FarmerLedger() {
     setEditingFarmer(farmer);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
+    if (!editingFarmer) return;
+    
+    try {
+      // First check if this would cause a merge
+      const mergeCheck = await checkMergeMutation.mutateAsync({
+        id: editingFarmer.id,
+        updates: editFormData,
+      });
+      
+      if (mergeCheck.willMerge) {
+        // Show confirmation dialog
+        setPendingMergeInfo(mergeCheck);
+        setMergeConfirmOpen(true);
+        return;
+      }
+      
+      // No merge needed, proceed with update
+      updateMutation.mutate({
+        id: editingFarmer.id,
+        updates: editFormData,
+      });
+    } catch {
+      toast({ title: t("saveFailed"), variant: "destructive" });
+    }
+  };
+
+  const handleConfirmMerge = () => {
     if (!editingFarmer) return;
     updateMutation.mutate({
       id: editingFarmer.id,
       updates: editFormData,
+      confirmMerge: true,
     });
+  };
+
+  const handleCancelMerge = () => {
+    setMergeConfirmOpen(false);
+    setPendingMergeInfo(null);
   };
 
   const summary = ledgerData?.summary || {
@@ -858,10 +918,68 @@ export default function FarmerLedger() {
               </Button>
               <Button 
                 onClick={handleSaveEdit} 
-                disabled={updateMutation.isPending}
+                disabled={updateMutation.isPending || checkMergeMutation.isPending}
                 data-testid="button-save-edit"
               >
-                {updateMutation.isPending ? t("saving") : t("save")}
+                {(updateMutation.isPending || checkMergeMutation.isPending) ? t("saving") : t("save")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Merge Confirmation Dialog */}
+      <Dialog open={mergeConfirmOpen} onOpenChange={(open) => !open && handleCancelMerge()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("mergeConfirmTitle")}</DialogTitle>
+            <DialogDescription>{t("mergeConfirmMessage")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {pendingMergeInfo?.targetFarmer && (
+              <div className="p-3 bg-muted rounded-md space-y-2">
+                <div className="font-medium">
+                  {t("existingFarmer")}: {pendingMergeInfo.targetFarmer.farmerId}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {pendingMergeInfo.targetFarmer.name} - {pendingMergeInfo.targetFarmer.village}
+                </div>
+              </div>
+            )}
+            
+            <p className="text-sm">{t("mergeConfirmDetails")}</p>
+            
+            {pendingMergeInfo && (pendingMergeInfo.lotsCount > 0 || pendingMergeInfo.receivablesCount > 0 || pendingMergeInfo.salesCount > 0) && (
+              <div className="p-3 bg-muted/50 rounded-md space-y-1 text-sm">
+                {pendingMergeInfo.lotsCount > 0 && (
+                  <div>{t("lotsTransferred")}: {pendingMergeInfo.lotsCount}</div>
+                )}
+                {pendingMergeInfo.receivablesCount > 0 && (
+                  <div>{t("receivablesTransferred")}: {pendingMergeInfo.receivablesCount}</div>
+                )}
+                {pendingMergeInfo.salesCount > 0 && (
+                  <div>{t("salesTransferred")}: {pendingMergeInfo.salesCount}</div>
+                )}
+                {pendingMergeInfo.totalDues > 0 && (
+                  <div className="font-medium mt-2">
+                    {t("combinedDues")}: ₹{pendingMergeInfo.totalDues.toLocaleString('en-IN')}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <p className="font-medium">{t("mergeConfirmAsk")}</p>
+            
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={handleCancelMerge} data-testid="button-cancel-merge">
+                {t("no")}
+              </Button>
+              <Button 
+                onClick={handleConfirmMerge}
+                disabled={updateMutation.isPending}
+                data-testid="button-confirm-merge"
+              >
+                {updateMutation.isPending ? t("saving") : t("yes")}
               </Button>
             </div>
           </div>

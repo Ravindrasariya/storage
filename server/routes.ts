@@ -2825,13 +2825,26 @@ export async function registerRoutes(
     }
   });
 
+  // Check if farmer update would cause a merge
+  app.post("/api/farmer-ledger/:id/check-merge", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const result = await storage.checkPotentialMerge(id, updates);
+      res.json(result);
+    } catch (error) {
+      console.error("Error checking potential merge:", error);
+      res.status(500).json({ error: "Failed to check potential merge" });
+    }
+  });
+
   // Update farmer details
   app.patch("/api/farmer-ledger/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      const updates = req.body;
+      const { confirmMerge, ...updates } = req.body;
       const modifiedBy = req.authContext?.userName || 'system';
-      const result = await storage.updateFarmerLedger(id, updates, modifiedBy);
+      const result = await storage.updateFarmerLedger(id, updates, modifiedBy, confirmMerge === true);
       res.json(result);
     } catch (error) {
       console.error("Error updating farmer:", error);

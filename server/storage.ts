@@ -332,7 +332,15 @@ export interface IStorage {
   }>;
   syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number; lotsLinked: number; receivablesLinked: number }>;
   generateFarmerId(coldStorageId: string): Promise<string>;
-  updateFarmerLedger(id: string, updates: Partial<FarmerLedgerEntry>, modifiedBy: string): Promise<{ farmer: FarmerLedgerEntry | undefined; merged: boolean; mergedFromId?: string }>;
+  checkPotentialMerge(id: string, updates: Partial<FarmerLedgerEntry>): Promise<{
+    willMerge: boolean;
+    targetFarmer?: FarmerLedgerEntry;
+    lotsCount: number;
+    receivablesCount: number;
+    salesCount: number;
+    totalDues: number;
+  }>;
+  updateFarmerLedger(id: string, updates: Partial<FarmerLedgerEntry>, modifiedBy: string, confirmMerge?: boolean): Promise<{ farmer: FarmerLedgerEntry | undefined; merged: boolean; mergedFromId?: string; needsConfirmation?: boolean }>;
   archiveFarmerLedger(id: string, modifiedBy: string): Promise<boolean>;
   reinstateFarmerLedger(id: string, modifiedBy: string): Promise<boolean>;
   toggleFarmerFlag(id: string, modifiedBy: string): Promise<FarmerLedgerEntry | undefined>;
@@ -5761,12 +5769,96 @@ export class DatabaseStorage implements IStorage {
     return { farmers: farmersWithDues, summary };
   }
 
+  // Check if an edit would result in a merge
+  async checkPotentialMerge(id: string, updates: Partial<FarmerLedgerEntry>): Promise<{
+    willMerge: boolean;
+    targetFarmer?: FarmerLedgerEntry;
+    lotsCount: number;
+    receivablesCount: number;
+    salesCount: number;
+    totalDues: number;
+  }> {
+    const [farmer] = await db.select()
+      .from(farmerLedger)
+      .where(eq(farmerLedger.id, id));
+    
+    if (!farmer) {
+      return { willMerge: false, lotsCount: 0, receivablesCount: 0, salesCount: 0, totalDues: 0 };
+    }
+    
+    const newName = updates.name || farmer.name;
+    const newContact = updates.contactNumber || farmer.contactNumber;
+    const newVillage = updates.village || farmer.village;
+    const newKey = this.getFarmerCompositeKey(newName, newContact, newVillage);
+    const oldKey = this.getFarmerCompositeKey(farmer.name, farmer.contactNumber, farmer.village);
+    
+    if (newKey === oldKey) {
+      return { willMerge: false, lotsCount: 0, receivablesCount: 0, salesCount: 0, totalDues: 0 };
+    }
+    
+    const existing = await db.select()
+      .from(farmerLedger)
+      .where(and(
+        eq(farmerLedger.coldStorageId, farmer.coldStorageId),
+        sql`LOWER(TRIM(${farmerLedger.name})) = ${newName.trim().toLowerCase()}`,
+        sql`TRIM(${farmerLedger.contactNumber}) = ${newContact.trim()}`,
+        sql`LOWER(TRIM(${farmerLedger.village})) = ${newVillage.trim().toLowerCase()}`,
+        sql`${farmerLedger.id} != ${id}`
+      ));
+    
+    if (existing.length === 0) {
+      return { willMerge: false, lotsCount: 0, receivablesCount: 0, salesCount: 0, totalDues: 0 };
+    }
+    
+    const existingFarmer = existing[0];
+    
+    // Determine which one will be merged (higher farmerId gets merged into lower)
+    const mergedId = farmer.farmerId < existingFarmer.farmerId ? existingFarmer.id : farmer.id;
+    const targetFarmer = farmer.farmerId < existingFarmer.farmerId ? farmer : existingFarmer;
+    
+    // Count records and dues from the farmer that will be merged
+    const mergedLots = await db.select()
+      .from(lots)
+      .where(eq(lots.farmerLedgerId, mergedId));
+    
+    const mergedReceivables = await db.select()
+      .from(openingReceivables)
+      .where(eq(openingReceivables.farmerLedgerId, mergedId));
+    
+    const mergedSales = await db.select()
+      .from(salesHistory)
+      .where(eq(salesHistory.farmerLedgerId, mergedId));
+    
+    let totalDues = 0;
+    for (const lot of mergedLots) {
+      totalDues += lot.totalDueCharge || 0;
+    }
+    for (const rec of mergedReceivables) {
+      totalDues += rec.dueAmount || 0;
+    }
+    for (const sale of mergedSales) {
+      if (sale.isSelfSale) {
+        totalDues += sale.dueAmount || 0;
+      }
+    }
+    
+    return {
+      willMerge: true,
+      targetFarmer,
+      lotsCount: mergedLots.length,
+      receivablesCount: mergedReceivables.length,
+      salesCount: mergedSales.length,
+      totalDues,
+    };
+  }
+
   // Update farmer in ledger with merge handling
   async updateFarmerLedger(
     id: string,
     updates: Partial<FarmerLedgerEntry>,
-    modifiedBy: string
-  ): Promise<{ farmer: FarmerLedgerEntry | undefined; merged: boolean; mergedFromId?: string }> {
+    modifiedBy: string,
+    confirmMerge: boolean = false
+  ): Promise<{ farmer: FarmerLedgerEntry | undefined; merged: boolean; mergedFromId?: string; needsConfirmation?: boolean }> {
     // Get the farmer being updated
     const [farmer] = await db.select()
       .from(farmerLedger)
@@ -5796,7 +5888,13 @@ export class DatabaseStorage implements IStorage {
         ));
       
       if (existing.length > 0) {
-        // Merge needed - merge this farmer into the existing one with lower ID
+        // Merge would be needed - check if user confirmed
+        if (!confirmMerge) {
+          // Return that confirmation is needed - don't proceed with merge
+          return { farmer: undefined, merged: false, needsConfirmation: true };
+        }
+        
+        // Merge confirmed - merge this farmer into the existing one with lower ID
         const existingFarmer = existing[0];
         
         // Determine which one survives (lower farmerId number)
