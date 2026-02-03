@@ -1145,6 +1145,8 @@ export async function registerRoutes(
         otherDeduction: lot.otherDeduction || 0,
         // Self sale flag (farmer buying own produce)
         isSelfSale: isSelfSale ? 1 : 0,
+        // Farmer ledger reference (copy from lot)
+        farmerLedgerId: lot.farmerLedgerId || null,
       });
 
       const updatedLot = await storage.getLot(req.params.id);

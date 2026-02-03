@@ -192,6 +192,8 @@ export const salesHistory = pgTable("sales_history", {
   // Transfer reversal tracking
   isTransferReversed: integer("is_transfer_reversed").default(0), // 0 = active transfer, 1 = reversed
   transferReversedAt: timestamp("transfer_reversed_at"), // When the transfer was reversed
+  // Farmer ledger reference (for linking to farmer ledger)
+  farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
 });
 
 // Edit history for tracking changes

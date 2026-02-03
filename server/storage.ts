@@ -1487,6 +1487,8 @@ export class DatabaseStorage implements IStorage {
       advanceDeduction: lot.advanceDeduction || 0,
       freightDeduction: lot.freightDeduction || 0,
       otherDeduction: lot.otherDeduction || 0,
+      // Farmer ledger reference (copy from lot)
+      farmerLedgerId: lot.farmerLedgerId || null,
     });
 
     return updatedLot;
