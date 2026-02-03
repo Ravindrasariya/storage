@@ -543,7 +543,15 @@ export async function registerRoutes(
   app.get("/api/buyers/lookup", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const buyers = await storage.getBuyerRecords(coldStorageId);
+      const result = await storage.getBuyerLedger(coldStorageId, false);
+      const buyers = result.buyers.map(b => ({
+        buyerName: b.buyerName,
+        isSelfSale: false,
+        id: b.id,
+        buyerId: b.buyerId,
+        address: b.address,
+        contactNumber: b.contactNumber,
+      }));
       res.json(buyers);
     } catch (error) {
       console.error("Buyer lookup error:", error);
@@ -3009,25 +3017,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching buyer history:", error);
       res.status(500).json({ error: "Failed to fetch buyer history" });
-    }
-  });
-
-  // Get buyers for dropdown (lookup)
-  app.get("/api/buyers/lookup", requireAuth, async (req: AuthenticatedRequest, res) => {
-    try {
-      const coldStorageId = getColdStorageId(req);
-      const result = await storage.getBuyerLedger(coldStorageId, false); // exclude archived
-      const buyers = result.buyers.map(b => ({
-        id: b.id,
-        buyerId: b.buyerId,
-        buyerName: b.buyerName,
-        address: b.address,
-        contactNumber: b.contactNumber,
-      }));
-      res.json(buyers);
-    } catch (error) {
-      console.error("Error fetching buyers for lookup:", error);
-      res.status(500).json({ error: "Failed to fetch buyers" });
     }
   });
 
