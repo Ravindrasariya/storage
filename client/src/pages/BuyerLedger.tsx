@@ -580,86 +580,94 @@ export default function BuyerLedger() {
             </ScrollArea>
 
             <div className="hidden md:flex flex-col flex-1 overflow-hidden border rounded-lg">
-              <div className="grid grid-cols-[90px_minmax(120px,1fr)_100px_100px_110px_100px_100px_100px_80px] gap-2 p-2 bg-muted/50 text-sm font-bold border-b">
-                <SortButton field="buyerId" label={t("buyerId")} />
-                <SortButton field="buyerName" label={t("buyerName")} />
-                <div className="flex items-center font-bold">{t("address")}</div>
-                <div className="flex items-center font-bold">{t("contact")}</div>
-                <SortButton field="pyReceivables" label={t("pyReceivables")} align="center" colorClass="text-blue-600 dark:text-blue-400" />
-                <SortButton field="salesDue" label={t("salesDue")} align="center" colorClass="text-green-600 dark:text-green-400" />
-                <SortButton field="dueTransferIn" label={t("transferIn")} align="center" colorClass="text-purple-600 dark:text-purple-400" />
-                <SortButton field="netDue" label={t("netDue")} align="center" colorClass="text-red-600 dark:text-red-500" />
-                <div className="flex items-center justify-center font-bold">{t("actions")}</div>
+              <div className="overflow-x-auto">
+                <div className="min-w-[900px]">
+                  <div className="grid grid-cols-[32px_90px_minmax(120px,1fr)_100px_100px_100px_90px_100px_100px_70px] gap-2 p-2 bg-muted/50 text-sm font-bold border-b">
+                    <div></div>
+                    <SortButton field="buyerId" label={t("buyerId")} />
+                    <SortButton field="buyerName" label={t("buyerName")} />
+                    <div className="flex items-center font-bold">{t("address")}</div>
+                    <div className="flex items-center font-bold">{t("contact")}</div>
+                    <SortButton field="pyReceivables" label={t("pyReceivables")} align="center" colorClass="text-blue-600 dark:text-blue-400" />
+                    <SortButton field="salesDue" label={t("salesDue")} align="center" colorClass="text-green-600 dark:text-green-400" />
+                    <SortButton field="dueTransferIn" label={t("transferIn")} align="center" colorClass="text-purple-600 dark:text-purple-400" />
+                    <SortButton field="netDue" label={t("netDue")} align="center" colorClass="text-red-600 dark:text-red-500" />
+                    <div className="flex items-center justify-center font-bold">{t("actions")}</div>
+                  </div>
+                </div>
               </div>
 
               <ScrollArea className="flex-1">
-                <div>
-                  {filteredBuyers.active.map(buyer => (
-                    <div 
-                      key={buyer.id}
-                      className="grid grid-cols-[90px_minmax(120px,1fr)_100px_100px_110px_100px_100px_100px_80px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
-                      data-testid={`row-buyer-${buyer.id}`}
-                    >
-                      <div className="flex items-center gap-1">
-                        <span className="font-mono text-xs text-muted-foreground truncate">{buyer.buyerId}</span>
-                        {buyer.isFlagged === 1 && (
-                          <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3">!</Badge>
-                        )}
-                      </div>
-                      <div className="font-medium truncate">{buyer.buyerName}</div>
-                      <div className="text-muted-foreground truncate text-xs">{buyer.address || '-'}</div>
-                      <div className="text-muted-foreground truncate text-xs">{buyer.contactNumber || '-'}</div>
-                      <div className={`text-center font-medium text-blue-600 dark:text-blue-400`}>{formatDueValue(buyer.pyReceivables)}</div>
-                      <div className={`text-center font-medium text-green-600 dark:text-green-400`}>{formatDueValue(buyer.salesDue)}</div>
-                      <div className={`text-center font-medium ${getTransferInColor(buyer.dueTransferIn)}`}>{formatDueValue(buyer.dueTransferIn)}</div>
-                      <div className={`text-center font-medium text-red-600 dark:text-red-500`}>{formatDueValue(buyer.netDue)}</div>
-                      <div className="flex items-center justify-center gap-1">
+                <div className="overflow-x-auto">
+                  <div className="min-w-[900px]">
+                    {filteredBuyers.active.map(buyer => (
+                      <div 
+                        key={buyer.id}
+                        className="grid grid-cols-[32px_90px_minmax(120px,1fr)_100px_100px_100px_90px_100px_100px_70px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
+                        data-testid={`row-buyer-${buyer.id}`}
+                      >
                         <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => handleEditClick(buyer)} data-testid={`button-edit-${buyer.id}`}>
                           <Pencil className="w-3 h-3" />
                         </Button>
-                        <Switch
-                          checked={buyer.isFlagged === 1}
-                          onCheckedChange={() => flagMutation.mutate(buyer.id)}
-                          className="scale-75"
-                          data-testid={`switch-flag-${buyer.id}`}
-                        />
-                        {canEdit && (
-                          <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => archiveMutation.mutate(buyer.id)} data-testid={`button-archive-${buyer.id}`}>
-                            <Archive className="w-3 h-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  {showArchived && filteredBuyers.archived.length > 0 && (
-                    <>
-                      <div className="p-2 bg-muted/30 text-sm font-medium text-muted-foreground">{t("archivedBuyers")}</div>
-                      {filteredBuyers.archived.map(buyer => (
-                        <div 
-                          key={buyer.id}
-                          className="grid grid-cols-[90px_minmax(120px,1fr)_100px_100px_110px_100px_100px_100px_80px] gap-2 p-2 border-b items-center text-sm opacity-60"
-                          data-testid={`row-buyer-archived-${buyer.id}`}
-                        >
-                          <div className="font-mono text-xs text-muted-foreground truncate">{buyer.buyerId}</div>
-                          <div className="font-medium truncate">{buyer.buyerName}</div>
-                          <div className="text-muted-foreground truncate text-xs">{buyer.address || '-'}</div>
-                          <div className="text-muted-foreground truncate text-xs">{buyer.contactNumber || '-'}</div>
-                          <div className="text-center text-muted-foreground">-</div>
-                          <div className="text-center text-muted-foreground">-</div>
-                          <div className="text-center text-muted-foreground">-</div>
-                          <div className="text-center text-muted-foreground">-</div>
-                          <div className="flex items-center justify-center">
-                            {canEdit && (
-                              <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => reinstateMutation.mutate(buyer.id)}>
-                                <RotateCcw className="w-3 h-3" />
-                              </Button>
-                            )}
-                          </div>
+                        <div className="flex items-center gap-1">
+                          <span className="font-mono text-xs text-muted-foreground truncate">{buyer.buyerId}</span>
+                          {buyer.isFlagged === 1 && (
+                            <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3">!</Badge>
+                          )}
                         </div>
-                      ))}
-                    </>
-                  )}
+                        <div className="font-medium truncate">{buyer.buyerName}</div>
+                        <div className="text-muted-foreground truncate text-xs">{buyer.address || '-'}</div>
+                        <div className="text-muted-foreground truncate text-xs">{buyer.contactNumber || '-'}</div>
+                        <div className={`text-center font-medium text-blue-600 dark:text-blue-400`}>{formatDueValue(buyer.pyReceivables)}</div>
+                        <div className={`text-center font-medium text-green-600 dark:text-green-400`}>{formatDueValue(buyer.salesDue)}</div>
+                        <div className={`text-center font-medium ${getTransferInColor(buyer.dueTransferIn)}`}>{formatDueValue(buyer.dueTransferIn)}</div>
+                        <div className={`text-center font-medium text-red-600 dark:text-red-500`}>{formatDueValue(buyer.netDue)}</div>
+                        <div className="flex items-center justify-center gap-1">
+                          <Switch
+                            checked={buyer.isFlagged === 1}
+                            onCheckedChange={() => flagMutation.mutate(buyer.id)}
+                            className="scale-75"
+                            data-testid={`switch-flag-${buyer.id}`}
+                          />
+                          {canEdit && (
+                            <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => archiveMutation.mutate(buyer.id)} data-testid={`button-archive-${buyer.id}`}>
+                              <Archive className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {showArchived && filteredBuyers.archived.length > 0 && (
+                      <>
+                        <div className="p-2 bg-muted/30 text-sm font-medium text-muted-foreground">{t("archivedBuyers")}</div>
+                        {filteredBuyers.archived.map(buyer => (
+                          <div 
+                            key={buyer.id}
+                            className="grid grid-cols-[32px_90px_minmax(120px,1fr)_100px_100px_100px_90px_100px_100px_70px] gap-2 p-2 border-b items-center text-sm opacity-60"
+                            data-testid={`row-buyer-archived-${buyer.id}`}
+                          >
+                            <div></div>
+                            <div className="font-mono text-xs text-muted-foreground truncate">{buyer.buyerId}</div>
+                            <div className="font-medium truncate">{buyer.buyerName}</div>
+                            <div className="text-muted-foreground truncate text-xs">{buyer.address || '-'}</div>
+                            <div className="text-muted-foreground truncate text-xs">{buyer.contactNumber || '-'}</div>
+                            <div className="text-center text-muted-foreground">-</div>
+                            <div className="text-center text-muted-foreground">-</div>
+                            <div className="text-center text-muted-foreground">-</div>
+                            <div className="text-center text-muted-foreground">-</div>
+                            <div className="flex items-center justify-center">
+                              {canEdit && (
+                                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => reinstateMutation.mutate(buyer.id)}>
+                                  <RotateCcw className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
                 </div>
               </ScrollArea>
             </div>
