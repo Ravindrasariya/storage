@@ -332,17 +332,17 @@ export default function BuyerLedger() {
     doc.save(`buyer-ledger-${format(new Date(), 'yyyyMMdd')}.pdf`);
   }, [filteredBuyers, showArchived, coldStorage?.name, summary, t, toast]);
 
-  const SortButton = ({ field, label }: { field: SortField; label: string }) => (
+  const SortButton = ({ field, label, align, colorClass }: { field: SortField; label: string; align?: 'left' | 'right'; colorClass?: string }) => (
     <Button
       variant="ghost"
       size="sm"
-      className="font-medium"
+      className={`font-bold gap-1 ${align === 'right' ? 'justify-end' : 'justify-start'} ${colorClass || ''}`}
       onClick={() => handleSort(field)}
       data-testid={`button-sort-${field}`}
     >
       {label}
       {sortField === field && (
-        <ArrowUpDown className="ml-1 h-3 w-3" />
+        <ArrowUpDown className="h-3 w-3" />
       )}
     </Button>
   );
@@ -551,16 +551,16 @@ export default function BuyerLedger() {
             </ScrollArea>
 
             <div className="hidden md:flex flex-col flex-1 overflow-hidden border rounded-lg">
-              <div className="grid grid-cols-[100px_1fr_150px_120px_100px_100px_100px_100px_80px] gap-2 p-2 bg-muted/50 text-xs font-medium border-b">
+              <div className="grid grid-cols-[100px_1fr_140px_120px_120px_100px_110px_100px_80px] gap-2 p-2 bg-muted/50 text-sm font-bold border-b">
                 <SortButton field="buyerId" label={t("buyerId")} />
                 <SortButton field="buyerName" label={t("buyerName")} />
-                <div className="flex items-center px-2">{t("address")}</div>
-                <div className="flex items-center px-2">{t("contact")}</div>
-                <SortButton field="pyReceivables" label={t("pyRec")} />
-                <SortButton field="salesDue" label={t("salesDue")} />
-                <SortButton field="dueTransferIn" label={t("trfIn")} />
-                <SortButton field="netDue" label={t("netDue")} />
-                <div className="flex items-center justify-center">{t("actions")}</div>
+                <div className="flex items-center font-bold">{t("address")}</div>
+                <div className="flex items-center font-bold">{t("contact")}</div>
+                <SortButton field="pyReceivables" label={t("pyReceivables")} align="right" colorClass="text-blue-600 dark:text-blue-400" />
+                <SortButton field="salesDue" label={t("salesDue")} align="right" colorClass="text-green-600 dark:text-green-400" />
+                <SortButton field="dueTransferIn" label={t("transferIn")} align="right" colorClass="text-purple-600 dark:text-purple-400" />
+                <SortButton field="netDue" label={t("netDue")} align="right" colorClass="text-red-600 dark:text-red-500" />
+                <div className="flex items-center justify-center font-bold">{t("actions")}</div>
               </div>
 
               <ScrollArea className="flex-1">
@@ -568,7 +568,7 @@ export default function BuyerLedger() {
                   {filteredBuyers.active.map(buyer => (
                     <div 
                       key={buyer.id}
-                      className="grid grid-cols-[100px_1fr_150px_120px_100px_100px_100px_100px_80px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
+                      className="grid grid-cols-[100px_1fr_140px_120px_120px_100px_110px_100px_80px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
                       data-testid={`row-buyer-${buyer.id}`}
                     >
                       <div className="flex items-center gap-1">
@@ -609,7 +609,7 @@ export default function BuyerLedger() {
                       {filteredBuyers.archived.map(buyer => (
                         <div 
                           key={buyer.id}
-                          className="grid grid-cols-[100px_1fr_150px_120px_100px_100px_100px_100px_80px] gap-2 p-2 border-b items-center text-sm opacity-60"
+                          className="grid grid-cols-[100px_1fr_140px_120px_120px_100px_110px_100px_80px] gap-2 p-2 border-b items-center text-sm opacity-60"
                           data-testid={`row-buyer-archived-${buyer.id}`}
                         >
                           <div className="font-mono text-xs text-muted-foreground truncate">{buyer.buyerId}</div>
