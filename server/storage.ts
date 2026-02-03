@@ -5560,26 +5560,8 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    // Backfill: Update sales_history with null farmerId
-    const salesToLink = await db.select()
-      .from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        isNull(salesHistory.farmerId)
-      ));
-    
-    for (const sale of salesToLink) {
-      const key = this.getFarmerCompositeKey(sale.farmerName, sale.contactNumber, sale.village);
-      const farmerEntry = existingKeys.get(key);
-      if (farmerEntry) {
-        await db.update(salesHistory)
-          .set({ 
-            farmerId: farmerEntry.farmerId,
-            farmerLedgerId: sale.farmerLedgerId || farmerEntry.id
-          })
-          .where(eq(salesHistory.id, sale.id));
-      }
-    }
+    // Note: sales_history backfill removed - new sales get farmerId at creation time
+    // This avoids overhead as sales table grows
     
     return { added, updated, lotsLinked, receivablesLinked };
   }
