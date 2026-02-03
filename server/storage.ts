@@ -4960,6 +4960,7 @@ export class DatabaseStorage implements IStorage {
     
     // Transfer the entire due amount to the new buyer
     // Set due_amount to 0 and update transferToBuyerName
+    // Reset is_transfer_reversed to 0 in case this sale was previously transferred and reversed
     await db.execute(sql`
       UPDATE sales_history
       SET 
@@ -4967,7 +4968,9 @@ export class DatabaseStorage implements IStorage {
         transfer_to_buyer_name = ${data.toBuyerName},
         transfer_date = ${data.transferDate},
         transfer_remarks = ${data.remarks || null},
-        clearance_type = 'transfer'
+        clearance_type = 'transfer',
+        is_transfer_reversed = 0,
+        transfer_reversed_at = NULL
       WHERE id = ${data.saleId}
     `);
 
