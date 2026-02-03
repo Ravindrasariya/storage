@@ -29,6 +29,8 @@ export const coldStorages = pgTable("cold_storages", {
   startingWaferLotNumber: integer("starting_wafer_lot_number").notNull().default(1), // Starting lot number for wafer (set at year start)
   startingRationSeedLotNumber: integer("starting_ration_seed_lot_number").notNull().default(1), // Starting lot number for ration/seed (set at year start)
   status: text("status").notNull().default("active"), // 'active', 'inactive', 'archived'
+  // Farmer ID sequence counters (one per date, stored as JSON: { "YYYYMMDD": lastUsedNumber })
+  farmerIdSequences: text("farmer_id_sequences").default("{}"), // High water mark for farmer IDs - never reused even after deletion
 });
 
 // Cold Storage Users - users who can access a cold storage
@@ -419,7 +421,7 @@ export const bankAccounts = pgTable("bank_accounts", {
 export const farmerLedger = pgTable("farmer_ledger", {
   id: varchar("id").primaryKey(),
   coldStorageId: varchar("cold_storage_id").notNull(),
-  farmerId: text("farmer_id").notNull(), // Format: FMYYYYMMDD1, FMYYYYMMDD2, etc.
+  farmerId: text("farmer_id").notNull().unique(), // Format: FMYYYYMMDD1, FMYYYYMMDD2, etc. Unique constraint prevents duplicate IDs
   name: text("name").notNull(),
   contactNumber: text("contact_number").notNull(),
   village: text("village").notNull(),

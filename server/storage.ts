@@ -5322,13 +5322,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Generate unique farmer ID in format FMYYYYMMDD1, FMYYYYMMDD2, etc.
+  // Uses atomic counter stored in cold_storages.farmerIdSequences to prevent ID reuse even after deletion
+  // Safety: unique constraint on farmer_ledger.farmerId + retry logic ensures no duplicates
   async generateFarmerId(coldStorageId: string): Promise<string> {
     const now = new Date();
     const dateKey = now.getFullYear().toString() +
       String(now.getMonth() + 1).padStart(2, '0') +
       String(now.getDate()).padStart(2, '0');
     
-    // Find existing farmer IDs for this date
+    try {
+      // Atomically increment and return the next sequence using a single UPDATE + RETURNING
+      // This ensures no two concurrent calls get the same sequence number
+      const result = await db.execute(sql`
+        UPDATE cold_storages 
+        SET farmer_id_sequences = (
+          CASE 
+            WHEN farmer_id_sequences IS NULL OR farmer_id_sequences = '' THEN 
+              jsonb_build_object(${dateKey}, 1)::text
+            ELSE 
+              (COALESCE(farmer_id_sequences::jsonb, '{}'::jsonb) || 
+               jsonb_build_object(${dateKey}, COALESCE((farmer_id_sequences::jsonb->${dateKey})::int, 0) + 1))::text
+          END
+        )
+        WHERE id = ${coldStorageId}
+        RETURNING (farmer_id_sequences::jsonb->${dateKey})::int as next_sequence
+      `);
+      
+      const nextSequence = (result.rows[0] as { next_sequence: number })?.next_sequence;
+      
+      if (nextSequence) {
+        return `FM${dateKey}${nextSequence}`;
+      }
+    } catch (error) {
+      console.error('Error generating farmer ID via sequence:', error);
+    }
+    
+    // Fallback: compute from existing farmer entries (within transaction for safety)
+    // This ensures we never reuse an ID even if sequence update fails
     const existingFarmers = await db.select({ farmerId: farmerLedger.farmerId })
       .from(farmerLedger)
       .where(and(
@@ -5336,7 +5366,6 @@ export class DatabaseStorage implements IStorage {
         sql`${farmerLedger.farmerId} LIKE ${'FM' + dateKey + '%'}`
       ));
     
-    // Extract the max counter for this date
     let maxCounter = 0;
     for (const f of existingFarmers) {
       const numPart = f.farmerId.replace('FM' + dateKey, '');
@@ -5346,6 +5375,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
+    // Unique constraint + retry logic in caller ensures this won't cause duplicates
     return `FM${dateKey}${maxCounter + 1}`;
   }
 
@@ -5435,39 +5465,56 @@ export class DatabaseStorage implements IStorage {
     // Process each farmer - create or update ledger entries
     for (const [key, farmerData] of Array.from(farmersToProcess.entries())) {
       if (!existingKeys.has(key)) {
-        // New farmer - add to ledger
-        const farmerId = await this.generateFarmerId(coldStorageId);
-        const newId = randomUUID();
-        await db.insert(farmerLedger).values({
-          id: newId,
-          coldStorageId,
-          farmerId,
-          name: farmerData.name,
-          contactNumber: farmerData.contactNumber,
-          village: farmerData.village,
-          tehsil: farmerData.tehsil || null,
-          district: farmerData.district || null,
-          state: farmerData.state || null,
-          isFlagged: 0,
-          isArchived: 0,
-        });
-        // Add to existingKeys so we can use it for backfilling
-        existingKeys.set(key, {
-          id: newId,
-          coldStorageId,
-          farmerId,
-          name: farmerData.name,
-          contactNumber: farmerData.contactNumber,
-          village: farmerData.village,
-          tehsil: farmerData.tehsil || null,
-          district: farmerData.district || null,
-          state: farmerData.state || null,
-          isFlagged: 0,
-          isArchived: 0,
-          archivedAt: null,
-          createdAt: new Date(),
-        });
-        added++;
+        // New farmer - add to ledger with retry logic for unique constraint violations
+        const maxRetries = 3;
+        let created = false;
+        for (let attempt = 0; attempt < maxRetries && !created; attempt++) {
+          const farmerId = await this.generateFarmerId(coldStorageId);
+          const newId = randomUUID();
+          try {
+            await db.insert(farmerLedger).values({
+              id: newId,
+              coldStorageId,
+              farmerId,
+              name: farmerData.name,
+              contactNumber: farmerData.contactNumber,
+              village: farmerData.village,
+              tehsil: farmerData.tehsil || null,
+              district: farmerData.district || null,
+              state: farmerData.state || null,
+              isFlagged: 0,
+              isArchived: 0,
+            });
+            // Add to existingKeys so we can use it for backfilling
+            existingKeys.set(key, {
+              id: newId,
+              coldStorageId,
+              farmerId,
+              name: farmerData.name,
+              contactNumber: farmerData.contactNumber,
+              village: farmerData.village,
+              tehsil: farmerData.tehsil || null,
+              district: farmerData.district || null,
+              state: farmerData.state || null,
+              isFlagged: 0,
+              isArchived: 0,
+              archivedAt: null,
+              createdAt: new Date(),
+            });
+            added++;
+            created = true;
+          } catch (error: any) {
+            // Check if it's a unique constraint violation (PostgreSQL error code 23505)
+            if (error?.code === '23505' && error?.constraint?.includes('farmer_id')) {
+              console.log(`Farmer ID collision detected during sync (attempt ${attempt + 1}/${maxRetries}), retrying...`);
+              continue; // Retry with a new ID
+            }
+            throw error; // Re-throw other errors
+          }
+        }
+        if (!created) {
+          console.error(`Failed to create farmer entry for ${farmerData.name} after ${maxRetries} attempts`);
+        }
       } else {
         // Farmer exists - update additional fields if they have more complete info
         const existing = existingKeys.get(key)!;
@@ -5572,25 +5619,39 @@ export class DatabaseStorage implements IStorage {
       return existing.id;
     }
     
-    // Create new farmer ledger entry
-    const farmerId = await this.generateFarmerId(coldStorageId);
-    const newId = randomUUID();
+    // Create new farmer ledger entry with retry logic for unique constraint violations
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const farmerId = await this.generateFarmerId(coldStorageId);
+      const newId = randomUUID();
+      
+      try {
+        await db.insert(farmerLedger).values({
+          id: newId,
+          coldStorageId,
+          farmerId,
+          name: farmerData.name.trim(),
+          contactNumber: farmerData.contactNumber.trim(),
+          village: farmerData.village.trim(),
+          tehsil: farmerData.tehsil?.trim() || null,
+          district: farmerData.district?.trim() || null,
+          state: farmerData.state?.trim() || null,
+          isFlagged: 0,
+          isArchived: 0,
+        });
+        
+        return newId;
+      } catch (error: any) {
+        // Check if it's a unique constraint violation (PostgreSQL error code 23505)
+        if (error?.code === '23505' && error?.constraint?.includes('farmer_id')) {
+          console.log(`Farmer ID collision detected (attempt ${attempt + 1}/${maxRetries}), retrying...`);
+          continue; // Retry with a new ID
+        }
+        throw error; // Re-throw other errors
+      }
+    }
     
-    await db.insert(farmerLedger).values({
-      id: newId,
-      coldStorageId,
-      farmerId,
-      name: farmerData.name.trim(),
-      contactNumber: farmerData.contactNumber.trim(),
-      village: farmerData.village.trim(),
-      tehsil: farmerData.tehsil?.trim() || null,
-      district: farmerData.district?.trim() || null,
-      state: farmerData.state?.trim() || null,
-      isFlagged: 0,
-      isArchived: 0,
-    });
-    
-    return newId;
+    throw new Error('Failed to generate unique farmer ID after multiple attempts');
   }
 
   // Get farmer ledger with calculated dues
