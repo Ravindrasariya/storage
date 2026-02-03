@@ -64,6 +64,7 @@ const translations: Translations = {
   selectState: { en: "Select state...", hi: "राज्य चुनें..." },
   contactNumber: { en: "Contact Number", hi: "संपर्क नंबर" },
   enterContactNumber: { en: "Enter 10-digit number", hi: "10 अंक का नंबर दर्ज करें" },
+  address: { en: "Address", hi: "पता" },
   lotInformation: { en: "Lot Information", hi: "लॉट जानकारी" },
   lot: { en: "Lot", hi: "लॉट" },
   addMoreLot: { en: "Add More Lot", hi: "और लॉट जोड़ें" },
