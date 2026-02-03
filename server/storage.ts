@@ -5943,19 +5943,21 @@ export class DatabaseStorage implements IStorage {
       state: updatedFarmer.state,
     });
     
-    // Record the edit in history
-    await db.insert(farmerLedgerEditHistory).values({
-      id: randomUUID(),
-      farmerLedgerId: id,
-      coldStorageId: farmer.coldStorageId,
-      editType: 'edit',
-      beforeValues,
-      afterValues,
-      modifiedBy,
-    });
-    
-    // Propagate farmer details to all linked touchpoints (lots, receivables, sales)
-    await this.propagateFarmerDetailsToTouchpoints(id, updatedFarmer);
+    // Only record the edit in history if there are actual changes
+    if (beforeValues !== afterValues) {
+      await db.insert(farmerLedgerEditHistory).values({
+        id: randomUUID(),
+        farmerLedgerId: id,
+        coldStorageId: farmer.coldStorageId,
+        editType: 'edit',
+        beforeValues,
+        afterValues,
+        modifiedBy,
+      });
+      
+      // Propagate farmer details to all linked touchpoints (lots, receivables, sales)
+      await this.propagateFarmerDetailsToTouchpoints(id, updatedFarmer);
+    }
     
     return { farmer: updatedFarmer, merged: false };
   }
@@ -6527,15 +6529,18 @@ export class DatabaseStorage implements IStorage {
       contactNumber: updated.contactNumber,
     });
     
-    await db.insert(buyerLedgerEditHistory).values({
-      id: randomUUID(),
-      buyerLedgerId: id,
-      coldStorageId: currentBuyer.coldStorageId,
-      editType: 'edit',
-      beforeValues,
-      afterValues,
-      modifiedBy,
-    });
+    // Only create edit history entry if there are actual changes
+    if (beforeValues !== afterValues) {
+      await db.insert(buyerLedgerEditHistory).values({
+        id: randomUUID(),
+        buyerLedgerId: id,
+        coldStorageId: currentBuyer.coldStorageId,
+        editType: 'edit',
+        beforeValues,
+        afterValues,
+        modifiedBy,
+      });
+    }
     
     return { buyer: updated, merged: false };
   }
