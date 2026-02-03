@@ -13,6 +13,7 @@ import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Prin
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCurrency } from "@/components/Currency";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -51,6 +52,7 @@ export default function BuyerLedger() {
   const [nameSearch, setNameSearch] = useState("");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [yearFilter, setYearFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>('buyerId');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [editingBuyer, setEditingBuyer] = useState<BuyerWithDues | null>(null);
@@ -163,6 +165,18 @@ export default function BuyerLedger() {
     }
   };
 
+  const availableYears = useMemo(() => {
+    if (!ledgerData?.buyers) return [];
+    const years = new Set<number>();
+    ledgerData.buyers.forEach(buyer => {
+      if (buyer.createdAt) {
+        const year = new Date(buyer.createdAt).getFullYear();
+        years.add(year);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [ledgerData?.buyers]);
+
   const filteredBuyers = useMemo(() => {
     if (!ledgerData?.buyers) return { active: [], archived: [] };
 
@@ -171,7 +185,10 @@ export default function BuyerLedger() {
         const matchesName = !nameSearch || 
           buyer.buyerName.toLowerCase().includes(nameSearch.toLowerCase());
         
-        return matchesName;
+        const matchesYear = yearFilter === "all" || 
+          (buyer.createdAt && new Date(buyer.createdAt).getFullYear().toString() === yearFilter);
+        
+        return matchesName && matchesYear;
       });
 
     filtered = [...filtered].sort((a, b) => {
@@ -192,7 +209,7 @@ export default function BuyerLedger() {
       active: filtered.filter(b => b.isArchived !== 1),
       archived: filtered.filter(b => b.isArchived === 1),
     };
-  }, [ledgerData?.buyers, nameSearch, sortField, sortDirection]);
+  }, [ledgerData?.buyers, nameSearch, yearFilter, sortField, sortDirection]);
 
   const handleEditClick = (buyer: BuyerWithDues) => {
     setEditFormData({
@@ -241,14 +258,16 @@ export default function BuyerLedger() {
     setPendingMergeInfo(null);
   };
 
-  const summary = ledgerData?.summary || {
-    totalBuyers: 0,
-    pyReceivables: 0,
-    dueTransferOut: 0,
-    dueTransferIn: 0,
-    salesDue: 0,
-    netDue: 0,
-  };
+  const summary = useMemo(() => {
+    const displayedBuyers = [...filteredBuyers.active, ...(showArchived ? filteredBuyers.archived : [])];
+    return {
+      totalBuyers: displayedBuyers.length,
+      pyReceivables: displayedBuyers.reduce((sum, b) => sum + (b.pyReceivables || 0), 0),
+      dueTransferIn: displayedBuyers.reduce((sum, b) => sum + (b.dueTransferIn || 0), 0),
+      salesDue: displayedBuyers.reduce((sum, b) => sum + (b.salesDue || 0), 0),
+      netDue: displayedBuyers.reduce((sum, b) => sum + (b.netDue || 0), 0),
+    };
+  }, [filteredBuyers, showArchived]);
 
   const nameSuggestions = useMemo(() => {
     if (!nameSearch || nameSearch.length < 1 || !ledgerData?.buyers) return [];
@@ -339,11 +358,11 @@ export default function BuyerLedger() {
     doc.save(`buyer-ledger-${format(new Date(), 'yyyyMMdd')}.pdf`);
   }, [filteredBuyers, showArchived, coldStorage?.name, summary, t, toast]);
 
-  const SortButton = ({ field, label, align, colorClass }: { field: SortField; label: string; align?: 'left' | 'right'; colorClass?: string }) => (
+  const SortButton = ({ field, label, align, colorClass }: { field: SortField; label: string; align?: 'left' | 'right' | 'center'; colorClass?: string }) => (
     <Button
       variant="ghost"
       size="sm"
-      className={`font-bold gap-1 ${align === 'right' ? 'justify-end' : 'justify-start'} ${colorClass || ''}`}
+      className={`font-bold gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'} ${colorClass || ''}`}
       onClick={() => handleSort(field)}
       data-testid={`button-sort-${field}`}
     >
@@ -362,7 +381,7 @@ export default function BuyerLedger() {
         <Badge variant="outline" className="ml-2">{summary.totalBuyers} {t("buyers")}</Badge>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 px-4 pt-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 pt-3">
         <Card className="py-1">
           <CardHeader className="py-1 px-3">
             <CardTitle className="text-xs font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
@@ -385,14 +404,6 @@ export default function BuyerLedger() {
           </CardHeader>
           <CardContent className="py-1 px-3">
             <div className={`text-base font-bold ${getTransferInColor(summary.dueTransferIn)}`} data-testid="text-transfer-in">{formatDueValue(summary.dueTransferIn)}</div>
-          </CardContent>
-        </Card>
-        <Card className="py-1">
-          <CardHeader className="py-1 px-3">
-            <CardTitle className="text-xs font-medium text-orange-500 dark:text-orange-400">{t("transferOut")}</CardTitle>
-          </CardHeader>
-          <CardContent className="py-1 px-3">
-            <div className="text-base font-bold text-orange-500 dark:text-orange-400" data-testid="text-transfer-out">{formatDueValue(summary.dueTransferOut)}</div>
           </CardContent>
         </Card>
         <Card className="py-1">
@@ -444,6 +455,17 @@ export default function BuyerLedger() {
             </div>
           )}
         </div>
+        <Select value={yearFilter} onValueChange={setYearFilter}>
+          <SelectTrigger className="w-[120px]" data-testid="select-year-filter">
+            <SelectValue placeholder={t("allYears")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allYears")}</SelectItem>
+            {availableYears.map(year => (
+              <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <div className="flex-1" />
         <div className="flex items-center gap-2">
           <Switch
@@ -558,15 +580,15 @@ export default function BuyerLedger() {
             </ScrollArea>
 
             <div className="hidden md:flex flex-col flex-1 overflow-hidden border rounded-lg">
-              <div className="grid grid-cols-[100px_1fr_140px_120px_120px_100px_110px_100px_80px] gap-2 p-2 bg-muted/50 text-sm font-bold border-b">
+              <div className="grid grid-cols-[90px_minmax(120px,1fr)_100px_100px_110px_100px_100px_100px_80px] gap-2 p-2 bg-muted/50 text-sm font-bold border-b">
                 <SortButton field="buyerId" label={t("buyerId")} />
                 <SortButton field="buyerName" label={t("buyerName")} />
                 <div className="flex items-center font-bold">{t("address")}</div>
                 <div className="flex items-center font-bold">{t("contact")}</div>
-                <SortButton field="pyReceivables" label={t("pyReceivables")} align="right" colorClass="text-blue-600 dark:text-blue-400" />
-                <SortButton field="salesDue" label={t("salesDue")} align="right" colorClass="text-green-600 dark:text-green-400" />
-                <SortButton field="dueTransferIn" label={t("transferIn")} align="right" colorClass="text-purple-600 dark:text-purple-400" />
-                <SortButton field="netDue" label={t("netDue")} align="right" colorClass="text-red-600 dark:text-red-500" />
+                <SortButton field="pyReceivables" label={t("pyReceivables")} align="center" colorClass="text-blue-600 dark:text-blue-400" />
+                <SortButton field="salesDue" label={t("salesDue")} align="center" colorClass="text-green-600 dark:text-green-400" />
+                <SortButton field="dueTransferIn" label={t("transferIn")} align="center" colorClass="text-purple-600 dark:text-purple-400" />
+                <SortButton field="netDue" label={t("netDue")} align="center" colorClass="text-red-600 dark:text-red-500" />
                 <div className="flex items-center justify-center font-bold">{t("actions")}</div>
               </div>
 
@@ -575,7 +597,7 @@ export default function BuyerLedger() {
                   {filteredBuyers.active.map(buyer => (
                     <div 
                       key={buyer.id}
-                      className="grid grid-cols-[100px_1fr_140px_120px_120px_100px_110px_100px_80px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
+                      className="grid grid-cols-[90px_minmax(120px,1fr)_100px_100px_110px_100px_100px_100px_80px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
                       data-testid={`row-buyer-${buyer.id}`}
                     >
                       <div className="flex items-center gap-1">
@@ -585,22 +607,22 @@ export default function BuyerLedger() {
                         )}
                       </div>
                       <div className="font-medium truncate">{buyer.buyerName}</div>
-                      <div className="text-muted-foreground truncate">{buyer.address || '-'}</div>
-                      <div className="text-muted-foreground truncate">{buyer.contactNumber || '-'}</div>
-                      <div className={`text-right font-medium text-blue-600 dark:text-blue-400`}>{formatDueValue(buyer.pyReceivables)}</div>
-                      <div className={`text-right font-medium text-green-600 dark:text-green-400`}>{formatDueValue(buyer.salesDue)}</div>
-                      <div className={`text-right font-medium ${getTransferInColor(buyer.dueTransferIn)}`}>{formatDueValue(buyer.dueTransferIn)}</div>
-                      <div className={`text-right font-medium text-red-600 dark:text-red-500`}>{formatDueValue(buyer.netDue)}</div>
+                      <div className="text-muted-foreground truncate text-xs">{buyer.address || '-'}</div>
+                      <div className="text-muted-foreground truncate text-xs">{buyer.contactNumber || '-'}</div>
+                      <div className={`text-center font-medium text-blue-600 dark:text-blue-400`}>{formatDueValue(buyer.pyReceivables)}</div>
+                      <div className={`text-center font-medium text-green-600 dark:text-green-400`}>{formatDueValue(buyer.salesDue)}</div>
+                      <div className={`text-center font-medium ${getTransferInColor(buyer.dueTransferIn)}`}>{formatDueValue(buyer.dueTransferIn)}</div>
+                      <div className={`text-center font-medium text-red-600 dark:text-red-500`}>{formatDueValue(buyer.netDue)}</div>
                       <div className="flex items-center justify-center gap-1">
+                        <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => handleEditClick(buyer)} data-testid={`button-edit-${buyer.id}`}>
+                          <Pencil className="w-3 h-3" />
+                        </Button>
                         <Switch
                           checked={buyer.isFlagged === 1}
                           onCheckedChange={() => flagMutation.mutate(buyer.id)}
                           className="scale-75"
                           data-testid={`switch-flag-${buyer.id}`}
                         />
-                        <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => handleEditClick(buyer)} data-testid={`button-edit-${buyer.id}`}>
-                          <Pencil className="w-3 h-3" />
-                        </Button>
                         {canEdit && (
                           <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => archiveMutation.mutate(buyer.id)} data-testid={`button-archive-${buyer.id}`}>
                             <Archive className="w-3 h-3" />
@@ -616,17 +638,17 @@ export default function BuyerLedger() {
                       {filteredBuyers.archived.map(buyer => (
                         <div 
                           key={buyer.id}
-                          className="grid grid-cols-[100px_1fr_140px_120px_120px_100px_110px_100px_80px] gap-2 p-2 border-b items-center text-sm opacity-60"
+                          className="grid grid-cols-[90px_minmax(120px,1fr)_100px_100px_110px_100px_100px_100px_80px] gap-2 p-2 border-b items-center text-sm opacity-60"
                           data-testid={`row-buyer-archived-${buyer.id}`}
                         >
                           <div className="font-mono text-xs text-muted-foreground truncate">{buyer.buyerId}</div>
                           <div className="font-medium truncate">{buyer.buyerName}</div>
-                          <div className="text-muted-foreground truncate">{buyer.address || '-'}</div>
-                          <div className="text-muted-foreground truncate">{buyer.contactNumber || '-'}</div>
-                          <div className="text-right text-muted-foreground">-</div>
-                          <div className="text-right text-muted-foreground">-</div>
-                          <div className="text-right text-muted-foreground">-</div>
-                          <div className="text-right text-muted-foreground">-</div>
+                          <div className="text-muted-foreground truncate text-xs">{buyer.address || '-'}</div>
+                          <div className="text-muted-foreground truncate text-xs">{buyer.contactNumber || '-'}</div>
+                          <div className="text-center text-muted-foreground">-</div>
+                          <div className="text-center text-muted-foreground">-</div>
+                          <div className="text-center text-muted-foreground">-</div>
+                          <div className="text-center text-muted-foreground">-</div>
                           <div className="flex items-center justify-center">
                             {canEdit && (
                               <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => reinstateMutation.mutate(buyer.id)}>
