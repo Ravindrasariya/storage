@@ -2244,7 +2244,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
-    // Check if this is a self-sale farmer payment (synthetic ID)
+    // Check if this is a self-sale farmer payment (synthetic ID) or farmer ledger ID payment
     const isSelfSalePayment = data.farmerReceivableId.startsWith("self_sale_");
     
     let farmerIdentity: { farmerName: string; contactNumber: string; village: string };
@@ -2252,8 +2252,21 @@ export class DatabaseStorage implements IStorage {
     let allFarmerReceivables: typeof openingReceivables.$inferSelect[] = [];
     let selfSalesWithDues: { id: string; due_amount: number; extra_due_to_merchant: number; paid_amount: number }[] = [];
     
-    if (isSelfSalePayment) {
-      // Use explicitly provided farmer details (preferred) or throw error
+    // First, try to look up the ID as an opening_receivables ID (legacy flow)
+    let selectedReceivable: typeof openingReceivables.$inferSelect | undefined;
+    if (!isSelfSalePayment) {
+      const [foundReceivable] = await db.select()
+        .from(openingReceivables)
+        .where(and(
+          eq(openingReceivables.id, data.farmerReceivableId),
+          eq(openingReceivables.coldStorageId, data.coldStorageId)
+        ));
+      selectedReceivable = foundReceivable;
+    }
+    
+    // Determine the payment flow: self-sale, farmer-ledger (with farmerDetails), or receivable-based
+    if (isSelfSalePayment || (!selectedReceivable && data.farmerDetails)) {
+      // Farmer Ledger or Self-Sale payment flow - use explicitly provided farmer details
       if (data.farmerDetails) {
         farmerIdentity = {
           farmerName: data.farmerDetails.farmerName,
@@ -2261,53 +2274,10 @@ export class DatabaseStorage implements IStorage {
           village: data.farmerDetails.village,
         };
       } else {
-        throw new Error("Farmer details are required for self-sale payments");
+        throw new Error("Farmer details are required for farmer ledger payments");
       }
       
-      // Get self-sales with dues for this farmer
-      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
-      const selfSalesResult = await db.execute(sql`
-        SELECT id, due_amount, extra_due_to_merchant, paid_amount
-        FROM sales_history
-        WHERE cold_storage_id = ${data.coldStorageId}
-          AND is_self_sale = 1
-          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerIdentity.farmerName}))
-          AND TRIM(contact_number) = TRIM(${farmerIdentity.contactNumber})
-          AND LOWER(TRIM(village)) = LOWER(TRIM(${farmerIdentity.village}))
-          AND (due_amount > 0 OR extra_due_to_merchant > 0)
-        ORDER BY sold_at ASC
-      `);
-      selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number; paid_amount: number }[];
-      
-      // Calculate total due
-      for (const sale of selfSalesWithDues) {
-        totalDueBefore += (sale.due_amount || 0) + (sale.extra_due_to_merchant || 0);
-      }
-    } else {
-      // Regular receivable payment flow
-      const [selectedReceivable] = await db.select()
-        .from(openingReceivables)
-        .where(and(
-          eq(openingReceivables.id, data.farmerReceivableId),
-          eq(openingReceivables.coldStorageId, data.coldStorageId)
-        ));
-      
-      if (!selectedReceivable) {
-        throw new Error("Farmer receivable not found");
-      }
-      
-      if (selectedReceivable.payerType !== "farmer") {
-        throw new Error("Selected receivable is not a farmer receivable");
-      }
-      
-      farmerIdentity = {
-        farmerName: selectedReceivable.farmerName!,
-        contactNumber: selectedReceivable.contactNumber!,
-        village: selectedReceivable.village!,
-      };
-      
-      // Get all farmer receivables for this farmer (FIFO by createdAt)
-      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
+      // Get ALL farmer receivables for this farmer (FIFO by createdAt)
       allFarmerReceivables = await db.select()
         .from(openingReceivables)
         .where(and(
@@ -2327,8 +2297,7 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // Also get self-sales with dues for this farmer (to include in total due calculation)
-      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
+      // Get self-sales with dues for this farmer (EXCLUDE transferred unless reversed)
       const selfSalesResult = await db.execute(sql`
         SELECT id, due_amount, extra_due_to_merchant, paid_amount
         FROM sales_history
@@ -2338,6 +2307,64 @@ export class DatabaseStorage implements IStorage {
           AND TRIM(contact_number) = TRIM(${farmerIdentity.contactNumber})
           AND LOWER(TRIM(village)) = LOWER(TRIM(${farmerIdentity.village}))
           AND (due_amount > 0 OR extra_due_to_merchant > 0)
+          AND (
+            (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
+            OR is_transfer_reversed = 1
+          )
+        ORDER BY sold_at ASC
+      `);
+      selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number; paid_amount: number }[];
+      
+      // Calculate total due from self-sales
+      for (const sale of selfSalesWithDues) {
+        totalDueBefore += (sale.due_amount || 0) + (sale.extra_due_to_merchant || 0);
+      }
+    } else if (selectedReceivable) {
+      // Regular receivable payment flow (legacy - ID was found in opening_receivables)
+      if (selectedReceivable.payerType !== "farmer") {
+        throw new Error("Selected receivable is not a farmer receivable");
+      }
+      
+      farmerIdentity = {
+        farmerName: selectedReceivable.farmerName!,
+        contactNumber: selectedReceivable.contactNumber!,
+        village: selectedReceivable.village!,
+      };
+      
+      // Get all farmer receivables for this farmer (FIFO by createdAt)
+      allFarmerReceivables = await db.select()
+        .from(openingReceivables)
+        .where(and(
+          eq(openingReceivables.coldStorageId, data.coldStorageId),
+          sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`,
+          sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerIdentity.farmerName}))`,
+          sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${farmerIdentity.contactNumber})`,
+          sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${farmerIdentity.village}))`
+        ))
+        .orderBy(openingReceivables.createdAt);
+      
+      // Calculate total due from receivables
+      for (const receivable of allFarmerReceivables) {
+        const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
+        if (remainingDue > 0) {
+          totalDueBefore += remainingDue;
+        }
+      }
+      
+      // Also get self-sales with dues for this farmer (EXCLUDE transferred unless reversed)
+      const selfSalesResult = await db.execute(sql`
+        SELECT id, due_amount, extra_due_to_merchant, paid_amount
+        FROM sales_history
+        WHERE cold_storage_id = ${data.coldStorageId}
+          AND is_self_sale = 1
+          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerIdentity.farmerName}))
+          AND TRIM(contact_number) = TRIM(${farmerIdentity.contactNumber})
+          AND LOWER(TRIM(village)) = LOWER(TRIM(${farmerIdentity.village}))
+          AND (due_amount > 0 OR extra_due_to_merchant > 0)
+          AND (
+            (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
+            OR is_transfer_reversed = 1
+          )
         ORDER BY sold_at ASC
       `);
       selfSalesWithDues = selfSalesResult.rows as { id: string; due_amount: number; extra_due_to_merchant: number; paid_amount: number }[];
@@ -2345,6 +2372,9 @@ export class DatabaseStorage implements IStorage {
       for (const sale of selfSalesWithDues) {
         totalDueBefore += (sale.due_amount || 0) + (sale.extra_due_to_merchant || 0);
       }
+    } else {
+      // No receivable found and no farmer details provided
+      throw new Error("Farmer receivable not found and no farmer details provided");
     }
     
     // Validate: reject if no outstanding dues
