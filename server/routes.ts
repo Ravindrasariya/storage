@@ -2808,8 +2808,15 @@ export async function registerRoutes(
   app.post("/api/farmer-ledger/sync", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      await storage.syncFarmersFromTouchpoints(coldStorageId);
-      res.json({ success: true, message: "Farmers synced successfully" });
+      const result = await storage.syncFarmersFromTouchpoints(coldStorageId);
+      res.json({ 
+        success: true, 
+        message: "Farmers synced successfully",
+        added: result.added,
+        updated: result.updated,
+        lotsLinked: result.lotsLinked,
+        receivablesLinked: result.receivablesLinked,
+      });
     } catch (error) {
       console.error("Error syncing farmers:", error);
       res.status(500).json({ error: "Failed to sync farmers" });
