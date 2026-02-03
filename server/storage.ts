@@ -2868,9 +2868,57 @@ export class DatabaseStorage implements IStorage {
       .where(eq(cashReceipts.id, receiptId));
 
     // Handle recomputation based on payer type
-    if (receipt.payerType === "farmer" && receipt.coldStorageId) {
-      // For farmer payments, recompute farmer receivables
-      await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.buyerName);
+    if (receipt.payerType === "farmer" && receipt.coldStorageId && receipt.buyerName) {
+      // For farmer payments, use recomputeFarmerPaymentsWithDiscounts to properly reset self-sales
+      // Parse farmer identity from buyerDisplayName format: "FarmerName (Village)"
+      const match = receipt.buyerName.match(/^(.+?)\s*\((.+?)\)$/);
+      if (match) {
+        const farmerName = match[1].trim();
+        const village = match[2].trim();
+        
+        // Find contactNumber from farmer receivables or self-sales
+        let contactNumber: string | null = null;
+        
+        // Try to get from receivables first
+        const receivableResult = await db.select()
+          .from(openingReceivables)
+          .where(and(
+            eq(openingReceivables.coldStorageId, receipt.coldStorageId),
+            eq(openingReceivables.payerType, "farmer"),
+            sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
+            sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
+          ))
+          .limit(1);
+        
+        if (receivableResult.length > 0) {
+          contactNumber = receivableResult[0].contactNumber;
+        } else {
+          // Try from self-sales
+          const selfSaleResult = await db.select()
+            .from(salesHistory)
+            .where(and(
+              eq(salesHistory.coldStorageId, receipt.coldStorageId),
+              eq(salesHistory.isSelfSale, 1),
+              sql`LOWER(TRIM(${salesHistory.farmerName})) = LOWER(TRIM(${farmerName}))`,
+              sql`LOWER(TRIM(${salesHistory.village})) = LOWER(TRIM(${village}))`
+            ))
+            .limit(1);
+          
+          if (selfSaleResult.length > 0) {
+            contactNumber = selfSaleResult[0].contactNumber;
+          }
+        }
+        
+        if (contactNumber) {
+          await this.recomputeFarmerPaymentsWithDiscounts(receipt.coldStorageId, farmerName, contactNumber, village);
+        } else {
+          // Fallback to old method if contactNumber not found
+          await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.buyerName);
+        }
+      } else {
+        // buyerName doesn't match expected "FarmerName (Village)" format - use old method as fallback
+        await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.buyerName);
+      }
     } else if (receipt.buyerName && receipt.coldStorageId) {
       // Use unified recomputeBuyerPayments to properly handle both receipts AND discounts
       // This replaces the old custom FIFO replay that only considered receipts
