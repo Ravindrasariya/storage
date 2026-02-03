@@ -621,6 +621,7 @@ const translations: Translations = {
   buyers: { en: "Buyers", hi: "खरीदार" },
   buyerId: { en: "Buyer ID", hi: "खरीदार आईडी" },
   salesDue: { en: "Sales Due", hi: "बिक्री बकाया" },
+  buyerExtras: { en: "Buyer Extras", hi: "खरीदार अतिरिक्त" },
   transferIn: { en: "Transfer In", hi: "ट्रांसफर इन" },
   transferOut: { en: "Transfer Out", hi: "ट्रांसफर आउट" },
   netDue: { en: "Net Due", hi: "शुद्ध बकाया" },

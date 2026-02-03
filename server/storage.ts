@@ -364,6 +364,7 @@ export interface IStorage {
       dueTransferOut: number;
       dueTransferIn: number;
       salesDue: number;
+      buyerExtras: number;
       netDue: number;
     })[];
     summary: {
@@ -372,6 +373,7 @@ export interface IStorage {
       dueTransferOut: number;
       dueTransferIn: number;
       salesDue: number;
+      buyerExtras: number;
       netDue: number;
     };
   }>;
@@ -6124,6 +6126,7 @@ export class DatabaseStorage implements IStorage {
       dueTransferOut: number;
       dueTransferIn: number;
       salesDue: number;
+      buyerExtras: number;
       netDue: number;
     })[];
     summary: {
@@ -6132,6 +6135,7 @@ export class DatabaseStorage implements IStorage {
       dueTransferOut: number;
       dueTransferIn: number;
       salesDue: number;
+      buyerExtras: number;
       netDue: number;
     };
   }> {
@@ -6195,14 +6199,20 @@ export class DatabaseStorage implements IStorage {
       
       // Sales Due: Sum of unpaid NON-TRANSFERRED sales to this buyer
       // Transferred sales are tracked separately in Transfer In
-      const salesDue = allSales
+      const buyerSales = allSales
         .filter(s => {
           const saleBuyerLower = s.buyerName?.trim().toLowerCase();
           const hasActiveTransfer = s.transferToBuyerName && s.transferToBuyerName.trim() && (s.isTransferReversed === 0 || s.isTransferReversed === null);
           // Only include if this is the original buyer AND no active transfer
           return saleBuyerLower === buyerNameLower && !hasActiveTransfer;
-        })
-        .reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
+        });
+      
+      const salesDue = buyerSales.reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
+      
+      // Buyer Extras: Sum of hammali, grading, and other extras to merchant from sales
+      const buyerExtras = buyerSales.reduce((sum, s) => {
+        return sum + (s.extraDueHammaliMerchant || 0) + (s.extraDueGradingMerchant || 0) + (s.extraDueOtherMerchant || 0);
+      }, 0);
       
       // Transfer In from farmer-to-buyer transfers (separate table)
       const farmerTransferIn = transfersIn
@@ -6230,10 +6240,10 @@ export class DatabaseStorage implements IStorage {
       // dueTransferOut is 0 since transfer-out is embedded in dueTransferIn as negative
       const dueTransferOut = 0;
       
-      // Net Due = PY Receivables + Sales Due + Farmer Transfers + Buyer Transfers Received
+      // Net Due = PY Receivables + Sales Due + Buyer Extras + Farmer Transfers + Buyer Transfers Received
       // Source buyer's transfer-out does NOT add to their liability (they don't owe it)
       // Destination buyer's transfer-in IS their liability
-      const netDue = roundAmount(pyReceivables + salesDue + farmerTransferIn + buyerTransferIn);
+      const netDue = roundAmount(pyReceivables + salesDue + buyerExtras + farmerTransferIn + buyerTransferIn);
       
       return {
         ...buyer,
@@ -6241,6 +6251,7 @@ export class DatabaseStorage implements IStorage {
         dueTransferOut: roundAmount(dueTransferOut),
         dueTransferIn: roundAmount(dueTransferIn),
         salesDue: roundAmount(salesDue),
+        buyerExtras: roundAmount(buyerExtras),
         netDue,
       };
     });
@@ -6252,6 +6263,7 @@ export class DatabaseStorage implements IStorage {
       dueTransferOut: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.dueTransferOut, 0)),
       dueTransferIn: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.dueTransferIn, 0)),
       salesDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.salesDue, 0)),
+      buyerExtras: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.buyerExtras, 0)),
       netDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.netDue, 0)),
     };
     

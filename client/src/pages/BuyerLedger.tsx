@@ -25,6 +25,7 @@ interface BuyerWithDues extends BuyerLedgerEntry {
   dueTransferOut: number;
   dueTransferIn: number;
   salesDue: number;
+  buyerExtras: number;
   netDue: number;
 }
 
@@ -36,11 +37,12 @@ interface BuyerLedgerData {
     dueTransferOut: number;
     dueTransferIn: number;
     salesDue: number;
+    buyerExtras: number;
     netDue: number;
   };
 }
 
-type SortField = 'buyerId' | 'buyerName' | 'address' | 'pyReceivables' | 'salesDue' | 'dueTransferIn' | 'netDue';
+type SortField = 'buyerId' | 'buyerName' | 'address' | 'pyReceivables' | 'salesDue' | 'buyerExtras' | 'dueTransferIn' | 'netDue';
 type SortDirection = 'asc' | 'desc';
 
 export default function BuyerLedger() {
@@ -265,6 +267,7 @@ export default function BuyerLedger() {
       pyReceivables: displayedBuyers.reduce((sum, b) => sum + (b.pyReceivables || 0), 0),
       dueTransferIn: displayedBuyers.reduce((sum, b) => sum + (b.dueTransferIn || 0), 0),
       salesDue: displayedBuyers.reduce((sum, b) => sum + (b.salesDue || 0), 0),
+      buyerExtras: displayedBuyers.reduce((sum, b) => sum + (b.buyerExtras || 0), 0),
       netDue: displayedBuyers.reduce((sum, b) => sum + (b.netDue || 0), 0),
     };
   }, [filteredBuyers, showArchived]);
@@ -323,6 +326,7 @@ export default function BuyerLedger() {
       buyer.contactNumber || '-',
       formatDueValue(buyer.pyReceivables),
       formatDueValue(buyer.salesDue),
+      formatDueValue(buyer.buyerExtras),
       formatDueValue(buyer.dueTransferIn),
       formatDueValue(buyer.netDue),
     ]);
@@ -334,6 +338,7 @@ export default function BuyerLedger() {
       '',
       formatDueValue(summary.pyReceivables),
       formatDueValue(summary.salesDue),
+      formatDueValue(summary.buyerExtras),
       formatDueValue(summary.dueTransferIn),
       formatDueValue(summary.netDue),
     ]);
@@ -346,6 +351,7 @@ export default function BuyerLedger() {
         t("contact"),
         t("pyReceivables"),
         t("salesDue"),
+        t("buyerExtras"),
         t("transferIn"),
         t("netDue"),
       ]],
@@ -381,7 +387,7 @@ export default function BuyerLedger() {
         <Badge variant="outline" className="ml-2">{summary.totalBuyers} {t("buyers")}</Badge>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 pt-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 px-4 pt-3">
         <Card className="py-1">
           <CardHeader className="py-1 px-3">
             <CardTitle className="text-xs font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
@@ -396,6 +402,14 @@ export default function BuyerLedger() {
           </CardHeader>
           <CardContent className="py-1 px-3">
             <div className="text-base font-bold text-green-600 dark:text-green-400" data-testid="text-sales-due">{formatDueValue(summary.salesDue)}</div>
+          </CardContent>
+        </Card>
+        <Card className="py-1">
+          <CardHeader className="py-1 px-3">
+            <CardTitle className="text-xs font-medium text-orange-600 dark:text-orange-400">{t("buyerExtras")}</CardTitle>
+          </CardHeader>
+          <CardContent className="py-1 px-3">
+            <div className="text-base font-bold text-orange-600 dark:text-orange-400" data-testid="text-buyer-extras">{formatDueValue(summary.buyerExtras)}</div>
           </CardContent>
         </Card>
         <Card className="py-1">
@@ -543,6 +557,10 @@ export default function BuyerLedger() {
                       <div className="text-green-600 dark:text-green-400 font-bold">{formatDueValue(buyer.salesDue)}</div>
                     </div>
                     <div>
+                      <div className="text-orange-600 dark:text-orange-400 font-medium">{t("buyerExtras")}</div>
+                      <div className="text-orange-600 dark:text-orange-400 font-bold">{formatDueValue(buyer.buyerExtras)}</div>
+                    </div>
+                    <div>
                       <div className={`${getTransferInColor(buyer.dueTransferIn)} font-medium`}>{t("transferIn")}</div>
                       <div className={`${getTransferInColor(buyer.dueTransferIn)} font-bold`}>{formatDueValue(buyer.dueTransferIn)}</div>
                     </div>
@@ -591,6 +609,7 @@ export default function BuyerLedger() {
                       <th className="min-w-[110px] p-2 text-left font-bold">{t("contact")}</th>
                       <th className="w-24 p-2"><SortButton field="pyReceivables" label={t("pyReceivables")} align="center" colorClass="text-blue-600 dark:text-blue-400" /></th>
                       <th className="w-20 p-2"><SortButton field="salesDue" label={t("salesDue")} align="center" colorClass="text-green-600 dark:text-green-400" /></th>
+                      <th className="w-20 p-2"><SortButton field="buyerExtras" label={t("buyerExtras")} align="center" colorClass="text-orange-600 dark:text-orange-400" /></th>
                       <th className="w-24 p-2"><SortButton field="dueTransferIn" label={t("transferIn")} align="center" colorClass="text-purple-600 dark:text-purple-400" /></th>
                       <th className="w-20 p-2"><SortButton field="netDue" label={t("netDue")} align="center" colorClass="text-red-600 dark:text-red-500" /></th>
                       <th className="w-24 p-2 text-center font-bold">{t("actions")}</th>
@@ -617,6 +636,7 @@ export default function BuyerLedger() {
                         <td className="p-2 font-medium">{buyer.contactNumber || '-'}</td>
                         <td className="p-2 text-center font-medium text-blue-600 dark:text-blue-400">{formatDueValue(buyer.pyReceivables)}</td>
                         <td className="p-2 text-center font-medium text-green-600 dark:text-green-400">{formatDueValue(buyer.salesDue)}</td>
+                        <td className="p-2 text-center font-medium text-orange-600 dark:text-orange-400">{formatDueValue(buyer.buyerExtras)}</td>
                         <td className="p-2 text-center font-medium" style={{color: buyer.dueTransferIn > 0 ? 'rgb(147, 51, 234)' : buyer.dueTransferIn < 0 ? 'rgb(239, 68, 68)' : undefined}}>{formatDueValue(buyer.dueTransferIn)}</td>
                         <td className="p-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(buyer.netDue)}</td>
                         <td className="p-2">
@@ -639,7 +659,7 @@ export default function BuyerLedger() {
 
                     {showArchived && filteredBuyers.archived.length > 0 && (
                       <>
-                        <tr><td colSpan={10} className="p-2 bg-muted/30 text-sm font-medium text-muted-foreground">{t("archivedBuyers")}</td></tr>
+                        <tr><td colSpan={11} className="p-2 bg-muted/30 text-sm font-medium text-muted-foreground">{t("archivedBuyers")}</td></tr>
                         {filteredBuyers.archived.map(buyer => (
                           <tr key={buyer.id} className="border-b opacity-60" data-testid={`row-buyer-archived-${buyer.id}`}>
                             <td className="p-2"></td>
@@ -647,6 +667,7 @@ export default function BuyerLedger() {
                             <td className="p-2 font-medium">{buyer.buyerName}</td>
                             <td className="p-2 font-medium">{buyer.address || '-'}</td>
                             <td className="p-2 font-medium">{buyer.contactNumber || '-'}</td>
+                            <td className="p-2 text-center text-muted-foreground">-</td>
                             <td className="p-2 text-center text-muted-foreground">-</td>
                             <td className="p-2 text-center text-muted-foreground">-</td>
                             <td className="p-2 text-center text-muted-foreground">-</td>
