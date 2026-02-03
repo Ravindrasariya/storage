@@ -822,7 +822,7 @@ export default function FarmerLedger() {
             {editHistory && editHistory.length > 0 && (
               <div>
                 <Label className="text-sm font-medium">{t("editHistory")}</Label>
-                <ScrollArea className="h-48 mt-2 border rounded-md p-2">
+                <ScrollArea className="max-h-32 mt-2 border rounded-md p-2">
                   {editHistory.map(entry => {
                     const fieldLabels: Record<string, string> = {
                       name: t("farmerName"),
