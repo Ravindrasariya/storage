@@ -3940,82 +3940,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]> {
-    const currentYear = year || new Date().getFullYear();
-    const startOfYear = new Date(currentYear, 0, 1);
-    const endOfYear = new Date(currentYear + 1, 0, 1);
-
-    // Fetch farmers from lots table
-    const allLots = await db.select({
-      farmerName: lots.farmerName,
-      village: lots.village,
-      tehsil: lots.tehsil,
-      district: lots.district,
-      state: lots.state,
-      contactNumber: lots.contactNumber,
+    // Fetch all non-archived farmers from Farmer Ledger (single source of truth)
+    const farmers = await db.select({
+      farmerName: farmerLedger.name,
+      village: farmerLedger.village,
+      tehsil: farmerLedger.tehsil,
+      district: farmerLedger.district,
+      state: farmerLedger.state,
+      contactNumber: farmerLedger.contactNumber,
     })
-      .from(lots)
+      .from(farmerLedger)
       .where(
         and(
-          eq(lots.coldStorageId, coldStorageId),
-          gte(lots.createdAt, startOfYear),
-          sql`${lots.createdAt} < ${endOfYear}`
+          eq(farmerLedger.coldStorageId, coldStorageId),
+          eq(farmerLedger.isArchived, 0)
         )
-      );
+      )
+      .orderBy(farmerLedger.name);
 
-    // Also fetch farmers from opening receivables (farmer type)
-    const farmerReceivables = await db.select({
-      farmerName: openingReceivables.farmerName,
-      village: openingReceivables.village,
-      tehsil: openingReceivables.tehsil,
-      district: openingReceivables.district,
-      state: openingReceivables.state,
-      contactNumber: openingReceivables.contactNumber,
-    })
-      .from(openingReceivables)
-      .where(
-        and(
-          eq(openingReceivables.coldStorageId, coldStorageId),
-          eq(openingReceivables.payerType, "farmer"),
-          sql`${openingReceivables.farmerName} IS NOT NULL AND ${openingReceivables.farmerName} != ''`,
-          sql`${openingReceivables.contactNumber} IS NOT NULL AND ${openingReceivables.contactNumber} != ''`
-        )
-      );
-
-    // Deduplicate by normalized key (lowercase trimmed contactNumber + farmerName + village)
-    const seen = new Map<string, { farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }>();
-    
-    // Add lot entries first
-    for (const lot of allLots) {
-      const key = `${lot.contactNumber.trim().toLowerCase()}|${lot.farmerName.trim().toLowerCase()}|${lot.village.trim().toLowerCase()}`;
-      if (!seen.has(key)) {
-        seen.set(key, {
-          farmerName: lot.farmerName.trim(),
-          village: lot.village.trim(),
-          tehsil: lot.tehsil.trim(),
-          district: lot.district.trim(),
-          state: lot.state.trim(),
-          contactNumber: lot.contactNumber.trim(),
-        });
-      }
-    }
-    
-    // Add farmer receivables (only if not already in the map)
-    for (const fr of farmerReceivables) {
-      if (!fr.farmerName || !fr.contactNumber || !fr.village) continue;
-      const key = `${fr.contactNumber.trim().toLowerCase()}|${fr.farmerName.trim().toLowerCase()}|${fr.village.trim().toLowerCase()}`;
-      if (!seen.has(key)) {
-        seen.set(key, {
-          farmerName: fr.farmerName.trim(),
-          village: fr.village.trim(),
-          tehsil: (fr.tehsil || "").trim(),
-          district: (fr.district || "").trim(),
-          state: (fr.state || "").trim(),
-          contactNumber: fr.contactNumber.trim(),
-        });
-      }
-    }
-
-    return Array.from(seen.values());
+    return farmers.map(f => ({
+      farmerName: f.farmerName || "",
+      village: f.village || "",
+      tehsil: f.tehsil || "",
+      district: f.district || "",
+      state: f.state || "",
+      contactNumber: f.contactNumber || "",
+    }));
   }
 
   async getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string; isSelfSale: boolean }[]> {
