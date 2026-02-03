@@ -4122,10 +4122,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOpeningReceivable(data: InsertOpeningReceivable): Promise<OpeningReceivable> {
+    let buyerLedgerId: string | undefined;
+    let buyerId: string | undefined;
+    
+    // For cold_merchant receivables, ensure buyer ledger entry exists
+    if (data.payerType === 'cold_merchant' && data.buyerName && data.buyerName.trim()) {
+      const buyerEntry = await this.ensureBuyerLedgerEntry(data.coldStorageId, {
+        buyerName: data.buyerName.trim(),
+      });
+      buyerLedgerId = buyerEntry.id;
+      buyerId = buyerEntry.buyerId;
+    }
+    
     const [receivable] = await db.insert(openingReceivables)
       .values({
         id: randomUUID(),
         ...data,
+        buyerLedgerId,
+        buyerId,
       })
       .returning();
     return receivable;
@@ -6426,7 +6440,39 @@ export class DatabaseStorage implements IStorage {
           isArchived: 0,
         });
         
+        // Add to existingKeys so backfill can find it
+        existingKeys.set(key, {
+          id: newId,
+          coldStorageId,
+          buyerId,
+          buyerName: buyerName.trim(),
+          address: null,
+          contactNumber: null,
+          isFlagged: 0,
+          isArchived: 0,
+          createdAt: new Date(),
+          archivedAt: null,
+        });
+        
         added++;
+      }
+    }
+    
+    // Backfill buyerLedgerId/buyerId on cold_merchant receivables missing these fields
+    for (const rec of merchantReceivables) {
+      if (!rec.buyerLedgerId && rec.buyerName && rec.buyerName.trim()) {
+        const key = this.getBuyerCompositeKey(rec.buyerName);
+        const buyerEntry = existingKeys.get(key);
+        
+        if (buyerEntry) {
+          await db.update(openingReceivables)
+            .set({
+              buyerLedgerId: buyerEntry.id,
+              buyerId: buyerEntry.buyerId,
+            })
+            .where(eq(openingReceivables.id, rec.id));
+          updated++;
+        }
       }
     }
     
