@@ -5506,34 +5506,39 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    // Backfill: Update lots with null farmerLedgerId
+    // Backfill: Update lots with null farmerLedgerId or farmerId
     let lotsLinked = 0;
     const lotsToLink = await db.select()
       .from(lots)
       .where(and(
         eq(lots.coldStorageId, coldStorageId),
-        isNull(lots.farmerLedgerId)
+        or(isNull(lots.farmerLedgerId), isNull(lots.farmerId))
       ));
     
     for (const lot of lotsToLink) {
       const key = this.getFarmerCompositeKey(lot.farmerName, lot.contactNumber, lot.village);
       const farmerEntry = existingKeys.get(key);
       if (farmerEntry) {
-        await db.update(lots)
-          .set({ farmerLedgerId: farmerEntry.id })
-          .where(eq(lots.id, lot.id));
-        lotsLinked++;
+        const updates: { farmerLedgerId?: string; farmerId?: string } = {};
+        if (!lot.farmerLedgerId) updates.farmerLedgerId = farmerEntry.id;
+        if (!lot.farmerId) updates.farmerId = farmerEntry.farmerId;
+        if (Object.keys(updates).length > 0) {
+          await db.update(lots)
+            .set(updates)
+            .where(eq(lots.id, lot.id));
+          lotsLinked++;
+        }
       }
     }
     
-    // Backfill: Update opening_receivables (farmer type) with null farmerLedgerId
+    // Backfill: Update opening_receivables (farmer type) with null farmerLedgerId or farmerId
     let receivablesLinked = 0;
     const receivablesToLink = await db.select()
       .from(openingReceivables)
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
         eq(openingReceivables.payerType, 'farmer'),
-        isNull(openingReceivables.farmerLedgerId)
+        or(isNull(openingReceivables.farmerLedgerId), isNull(openingReceivables.farmerId))
       ));
     
     for (const rec of receivablesToLink) {
@@ -5541,11 +5546,37 @@ export class DatabaseStorage implements IStorage {
         const key = this.getFarmerCompositeKey(rec.farmerName, rec.contactNumber, rec.village);
         const farmerEntry = existingKeys.get(key);
         if (farmerEntry) {
-          await db.update(openingReceivables)
-            .set({ farmerLedgerId: farmerEntry.id })
-            .where(eq(openingReceivables.id, rec.id));
-          receivablesLinked++;
+          const updates: { farmerLedgerId?: string; farmerId?: string } = {};
+          if (!rec.farmerLedgerId) updates.farmerLedgerId = farmerEntry.id;
+          if (!rec.farmerId) updates.farmerId = farmerEntry.farmerId;
+          if (Object.keys(updates).length > 0) {
+            await db.update(openingReceivables)
+              .set(updates)
+              .where(eq(openingReceivables.id, rec.id));
+            receivablesLinked++;
+          }
         }
+      }
+    }
+    
+    // Backfill: Update sales_history with null farmerId
+    const salesToLink = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        isNull(salesHistory.farmerId)
+      ));
+    
+    for (const sale of salesToLink) {
+      const key = this.getFarmerCompositeKey(sale.farmerName, sale.contactNumber, sale.village);
+      const farmerEntry = existingKeys.get(key);
+      if (farmerEntry) {
+        await db.update(salesHistory)
+          .set({ 
+            farmerId: farmerEntry.farmerId,
+            farmerLedgerId: sale.farmerLedgerId || farmerEntry.id
+          })
+          .where(eq(salesHistory.id, sale.id));
       }
     }
     
