@@ -580,96 +580,91 @@ export default function BuyerLedger() {
             </ScrollArea>
 
             <div className="hidden md:flex flex-col flex-1 overflow-hidden border rounded-lg">
-              <div className="overflow-x-auto">
-                <div className="min-w-[900px]">
-                  <div className="grid grid-cols-[32px_90px_150px_100px_100px_100px_90px_100px_100px_100px] gap-2 p-2 bg-muted/50 text-sm font-bold border-b">
-                    <div></div>
-                    <SortButton field="buyerId" label={t("buyerId")} />
-                    <SortButton field="buyerName" label={t("buyerName")} />
-                    <div className="flex items-center font-bold">{t("address")}</div>
-                    <div className="flex items-center font-bold">{t("contact")}</div>
-                    <SortButton field="pyReceivables" label={t("pyReceivables")} align="center" colorClass="text-blue-600 dark:text-blue-400" />
-                    <SortButton field="salesDue" label={t("salesDue")} align="center" colorClass="text-green-600 dark:text-green-400" />
-                    <SortButton field="dueTransferIn" label={t("transferIn")} align="center" colorClass="text-purple-600 dark:text-purple-400" />
-                    <SortButton field="netDue" label={t("netDue")} align="center" colorClass="text-red-600 dark:text-red-500" />
-                    <div className="flex items-center justify-center font-bold">{t("actions")}</div>
-                  </div>
-                </div>
-              </div>
-
-              <ScrollArea className="flex-1">
-                <div className="overflow-x-auto">
-                  <div className="min-w-[900px]">
+              <div className="flex-1 overflow-auto">
+                <table className="w-full min-w-[950px] text-sm">
+                  <thead className="bg-muted/50 sticky top-0 z-10">
+                    <tr className="border-b">
+                      <th className="w-8 p-2"></th>
+                      <th className="w-24 p-2 text-left"><SortButton field="buyerId" label={t("buyerId")} /></th>
+                      <th className="min-w-[150px] p-2 text-left"><SortButton field="buyerName" label={t("buyerName")} /></th>
+                      <th className="min-w-[120px] p-2 text-left font-bold">{t("address")}</th>
+                      <th className="min-w-[110px] p-2 text-left font-bold">{t("contact")}</th>
+                      <th className="w-24 p-2"><SortButton field="pyReceivables" label={t("pyReceivables")} align="center" colorClass="text-blue-600 dark:text-blue-400" /></th>
+                      <th className="w-20 p-2"><SortButton field="salesDue" label={t("salesDue")} align="center" colorClass="text-green-600 dark:text-green-400" /></th>
+                      <th className="w-24 p-2"><SortButton field="dueTransferIn" label={t("transferIn")} align="center" colorClass="text-purple-600 dark:text-purple-400" /></th>
+                      <th className="w-20 p-2"><SortButton field="netDue" label={t("netDue")} align="center" colorClass="text-red-600 dark:text-red-500" /></th>
+                      <th className="w-24 p-2 text-center font-bold">{t("actions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {filteredBuyers.active.map(buyer => (
-                      <div 
-                        key={buyer.id}
-                        className="grid grid-cols-[32px_90px_150px_100px_100px_100px_90px_100px_100px_100px] gap-2 p-2 border-b hover:bg-muted/30 items-center text-sm"
-                        data-testid={`row-buyer-${buyer.id}`}
-                      >
-                        <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => handleEditClick(buyer)} data-testid={`button-edit-${buyer.id}`}>
-                          <Pencil className="w-3 h-3" />
-                        </Button>
-                        <div className="flex items-center gap-1">
-                          <span className="font-mono text-xs text-muted-foreground truncate">{buyer.buyerId}</span>
-                          {buyer.isFlagged === 1 && (
-                            <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3">!</Badge>
-                          )}
-                        </div>
-                        <div className="font-medium truncate">{buyer.buyerName}</div>
-                        <div className="text-muted-foreground truncate text-xs">{buyer.address || '-'}</div>
-                        <div className="text-muted-foreground truncate text-xs">{buyer.contactNumber || '-'}</div>
-                        <div className={`text-center font-medium text-blue-600 dark:text-blue-400`}>{formatDueValue(buyer.pyReceivables)}</div>
-                        <div className={`text-center font-medium text-green-600 dark:text-green-400`}>{formatDueValue(buyer.salesDue)}</div>
-                        <div className={`text-center font-medium ${getTransferInColor(buyer.dueTransferIn)}`}>{formatDueValue(buyer.dueTransferIn)}</div>
-                        <div className={`text-center font-medium text-red-600 dark:text-red-500`}>{formatDueValue(buyer.netDue)}</div>
-                        <div className="flex items-center justify-center gap-1">
-                          <Switch
-                            checked={buyer.isFlagged === 1}
-                            onCheckedChange={() => flagMutation.mutate(buyer.id)}
-                            className="scale-75"
-                            data-testid={`switch-flag-${buyer.id}`}
-                          />
-                          {canEdit && (
-                            <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => archiveMutation.mutate(buyer.id)} data-testid={`button-archive-${buyer.id}`}>
-                              <Archive className="w-3 h-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
+                      <tr key={buyer.id} className="border-b hover:bg-muted/30" data-testid={`row-buyer-${buyer.id}`}>
+                        <td className="p-2">
+                          <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => handleEditClick(buyer)} data-testid={`button-edit-${buyer.id}`}>
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                        </td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-xs text-muted-foreground">{buyer.buyerId}</span>
+                            {buyer.isFlagged === 1 && (
+                              <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3">!</Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-2 font-medium">{buyer.buyerName}</td>
+                        <td className="p-2 text-muted-foreground text-xs">{buyer.address || '-'}</td>
+                        <td className="p-2 text-muted-foreground text-xs">{buyer.contactNumber || '-'}</td>
+                        <td className="p-2 text-center font-medium text-blue-600 dark:text-blue-400">{formatDueValue(buyer.pyReceivables)}</td>
+                        <td className="p-2 text-center font-medium text-green-600 dark:text-green-400">{formatDueValue(buyer.salesDue)}</td>
+                        <td className="p-2 text-center font-medium" style={{color: buyer.dueTransferIn > 0 ? 'rgb(147, 51, 234)' : buyer.dueTransferIn < 0 ? 'rgb(239, 68, 68)' : undefined}}>{formatDueValue(buyer.dueTransferIn)}</td>
+                        <td className="p-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(buyer.netDue)}</td>
+                        <td className="p-2">
+                          <div className="flex items-center justify-center gap-1">
+                            <Switch
+                              checked={buyer.isFlagged === 1}
+                              onCheckedChange={() => flagMutation.mutate(buyer.id)}
+                              className="scale-75"
+                              data-testid={`switch-flag-${buyer.id}`}
+                            />
+                            {canEdit && (
+                              <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => archiveMutation.mutate(buyer.id)} data-testid={`button-archive-${buyer.id}`}>
+                                <Archive className="w-3 h-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
                     ))}
 
                     {showArchived && filteredBuyers.archived.length > 0 && (
                       <>
-                        <div className="p-2 bg-muted/30 text-sm font-medium text-muted-foreground">{t("archivedBuyers")}</div>
+                        <tr><td colSpan={10} className="p-2 bg-muted/30 text-sm font-medium text-muted-foreground">{t("archivedBuyers")}</td></tr>
                         {filteredBuyers.archived.map(buyer => (
-                          <div 
-                            key={buyer.id}
-                            className="grid grid-cols-[32px_90px_150px_100px_100px_100px_90px_100px_100px_100px] gap-2 p-2 border-b items-center text-sm opacity-60"
-                            data-testid={`row-buyer-archived-${buyer.id}`}
-                          >
-                            <div></div>
-                            <div className="font-mono text-xs text-muted-foreground truncate">{buyer.buyerId}</div>
-                            <div className="font-medium truncate">{buyer.buyerName}</div>
-                            <div className="text-muted-foreground truncate text-xs">{buyer.address || '-'}</div>
-                            <div className="text-muted-foreground truncate text-xs">{buyer.contactNumber || '-'}</div>
-                            <div className="text-center text-muted-foreground">-</div>
-                            <div className="text-center text-muted-foreground">-</div>
-                            <div className="text-center text-muted-foreground">-</div>
-                            <div className="text-center text-muted-foreground">-</div>
-                            <div className="flex items-center justify-center">
+                          <tr key={buyer.id} className="border-b opacity-60" data-testid={`row-buyer-archived-${buyer.id}`}>
+                            <td className="p-2"></td>
+                            <td className="p-2 font-mono text-xs text-muted-foreground">{buyer.buyerId}</td>
+                            <td className="p-2 font-medium">{buyer.buyerName}</td>
+                            <td className="p-2 text-muted-foreground text-xs">{buyer.address || '-'}</td>
+                            <td className="p-2 text-muted-foreground text-xs">{buyer.contactNumber || '-'}</td>
+                            <td className="p-2 text-center text-muted-foreground">-</td>
+                            <td className="p-2 text-center text-muted-foreground">-</td>
+                            <td className="p-2 text-center text-muted-foreground">-</td>
+                            <td className="p-2 text-center text-muted-foreground">-</td>
+                            <td className="p-2 text-center">
                               {canEdit && (
                                 <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => reinstateMutation.mutate(buyer.id)}>
                                   <RotateCcw className="w-3 h-3" />
                                 </Button>
                               )}
-                            </div>
-                          </div>
+                            </td>
+                          </tr>
                         ))}
                       </>
                     )}
-                  </div>
-                </div>
-              </ScrollArea>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </>
         )}
