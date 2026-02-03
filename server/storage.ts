@@ -1414,6 +1414,12 @@ export class DatabaseStorage implements IStorage {
     if (chamber) {
       await this.updateChamberFill(chamber.id, Math.max(0, chamber.currentFill - bagsToRemove));
     }
+    
+    // Ensure buyer exists in buyer ledger and get IDs (if buyer name is provided)
+    let buyerEntry: { id: string; buyerId: string } | null = null;
+    if (buyerName && buyerName.trim()) {
+      buyerEntry = await this.ensureBuyerLedgerEntry(lot.coldStorageId, { buyerName: buyerName.trim() });
+    }
 
     // Create permanent sales history record for full sale
     // For full sales, chargeBasis is always "actual" since we're selling all remaining bags
@@ -1466,6 +1472,9 @@ export class DatabaseStorage implements IStorage {
       // Farmer ledger reference (copy from lot)
       farmerLedgerId: lot.farmerLedgerId || null,
       farmerId: lot.farmerId || null,
+      // Buyer ledger reference
+      buyerLedgerId: buyerEntry?.id || null,
+      buyerId: buyerEntry?.buyerId || null,
     });
 
     return updatedLot;
@@ -2362,6 +2371,13 @@ export class DatabaseStorage implements IStorage {
     // Generate transaction ID
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
     
+    // Get farmer ledger IDs
+    const farmerEntry = await this.ensureFarmerLedgerEntry(data.coldStorageId, {
+      name: farmerIdentity.farmerName,
+      contactNumber: farmerIdentity.contactNumber,
+      village: farmerIdentity.village,
+    });
+    
     // Create the cash receipt with farmer payer type
     const buyerDisplayName = data.buyerName || `${farmerIdentity.farmerName} (${farmerIdentity.village})`;
     const [receipt] = await db.insert(cashReceipts)
@@ -2378,6 +2394,8 @@ export class DatabaseStorage implements IStorage {
         notes: data.notes,
         transactionId,
         dueBalanceAfter: totalDueAfter,
+        farmerLedgerId: farmerEntry.id,
+        farmerId: farmerEntry.farmerId,
       })
       .returning();
     
@@ -2575,6 +2593,15 @@ export class DatabaseStorage implements IStorage {
     if (data.payerType === "cold_merchant" && data.buyerName) {
       dueBalanceAfter = await this.getBuyerDueBalance(data.coldStorageId, data.buyerName);
     }
+    
+    // Get buyer ledger IDs for cold_merchant payer type
+    let buyerLedgerId: string | null = null;
+    let buyerId: string | null = null;
+    if (data.payerType === "cold_merchant" && data.buyerName) {
+      const buyerEntry = await this.ensureBuyerLedgerEntry(data.coldStorageId, { buyerName: data.buyerName.trim() });
+      buyerLedgerId = buyerEntry.id;
+      buyerId = buyerEntry.buyerId;
+    }
 
     // Create the receipt record
     const [receipt] = await db.insert(cashReceipts)
@@ -2585,6 +2612,8 @@ export class DatabaseStorage implements IStorage {
         appliedAmount: appliedAmount,
         unappliedAmount: remainingAmount,
         dueBalanceAfter: dueBalanceAfter,
+        buyerLedgerId,
+        buyerId,
       })
       .returning();
 

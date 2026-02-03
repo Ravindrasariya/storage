@@ -198,6 +198,9 @@ export const salesHistory = pgTable("sales_history", {
   // Farmer ledger reference (for linking to farmer ledger)
   farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
   farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format) - populated by sync
+  // Buyer ledger reference (for linking to buyer ledger)
+  buyerLedgerId: varchar("buyer_ledger_id"), // Reference to buyer_ledger table (nullable for backward compatibility)
+  buyerId: text("buyer_id"), // User-friendly buyer ID (BYYYYYMMDD format)
 });
 
 // Edit history for tracking changes
@@ -272,6 +275,12 @@ export const cashReceipts = pgTable("cash_receipts", {
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Farmer ledger reference (for farmer payer type)
+  farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table
+  farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format)
+  // Buyer ledger reference (for cold_merchant payer type)
+  buyerLedgerId: varchar("buyer_ledger_id"), // Reference to buyer_ledger table
+  buyerId: text("buyer_id"), // User-friendly buyer ID (BYYYYYMMDD format)
 });
 
 // Expenses - tracks outward cash/account payments

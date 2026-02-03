@@ -1063,6 +1063,12 @@ export async function registerRoutes(
       // Get chamber for sales history
       const chamber = await storage.getChamber(lot.chamberId);
       
+      // Ensure buyer exists in buyer ledger and get IDs (if buyer name is provided)
+      let buyerEntry: { id: string; buyerId: string } | null = null;
+      if (buyerName && buyerName.trim()) {
+        buyerEntry = await storage.ensureBuyerLedgerEntry(lot.coldStorageId, { buyerName: buyerName.trim() });
+      }
+      
       // Calculate paid/due amounts based on payment status (use totalChargeForLot which includes all charges)
       let salePaidAmount = 0;
       let saleDueAmount = 0;
@@ -1128,6 +1134,9 @@ export async function registerRoutes(
         // Farmer ledger reference (copy from lot)
         farmerLedgerId: lot.farmerLedgerId || null,
         farmerId: lot.farmerId || null,
+        // Buyer ledger reference (ensure buyer exists and get IDs)
+        buyerLedgerId: buyerEntry?.id || null,
+        buyerId: buyerEntry?.buyerId || null,
       });
 
       const updatedLot = await storage.getLot(req.params.id);
