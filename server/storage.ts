@@ -5881,7 +5881,47 @@ export class DatabaseStorage implements IStorage {
       modifiedBy,
     });
     
+    // Propagate farmer details to all linked touchpoints (lots, receivables, sales)
+    await this.propagateFarmerDetailsToTouchpoints(id, updatedFarmer);
+    
     return { farmer: updatedFarmer, merged: false };
+  }
+  
+  // Propagate farmer details from farmer_ledger to all linked touchpoints
+  private async propagateFarmerDetailsToTouchpoints(
+    farmerLedgerId: string,
+    farmer: FarmerLedgerEntry
+  ): Promise<void> {
+    const farmerDetails = {
+      farmerName: farmer.name,
+      contactNumber: farmer.contactNumber,
+      village: farmer.village,
+      tehsil: farmer.tehsil || '',
+      district: farmer.district || '',
+      state: farmer.state || '',
+    };
+    
+    // Update all linked lots
+    await db.update(lots)
+      .set(farmerDetails)
+      .where(eq(lots.farmerLedgerId, farmerLedgerId));
+    
+    // Update all linked opening receivables (farmer receivables)
+    await db.update(openingReceivables)
+      .set({
+        farmerName: farmer.name,
+        contactNumber: farmer.contactNumber,
+        village: farmer.village,
+        tehsil: farmer.tehsil || '',
+        district: farmer.district || '',
+        state: farmer.state || '',
+      })
+      .where(eq(openingReceivables.farmerLedgerId, farmerLedgerId));
+    
+    // Update all linked sales history
+    await db.update(salesHistory)
+      .set(farmerDetails)
+      .where(eq(salesHistory.farmerLedgerId, farmerLedgerId));
   }
 
   // Archive a farmer

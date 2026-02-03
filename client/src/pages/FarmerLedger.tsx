@@ -762,18 +762,70 @@ export default function FarmerLedger() {
             {editHistory && editHistory.length > 0 && (
               <div>
                 <Label className="text-sm font-medium">{t("editHistory")}</Label>
-                <ScrollArea className="h-32 mt-2 border rounded-md p-2">
-                  {editHistory.map(entry => (
-                    <div key={entry.id} className="text-xs mb-2 pb-2 border-b last:border-0">
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>{entry.editType}</span>
-                        <span>{format(new Date(entry.modifiedAt), 'dd/MM/yyyy HH:mm')}</span>
+                <ScrollArea className="h-48 mt-2 border rounded-md p-2">
+                  {editHistory.map(entry => {
+                    const fieldLabels: Record<string, string> = {
+                      name: t("farmerName"),
+                      contactNumber: t("contactNumber"),
+                      village: t("village"),
+                      tehsil: t("tehsil"),
+                      district: t("district"),
+                      state: t("state"),
+                      isArchived: t("archived")
+                    };
+                    
+                    let changes: { field: string; oldValue: string; newValue: string }[] = [];
+                    if (entry.editType === 'edit' && entry.beforeValues && entry.afterValues) {
+                      try {
+                        const before = JSON.parse(entry.beforeValues);
+                        const after = JSON.parse(entry.afterValues);
+                        Object.keys(after).forEach(key => {
+                          if (before[key] !== after[key]) {
+                            const formatValue = (val: unknown): string => {
+                              if (val === null || val === undefined) return '-';
+                              if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+                              if (key === 'isArchived') return val ? t("yes") : t("no");
+                              return String(val) || '-';
+                            };
+                            changes.push({
+                              field: fieldLabels[key] || key,
+                              oldValue: formatValue(before[key]),
+                              newValue: formatValue(after[key])
+                            });
+                          }
+                        });
+                      } catch {
+                        changes = [];
+                      }
+                    }
+                    
+                    return (
+                      <div key={entry.id} className="text-xs mb-2 pb-2 border-b last:border-0">
+                        <div className="flex justify-between text-muted-foreground mb-1">
+                          <span className="font-medium">
+                            {entry.editType === 'merge' ? t("merge") : t("edit")}
+                            {entry.modifiedBy && <span className="ml-1">({entry.modifiedBy})</span>}
+                          </span>
+                          <span>{format(new Date(entry.modifiedAt), 'dd/MM/yyyy HH:mm')}</span>
+                        </div>
+                        {entry.mergedFromId && (
+                          <div className="text-destructive">{t("mergedFrom")}: {entry.mergedFromFarmerId || entry.mergedFromId}</div>
+                        )}
+                        {changes.length > 0 && (
+                          <div className="mt-1 space-y-1">
+                            {changes.map((change, idx) => (
+                              <div key={idx} className="flex flex-wrap gap-1">
+                                <span className="font-medium">{change.field}:</span>
+                                <span className="text-muted-foreground line-through">{change.oldValue}</span>
+                                <span>→</span>
+                                <span className="font-semibold">{change.newValue}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      {entry.mergedFromId && (
-                        <div className="text-destructive">{t("mergedFrom")}: {entry.mergedFromId}</div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </ScrollArea>
               </div>
             )}
