@@ -57,9 +57,22 @@ export default function StockRegister() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { canEdit } = useAuth();
-
+  const currentYear = new Date().getFullYear();
+  
   // Load initial state from sessionStorage if available
   const savedState = getSavedSearchState();
+  
+  const [selectedYear, setSelectedYear] = useState<number>(savedState?.selectedYear || currentYear);
+
+  // Fetch available years for filtering
+  const { data: availableYears } = useQuery<number[]>({
+    queryKey: ["/api/analytics/years"],
+  });
+
+  // Generate year options: available years + current year
+  const yearOptions = availableYears 
+    ? Array.from(new Set([...availableYears, currentYear])).sort((a, b) => b - a)
+    : [currentYear];
 
   const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "filter" | "farmerName">(
     savedState?.searchType || "phone"
@@ -293,7 +306,7 @@ export default function StockRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoQuery, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoQuery, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, selectedYear]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
@@ -309,9 +322,10 @@ export default function StockRegister() {
       potatoTypeFilter,
       paymentDueFilter,
       bagTypeFilter,
+      selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoQuery, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoQuery, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -831,11 +845,11 @@ export default function StockRegister() {
     try {
       let url: string;
       if (searchType === "filter") {
-        url = `/api/lots/search?type=filter`;
+        url = `/api/lots/search?type=filter&year=${selectedYear}`;
       } else if (searchType === "lotNoSize") {
-        url = `/api/lots/search?type=lotNoSize&lotNo=${encodeURIComponent(lotNoQuery)}&size=${encodeURIComponent(sizeQuery)}`;
+        url = `/api/lots/search?type=lotNoSize&lotNo=${encodeURIComponent(lotNoQuery)}&size=${encodeURIComponent(sizeQuery)}&year=${selectedYear}`;
       } else if (searchType === "farmerName") {
-        url = `/api/lots/search?type=farmerName&query=${encodeURIComponent(farmerNameQuery)}`;
+        url = `/api/lots/search?type=farmerName&query=${encodeURIComponent(farmerNameQuery)}&year=${selectedYear}`;
         if (selectedFarmerVillage) {
           url += `&village=${encodeURIComponent(selectedFarmerVillage)}`;
         }
@@ -843,7 +857,7 @@ export default function StockRegister() {
           url += `&contactNumber=${encodeURIComponent(selectedFarmerMobile)}`;
         }
       } else {
-        url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}`;
+        url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}&year=${selectedYear}`;
       }
       
       if (qualityFilter && qualityFilter !== "all") {
@@ -1013,12 +1027,28 @@ export default function StockRegister() {
             </p>
           </div>
         </div>
-        <ToggleGroup
-          type="single"
-          value={bagTypeFilter}
-          onValueChange={(value) => value && setBagTypeFilter(value as typeof bagTypeFilter)}
-          className="w-full sm:w-auto justify-between sm:justify-end bg-muted rounded-md p-1"
-        >
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={selectedYear.toString()}
+            onValueChange={(value) => setSelectedYear(parseInt(value, 10))}
+          >
+            <SelectTrigger className="w-24" data-testid="select-year-filter">
+              <SelectValue placeholder={t("year") || "Year"} />
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map((year) => (
+                <SelectItem key={year} value={year.toString()}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <ToggleGroup
+            type="single"
+            value={bagTypeFilter}
+            onValueChange={(value) => value && setBagTypeFilter(value as typeof bagTypeFilter)}
+            className="w-full sm:w-auto justify-between sm:justify-end bg-muted rounded-md p-1"
+          >
           <ToggleGroupItem 
             value="all" 
             size="sm" 
@@ -1052,6 +1082,7 @@ export default function StockRegister() {
             {t("seed")}
           </ToggleGroupItem>
         </ToggleGroup>
+        </div>
       </div>
 
       <Card className="p-4 sm:p-6">

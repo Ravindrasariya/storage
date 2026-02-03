@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { authFetch } from "@/lib/queryClient";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,19 +13,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Save, Plus, Trash2, RefreshCcw, AlertTriangle, ChevronDown, ChevronUp, Wrench } from "lucide-react";
+import { Settings, Save, Plus, Trash2, ChevronDown, ChevronUp, Wrench } from "lucide-react";
 import type { Chamber, ChamberFloor, MaintenanceRecord } from "@shared/schema";
 
 interface ColdStorageSettings {
@@ -40,10 +28,6 @@ interface ColdStorageSettings {
   seedColdCharge: number;
   seedHammali: number;
   chargeUnit: "bag" | "quintal";
-  startingWaferLotNumber: number;
-  startingRationSeedLotNumber: number;
-  nextWaferLotNumber?: number;
-  nextRationSeedLotNumber?: number;
 }
 
 type ChamberFloorsData = Record<string, ChamberFloor[]>;
@@ -231,32 +215,6 @@ export function SettingsDialog() {
     },
   });
 
-  const resetSeasonMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", "/api/reset-season");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
-      toast({
-        title: t("success"),
-        description: t("resetSuccess"),
-        variant: "success",
-      });
-      setOpen(false);
-    },
-    onError: () => {
-      toast({
-        title: t("error"),
-        description: t("resetCannotProceed"),
-        variant: "destructive",
-      });
-    },
-  });
 
   const createMaintenanceMutation = useMutation({
     mutationFn: async (data: { taskDescription: string; responsiblePerson: string }) => {
@@ -285,36 +243,11 @@ export function SettingsDialog() {
     },
   });
 
-  const handleResetSeason = async () => {
-    try {
-      const response = await authFetch("/api/reset-season/check");
-      const eligibility = await response.json();
-      
-      if (!eligibility.canReset) {
-        toast({
-          title: t("error"),
-          description: `${t("resetCannotProceed")} (${eligibility.remainingLots} ${t("remainingLots")}, ${eligibility.remainingBags} ${t("remainingBags")})`,
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      await resetSeasonMutation.mutateAsync();
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: t("resetCannotProceed"),
-        variant: "destructive",
-      });
-    }
-  };
 
   const handleSave = async () => {
     if (!settings) return;
 
     try {
-      // When starting lot numbers are changed, also update the current lot counters
-      // so the preview shows the new starting numbers immediately
       await updateSettingsMutation.mutateAsync({
         totalCapacity: settings.totalCapacity,
         waferRate: (settings.waferColdCharge || 0) + (settings.waferHammali || 0),
@@ -324,13 +257,7 @@ export function SettingsDialog() {
         seedColdCharge: settings.seedColdCharge,
         seedHammali: settings.seedHammali,
         chargeUnit: settings.chargeUnit || "bag",
-        startingWaferLotNumber: settings.startingWaferLotNumber || 1,
-        startingRationSeedLotNumber: settings.startingRationSeedLotNumber || 1,
-        nextWaferLotNumber: settings.startingWaferLotNumber || 1,
-        nextRationSeedLotNumber: settings.startingRationSeedLotNumber || 1,
       });
-      // Invalidate lot entry sequence preview
-      queryClient.invalidateQueries({ queryKey: ["/api/next-entry-sequence"] });
 
       for (const chamber of chamberEdits) {
         const original = chambers?.find((c) => c.id === chamber.id);
@@ -688,44 +615,6 @@ export function SettingsDialog() {
             </div>
           </Card>
 
-          <Card className="p-4 space-y-4">
-            <div>
-              <h4 className="font-semibold">{t("startingLotNumbers") || "Starting Lot Numbers"}</h4>
-              <p className="text-sm text-muted-foreground">
-                {t("startingLotNumbersDesc") || "Set the starting lot number for each category at the beginning of a season"}
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>{t("wafer")} {t("lotNumber") || "Lot #"}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={settings?.startingWaferLotNumber || 1}
-                  onChange={(e) =>
-                    setSettings((prev) =>
-                      prev ? { ...prev, startingWaferLotNumber: e.target.value === "" ? 1 : Math.max(1, Number(e.target.value)) } : null
-                    )
-                  }
-                  data-testid="input-starting-wafer-lot"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("ration")}/{t("seed")} {t("lotNumber") || "Lot #"}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={settings?.startingRationSeedLotNumber || 1}
-                  onChange={(e) =>
-                    setSettings((prev) =>
-                      prev ? { ...prev, startingRationSeedLotNumber: e.target.value === "" ? 1 : Math.max(1, Number(e.target.value)) } : null
-                    )
-                  }
-                  data-testid="input-starting-ration-seed-lot"
-                />
-              </div>
-            </div>
-          </Card>
 
           <Card className="p-4 space-y-4">
             <div className="flex items-center justify-between">
@@ -948,48 +837,6 @@ export function SettingsDialog() {
             </div>
           </Card>
 
-          <Card className="p-4 space-y-4 border-destructive/50">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              <h4 className="font-semibold text-destructive">{t("resetForNextSeason")}</h4>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t("resetWarning")}
-            </p>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button 
-                  variant="destructive" 
-                  className="w-full"
-                  data-testid="button-reset-season"
-                >
-                  <RefreshCcw className="h-4 w-4 mr-2" />
-                  {t("resetForNextSeason")}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-destructive" />
-                    {t("resetForNextSeason")}
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t("resetWarning")}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleResetSeason}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    data-testid="button-confirm-reset"
-                  >
-                    {t("proceedWithReset")}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </Card>
         </div>
       </DialogContent>
     </Dialog>

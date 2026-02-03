@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,18 +8,36 @@ import { RatesCard } from "@/components/RatesCard";
 import { UpForSaleList } from "@/components/UpForSaleList";
 import { Warehouse, BarChart3, Users, Package, Boxes } from "lucide-react";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { DashboardStats, ColdStorage } from "@shared/schema";
 
 export default function Dashboard() {
   const { t } = useI18n();
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+
+  const { data: availableYears } = useQuery<number[]>({
+    queryKey: ["/api/analytics/years"],
+  });
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/dashboard/stats"],
+    queryKey: [`/api/dashboard/stats?year=${selectedYear}`],
   });
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
   });
+
+  // Generate year options: available years + current year (ensure current year is always available)
+  const yearOptions = availableYears 
+    ? Array.from(new Set([...availableYears, currentYear])).sort((a, b) => b - a)
+    : [currentYear];
 
   if (isLoading) {
     return (
@@ -52,6 +71,21 @@ export default function Dashboard() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <Select
+            value={selectedYear.toString()}
+            onValueChange={(value) => setSelectedYear(parseInt(value, 10))}
+          >
+            <SelectTrigger className="w-24" data-testid="select-year-filter">
+              <SelectValue placeholder={t("year") || "Year"} />
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map((year) => (
+                <SelectItem key={year} value={year.toString()}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <SettingsDialog />
         </div>
       </div>

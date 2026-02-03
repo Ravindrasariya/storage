@@ -100,7 +100,8 @@ export async function registerRoutes(
   app.get("/api/dashboard/stats", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const stats = await storage.getDashboardStats(coldStorageId);
+      const year = req.query.year ? parseInt(req.query.year as string, 10) : undefined;
+      const stats = await storage.getDashboardStats(coldStorageId, year);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch dashboard stats" });
@@ -462,45 +463,33 @@ export async function registerRoutes(
   });
 
   // Get next entry sequence number (for display before save)
+  // Lot numbers reset to 1 at the start of each calendar year
   app.get("/api/next-entry-sequence", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const coldStorage = await storage.getColdStorage(coldStorageId);
       const bagTypeCategory = req.query.bagTypeCategory as string || "wafer";
       const isWaferCategory = bagTypeCategory === "wafer";
+      const currentYear = new Date().getFullYear();
       
-      // Get stored counter value
-      let storedCounter: number;
-      if (isWaferCategory) {
-        storedCounter = coldStorage?.nextWaferLotNumber ?? 1;
-      } else {
-        storedCounter = coldStorage?.nextRationSeedLotNumber ?? 1;
-      }
-      
-      // Also calculate actual max lot number from existing lots to ensure counter is valid
+      // Find max lot number from lots created in the current year only
       const allLots = await storage.getAllLots(coldStorageId);
       let maxLotNo = 0;
       allLots.forEach((lot: Lot) => {
         const lotIsWafer = lot.bagType === "wafer";
         if (lotIsWafer === isWaferCategory) {
-          const num = parseInt(lot.lotNo, 10);
-          if (!isNaN(num) && num > maxLotNo) {
-            maxLotNo = num;
+          // Only consider lots from current year
+          const lotYear = lot.createdAt ? new Date(lot.createdAt).getFullYear() : currentYear;
+          if (lotYear === currentYear) {
+            const num = parseInt(lot.lotNo, 10);
+            if (!isNaN(num) && num > maxLotNo) {
+              maxLotNo = num;
+            }
           }
         }
       });
       
-      // Use whichever is higher: stored counter or (max lot number + 1)
-      const nextSequence = Math.max(storedCounter, maxLotNo + 1);
-      
-      // Update counter if it was out of sync
-      if (nextSequence > storedCounter) {
-        if (isWaferCategory) {
-          await storage.updateColdStorage(coldStorageId, { nextWaferLotNumber: nextSequence });
-        } else {
-          await storage.updateColdStorage(coldStorageId, { nextRationSeedLotNumber: nextSequence });
-        }
-      }
+      // Next sequence is max + 1, or 1 if no lots exist for current year
+      const nextSequence = maxLotNo + 1;
       
       res.json({ nextSequence });
     } catch (error) {
@@ -576,7 +565,8 @@ export async function registerRoutes(
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { type, query, lotNo, size, quality, paymentDue, potatoType } = req.query;
+      const { type, query, lotNo, size, quality, paymentDue, potatoType, year } = req.query;
+      const filterYear = year ? parseInt(year as string, 10) : undefined;
       
       const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
       if (!validTypes.includes(type as string)) {
@@ -614,6 +604,15 @@ export async function registerRoutes(
           query as string,
           coldStorageId
         );
+      }
+      
+      // Apply year filter (based on createdAt date)
+      if (filterYear) {
+        lots = lots.filter((lot) => {
+          if (!lot.createdAt) return false;
+          const lotYear = new Date(lot.createdAt).getFullYear();
+          return lotYear === filterYear;
+        });
       }
       
       // Apply quality filter
@@ -823,37 +822,8 @@ export async function registerRoutes(
         );
       }
 
-      // If lotNo changed, recalculate the counter for this bag type category
-      if (validated.lotNo && validated.lotNo !== lot.lotNo) {
-        const isWaferCategory = lot.bagType === "wafer";
-        const allLotsForCounter = await storage.getAllLots(coldStorageId);
-        
-        // Find max lot number for this category (including the one we just updated)
-        let maxLotNo = 0;
-        allLotsForCounter.forEach((existingLot: Lot) => {
-          const existingIsWafer = existingLot.bagType === "wafer";
-          if (existingIsWafer === isWaferCategory) {
-            const num = parseInt(existingLot.lotNo, 10);
-            if (!isNaN(num) && num > maxLotNo) {
-              maxLotNo = num;
-            }
-          }
-        });
-        
-        // Also consider the new lot number we just set
-        const newLotNum = parseInt(validated.lotNo, 10);
-        if (!isNaN(newLotNum) && newLotNum > maxLotNo) {
-          maxLotNo = newLotNum;
-        }
-        
-        // Update the counter to max + 1
-        const newCounterValue = maxLotNo + 1;
-        if (isWaferCategory) {
-          await storage.updateColdStorage(coldStorageId, { nextWaferLotNumber: newCounterValue });
-        } else {
-          await storage.updateColdStorage(coldStorageId, { nextRationSeedLotNumber: newCounterValue });
-        }
-      }
+      // Note: Lot numbers are calculated on-the-fly based on max lot# in current year
+      // No counter update needed - next lot creation will automatically use max+1
 
       if (isLocationOrQualityEdit || farmerFieldsChanged) {
         const newData = {
@@ -1289,34 +1259,6 @@ export async function registerRoutes(
     }
   });
 
-  // Reset Season
-  app.get("/api/reset-season/check", requireAuth, async (req: AuthenticatedRequest, res) => {
-    try {
-      const coldStorageId = getColdStorageId(req);
-      const result = await storage.checkResetEligibility(coldStorageId);
-      res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to check reset eligibility" });
-    }
-  });
-
-  app.post("/api/reset-season", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
-    try {
-      const coldStorageId = getColdStorageId(req);
-      const eligibility = await storage.checkResetEligibility(coldStorageId);
-      if (!eligibility.canReset) {
-        return res.status(400).json({ 
-          error: "Cannot reset season", 
-          remainingBags: eligibility.remainingBags,
-          remainingLots: eligibility.remainingLots
-        });
-      }
-      await storage.resetSeason(coldStorageId);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to reset season" });
-    }
-  });
 
   // Cold Storage Settings
   app.get("/api/cold-storage", requireAuth, async (req: AuthenticatedRequest, res) => {

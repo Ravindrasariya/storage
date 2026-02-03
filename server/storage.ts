@@ -162,13 +162,11 @@ export interface IStorage {
   createEditHistory(history: InsertLotEditHistory): Promise<LotEditHistory>;
   getLotHistory(lotId: string): Promise<LotEditHistory[]>;
   deleteEditHistory(historyId: string): Promise<void>;
-  getDashboardStats(coldStorageId: string): Promise<DashboardStats>;
+  getDashboardStats(coldStorageId: string, year?: number): Promise<DashboardStats>;
   getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats>;
   getPaymentStats(coldStorageId: string, year?: number): Promise<PaymentStats>;
   getMerchantStats(coldStorageId: string, year?: number): Promise<MerchantStats>;
   getAnalyticsYears(coldStorageId: string): Promise<number[]>;
-  checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }>;
-  resetSeason(coldStorageId: string): Promise<void>;
   finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number, customColdCharge?: number, customHammali?: number): Promise<Lot | undefined>;
   updateColdStorage(id: string, updates: Partial<ColdStorage>): Promise<ColdStorage | undefined>;
   createChamber(data: { name: string; capacity: number; coldStorageId: string }): Promise<Chamber>;
@@ -530,56 +528,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed"): Promise<{ lots: Lot[]; entrySequence: number }> {
-    // Determine which lot number counter to use based on bag type category
-    // Wafer uses nextWaferLotNumber, Ration/Seed uses nextRationSeedLotNumber
+    // Lot numbers reset to 1 at the start of each calendar year
+    // Separate counters: Wafer has its own sequence, Ration/Seed share another
     const isWaferCategory = bagTypeCategory === "wafer";
+    const currentYear = new Date().getFullYear();
+    const yearStart = new Date(currentYear, 0, 1); // Jan 1 of current year
     
-    // Atomic read-and-increment pattern using raw SQL with CTE
-    // Counter semantics: nextXLotNumber stores the NEXT number to assign (starts at 1)
-    // CTE atomically: captures pre-increment value, updates to incremented value, returns pre-increment
-    // This prevents race conditions and correctly handles NULL/legacy data
-    let entrySequence: number;
+    // Find max lot number from lots created in the current year for this bag type category
+    const allLots = await this.getAllLots(coldStorageId);
+    let maxLotNo = 0;
+    allLots.forEach((lot) => {
+      const lotIsWafer = lot.bagType === "wafer";
+      if (lotIsWafer === isWaferCategory) {
+        // Only consider lots from current year
+        const lotYear = lot.createdAt ? new Date(lot.createdAt).getFullYear() : currentYear;
+        if (lotYear === currentYear) {
+          const num = parseInt(lot.lotNo, 10);
+          if (!isNaN(num) && num > maxLotNo) {
+            maxLotNo = num;
+          }
+        }
+      }
+    });
     
-    if (isWaferCategory) {
-      // Raw SQL CTE that atomically reads, increments, and returns the PRE-increment value
-      // If counter is NULL, treat as 1 (first lot number)
-      const result = await db.execute(sql`
-        WITH old_value AS (
-          SELECT COALESCE(next_wafer_lot_number, 1) as lot_num
-          FROM cold_storages
-          WHERE id = ${coldStorageId}
-        )
-        UPDATE cold_storages
-        SET next_wafer_lot_number = (SELECT lot_num FROM old_value) + 1
-        WHERE id = ${coldStorageId}
-        RETURNING (SELECT lot_num FROM old_value) as assigned_lot_number
-      `);
-      
-      const rows = result.rows as Array<{ assigned_lot_number: number }>;
-      if (!rows || rows.length === 0) {
-        throw new Error(`Cold storage not found: ${coldStorageId}`);
-      }
-      entrySequence = rows[0].assigned_lot_number;
-    } else {
-      // Raw SQL CTE for ration/seed counter
-      const result = await db.execute(sql`
-        WITH old_value AS (
-          SELECT COALESCE(next_ration_seed_lot_number, 1) as lot_num
-          FROM cold_storages
-          WHERE id = ${coldStorageId}
-        )
-        UPDATE cold_storages
-        SET next_ration_seed_lot_number = (SELECT lot_num FROM old_value) + 1
-        WHERE id = ${coldStorageId}
-        RETURNING (SELECT lot_num FROM old_value) as assigned_lot_number
-      `);
-      
-      const rows = result.rows as Array<{ assigned_lot_number: number }>;
-      if (!rows || rows.length === 0) {
-        throw new Error(`Cold storage not found: ${coldStorageId}`);
-      }
-      entrySequence = rows[0].assigned_lot_number;
-    }
+    // Next sequence is max + 1, or 1 if no lots exist for current year
+    const entrySequence = maxLotNo + 1;
     
     const createdLots: Lot[] = [];
     
@@ -726,10 +699,19 @@ export class DatabaseStorage implements IStorage {
     await db.delete(lotEditHistory).where(eq(lotEditHistory.id, historyId));
   }
 
-  async getDashboardStats(coldStorageId: string): Promise<DashboardStats> {
+  async getDashboardStats(coldStorageId: string, year?: number): Promise<DashboardStats> {
     const coldStorage = await this.getColdStorage(coldStorageId);
     const allChambers = await this.getChambers(coldStorageId);
-    const allLots = await this.getAllLots(coldStorageId);
+    let allLots = await this.getAllLots(coldStorageId);
+    
+    // Filter lots by year if specified (based on createdAt)
+    if (year) {
+      allLots = allLots.filter(lot => {
+        if (!lot.createdAt) return false;
+        const lotYear = new Date(lot.createdAt).getFullYear();
+        return lotYear === year;
+      });
+    }
 
     const currentUtilization = allLots.reduce((sum, lot) => sum + lot.remainingSize, 0);
     const peakUtilization = allLots.reduce((sum, lot) => sum + lot.size, 0);
@@ -1295,63 +1277,6 @@ export class DatabaseStorage implements IStorage {
     return Array.from(yearSet).sort((a, b) => b - a);
   }
 
-  async checkResetEligibility(coldStorageId: string): Promise<{ canReset: boolean; remainingBags: number; remainingLots: number }> {
-    const allLots = await this.getAllLots(coldStorageId);
-    const lotsWithRemaining = allLots.filter((lot) => lot.remainingSize > 0);
-    const remainingBags = lotsWithRemaining.reduce((sum, lot) => sum + lot.remainingSize, 0);
-    const remainingLots = lotsWithRemaining.length;
-    
-    return {
-      canReset: remainingBags === 0 && remainingLots === 0,
-      remainingBags,
-      remainingLots,
-    };
-  }
-
-  async resetSeason(coldStorageId: string): Promise<void> {
-    // Delete all lots for the cold storage
-    await db.delete(lots).where(eq(lots.coldStorageId, coldStorageId));
-    
-    // NOTE: The following data is intentionally PRESERVED across season resets:
-    // - salesHistory (sale records)
-    // - cashReceipts (payment receipts)
-    // - expenses (expense records)
-    // - cashTransfers (cash transfer records)
-    // - discounts (discount records)
-    // - openingReceivables (receivables from settings)
-    // - openingPayables (payables from settings)
-    // - cashOpeningBalances (opening balance records)
-    
-    // Get all chambers for this cold storage to delete their floors
-    const allChambers = await this.getChambers(coldStorageId);
-    
-    // Delete all floor configurations for each chamber
-    for (const chamber of allChambers) {
-      await db.delete(chamberFloors).where(eq(chamberFloors.chamberId, chamber.id));
-    }
-    
-    // Reset all chamber fills to zero
-    await db.update(chambers)
-      .set({ currentFill: 0 })
-      .where(eq(chambers.coldStorageId, coldStorageId));
-    
-    // Get the starting lot numbers for this cold storage
-    const coldStorage = await this.getColdStorage(coldStorageId);
-    const startingWaferLotNumber = coldStorage?.startingWaferLotNumber || 1;
-    const startingRationSeedLotNumber = coldStorage?.startingRationSeedLotNumber || 1;
-
-    // Reset all bill number counters to 1, and lot counters to their starting values
-    await db.update(coldStorages)
-      .set({ 
-        nextExitBillNumber: 1,
-        nextColdStorageBillNumber: 1,
-        nextSalesBillNumber: 1,
-        nextEntryBillNumber: 1,
-        nextWaferLotNumber: startingWaferLotNumber,
-        nextRationSeedLotNumber: startingRationSeedLotNumber,
-      })
-      .where(eq(coldStorages.id, coldStorageId));
-  }
 
   async finalizeSale(lotId: string, paymentStatus: "due" | "paid" | "partial", buyerName?: string, pricePerKg?: number, paidAmount?: number, dueAmount?: number, paymentMode?: "cash" | "account", kataCharges?: number, extraHammali?: number, gradingCharges?: number, netWeight?: number, customColdCharge?: number, customHammali?: number): Promise<Lot | undefined> {
     const lot = await this.getLot(lotId);
