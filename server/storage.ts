@@ -6406,8 +6406,9 @@ export class DatabaseStorage implements IStorage {
       ));
     
     for (const rec of merchantReceivables) {
-      if (rec.farmerName && rec.farmerName.trim()) {
-        buyerNames.add(rec.farmerName.trim());
+      // cold_merchant receivables store buyer name in buyerName field, not farmerName
+      if (rec.buyerName && rec.buyerName.trim()) {
+        buyerNames.add(rec.buyerName.trim());
       }
     }
     
