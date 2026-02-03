@@ -5479,7 +5479,8 @@ export class DatabaseStorage implements IStorage {
             created = true;
           } catch (error: any) {
             // Check if it's a unique constraint violation (PostgreSQL error code 23505)
-            if (error?.code === '23505' && error?.constraint?.includes('farmer_id')) {
+            // Constraint name: farmer_ledger_cs_fid_idx (composite unique on coldStorageId + farmerId)
+            if (error?.code === '23505' && (error?.constraint?.includes('farmer_id') || error?.constraint?.includes('cs_fid'))) {
               console.log(`Farmer ID collision detected during sync (attempt ${attempt + 1}/${maxRetries}), retrying...`);
               continue; // Retry with a new ID
             }
@@ -5630,7 +5631,8 @@ export class DatabaseStorage implements IStorage {
         return { id: newId, farmerId };
       } catch (error: any) {
         // Check if it's a unique constraint violation (PostgreSQL error code 23505)
-        if (error?.code === '23505' && error?.constraint?.includes('farmer_id')) {
+        // Constraint name: farmer_ledger_cs_fid_idx (composite unique on coldStorageId + farmerId)
+        if (error?.code === '23505' && (error?.constraint?.includes('farmer_id') || error?.constraint?.includes('cs_fid'))) {
           console.log(`Farmer ID collision detected (attempt ${attempt + 1}/${maxRetries}), retrying...`);
           continue; // Retry with a new ID
         }

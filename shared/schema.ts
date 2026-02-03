@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, integer, real, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -424,7 +424,7 @@ export const bankAccounts = pgTable("bank_accounts", {
 export const farmerLedger = pgTable("farmer_ledger", {
   id: varchar("id").primaryKey(),
   coldStorageId: varchar("cold_storage_id").notNull(),
-  farmerId: text("farmer_id").notNull().unique(), // Format: FMYYYYMMDD1, FMYYYYMMDD2, etc. Unique constraint prevents duplicate IDs
+  farmerId: text("farmer_id").notNull(), // Format: FMYYYYMMDD1, FMYYYYMMDD2, etc. Unique per cold storage
   name: text("name").notNull(),
   contactNumber: text("contact_number").notNull(),
   village: text("village").notNull(),
@@ -435,7 +435,10 @@ export const farmerLedger = pgTable("farmer_ledger", {
   isArchived: integer("is_archived").notNull().default(0), // 0 = active, 1 = archived
   archivedAt: timestamp("archived_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  // Composite unique: farmerId is unique within each cold storage
+  uniqueFarmerIdPerColdStorage: uniqueIndex("farmer_ledger_cs_fid_idx").on(table.coldStorageId, table.farmerId),
+}));
 
 // Farmer Ledger Edit History - tracks edits and merges
 export const farmerLedgerEditHistory = pgTable("farmer_ledger_edit_history", {
