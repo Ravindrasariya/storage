@@ -339,9 +339,10 @@ export default function CashManagement() {
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
   });
 
-  // Farmer receivables with dues (for Cash Inward "farmer" payer type)
-  const { data: farmerReceivablesWithDues = [] } = useQuery<{ id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>({
-    queryKey: [`/api/farmer-receivables-with-dues?year=${currentYear}`],
+  // Farmer dues from Farmer Ledger (for Cash Inward "farmer" payer type)
+  // Returns pyReceivables + selfDue as totalDue (farmer-liable dues only)
+  const { data: farmerLedgerDues = [] } = useQuery<{ id: string; farmerName: string; contactNumber: string; village: string; pyReceivables: number; selfDue: number; totalDue: number }[]>({
+    queryKey: ["/api/farmer-ledger/dues-for-dropdown"],
   });
 
   const { data: receipts = [], isLoading: loadingReceipts } = useQuery<CashReceipt[]>({
@@ -434,11 +435,8 @@ export default function CashManagement() {
     },
   });
 
-  // Farmers with dues (farmer-liable only) - for F2B transfer and inward cash
-  const { data: farmersWithDues = [] } = useQuery<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]>({
-    queryKey: ["/api/farmers-with-dues"],
-    enabled: transferTypeMode === "farmer",
-  });
+  // Farmers with dues from Farmer Ledger - for F2B transfer (uses same endpoint as inward cash)
+  // The farmerLedgerDues query above is always enabled and provides data for both
 
   // Farmers with ALL dues (farmer-liable + buyer-liable) - for discount mode
   const { data: farmersWithAllDues = [] } = useQuery<{ farmerName: string; village: string; contactNumber: string; totalDue: number; farmerLiableDue: number; buyerLiableDue: number }[]>({
@@ -592,8 +590,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
     },
@@ -621,8 +619,8 @@ export default function CashManagement() {
       setFarmerTransferRemarks("");
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-to-buyer-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
@@ -662,8 +660,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/sales-goods-buyers"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
@@ -700,8 +698,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
     },
@@ -724,7 +722,7 @@ export default function CashManagement() {
       // Comprehensive cache invalidation for receipt reversal
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
@@ -792,9 +790,9 @@ export default function CashManagement() {
       setDiscountBuyerAllocations([]);
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-all-dues"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/buyer-dues-for-farmer") });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
@@ -822,8 +820,8 @@ export default function CashManagement() {
       });
       // Comprehensive cache invalidation for discount reversal
       queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
@@ -854,8 +852,8 @@ export default function CashManagement() {
       });
       // Comprehensive cache invalidation for farmer-to-buyer transfer reversal
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-to-buyer-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
@@ -1008,9 +1006,9 @@ export default function CashManagement() {
       setNewReceivableState("");
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       // Invalidate all farmer receivables queries (any year)
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -1088,7 +1086,7 @@ export default function CashManagement() {
       finalBuyerName = customBuyerName.trim();
     } else if (payerType === "farmer") {
       farmerReceivableId = selectedFarmerReceivableId;
-      const selectedFarmer = farmerReceivablesWithDues.find(f => f.id === farmerReceivableId);
+      const selectedFarmer = farmerLedgerDues.find(f => f.id === farmerReceivableId);
       if (selectedFarmer) {
         finalBuyerName = `${selectedFarmer.farmerName} (${selectedFarmer.village})`;
       }
@@ -1111,7 +1109,7 @@ export default function CashManagement() {
     }
 
     // For farmer payments, include explicit farmer details to avoid synthetic ID parsing issues
-    const selectedFarmer = payerType === "farmer" ? farmerReceivablesWithDues.find(f => f.id === farmerReceivableId) : undefined;
+    const selectedFarmer = payerType === "farmer" ? farmerLedgerDues.find(f => f.id === farmerReceivableId) : undefined;
     
     createReceiptMutation.mutate({
       payerType,
@@ -2597,7 +2595,7 @@ export default function CashManagement() {
                 {payerType === "farmer" && (
                   <div className="space-y-2">
                     <Label>{t("selectFarmer")} *</Label>
-                    {farmerReceivablesWithDues.length === 0 ? (
+                    {farmerLedgerDues.length === 0 ? (
                       <p className="text-sm text-muted-foreground">{t("noFarmersWithDues")}</p>
                     ) : (
                       <Select value={selectedFarmerReceivableId} onValueChange={setSelectedFarmerReceivableId}>
@@ -2605,7 +2603,7 @@ export default function CashManagement() {
                           <SelectValue placeholder={t("selectFarmer")} />
                         </SelectTrigger>
                         <SelectContent>
-                          {farmerReceivablesWithDues.filter(f => f.totalDue >= 1).map((farmer) => (
+                          {farmerLedgerDues.filter(f => f.totalDue >= 1).map((farmer) => (
                             <SelectItem key={farmer.id} value={farmer.id}>
                               <div className="flex flex-col items-start">
                                 <span className="font-medium">{farmer.farmerName}</span>
@@ -2620,7 +2618,7 @@ export default function CashManagement() {
                     )}
                     {selectedFarmerReceivableId && (
                       <p className="text-xs text-muted-foreground">
-                        {t("totalDue")}: ₹{formatCurrency(farmerReceivablesWithDues.find(f => f.id === selectedFarmerReceivableId)?.totalDue || 0)}
+                        {t("totalDue")}: ₹{formatCurrency(farmerLedgerDues.find(f => f.id === selectedFarmerReceivableId)?.totalDue || 0)}
                       </p>
                     )}
                   </div>
@@ -3428,7 +3426,7 @@ export default function CashManagement() {
                           <SelectValue placeholder={t("selectFarmer") || "Select Farmer"} />
                         </SelectTrigger>
                         <SelectContent>
-                          {farmersWithDues.filter(f => f.totalDue >= 1).map((farmer) => (
+                          {farmerLedgerDues.filter(f => f.totalDue >= 1).map((farmer) => (
                             <SelectItem key={`${farmer.farmerName}|${farmer.village}|${farmer.contactNumber}`} value={`${farmer.farmerName}|${farmer.village}|${farmer.contactNumber}`}>
                               {farmer.farmerName} - {farmer.contactNumber} - {farmer.village} (₹{formatCurrency(farmer.totalDue)})
                             </SelectItem>
