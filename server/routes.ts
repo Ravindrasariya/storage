@@ -332,8 +332,8 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const validatedData = lotFormSchema.parse(req.body);
       
-      // Ensure farmer ledger entry exists and get the ID
-      const farmerLedgerId = await storage.ensureFarmerLedgerEntry(coldStorageId, {
+      // Ensure farmer ledger entry exists and get both IDs
+      const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
         name: validatedData.farmerName,
         contactNumber: validatedData.contactNumber,
         village: validatedData.village,
@@ -346,7 +346,8 @@ export async function registerRoutes(
         ...validatedData,
         coldStorageId: coldStorageId,
         remainingSize: validatedData.size,
-        farmerLedgerId,
+        farmerLedgerId: farmerEntry.id,
+        farmerId: farmerEntry.farmerId,
       });
       
       res.status(201).json(lot);
@@ -398,8 +399,8 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const { farmer, lots: lotDataArray, bagTypeCategory } = batchLotSchema.parse(req.body);
       
-      // Ensure farmer ledger entry exists and get the ID
-      const farmerLedgerId = await storage.ensureFarmerLedgerEntry(coldStorageId, {
+      // Ensure farmer ledger entry exists and get both IDs
+      const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
         name: farmer.farmerName,
         contactNumber: farmer.contactNumber,
         village: farmer.village,
@@ -439,7 +440,8 @@ export async function registerRoutes(
           advanceDeduction,
           freightDeduction,
           otherDeduction,
-          farmerLedgerId,
+          farmerLedgerId: farmerEntry.id,
+          farmerId: farmerEntry.farmerId,
         };
       });
       
@@ -1147,6 +1149,7 @@ export async function registerRoutes(
         isSelfSale: isSelfSale ? 1 : 0,
         // Farmer ledger reference (copy from lot)
         farmerLedgerId: lot.farmerLedgerId || null,
+        farmerId: lot.farmerId || null,
       });
 
       const updatedLot = await storage.getLot(req.params.id);
@@ -2610,8 +2613,8 @@ export async function registerRoutes(
           return res.status(400).json({ error: "Farmer name, contact, village, district, and state are required for farmer type" });
         }
         
-        // Ensure farmer ledger entry exists
-        await storage.ensureFarmerLedgerEntry(coldStorageId, {
+        // Ensure farmer ledger entry exists and get both IDs
+        const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
           name: farmerName,
           contactNumber,
           village,
@@ -2619,6 +2622,27 @@ export async function registerRoutes(
           district,
           state,
         });
+        
+        const receivable = await storage.createOpeningReceivable({
+          coldStorageId,
+          year,
+          payerType,
+          buyerName: buyerName || null,
+          dueAmount,
+          remarks: remarks || null,
+          // Farmer-specific fields
+          farmerName: farmerName || null,
+          contactNumber: contactNumber || null,
+          village: village || null,
+          tehsil: tehsil || null,
+          district: district || null,
+          state: state || null,
+          farmerLedgerId: farmerEntry.id,
+          farmerId: farmerEntry.farmerId,
+        });
+        
+        res.json(receivable);
+        return;
       }
 
       const receivable = await storage.createOpeningReceivable({

@@ -352,7 +352,7 @@ export interface IStorage {
     tehsil?: string;
     district?: string;
     state?: string;
-  }): Promise<string>;
+  }): Promise<{ id: string; farmerId: string }>;
 }
 
 /**
@@ -1497,6 +1497,7 @@ export class DatabaseStorage implements IStorage {
       otherDeduction: lot.otherDeduction || 0,
       // Farmer ledger reference (copy from lot)
       farmerLedgerId: lot.farmerLedgerId || null,
+      farmerId: lot.farmerId || null,
     });
 
     return updatedLot;
@@ -5592,7 +5593,7 @@ export class DatabaseStorage implements IStorage {
     tehsil?: string;
     district?: string;
     state?: string;
-  }): Promise<string> {
+  }): Promise<{ id: string; farmerId: string }> {
     const key = this.getFarmerCompositeKey(farmerData.name, farmerData.contactNumber, farmerData.village);
     
     // Check if farmer already exists with this composite key
@@ -5620,7 +5621,7 @@ export class DatabaseStorage implements IStorage {
           .where(eq(farmerLedger.id, existing.id));
       }
       
-      return existing.id;
+      return { id: existing.id, farmerId: existing.farmerId };
     }
     
     // Create new farmer ledger entry with retry logic for unique constraint violations
@@ -5644,7 +5645,7 @@ export class DatabaseStorage implements IStorage {
           isArchived: 0,
         });
         
-        return newId;
+        return { id: newId, farmerId };
       } catch (error: any) {
         // Check if it's a unique constraint violation (PostgreSQL error code 23505)
         if (error?.code === '23505' && error?.constraint?.includes('farmer_id')) {
