@@ -333,6 +333,7 @@ export const openingReceivables = pgTable("opening_receivables", {
   paidAmount: real("paid_amount").notNull().default(0), // Track FIFO payments against this receivable
   remarks: text("remarks"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
 });
 
 // Opening Payables - outstanding payables at start of year
