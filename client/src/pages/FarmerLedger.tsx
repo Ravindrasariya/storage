@@ -392,7 +392,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-muted-foreground">{t("farmers")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-farmer-count">{summary.totalFarmers}</div>
+            <div className="text-lg font-bold" data-testid="text-farmer-count">{summary.totalFarmers}</div>
           </CardContent>
         </Card>
         <Card>
@@ -400,7 +400,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables)}</div>
+            <div className="text-lg font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -408,7 +408,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-orange-500 dark:text-orange-400">{t("selfDue")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-500 dark:text-orange-400" data-testid="text-self-due">{formatDueValue(summary.selfDue)}</div>
+            <div className="text-lg font-bold text-orange-500 dark:text-orange-400" data-testid="text-self-due">{formatDueValue(summary.selfDue)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -416,7 +416,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-500">{t("merchantDues")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-700 dark:text-orange-500" data-testid="text-merchant-due">{formatDueValue(summary.merchantDue)}</div>
+            <div className="text-lg font-bold text-orange-700 dark:text-orange-500" data-testid="text-merchant-due">{formatDueValue(summary.merchantDue)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -424,7 +424,7 @@ export default function FarmerLedger() {
             <CardTitle className="text-sm font-medium text-red-600 dark:text-red-500">{t("totalDues")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600 dark:text-red-500" data-testid="text-total-due">{formatDueValue(summary.totalDue)}</div>
+            <div className="text-lg font-bold text-red-600 dark:text-red-500" data-testid="text-total-due">{formatDueValue(summary.totalDue)}</div>
           </CardContent>
         </Card>
       </div>
