@@ -602,6 +602,8 @@ const translations: Translations = {
   showFlaggedOnly: { en: "Show Flagged Only", hi: "केवल चिह्नित दिखाएं" },
   showWithDuesOnly: { en: "Show With Dues Only", hi: "केवल बकाया वाले दिखाएं" },
   searchFarmers: { en: "Search farmers...", hi: "किसान खोजें..." },
+  searchFarmer: { en: "Search farmer...", hi: "किसान खोजें..." },
+  searchBuyer: { en: "Search buyer...", hi: "खरीदार खोजें..." },
   saved: { en: "Saved", hi: "सहेजा गया" },
   archived: { en: "Archived", hi: "संग्रहीत" },
   yes: { en: "Yes", hi: "हां" },

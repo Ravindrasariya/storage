@@ -12,7 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank, Check, ChevronsUpDown } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -135,6 +136,10 @@ export default function CashManagement() {
   const [customBuyerName, setCustomBuyerName] = useState(persistedState?.customBuyerName || "");
   const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState(persistedState?.salesGoodsBuyerName || "");
   const [selectedFarmerReceivableId, setSelectedFarmerReceivableId] = useState("");
+  const [farmerComboboxOpen, setFarmerComboboxOpen] = useState(false);
+  const [farmerSearchQuery, setFarmerSearchQuery] = useState("");
+  const [buyerComboboxOpen, setBuyerComboboxOpen] = useState(false);
+  const [buyerSearchQuery, setBuyerSearchQuery] = useState("");
   const [receiptType, setReceiptType] = useState<"cash" | "account">((persistedState?.receiptType as "cash" | "account") || "cash");
   const [accountId, setAccountId] = useState<string>(persistedState?.accountId || "");
   const [inwardAmount, setInwardAmount] = useState(persistedState?.inwardAmount || "");
@@ -2638,23 +2643,75 @@ export default function CashManagement() {
                     {farmerLedgerDues.length === 0 ? (
                       <p className="text-sm text-muted-foreground">{t("noFarmersWithDues")}</p>
                     ) : (
-                      <Select value={selectedFarmerReceivableId} onValueChange={setSelectedFarmerReceivableId}>
-                        <SelectTrigger data-testid="select-farmer-receivable">
-                          <SelectValue placeholder={t("selectFarmer")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {farmerLedgerDues.filter(f => f.totalDue >= 1).map((farmer) => (
-                            <SelectItem key={farmer.id} value={farmer.id}>
-                              <div className="flex flex-col items-start">
-                                <span className="font-medium">{farmer.farmerName}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {farmer.village} | {farmer.contactNumber} | {t("due")}: ₹{formatCurrency(farmer.totalDue)}
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Popover open={farmerComboboxOpen} onOpenChange={setFarmerComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={farmerComboboxOpen}
+                            className="w-full justify-between font-normal"
+                            data-testid="select-farmer-receivable"
+                          >
+                            {selectedFarmerReceivableId ? (
+                              <span className="truncate">
+                                {(() => {
+                                  const farmer = farmerLedgerDues.find(f => f.id === selectedFarmerReceivableId);
+                                  return farmer ? `${farmer.farmerName} - ${farmer.village}` : t("selectFarmer");
+                                })()}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">{t("selectFarmer")}</span>
+                            )}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[350px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder={t("searchFarmer") || "Search farmer..."}
+                              value={farmerSearchQuery}
+                              onValueChange={setFarmerSearchQuery}
+                            />
+                            <CommandList>
+                              <CommandEmpty>{t("noFarmersFound") || "No farmers found"}</CommandEmpty>
+                              <CommandGroup>
+                                {farmerLedgerDues
+                                  .filter(f => f.totalDue >= 1)
+                                  .filter(f => {
+                                    if (!farmerSearchQuery) return true;
+                                    const query = farmerSearchQuery.toLowerCase();
+                                    return (
+                                      f.farmerName.toLowerCase().includes(query) ||
+                                      f.village.toLowerCase().includes(query) ||
+                                      f.contactNumber.includes(query)
+                                    );
+                                  })
+                                  .map((farmer) => (
+                                    <CommandItem
+                                      key={farmer.id}
+                                      value={farmer.id}
+                                      onSelect={() => {
+                                        setSelectedFarmerReceivableId(farmer.id);
+                                        setFarmerComboboxOpen(false);
+                                        setFarmerSearchQuery("");
+                                      }}
+                                    >
+                                      <Check
+                                        className={`mr-2 h-4 w-4 ${selectedFarmerReceivableId === farmer.id ? "opacity-100" : "opacity-0"}`}
+                                      />
+                                      <div className="flex flex-col items-start">
+                                        <span className="font-medium">{farmer.farmerName}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {farmer.village} | {farmer.contactNumber} | {t("due")}: ₹{formatCurrency(farmer.totalDue)}
+                                        </span>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     )}
                     {selectedFarmerReceivableId && (
                       <p className="text-xs text-muted-foreground">
@@ -2670,31 +2727,80 @@ export default function CashManagement() {
                     {loadingBuyers ? (
                       <div className="text-sm text-muted-foreground">{t("loading")}</div>
                     ) : (
-                      <Select value={buyerName} onValueChange={(value) => {
-                        setBuyerName(value);
-                        if (value !== "__other__") {
-                          setCustomBuyerName("");
-                        }
-                      }}>
-                        <SelectTrigger data-testid="select-buyer">
-                          <SelectValue placeholder={t("selectBuyer")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {buyersWithDues.map((buyer) => (
-                            <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
-                              <span className="flex items-center justify-between gap-4 w-full">
-                                <span>{buyer.buyerName}</span>
-                                <Badge variant="outline" className="text-xs">
-                                  ₹{formatCurrency(buyer.totalDue)}
-                                </Badge>
+                      <Popover open={buyerComboboxOpen} onOpenChange={setBuyerComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={buyerComboboxOpen}
+                            className="w-full justify-between font-normal"
+                            data-testid="select-buyer"
+                          >
+                            {buyerName ? (
+                              <span className="truncate">
+                                {buyerName === "__other__" ? (t("other") || "Other") : buyerName}
                               </span>
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="__other__">
-                            <span className="text-muted-foreground italic">{t("other") || "Other"}</span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                            ) : (
+                              <span className="text-muted-foreground">{t("selectBuyer")}</span>
+                            )}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[350px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder={t("searchBuyer") || "Search buyer..."}
+                              value={buyerSearchQuery}
+                              onValueChange={setBuyerSearchQuery}
+                            />
+                            <CommandList>
+                              <CommandEmpty>{t("noBuyersFound") || "No buyers found"}</CommandEmpty>
+                              <CommandGroup>
+                                {buyersWithDues
+                                  .filter(buyer => {
+                                    if (!buyerSearchQuery) return true;
+                                    return buyer.buyerName.toLowerCase().includes(buyerSearchQuery.toLowerCase());
+                                  })
+                                  .map((buyer) => (
+                                    <CommandItem
+                                      key={buyer.buyerName}
+                                      value={buyer.buyerName}
+                                      onSelect={() => {
+                                        setBuyerName(buyer.buyerName);
+                                        setCustomBuyerName("");
+                                        setBuyerComboboxOpen(false);
+                                        setBuyerSearchQuery("");
+                                      }}
+                                    >
+                                      <Check
+                                        className={`mr-2 h-4 w-4 ${buyerName === buyer.buyerName ? "opacity-100" : "opacity-0"}`}
+                                      />
+                                      <span className="flex items-center justify-between gap-4 w-full">
+                                        <span>{buyer.buyerName}</span>
+                                        <Badge variant="outline" className="text-xs">
+                                          ₹{formatCurrency(buyer.totalDue)}
+                                        </Badge>
+                                      </span>
+                                    </CommandItem>
+                                  ))}
+                                <CommandItem
+                                  value="__other__"
+                                  onSelect={() => {
+                                    setBuyerName("__other__");
+                                    setBuyerComboboxOpen(false);
+                                    setBuyerSearchQuery("");
+                                  }}
+                                >
+                                  <Check
+                                    className={`mr-2 h-4 w-4 ${buyerName === "__other__" ? "opacity-100" : "opacity-0"}`}
+                                  />
+                                  <span className="text-muted-foreground italic">{t("other") || "Other"}</span>
+                                </CommandItem>
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     )}
                     {buyerName === "__other__" && (
                       <Input
