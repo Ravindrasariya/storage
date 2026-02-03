@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, or, like, ilike, desc, sql, gte, lte, inArray, type SQL } from "drizzle-orm";
+import { eq, and, or, like, ilike, desc, sql, gte, lte, inArray, isNull, type SQL } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -330,7 +330,7 @@ export interface IStorage {
       totalDue: number;
     };
   }>;
-  syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }>;
+  syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number; lotsLinked: number; receivablesLinked: number }>;
   generateFarmerId(coldStorageId: string): Promise<string>;
   updateFarmerLedger(id: string, updates: Partial<FarmerLedgerEntry>, modifiedBy: string): Promise<{ farmer: FarmerLedgerEntry | undefined; merged: boolean; mergedFromId?: string }>;
   archiveFarmerLedger(id: string, modifiedBy: string): Promise<boolean>;
@@ -5348,7 +5348,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Sync farmers from all touchpoints: lots, receivables
-  async syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }> {
+  async syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number; lotsLinked: number; receivablesLinked: number }> {
     let added = 0;
     let updated = 0;
     
@@ -5430,13 +5430,14 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    // Process each farmer
+    // Process each farmer - create or update ledger entries
     for (const [key, farmerData] of Array.from(farmersToProcess.entries())) {
       if (!existingKeys.has(key)) {
         // New farmer - add to ledger
         const farmerId = await this.generateFarmerId(coldStorageId);
+        const newId = randomUUID();
         await db.insert(farmerLedger).values({
-          id: randomUUID(),
+          id: newId,
           coldStorageId,
           farmerId,
           name: farmerData.name,
@@ -5447,6 +5448,22 @@ export class DatabaseStorage implements IStorage {
           state: farmerData.state || null,
           isFlagged: 0,
           isArchived: 0,
+        });
+        // Add to existingKeys so we can use it for backfilling
+        existingKeys.set(key, {
+          id: newId,
+          coldStorageId,
+          farmerId,
+          name: farmerData.name,
+          contactNumber: farmerData.contactNumber,
+          village: farmerData.village,
+          tehsil: farmerData.tehsil || null,
+          district: farmerData.district || null,
+          state: farmerData.state || null,
+          isFlagged: 0,
+          isArchived: 0,
+          archivedAt: null,
+          createdAt: new Date(),
         });
         added++;
       } else {
@@ -5467,7 +5484,50 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    return { added, updated };
+    // Backfill: Update lots with null farmerLedgerId
+    let lotsLinked = 0;
+    const lotsToLink = await db.select()
+      .from(lots)
+      .where(and(
+        eq(lots.coldStorageId, coldStorageId),
+        isNull(lots.farmerLedgerId)
+      ));
+    
+    for (const lot of lotsToLink) {
+      const key = this.getFarmerCompositeKey(lot.farmerName, lot.contactNumber, lot.village);
+      const farmerEntry = existingKeys.get(key);
+      if (farmerEntry) {
+        await db.update(lots)
+          .set({ farmerLedgerId: farmerEntry.id })
+          .where(eq(lots.id, lot.id));
+        lotsLinked++;
+      }
+    }
+    
+    // Backfill: Update opening_receivables (farmer type) with null farmerLedgerId
+    let receivablesLinked = 0;
+    const receivablesToLink = await db.select()
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, 'farmer'),
+        isNull(openingReceivables.farmerLedgerId)
+      ));
+    
+    for (const rec of receivablesToLink) {
+      if (rec.farmerName && rec.contactNumber && rec.village) {
+        const key = this.getFarmerCompositeKey(rec.farmerName, rec.contactNumber, rec.village);
+        const farmerEntry = existingKeys.get(key);
+        if (farmerEntry) {
+          await db.update(openingReceivables)
+            .set({ farmerLedgerId: farmerEntry.id })
+            .where(eq(openingReceivables.id, rec.id));
+          receivablesLinked++;
+        }
+      }
+    }
+    
+    return { added, updated, lotsLinked, receivablesLinked };
   }
 
   // Ensure farmer ledger entry exists - find by composite key or create new
