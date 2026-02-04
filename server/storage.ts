@@ -6222,17 +6222,16 @@ export class DatabaseStorage implements IStorage {
       
       // Transfer In from buyer-to-buyer transfers (salesHistory with transferToBuyerName)
       // Positive: When this buyer is the recipient (transferToBuyerName matches)
-      // Use current outstanding (dueAmount - paidAmount) = what the destination buyer still owes
+      // dueAmount already represents the remaining unpaid amount (updated when payments are made)
       const buyerTransferIn = allTransferredSales
         .filter(s => s.transferToBuyerName!.trim().toLowerCase() === buyerNameLower)
-        .reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
+        .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
       // Transfer Out: When this buyer is the source (buyerName matches, and isSelfSale=0)
-      // Use the same current outstanding basis for consistency
-      // This shows what the source buyer "gave away" that is still outstanding
+      // dueAmount already represents the remaining unpaid amount
       const buyerTransferOut = allTransferredSales
         .filter(s => s.buyerName?.trim().toLowerCase() === buyerNameLower && s.isSelfSale === 0)
-        .reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
+        .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
       // dueTransferIn = Net of all transfers (positive for received, negative for sent out)
       // For display: shows transfer activity from this buyer's perspective
