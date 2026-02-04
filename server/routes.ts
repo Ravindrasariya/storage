@@ -1985,9 +1985,9 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const farmerId = decodeURIComponent(req.params.farmerId);
       
-      // Get farmer details from farmer ledger using farmerId
+      // Get farmer details from farmer ledger using id (UUID)
       const farmerLedger = await storage.getFarmerLedger(coldStorageId);
-      const farmer = farmerLedger.farmers.find(f => f.farmerId === farmerId);
+      const farmer = farmerLedger.farmers.find(f => f.id === farmerId);
       
       if (!farmer) {
         return res.status(404).json({ error: "Farmer not found" });
@@ -2390,9 +2390,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "farmerId is required" });
       }
       
-      // Look up farmer details from farmer ledger
+      // Look up farmer details from farmer ledger using id (UUID)
       const farmerLedger = await storage.getFarmerLedger(coldStorageId);
-      const farmer = farmerLedger.farmers.find(f => f.farmerId === farmerId);
+      const farmer = farmerLedger.farmers.find(f => f.id === farmerId);
       
       if (!farmer) {
         return res.status(404).json({ error: "Farmer not found" });
@@ -2439,9 +2439,9 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const validatedData = createDiscountSchema.parse(req.body);
       
-      // Look up farmer details from farmer ledger
+      // Look up farmer details from farmer ledger using id (UUID)
       const farmerLedger = await storage.getFarmerLedger(coldStorageId);
-      const farmer = farmerLedger.farmers.find(f => f.farmerId === validatedData.farmerId);
+      const farmer = farmerLedger.farmers.find(f => f.id === validatedData.farmerId);
       
       if (!farmer) {
         return res.status(404).json({ error: "Farmer not found" });
