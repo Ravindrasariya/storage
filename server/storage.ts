@@ -6207,7 +6207,8 @@ export class DatabaseStorage implements IStorage {
           return saleBuyerLower === buyerNameLower && !hasActiveTransfer;
         });
       
-      const salesDue = buyerSales.reduce((sum, s) => sum + ((s.dueAmount || 0) - (s.paidAmount || 0)), 0);
+      // dueAmount already represents the remaining unpaid amount (updated when payments are made)
+      const salesDue = buyerSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
       // Buyer Extras: Sum of hammali, grading, and other extras to merchant from sales
       const buyerExtras = buyerSales.reduce((sum, s) => {
