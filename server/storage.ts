@@ -5573,6 +5573,7 @@ export class DatabaseStorage implements IStorage {
     // Calculate dues for each farmer
     const farmersWithDues = await Promise.all(farmers.map(async (farmer) => {
       // PY Receivables - from opening receivables (farmer type)
+      // Match by farmerLedgerId (primary) or composite key (fallback for old records)
       const pyReceivablesData = await db.select({
         dueAmount: openingReceivables.dueAmount,
         paidAmount: openingReceivables.paidAmount,
@@ -5581,9 +5582,15 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(openingReceivables.coldStorageId, coldStorageId),
           eq(openingReceivables.payerType, 'farmer'),
-          sql`LOWER(TRIM(${openingReceivables.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
-          sql`TRIM(${openingReceivables.contactNumber}) = ${farmer.contactNumber.trim()}`,
-          sql`LOWER(TRIM(${openingReceivables.village})) = ${farmer.village.trim().toLowerCase()}`
+          sql`(
+            (${openingReceivables.farmerLedgerId} IS NOT NULL AND ${openingReceivables.farmerLedgerId} = ${farmer.id})
+            OR (
+              ${openingReceivables.farmerLedgerId} IS NULL
+              AND LOWER(TRIM(${openingReceivables.farmerName})) = ${farmer.name.trim().toLowerCase()}
+              AND TRIM(${openingReceivables.contactNumber}) = ${farmer.contactNumber.trim()}
+              AND LOWER(TRIM(${openingReceivables.village})) = ${farmer.village.trim().toLowerCase()}
+            )
+          )`
         ));
       
       const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
@@ -5591,6 +5598,7 @@ export class DatabaseStorage implements IStorage {
       // Self Due - from self-sales (isSelfSale = 1) where farmer bought their own produce
       // EXCLUDE self-sales that have been transferred to a buyer (those are now buyer dues)
       // BUT INCLUDE if transfer was reversed (isTransferReversed = 1) - farmer owes again
+      // Match by farmerLedgerId (primary) or composite key (fallback for old records)
       const selfSalesData = await db.select({
         dueAmount: salesHistory.dueAmount,
       })
@@ -5598,9 +5606,15 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
           eq(salesHistory.isSelfSale, 1),
-          sql`LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
-          sql`TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}`,
-          sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`,
+          sql`(
+            (${salesHistory.farmerLedgerId} IS NOT NULL AND ${salesHistory.farmerLedgerId} = ${farmer.id})
+            OR (
+              ${salesHistory.farmerLedgerId} IS NULL
+              AND LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}
+              AND TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}
+              AND LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}
+            )
+          )`,
           sql`(
             (${salesHistory.transferToBuyerName} IS NULL OR TRIM(${salesHistory.transferToBuyerName}) = '')
             OR ${salesHistory.isTransferReversed} = 1
@@ -5614,6 +5628,7 @@ export class DatabaseStorage implements IStorage {
       // 2. F2B transferred amounts (self-sale debt transferred to buyer)
       
       // Component 1: Cold storage charges from regular sales (NOT self-sales)
+      // Match by farmerLedgerId (primary) or composite key (fallback for old records)
       const merchantSalesData = await db.select({
         coldStorageCharge: salesHistory.coldStorageCharge,
         paidAmount: salesHistory.paidAmount,
@@ -5623,9 +5638,15 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
           sql`(${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)`,
-          sql`LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
-          sql`TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}`,
-          sql`LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}`,
+          sql`(
+            (${salesHistory.farmerLedgerId} IS NOT NULL AND ${salesHistory.farmerLedgerId} = ${farmer.id})
+            OR (
+              ${salesHistory.farmerLedgerId} IS NULL
+              AND LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}
+              AND TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}
+              AND LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}
+            )
+          )`,
           sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
         ));
       
@@ -6191,20 +6212,29 @@ export class DatabaseStorage implements IStorage {
     const buyersWithDues = buyers.map(buyer => {
       const buyerNameLower = buyer.buyerName.trim().toLowerCase();
       
+      // Helper: Match by buyerLedgerId (primary) or buyerName (fallback for old records)
+      const matchesBuyer = (record: { buyerLedgerId?: string | null; buyerName?: string | null }) => {
+        // Primary: Match by ledger ID if both have it
+        if (record.buyerLedgerId && buyer.id) {
+          return record.buyerLedgerId === buyer.id;
+        }
+        // Fallback: Match by name (for old records without ledger ID)
+        return record.buyerName?.trim().toLowerCase() === buyerNameLower;
+      };
+      
       // PY Receivables: Sum of opening receivables for this buyer
       // For cold_merchant type, the buyer name is stored in buyerName field
       const pyReceivables = buyerReceivables
-        .filter(r => r.buyerName?.trim().toLowerCase() === buyerNameLower)
+        .filter(r => matchesBuyer(r))
         .reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
       
       // Sales Due: Sum of unpaid NON-TRANSFERRED sales to this buyer
       // Transferred sales are tracked separately in Transfer In
       const buyerSales = allSales
         .filter(s => {
-          const saleBuyerLower = s.buyerName?.trim().toLowerCase();
           const hasActiveTransfer = s.transferToBuyerName && s.transferToBuyerName.trim() && (s.isTransferReversed === 0 || s.isTransferReversed === null);
-          // Only include if this is the original buyer AND no active transfer
-          return saleBuyerLower === buyerNameLower && !hasActiveTransfer;
+          // Only include if this matches the buyer AND no active transfer
+          return matchesBuyer(s) && !hasActiveTransfer;
         });
       
       // dueAmount already represents the remaining unpaid amount (updated when payments are made)
@@ -6227,10 +6257,10 @@ export class DatabaseStorage implements IStorage {
         .filter(s => s.transferToBuyerName!.trim().toLowerCase() === buyerNameLower)
         .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
-      // Transfer Out: When this buyer is the source (buyerName matches, and isSelfSale=0)
+      // Transfer Out: When this buyer is the source (buyerName/buyerLedgerId matches, and isSelfSale=0)
       // dueAmount already represents the remaining unpaid amount
       const buyerTransferOut = allTransferredSales
-        .filter(s => s.buyerName?.trim().toLowerCase() === buyerNameLower && s.isSelfSale === 0)
+        .filter(s => matchesBuyer(s) && s.isSelfSale === 0)
         .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
       // dueTransferIn = Net of all transfers (positive for received, negative for sent out)
