@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer } from "lucide-react";
+import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -492,6 +492,21 @@ export default function FarmerLedger() {
             data-testid="input-search-village"
           />
         </div>
+        {(nameSearch || villageSearch || yearFilter !== "all") && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setNameSearch("");
+              setVillageSearch("");
+              setYearFilter("all");
+            }}
+            data-testid="button-clear-filters"
+          >
+            <X className="w-4 h-4 mr-1" />
+            {t("clearFilters") || "Clear"}
+          </Button>
+        )}
         <div className="flex-1" />
         <div className="flex items-center gap-2">
           <Switch
