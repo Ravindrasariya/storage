@@ -130,12 +130,12 @@ export default function Analytics() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         <Card className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50 shrink-0">
               <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalColdStorageCharges")}</p>
-              <p className="text-base sm:text-lg font-bold" data-testid="text-total-charges">
+              <p className="text-xs text-muted-foreground leading-tight">{t("totalColdStorageCharges")}</p>
+              <p className="text-sm sm:text-base font-bold" data-testid="text-total-charges">
                 <Currency amount={(paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)} />
               </p>
               <p className="text-xs text-muted-foreground">
@@ -147,12 +147,12 @@ export default function Analytics() {
 
         <Card className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
+            <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50 shrink-0">
               <Wallet className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 dark:text-green-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalPaid")}</p>
-              <p className="text-base sm:text-lg font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
+              <p className="text-xs text-muted-foreground leading-tight">{t("totalPaid")}</p>
+              <p className="text-sm sm:text-base font-bold text-green-600 dark:text-green-400" data-testid="text-total-paid">
                 <Currency amount={paymentStats?.totalPaid || 0} />
               </p>
               <p className="text-xs text-muted-foreground">
@@ -164,12 +164,12 @@ export default function Analytics() {
         
         <Card className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50">
+            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50 shrink-0">
               <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalDue")}</p>
-              <p className="text-base sm:text-lg font-bold text-amber-600 dark:text-amber-400" data-testid="text-total-due">
+              <p className="text-xs text-muted-foreground leading-tight">{t("totalDue")}</p>
+              <p className="text-sm sm:text-base font-bold text-amber-600 dark:text-amber-400" data-testid="text-total-due">
                 <Currency amount={paymentStats?.totalDue || 0} />
               </p>
               <p className="text-xs text-muted-foreground">
@@ -181,12 +181,12 @@ export default function Analytics() {
 
         <Card className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50">
+            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50 shrink-0">
               <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalReceivableDue")}</p>
-              <p className="text-base sm:text-lg font-bold text-orange-600 dark:text-orange-400" data-testid="text-total-receivable-due">
+              <p className="text-xs text-muted-foreground leading-tight">{t("totalReceivableDue")}</p>
+              <p className="text-sm sm:text-base font-bold text-orange-600 dark:text-orange-400" data-testid="text-total-receivable-due">
                 <Currency amount={paymentStats?.totalReceivableDue || 0} />
               </p>
             </div>
@@ -195,12 +195,12 @@ export default function Analytics() {
 
         <Card className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
+            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50 shrink-0">
               <HandCoins className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalHammali")}</p>
-              <p className="text-base sm:text-lg font-bold text-purple-600 dark:text-purple-400" data-testid="text-total-hammali">
+              <p className="text-xs text-muted-foreground leading-tight">{t("totalHammali")}</p>
+              <p className="text-sm sm:text-base font-bold text-purple-600 dark:text-purple-400" data-testid="text-total-hammali">
                 <Currency amount={paymentStats?.totalHammali || 0} />
               </p>
             </div>
@@ -209,12 +209,12 @@ export default function Analytics() {
 
         <Card className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/50">
+            <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/50 shrink-0">
               <Ruler className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-600 dark:text-cyan-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalGradingCharges")}</p>
-              <p className="text-base sm:text-lg font-bold text-cyan-600 dark:text-cyan-400" data-testid="text-total-grading">
+              <p className="text-xs text-muted-foreground leading-tight">{t("totalGradingCharges")}</p>
+              <p className="text-sm sm:text-base font-bold text-cyan-600 dark:text-cyan-400" data-testid="text-total-grading">
                 <Currency amount={paymentStats?.totalGradingCharges || 0} />
               </p>
             </div>
