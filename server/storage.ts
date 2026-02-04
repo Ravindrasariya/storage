@@ -1198,14 +1198,13 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      // coldStorageCharge already includes base + kata + extraHammali + grading
-      // Do NOT add them again to avoid double-counting
-      const totalCharges = sale.coldStorageCharge || 0;
-      
-      // Use paidAmount from sale, calculate due as remainder to ensure consistency
+      // Use dueAmount directly - this is the authoritative remaining due amount
+      // Previously we calculated totalCharges - salePaid which gave wrong values
+      // dueAmount is kept up-to-date by FIFO recomputation after payments
       const salePaid = sale.paidAmount || 0;
+      const saleDue = sale.dueAmount || 0;
       existing.totalChargePaid += salePaid;
-      existing.totalChargeDue += Math.max(0, totalCharges - salePaid);
+      existing.totalChargeDue += saleDue;
       
       // Track payment by mode (cash vs account)
       const paidAmt = sale.paidAmount || 0;
