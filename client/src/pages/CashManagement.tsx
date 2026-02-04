@@ -2314,8 +2314,6 @@ export default function CashManagement() {
                       {account.accountName}
                     </SelectItem>
                   ))}
-                  <SelectItem value="limit">{t("limitAccount")}</SelectItem>
-                  <SelectItem value="current">{t("currentAccount")}</SelectItem>
                   <SelectItem value="discount">{t("discount")}</SelectItem>
                 </SelectContent>
               </Select>
