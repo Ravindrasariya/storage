@@ -64,7 +64,7 @@ function Navigation() {
             <Button
               variant={isActive ? "default" : "ghost"}
               size="sm"
-              className={`gap-1.5 justify-start shrink-0 whitespace-nowrap ${isActive ? "bg-chart-1 hover:bg-chart-1/90" : ""}`}
+              className={`gap-1.5 justify-start shrink-0 whitespace-nowrap text-[0.85rem] font-extrabold ${isActive ? "bg-chart-1 hover:bg-chart-1/90" : ""}`}
               onClick={onClick}
               data-testid={`nav-${item.href.replace("/", "") || "dashboard"}`}
             >
