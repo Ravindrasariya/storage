@@ -186,6 +186,23 @@ export default function FarmerLedger() {
       let aVal: string | number = a[sortField] ?? 0;
       let bVal: string | number = b[sortField] ?? 0;
       
+      if (sortField === 'farmerId') {
+        const aMatch = (aVal as string).match(/FM(\d{8})(\d+)/);
+        const bMatch = (bVal as string).match(/FM(\d{8})(\d+)/);
+        if (aMatch && bMatch) {
+          const aDate = aMatch[1];
+          const bDate = bMatch[1];
+          if (aDate !== bDate) {
+            return sortDirection === 'asc' 
+              ? aDate.localeCompare(bDate) 
+              : bDate.localeCompare(aDate);
+          }
+          const aNum = parseInt(aMatch[2], 10);
+          const bNum = parseInt(bMatch[2], 10);
+          return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+      }
+      
       if (typeof aVal === 'string') {
         aVal = aVal.toLowerCase();
         bVal = (bVal as string).toLowerCase();
