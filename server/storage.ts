@@ -1133,6 +1133,22 @@ export class DatabaseStorage implements IStorage {
     // Reduce totals by amounts already paid (show remaining due)
     const hammaliDue = Math.max(0, totalHammali - hammaliExpensesPaid);
     const gradingDue = Math.max(0, totalGradingCharges - gradingExpensesPaid);
+    
+    // Calculate Total Receivable Due from Farmer and Buyer ledgers
+    // This sums PY Receivables (opening receivables) that are still due
+    let totalReceivableDue = 0;
+    
+    // Get Farmer Ledger receivable dues
+    const farmerLedgerData = await this.getFarmerLedger(coldStorageId);
+    for (const farmer of farmerLedgerData.farmers) {
+      totalReceivableDue += farmer.pyReceivables || 0;
+    }
+    
+    // Get Buyer Ledger receivable dues
+    const buyerLedgerData = await this.getBuyerLedger(coldStorageId);
+    for (const buyer of buyerLedgerData.buyers) {
+      totalReceivableDue += buyer.pyReceivables || 0;
+    }
 
     return {
       totalPaid,
@@ -1145,6 +1161,8 @@ export class DatabaseStorage implements IStorage {
       // Net amounts after expenses (for Cash Management expense dropdowns)
       hammaliDue,
       gradingDue,
+      // Receivable dues from Farmer and Buyer ledgers
+      totalReceivableDue,
     };
   }
 

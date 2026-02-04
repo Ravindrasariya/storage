@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QualityChart } from "@/components/QualityChart";
 import { QualitySummaryCards } from "@/components/QualitySummaryCards";
-import { ArrowLeft, BarChart3, Clock, IndianRupee, Calendar, Users, Package, Wallet, HandCoins, Ruler } from "lucide-react";
+import { ArrowLeft, BarChart3, Clock, IndianRupee, Calendar, Users, Package, Wallet, HandCoins, Ruler, BookOpen } from "lucide-react";
 import type { QualityStats, PaymentStats, MerchantStats } from "@shared/schema";
 import { Currency } from "@/components/Currency";
 
@@ -127,7 +127,7 @@ export default function Analytics() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         <Card className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
@@ -174,6 +174,20 @@ export default function Analytics() {
               </p>
               <p className="text-xs text-muted-foreground">
                 {paymentStats?.dueCount || 0} {t("lots")}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-3 sm:p-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50">
+              <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{t("totalReceivableDue")}</p>
+              <p className="text-base sm:text-lg font-bold text-orange-600 dark:text-orange-400" data-testid="text-total-receivable-due">
+                <Currency amount={paymentStats?.totalReceivableDue || 0} />
               </p>
             </div>
           </div>

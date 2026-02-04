@@ -256,6 +256,7 @@ const translations: Translations = {
   overallPayment: { en: "Overall Payment", hi: "कुल भुगतान" },
   totalPaid: { en: "Total Paid", hi: "कुल भुगतान" },
   totalDue: { en: "Total Due", hi: "कुल बाकी" },
+  totalReceivableDue: { en: "Total Receivable Due", hi: "कुल प्राप्य बाकी" },
   totalHammali: { en: "Total Hammali", hi: "कुल हम्माली" },
   totalGradingCharges: { en: "Total Grading", hi: "कुल ग्रेडिंग" },
   extraDueToMerchant: { en: "Extra Due to Merchant", hi: "व्यापारी को अतिरिक्त बकाया" },
