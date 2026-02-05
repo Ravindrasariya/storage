@@ -1146,6 +1146,12 @@ export default function CashManagement() {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
+    
+    // Validate bank account selection when payment mode is "account"
+    if (receiptType === "account" && !accountId) {
+      toast({ title: t("error"), description: t("selectBankAccount") || "Please select a bank account", variant: "destructive" });
+      return;
+    }
 
     // For farmer payments, include explicit farmer details to avoid synthetic ID parsing issues
     const selectedFarmer = payerType === "farmer" ? farmerLedgerDues.find(f => f.id === farmerReceivableId) : undefined;
@@ -1170,6 +1176,12 @@ export default function CashManagement() {
   const handleExpenseSubmit = () => {
     if (!expenseType || !expenseAmount || parseFloat(expenseAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+    
+    // Validate bank account selection when payment mode is "account"
+    if (expensePaymentMode === "account" && !expenseAccountId) {
+      toast({ title: t("error"), description: t("selectBankAccount") || "Please select a bank account", variant: "destructive" });
       return;
     }
 

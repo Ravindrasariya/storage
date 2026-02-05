@@ -399,6 +399,7 @@ const translations: Translations = {
   others: { en: "Others", hi: "अन्य" },
   farmer: { en: "Farmer", hi: "किसान" },
   selectFarmer: { en: "Select Farmer", hi: "किसान चुनें" },
+  selectBankAccount: { en: "Please select a bank account", hi: "कृपया बैंक खाता चुनें" },
   noFarmersWithDues: { en: "No farmers with pending dues", hi: "कोई बकाया वाले किसान नहीं" },
   receiptType: { en: "Receipt Type", hi: "रसीद प्रकार" },
   cashReceived: { en: "Cash Received", hi: "नकद प्राप्त" },
