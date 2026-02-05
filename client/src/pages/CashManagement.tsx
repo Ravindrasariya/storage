@@ -1899,17 +1899,13 @@ export default function CashManagement() {
       .filter(r => r.receiptType === "cash")
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     
-    const totalAccountReceived = activeReceipts
-      .filter(r => r.receiptType === "account")
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    // totalAccountReceived computed later from per-account breakdown + unassigned
     
     const totalCashExpenses = activeExpenses
       .filter(e => e.paymentMode === "cash")
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     
-    const totalAccountExpenses = activeExpenses
-      .filter(e => e.paymentMode === "account")
-      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    // totalAccountExpenses computed later from per-account breakdown + unassigned
     
     // Calculate cash transfers
     const cashTransfersFromCash = activeTransfers.filter(t => t.fromAccountType === "cash");
@@ -1977,19 +1973,27 @@ export default function CashManagement() {
       }
     });
 
-    // Compute receipts per account
+    // Compute receipts per account (track unassigned separately)
+    let unassignedReceived = 0;
     activeReceipts.filter(r => r.receiptType === "account").forEach(r => {
       const accId = getReceiptAccountId(r);
       if (accId && accountBalances[accId]) {
         accountBalances[accId].received += Number(r.amount) || 0;
+      } else {
+        // Receipt doesn't match any existing bank account
+        unassignedReceived += Number(r.amount) || 0;
       }
     });
 
-    // Compute expenses per account
+    // Compute expenses per account (track unassigned separately)
+    let unassignedExpenses = 0;
     activeExpenses.filter(e => e.paymentMode === "account").forEach(e => {
       const accId = getExpenseAccountId(e);
       if (accId && accountBalances[accId]) {
         accountBalances[accId].expenses += Number(e.amount) || 0;
+      } else {
+        // Expense doesn't match any existing bank account
+        unassignedExpenses += Number(e.amount) || 0;
       }
     });
 
@@ -2010,6 +2014,10 @@ export default function CashManagement() {
       acc.balance = acc.openingBalance + acc.received - acc.expenses + acc.transferIn - acc.transferOut;
     });
 
+    // Compute totals from per-account breakdown + unassigned (guarantees reconciliation)
+    const totalAccountReceived = Object.values(accountBalances).reduce((sum, acc) => sum + acc.received, 0) + unassignedReceived;
+    const totalAccountExpenses = Object.values(accountBalances).reduce((sum, acc) => sum + acc.expenses, 0) + unassignedExpenses;
+
     // Total net in accounts
     const totalAccountBalance = Object.values(accountBalances).reduce((sum, acc) => sum + acc.balance, 0);
 
@@ -2022,6 +2030,8 @@ export default function CashManagement() {
       netCashTransfer,
       accountBalances,
       totalAccountBalance,
+      unassignedReceived,
+      unassignedExpenses,
     };
   }, [receipts, expensesList, transfers, currentYearOpeningBalance, bankAccounts, t]);
 
@@ -2187,7 +2197,7 @@ export default function CashManagement() {
             <div className="text-sm font-bold text-green-600">
               {isLoading ? "..." : `₹${summary.totalAccountReceived.toLocaleString()}`}
             </div>
-            {Object.keys(summary.accountBalances).length > 0 && (
+            {(Object.keys(summary.accountBalances).length > 0 || summary.unassignedReceived > 0) && (
               <div className="mt-1 text-xs space-y-0.5">
                 {Object.values(summary.accountBalances).filter(acc => acc.received > 0).map(acc => (
                   <div key={acc.accountId} className="flex justify-between items-center">
@@ -2197,6 +2207,14 @@ export default function CashManagement() {
                     </span>
                   </div>
                 ))}
+                {summary.unassignedReceived > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-amber-600 truncate max-w-[100px]">{t("unassigned")}</span>
+                    <span className="text-amber-600">
+                      ₹{summary.unassignedReceived.toLocaleString()}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -2211,7 +2229,7 @@ export default function CashManagement() {
             <div className="text-sm font-bold text-red-600">
               {isLoading ? "..." : `₹${summary.totalAccountExpenses.toLocaleString()}`}
             </div>
-            {Object.keys(summary.accountBalances).length > 0 && (
+            {(Object.keys(summary.accountBalances).length > 0 || summary.unassignedExpenses > 0) && (
               <div className="mt-1 text-xs space-y-0.5">
                 {Object.values(summary.accountBalances).filter(acc => acc.expenses > 0).map(acc => (
                   <div key={acc.accountId} className="flex justify-between items-center">
@@ -2221,6 +2239,14 @@ export default function CashManagement() {
                     </span>
                   </div>
                 ))}
+                {summary.unassignedExpenses > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-amber-600 truncate max-w-[100px]">{t("unassigned")}</span>
+                    <span className="text-amber-600">
+                      ₹{summary.unassignedExpenses.toLocaleString()}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
