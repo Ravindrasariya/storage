@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank, Check, ChevronsUpDown } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank, Check, ChevronsUpDown, Search } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -209,6 +209,9 @@ export default function CashManagement() {
   const [openingCashInHand, setOpeningCashInHand] = useState("");
   const [openingLimitBalance, setOpeningLimitBalance] = useState("");
   const [openingCurrentBalance, setOpeningCurrentBalance] = useState("");
+  
+  // Receivable search filter
+  const [receivableSearchQuery, setReceivableSearchQuery] = useState("");
   
   // Receivable form state
   const [newReceivablePayerType, setNewReceivablePayerType] = useState<string>("cold_merchant");
@@ -4867,43 +4870,70 @@ export default function CashManagement() {
                 </CardContent>
               </Card>
 
+              {/* Search filter for receivables */}
+              {openingReceivables.length > 0 && (
+                <div className="relative mb-2">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={t("searchByNamePhoneVillage") || "Search by name, phone, village..."}
+                    value={receivableSearchQuery}
+                    onChange={(e) => setReceivableSearchQuery(e.target.value)}
+                    className="pl-8"
+                    data-testid="input-receivable-search"
+                  />
+                </div>
+              )}
+
               {/* List of receivables */}
               <ScrollArea className="h-48">
                 {openingReceivables.length === 0 ? (
                   <p className="text-center text-muted-foreground py-4">{t("noReceivables")}</p>
                 ) : (
                   <div className="space-y-2">
-                    {openingReceivables.map((r) => (
-                      <div key={r.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline" className="text-xs">{t(r.payerType)}</Badge>
-                            {r.payerType === "farmer" && r.farmerName ? (
-                              <span className="text-sm font-medium">
-                                {r.farmerName} - {r.contactNumber} - {r.village}
-                              </span>
-                            ) : (
-                              r.buyerName && <span className="text-sm font-medium">{r.buyerName}</span>
-                            )}
+                    {openingReceivables
+                      .filter((r) => {
+                        if (!receivableSearchQuery.trim()) return true;
+                        const q = receivableSearchQuery.toLowerCase().trim();
+                        const name = (r.payerType === "farmer" ? r.farmerName : r.buyerName) || "";
+                        const phone = r.contactNumber || "";
+                        const village = r.village || "";
+                        return name.toLowerCase().includes(q) || phone.includes(q) || village.toLowerCase().includes(q);
+                      })
+                      .map((r) => {
+                        const capitalizeName = (name: string) =>
+                          name.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                        return (
+                          <div key={r.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant="outline" className="text-xs">{t(r.payerType)}</Badge>
+                                {r.payerType === "farmer" && r.farmerName ? (
+                                  <span className="text-sm font-medium">
+                                    {capitalizeName(r.farmerName)} - {r.contactNumber} - {r.village}
+                                  </span>
+                                ) : (
+                                  r.buyerName && <span className="text-sm font-medium">{capitalizeName(r.buyerName)}</span>
+                                )}
+                              </div>
+                              {r.remarks && <p className="text-xs text-muted-foreground">{r.remarks}</p>}
+                              <p className="text-xs text-muted-foreground">
+                                {t("addedOn")}: {format(new Date(r.createdAt), "dd/MM/yyyy")}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-green-600">₹{formatCurrency(r.dueAmount)}</span>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => deleteReceivableMutation.mutate(r.id)}
+                                data-testid={`button-delete-receivable-${r.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
                           </div>
-                          {r.remarks && <p className="text-xs text-muted-foreground">{r.remarks}</p>}
-                          <p className="text-xs text-muted-foreground">
-                            {t("addedOn")}: {format(new Date(r.createdAt), "dd/MM/yyyy")}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-green-600">₹{formatCurrency(r.dueAmount)}</span>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => deleteReceivableMutation.mutate(r.id)}
-                            data-testid={`button-delete-receivable-${r.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                        );
+                      })}
                   </div>
                 )}
               </ScrollArea>
