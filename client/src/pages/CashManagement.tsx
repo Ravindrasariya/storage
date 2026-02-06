@@ -210,6 +210,10 @@ export default function CashManagement() {
   const [openingLimitBalance, setOpeningLimitBalance] = useState("");
   const [openingCurrentBalance, setOpeningCurrentBalance] = useState("");
   
+  // Auto-capitalize first letter of each word
+  const autoCapitalize = (value: string) =>
+    value.replace(/(?:^|\s)\S/g, (char) => char.toUpperCase());
+
   // Receivable search filter
   const [receivableSearchQuery, setReceivableSearchQuery] = useState("");
   
@@ -4599,7 +4603,7 @@ export default function CashManagement() {
                         <Label className="text-xs">{t("buyerName")}</Label>
                         <Input
                           value={newReceivableBuyerName}
-                          onChange={(e) => setNewReceivableBuyerName(e.target.value)}
+                          onChange={(e) => setNewReceivableBuyerName(autoCapitalize(e.target.value))}
                           onFocus={() => {
                             if (newReceivablePayerType !== "sales_goods") {
                               setShowBuyerSuggestions(true);
@@ -4658,7 +4662,7 @@ export default function CashManagement() {
                           <Input
                             value={newReceivableFarmerName}
                             onChange={(e) => {
-                              setNewReceivableFarmerName(e.target.value);
+                              setNewReceivableFarmerName(autoCapitalize(e.target.value));
                               setShowReceivableFarmerNameSuggestions(true);
                             }}
                             onFocus={() => setShowReceivableFarmerNameSuggestions(true)}
@@ -4723,7 +4727,7 @@ export default function CashManagement() {
                           <Input
                             value={newReceivableVillage}
                             onChange={(e) => {
-                              setNewReceivableVillage(e.target.value);
+                              setNewReceivableVillage(autoCapitalize(e.target.value));
                               setShowReceivableVillageSuggestions(true);
                             }}
                             onFocus={() => setShowReceivableVillageSuggestions(true)}
