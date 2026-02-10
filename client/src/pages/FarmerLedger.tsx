@@ -707,10 +707,41 @@ export default function FarmerLedger() {
                   <div className="font-medium text-base mb-1">{farmer.name}</div>
                   <div className="text-sm text-muted-foreground mb-2">{farmer.village} | {farmer.contactNumber}</div>
                   <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                    <div>
-                      <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
-                      <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</div>
-                    </div>
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="cursor-pointer">
+                          <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
+                          <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</div>
+                        </div>
+                      </HoverCardTrigger>
+                      {(farmer.advanceDue > 0 || farmer.freightDue > 0) && (
+                        <HoverCardContent className="w-56 p-3" data-testid={`hover-receivable-breakup-archived-card-${farmer.id}`}>
+                          <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span>{t("receivableAmount")}</span>
+                              <span className="font-medium">{formatDueValue(farmer.pyReceivables)}</span>
+                            </div>
+                            {farmer.advanceDue > 0 && (
+                              <div className="flex justify-between">
+                                <span>{t("advanceTotal")}</span>
+                                <span className="font-medium">{formatDueValue(farmer.advanceDue)}</span>
+                              </div>
+                            )}
+                            {farmer.freightDue > 0 && (
+                              <div className="flex justify-between">
+                                <span>{t("freightTotal")}</span>
+                                <span className="font-medium">{formatDueValue(farmer.freightDue)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between border-t pt-1 font-semibold">
+                              <span>{t("total")}</span>
+                              <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
+                            </div>
+                          </div>
+                        </HoverCardContent>
+                      )}
+                    </HoverCard>
                     <div>
                       <div className="text-orange-500 dark:text-orange-400 font-medium">{t("selfDue")}</div>
                       <div className="text-orange-500 dark:text-orange-400 font-bold">{formatDueValue(farmer.selfDue)}</div>
@@ -783,7 +814,42 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 font-medium truncate" data-testid={`text-farmer-name-${farmer.id}`}>{farmer.name}</td>
                       <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
-                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</td>
+                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">
+                        {(farmer.advanceDue > 0 || farmer.freightDue > 0) ? (
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <span className="cursor-pointer underline decoration-dotted">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</span>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-56 p-3" data-testid={`hover-receivable-breakup-table-${farmer.id}`}>
+                              <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
+                              <div className="space-y-1 text-xs">
+                                <div className="flex justify-between">
+                                  <span>{t("receivableAmount")}</span>
+                                  <span className="font-medium">{formatDueValue(farmer.pyReceivables)}</span>
+                                </div>
+                                {farmer.advanceDue > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>{t("advanceTotal")}</span>
+                                    <span className="font-medium">{formatDueValue(farmer.advanceDue)}</span>
+                                  </div>
+                                )}
+                                {farmer.freightDue > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>{t("freightTotal")}</span>
+                                    <span className="font-medium">{formatDueValue(farmer.freightDue)}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between border-t pt-1 font-semibold">
+                                  <span>{t("total")}</span>
+                                  <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
+                                </div>
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
+                        ) : (
+                          formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))
+                        )}
+                      </td>
                       <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
                       <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>
@@ -833,7 +899,42 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 font-medium truncate">{farmer.name}</td>
                       <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
-                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</td>
+                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">
+                        {(farmer.advanceDue > 0 || farmer.freightDue > 0) ? (
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <span className="cursor-pointer underline decoration-dotted">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</span>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-56 p-3" data-testid={`hover-receivable-breakup-archived-${farmer.id}`}>
+                              <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
+                              <div className="space-y-1 text-xs">
+                                <div className="flex justify-between">
+                                  <span>{t("receivableAmount")}</span>
+                                  <span className="font-medium">{formatDueValue(farmer.pyReceivables)}</span>
+                                </div>
+                                {farmer.advanceDue > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>{t("advanceTotal")}</span>
+                                    <span className="font-medium">{formatDueValue(farmer.advanceDue)}</span>
+                                  </div>
+                                )}
+                                {farmer.freightDue > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>{t("freightTotal")}</span>
+                                    <span className="font-medium">{formatDueValue(farmer.freightDue)}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between border-t pt-1 font-semibold">
+                                  <span>{t("total")}</span>
+                                  <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
+                                </div>
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
+                        ) : (
+                          formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))
+                        )}
+                      </td>
                       <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
                       <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>

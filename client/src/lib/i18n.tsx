@@ -583,7 +583,7 @@ const translations: Translations = {
   syncingFarmers: { en: "Syncing...", hi: "सिंक हो रहा है..." },
   farmersSynced: { en: "Farmers synced successfully", hi: "किसान सफलतापूर्वक सिंक हो गए" },
   farmersSyncFailed: { en: "Failed to sync farmers", hi: "किसान सिंक करने में विफल" },
-  pyReceivables: { en: "PY Receivables", hi: "पिछले वर्ष प्राप्य" },
+  pyReceivables: { en: "Receivables", hi: "प्राप्य" },
   selfDue: { en: "Self Due", hi: "स्वयं बकाया" },
   merchantDue: { en: "Merchant Due", hi: "व्यापारी बकाया" },
   farmerId: { en: "Farmer ID", hi: "किसान आईडी" },
