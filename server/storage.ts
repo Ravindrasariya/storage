@@ -61,6 +61,9 @@ import {
   type FarmerToBuyerTransfer,
   type BankAccount,
   type InsertBankAccount,
+  farmerAdvanceFreight,
+  type FarmerAdvanceFreight,
+  type InsertFarmerAdvanceFreight,
   farmerLedger,
   farmerLedgerEditHistory,
   type FarmerLedgerEntry,
@@ -317,12 +320,18 @@ export interface IStorage {
   createBankAccount(data: InsertBankAccount): Promise<BankAccount>;
   updateBankAccount(id: string, updates: Partial<BankAccount>): Promise<BankAccount | undefined>;
   deleteBankAccount(id: string): Promise<boolean>;
+  // Farmer Advance & Freight
+  createFarmerAdvanceFreight(data: InsertFarmerAdvanceFreight): Promise<FarmerAdvanceFreight>;
+  getFarmerAdvanceFreight(coldStorageId: string, farmerLedgerId?: string): Promise<FarmerAdvanceFreight[]>;
+  accrueInterestForAll(coldStorageId: string): Promise<number>;
   // Farmer Ledger
   getFarmerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
     farmers: (FarmerLedgerEntry & {
       pyReceivables: number;
       selfDue: number;
       merchantDue: number;
+      advanceDue: number;
+      freightDue: number;
       totalDue: number;
     })[];
     summary: {
@@ -330,6 +339,8 @@ export interface IStorage {
       pyReceivables: number;
       selfDue: number;
       merchantDue: number;
+      advanceDue: number;
+      freightDue: number;
       totalDue: number;
     };
   }>;
@@ -5183,6 +5194,94 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
+  // ============ FARMER ADVANCE & FREIGHT ============
+
+  async createFarmerAdvanceFreight(data: InsertFarmerAdvanceFreight): Promise<FarmerAdvanceFreight> {
+    const [record] = await db.insert(farmerAdvanceFreight)
+      .values({
+        id: randomUUID(),
+        ...data,
+      })
+      .returning();
+    return record;
+  }
+
+  async getFarmerAdvanceFreight(coldStorageId: string, farmerLedgerId?: string): Promise<FarmerAdvanceFreight[]> {
+    if (farmerLedgerId) {
+      return db.select().from(farmerAdvanceFreight)
+        .where(and(
+          eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+          eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerId),
+          eq(farmerAdvanceFreight.isReversed, 0)
+        ))
+        .orderBy(desc(farmerAdvanceFreight.createdAt));
+    }
+    return db.select().from(farmerAdvanceFreight)
+      .where(and(
+        eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+        eq(farmerAdvanceFreight.isReversed, 0)
+      ))
+      .orderBy(desc(farmerAdvanceFreight.createdAt));
+  }
+
+  async accrueInterestForAll(coldStorageId: string): Promise<number> {
+    const records = await db.select().from(farmerAdvanceFreight)
+      .where(and(
+        eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+        eq(farmerAdvanceFreight.isReversed, 0)
+      ));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let updatedCount = 0;
+
+    for (const record of records) {
+      if (record.rateOfInterest <= 0) continue;
+
+      const lastAccrual = new Date(record.lastAccrualDate);
+      lastAccrual.setHours(0, 0, 0, 0);
+
+      if (lastAccrual >= today) continue;
+
+      const newFinalAmount = this.computeCompoundInterest(
+        record.amount,
+        record.rateOfInterest,
+        record.effectiveDate,
+        today
+      );
+
+      await db.update(farmerAdvanceFreight)
+        .set({
+          finalAmount: newFinalAmount,
+          lastAccrualDate: today,
+        })
+        .where(eq(farmerAdvanceFreight.id, record.id));
+
+      updatedCount++;
+    }
+
+    return updatedCount;
+  }
+
+  private computeCompoundInterest(
+    principal: number,
+    annualRate: number,
+    effectiveDate: Date,
+    currentDate: Date
+  ): number {
+    const startDate = new Date(effectiveDate);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(currentDate);
+    endDate.setHours(0, 0, 0, 0);
+
+    const diffMs = endDate.getTime() - startDate.getTime();
+    if (diffMs <= 0) return principal;
+
+    const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
+    const rate = annualRate / 100;
+    return Math.round(principal * Math.pow(1 + rate, years) * 100) / 100;
+  }
+
   // ============ FARMER LEDGER ============
 
   // Generate farmer composite key for deduplication
@@ -5544,6 +5643,8 @@ export class DatabaseStorage implements IStorage {
       pyReceivables: number;
       selfDue: number;
       merchantDue: number;
+      advanceDue: number;
+      freightDue: number;
       totalDue: number;
     })[];
     summary: {
@@ -5551,6 +5652,8 @@ export class DatabaseStorage implements IStorage {
       pyReceivables: number;
       selfDue: number;
       merchantDue: number;
+      advanceDue: number;
+      freightDue: number;
       totalDue: number;
     };
   }> {
@@ -5675,14 +5778,35 @@ export class DatabaseStorage implements IStorage {
       
       // Total merchant due = regular sales cold charges + F2B transferred amounts
       const merchantDue = merchantSalesDue + f2bTransferredAmount;
+
+      // Advance & Freight dues - from farmerAdvanceFreight table
+      const advFreightData = await db.select({
+        type: farmerAdvanceFreight.type,
+        finalAmount: farmerAdvanceFreight.finalAmount,
+      })
+        .from(farmerAdvanceFreight)
+        .where(and(
+          eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+          eq(farmerAdvanceFreight.farmerLedgerId, farmer.id),
+          eq(farmerAdvanceFreight.isReversed, 0)
+        ));
+
+      const advanceDue = advFreightData
+        .filter(r => r.type === 'advance')
+        .reduce((sum, r) => sum + (r.finalAmount || 0), 0);
+      const freightDue = advFreightData
+        .filter(r => r.type === 'freight')
+        .reduce((sum, r) => sum + (r.finalAmount || 0), 0);
       
-      const totalDue = pyReceivables + selfDue + merchantDue;
+      const totalDue = pyReceivables + selfDue + merchantDue + advanceDue + freightDue;
       
       return {
         ...farmer,
         pyReceivables: roundAmount(pyReceivables),
         selfDue: roundAmount(selfDue),
         merchantDue: roundAmount(merchantDue),
+        advanceDue: roundAmount(advanceDue),
+        freightDue: roundAmount(freightDue),
         totalDue: roundAmount(totalDue),
       };
     }));
@@ -5693,6 +5817,8 @@ export class DatabaseStorage implements IStorage {
       pyReceivables: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.pyReceivables, 0)),
       selfDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.selfDue, 0)),
       merchantDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.merchantDue, 0)),
+      advanceDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.advanceDue, 0)),
+      freightDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.freightDue, 0)),
       totalDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.totalDue, 0)),
     };
     

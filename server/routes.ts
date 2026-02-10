@@ -2163,7 +2163,7 @@ export async function registerRoutes(
   });
 
   const createExpenseSchema = z.object({
-    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds"]),
+    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "farmer_advance", "farmer_freight"]),
     receiverName: z.string().optional(),
     paymentMode: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
@@ -2171,13 +2171,21 @@ export async function registerRoutes(
     amount: z.number().positive(),
     paidAt: z.string().transform((val) => new Date(val)),
     remarks: z.string().optional(),
+    farmerLedgerId: z.string().optional(),
+    farmerId: z.string().optional(),
+    rateOfInterest: z.number().min(0).optional(),
+    effectiveDate: z.string().optional(),
   }).refine((data) => {
-    // accountId or accountType is required when paymentMode is 'account'
     if (data.paymentMode === "account" && !data.accountId && !data.accountType) {
       return false;
     }
     return true;
-  }, { message: "Account is required when paymentMode is 'account'" });
+  }, { message: "Account is required when paymentMode is 'account'" }).refine((data) => {
+    if ((data.expenseType === "farmer_advance" || data.expenseType === "farmer_freight") && (!data.farmerLedgerId || !data.farmerId)) {
+      return false;
+    }
+    return true;
+  }, { message: "Farmer selection is required for advance/freight expenses" });
 
   app.post("/api/expenses", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
@@ -2194,6 +2202,39 @@ export async function registerRoutes(
         paidAt: validatedData.paidAt,
         remarks: validatedData.remarks || null,
       });
+
+      if ((validatedData.expenseType === "farmer_advance" || validatedData.expenseType === "farmer_freight") && validatedData.farmerLedgerId && validatedData.farmerId) {
+        const effectiveDate = validatedData.effectiveDate ? new Date(validatedData.effectiveDate) : new Date();
+        const rateOfInterest = validatedData.rateOfInterest || 0;
+        const principal = validatedData.amount;
+
+        let finalAmount = principal;
+        if (rateOfInterest > 0) {
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          const startDate = new Date(effectiveDate);
+          startDate.setHours(0, 0, 0, 0);
+          const diffMs = now.getTime() - startDate.getTime();
+          if (diffMs > 0) {
+            const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
+            finalAmount = Math.round(principal * Math.pow(1 + rateOfInterest / 100, years) * 100) / 100;
+          }
+        }
+
+        await storage.createFarmerAdvanceFreight({
+          coldStorageId,
+          farmerLedgerId: validatedData.farmerLedgerId,
+          farmerId: validatedData.farmerId,
+          type: validatedData.expenseType === "farmer_advance" ? "advance" : "freight",
+          amount: principal,
+          rateOfInterest,
+          effectiveDate,
+          finalAmount,
+          lastAccrualDate: new Date(),
+          expenseId: expense.id,
+        });
+      }
+
       res.json(expense);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2788,6 +2829,7 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const includeArchived = req.query.includeArchived === 'true';
+      await storage.accrueInterestForAll(coldStorageId);
       const result = await storage.getFarmerLedger(coldStorageId, includeArchived);
       res.json(result);
     } catch (error) {

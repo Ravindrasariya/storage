@@ -154,6 +154,13 @@ export default function CashManagement() {
   const [expenseAmount, setExpenseAmount] = useState(persistedState?.expenseAmount || "");
   const [expenseDate, setExpenseDate] = useState(persistedState?.expenseDate || todayDate);
   const [expenseRemarks, setExpenseRemarks] = useState(persistedState?.expenseRemarks || "");
+  const [expenseFarmerLedgerId, setExpenseFarmerLedgerId] = useState("");
+  const [expenseFarmerId, setExpenseFarmerId] = useState("");
+  const [expenseFarmerName, setExpenseFarmerName] = useState("");
+  const [expenseRateOfInterest, setExpenseRateOfInterest] = useState("");
+  const [expenseEffectiveDate, setExpenseEffectiveDate] = useState(todayDate);
+  const [showExpenseFarmerSearch, setShowExpenseFarmerSearch] = useState(false);
+  const [expenseFarmerSearchQuery, setExpenseFarmerSearchQuery] = useState("");
   
   // Discount state - now uses farmer ID instead of composite key
   const [discountFarmerId, setDiscountFarmerId] = useState("");
@@ -356,6 +363,13 @@ export default function CashManagement() {
   const { data: farmerLedgerDues = [] } = useQuery<{ id: string; farmerName: string; contactNumber: string; village: string; pyReceivables: number; selfDue: number; totalDue: number }[]>({
     queryKey: ["/api/farmer-ledger/dues-for-dropdown"],
   });
+
+  const isFarmerExpenseType = expenseType === "farmer_advance" || expenseType === "farmer_freight";
+  const { data: allFarmersData } = useQuery<{ farmers: { id: string; farmerId: string; name: string; contactNumber: string; village: string }[] }>({
+    queryKey: ["/api/farmer-ledger"],
+    enabled: isFarmerExpenseType,
+  });
+  const allFarmers = allFarmersData?.farmers || [];
 
   const { data: receipts = [], isLoading: loadingReceipts } = useQuery<CashReceipt[]>({
     queryKey: ["/api/cash-receipts"],
@@ -731,6 +745,12 @@ export default function CashManagement() {
       setExpenseAmount("");
       setExpenseDate(format(new Date(), "yyyy-MM-dd"));
       setExpenseRemarks("");
+      setExpenseFarmerLedgerId("");
+      setExpenseFarmerId("");
+      setExpenseFarmerName("");
+      setExpenseRateOfInterest("");
+      setExpenseEffectiveDate(format(new Date(), "yyyy-MM-dd"));
+      setExpenseFarmerSearchQuery("");
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/receiver-names"] });
@@ -1180,26 +1200,51 @@ export default function CashManagement() {
     });
   };
 
+  const computeFinalAmount = () => {
+    const amount = parseFloat(expenseAmount);
+    if (!amount || amount <= 0) return 0;
+    const rate = parseFloat(expenseRateOfInterest);
+    if (!rate || rate <= 0) return amount;
+    const effectiveDate = new Date(expenseEffectiveDate);
+    effectiveDate.setHours(0, 0, 0, 0);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const diffMs = now.getTime() - effectiveDate.getTime();
+    if (diffMs <= 0) return amount;
+    const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
+    return Math.round(amount * Math.pow(1 + rate / 100, years) * 100) / 100;
+  };
+
   const handleExpenseSubmit = () => {
     if (!expenseType || !expenseAmount || parseFloat(expenseAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
     
-    // Validate bank account selection when payment mode is "account"
     if (expensePaymentMode === "account" && !expenseAccountId) {
       toast({ title: t("error"), description: t("selectBankAccount") || "Please select a bank account", variant: "destructive" });
       return;
     }
 
+    if (isFarmerExpenseType && (!expenseFarmerLedgerId || !expenseFarmerId)) {
+      toast({ title: t("error"), description: t("selectFarmer") || "Please select a farmer", variant: "destructive" });
+      return;
+    }
+
     createExpenseMutation.mutate({
       expenseType,
-      receiverName: expenseReceiverName || undefined,
+      receiverName: isFarmerExpenseType ? expenseFarmerName : (expenseReceiverName || undefined),
       paymentMode: expensePaymentMode,
       accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
       amount: parseFloat(expenseAmount),
       paidAt: new Date(expenseDate).toISOString(),
       remarks: expenseRemarks || undefined,
+      ...(isFarmerExpenseType ? {
+        farmerLedgerId: expenseFarmerLedgerId,
+        farmerId: expenseFarmerId,
+        rateOfInterest: parseFloat(expenseRateOfInterest) || 0,
+        effectiveDate: new Date(expenseEffectiveDate).toISOString(),
+      } : {}),
     });
   };
 
@@ -1326,6 +1371,8 @@ export default function CashManagement() {
       case "grading_charges": return t("gradingCharges");
       case "general_expenses": return t("generalExpenses");
       case "cost_of_goods_sold": return t("costOfGoodsSold");
+      case "farmer_advance": return t("farmerAdvance");
+      case "farmer_freight": return t("farmerFreight");
       default: return type;
     }
   };
@@ -3234,6 +3281,12 @@ export default function CashManagement() {
                   <Select value={expenseType} onValueChange={(v) => {
                     setExpenseType(v);
                     setExpenseReceiverName("");
+                    setExpenseFarmerLedgerId("");
+                    setExpenseFarmerId("");
+                    setExpenseFarmerName("");
+                    setExpenseRateOfInterest("");
+                    setExpenseEffectiveDate(format(new Date(), "yyyy-MM-dd"));
+                    setExpenseFarmerSearchQuery("");
                   }}>
                     <SelectTrigger data-testid="select-expense-type">
                       <SelectValue placeholder={t("selectExpenseType")} />
@@ -3249,11 +3302,95 @@ export default function CashManagement() {
                       <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                       <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                       <SelectItem value="tds">{t("tds")}</SelectItem>
+                      <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
+                      <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                {expenseType && (
+                {isFarmerExpenseType && (
+                  <div className="space-y-2 relative">
+                    <Label>{t("selectFarmer")} *</Label>
+                    {expenseFarmerName ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 p-2 border rounded-md bg-muted text-sm">
+                          {expenseFarmerName}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setExpenseFarmerLedgerId("");
+                            setExpenseFarmerId("");
+                            setExpenseFarmerName("");
+                            setExpenseFarmerSearchQuery("");
+                          }}
+                          data-testid="button-clear-expense-farmer"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Input
+                          value={expenseFarmerSearchQuery}
+                          onChange={(e) => setExpenseFarmerSearchQuery(e.target.value)}
+                          onFocus={() => setShowExpenseFarmerSearch(true)}
+                          onBlur={() => setTimeout(() => setShowExpenseFarmerSearch(false), 200)}
+                          placeholder={t("searchFarmer")}
+                          data-testid="input-expense-farmer-search"
+                        />
+                        {showExpenseFarmerSearch && (
+                          <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
+                            <ScrollArea className="max-h-[200px]">
+                              {allFarmers
+                                .filter(f =>
+                                  !expenseFarmerSearchQuery ||
+                                  f.name.toLowerCase().includes(expenseFarmerSearchQuery.toLowerCase()) ||
+                                  f.contactNumber.includes(expenseFarmerSearchQuery) ||
+                                  f.village.toLowerCase().includes(expenseFarmerSearchQuery.toLowerCase())
+                                )
+                                .slice(0, 20)
+                                .map((farmer) => (
+                                  <Button
+                                    key={farmer.id}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full justify-start text-left"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setExpenseFarmerLedgerId(farmer.id);
+                                      setExpenseFarmerId(farmer.farmerId);
+                                      setExpenseFarmerName(`${farmer.name} (${farmer.village})`);
+                                      setShowExpenseFarmerSearch(false);
+                                      setExpenseFarmerSearchQuery("");
+                                    }}
+                                    data-testid={`suggestion-expense-farmer-${farmer.id}`}
+                                  >
+                                    <div>
+                                      <span className="font-medium">{farmer.name}</span>
+                                      <span className="text-muted-foreground text-xs ml-2">{farmer.village} | {farmer.contactNumber}</span>
+                                    </div>
+                                  </Button>
+                                ))}
+                              {allFarmers.filter(f =>
+                                !expenseFarmerSearchQuery ||
+                                f.name.toLowerCase().includes(expenseFarmerSearchQuery.toLowerCase()) ||
+                                f.contactNumber.includes(expenseFarmerSearchQuery) ||
+                                f.village.toLowerCase().includes(expenseFarmerSearchQuery.toLowerCase())
+                              ).length === 0 && (
+                                <p className="p-2 text-sm text-muted-foreground text-center">No farmers found</p>
+                              )}
+                            </ScrollArea>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {expenseType && !isFarmerExpenseType && (
                   <div className="space-y-2 relative">
                     <Label>{t("receiverName")}</Label>
                     <Input
@@ -3305,6 +3442,42 @@ export default function CashManagement() {
                     data-testid="input-expense-amount"
                   />
                 </div>
+
+                {isFarmerExpenseType && (
+                  <>
+                    <div className="flex gap-3">
+                      <div className="flex-1 space-y-2">
+                        <Label>{t("rateOfInterest")}</Label>
+                        <Input
+                          type="number"
+                          value={expenseRateOfInterest}
+                          onChange={(e) => setExpenseRateOfInterest(e.target.value)}
+                          placeholder="0"
+                          min={0}
+                          step="0.1"
+                          data-testid="input-expense-rate-of-interest"
+                        />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <Label>{t("effectiveDate")}</Label>
+                        <Input
+                          type="date"
+                          value={expenseEffectiveDate}
+                          onChange={(e) => setExpenseEffectiveDate(e.target.value)}
+                          data-testid="input-expense-effective-date"
+                        />
+                      </div>
+                    </div>
+                    {expenseAmount && parseFloat(expenseAmount) > 0 && (
+                      <div className="p-2 bg-muted rounded-md text-sm">
+                        <div className="flex justify-between">
+                          <span>{t("finalAmount")}:</span>
+                          <span className="font-semibold">₹{computeFinalAmount().toLocaleString("en-IN")}</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1">

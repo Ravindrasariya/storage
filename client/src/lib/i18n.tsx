@@ -218,6 +218,15 @@ const translations: Translations = {
   generalExpenses: { en: "General Expense", hi: "सामान्य खर्च" },
   costOfGoodsSold: { en: "Cost of Goods Sold", hi: "सामान की लागत" },
   tds: { en: "TDS", hi: "टीडीएस" },
+  farmerAdvance: { en: "Farmer - Advance", hi: "किसान - अग्रिम" },
+  farmerFreight: { en: "Farmer - Freight", hi: "किसान - भाड़ा" },
+  rateOfInterest: { en: "Rate of Interest (%)", hi: "ब्याज दर (%)" },
+  effectiveDate: { en: "Effective Date", hi: "प्रभावी तिथि" },
+  finalAmount: { en: "Final Amount", hi: "अंतिम राशि" },
+  receivableBreakup: { en: "Receivable Breakup", hi: "प्राप्य विवरण" },
+  advanceTotal: { en: "Advance", hi: "अग्रिम" },
+  freightTotal: { en: "Freight", hi: "भाड़ा" },
+  receivableAmount: { en: "Receivable", hi: "प्राप्य" },
   total: { en: "Total", hi: "कुल" },
   
   // Up for Sale
