@@ -2558,11 +2558,13 @@ export default function CashManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t("allExpenseTypes")}</SelectItem>
-                    <SelectItem value="salary">{t("salary")}</SelectItem>
-                    <SelectItem value="hammali">{t("hammali")}</SelectItem>
-                    <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
-                    <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                     <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
+                    <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
+                    <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
+                    <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
+                    <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
+                    <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                    <SelectItem value="salary">{t("salary")}</SelectItem>
                     <SelectItem value="tds">{t("tds")}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -3292,18 +3294,18 @@ export default function CashManagement() {
                       <SelectValue placeholder={t("selectExpenseType")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="salary">{t("salary")}</SelectItem>
-                      <SelectItem value="hammali">
-                        {t("hammali")} {paymentStats?.hammaliDue ? `(₹${paymentStats.hammaliDue.toLocaleString("en-IN")})` : ""}
-                      </SelectItem>
+                      <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
+                      <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
+                      <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
+                      <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                       <SelectItem value="grading_charges">
                         {t("gradingCharges")} {paymentStats?.gradingDue ? `(₹${paymentStats.gradingDue.toLocaleString("en-IN")})` : ""}
                       </SelectItem>
-                      <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
-                      <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
+                      <SelectItem value="hammali">
+                        {t("hammali")} {paymentStats?.hammaliDue ? `(₹${paymentStats.hammaliDue.toLocaleString("en-IN")})` : ""}
+                      </SelectItem>
+                      <SelectItem value="salary">{t("salary")}</SelectItem>
                       <SelectItem value="tds">{t("tds")}</SelectItem>
-                      <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
-                      <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
