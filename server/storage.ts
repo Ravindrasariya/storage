@@ -3002,6 +3002,16 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(expenses.id, expenseId));
 
+    // If this is a farmer_advance or farmer_freight expense, also reverse the linked farmerAdvanceFreight record
+    if (expense.expenseType === "farmer_advance" || expense.expenseType === "farmer_freight") {
+      await db.update(farmerAdvanceFreight)
+        .set({
+          isReversed: 1,
+          reversedAt: new Date(),
+        })
+        .where(eq(farmerAdvanceFreight.expenseId, expenseId));
+    }
+
     return { success: true, message: "Expense reversed" };
   }
 
