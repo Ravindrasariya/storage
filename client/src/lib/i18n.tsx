@@ -431,6 +431,7 @@ const translations: Translations = {
   // Expense section
   expense: { en: "Expense", hi: "व्यय" },
   expenseType: { en: "Expense Type", hi: "व्यय प्रकार" },
+  expenseDetails: { en: "Expense Details", hi: "व्यय विवरण" },
   recordExpense: { en: "Record Expense", hi: "व्यय दर्ज करें" },
   expenseRecorded: { en: "Expense recorded successfully", hi: "व्यय सफलतापूर्वक दर्ज किया गया" },
   cashFlowHistory: { en: "Cash Flow History", hi: "नकद प्रवाह इतिहास" },

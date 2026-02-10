@@ -3960,7 +3960,7 @@ export default function CashManagement() {
                               {transaction.type === "inflow" 
                                 ? ((transaction.data as CashReceipt).buyerName || getPayerTypeLabel((transaction.data as CashReceipt).payerType))
                                 : transaction.type === "outflow"
-                                  ? getExpenseTypeLabel((transaction.data as Expense).expenseType)
+                                  ? getExpenseTypeLabel((transaction.data as Expense).expenseType) + ((transaction.data as Expense).receiverName ? ` - ${(transaction.data as Expense).receiverName}` : "")
                                   : transaction.type === "buyerTransfer"
                                     ? `${(transaction.data as SalesHistory).buyerName} → ${(transaction.data as SalesHistory).transferToBuyerName}`
                                     : transaction.type === "farmerToBuyerTransfer"
@@ -4202,6 +4202,14 @@ export default function CashManagement() {
                       <span className="text-muted-foreground">{t("expenseType")}:</span>
                       <span className="font-medium">{getExpenseTypeLabel((selectedTransaction.data as Expense).expenseType)}</span>
                     </div>
+                    {(selectedTransaction.data as Expense).receiverName && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          {((selectedTransaction.data as Expense).expenseType === "farmer_advance" || (selectedTransaction.data as Expense).expenseType === "farmer_freight") ? t("farmerName") : t("receiverName")}:
+                        </span>
+                        <span className="font-medium">{(selectedTransaction.data as Expense).receiverName}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("amount")}:</span>
                       <span className="font-bold text-red-600">₹{selectedTransaction.data.amount.toLocaleString()}</span>
