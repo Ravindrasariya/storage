@@ -360,7 +360,7 @@ export default function CashManagement() {
 
   // Farmer dues from Farmer Ledger (for Cash Inward "farmer" payer type)
   // Returns pyReceivables + selfDue as totalDue (farmer-liable dues only)
-  const { data: farmerLedgerDues = [] } = useQuery<{ id: string; farmerName: string; contactNumber: string; village: string; pyReceivables: number; selfDue: number; totalDue: number }[]>({
+  const { data: farmerLedgerDues = [] } = useQuery<{ id: string; farmerName: string; contactNumber: string; village: string; pyReceivables: number; advanceDue: number; freightDue: number; selfDue: number; totalDue: number }[]>({
     queryKey: ["/api/farmer-ledger/dues-for-dropdown"],
   });
 
@@ -465,7 +465,7 @@ export default function CashManagement() {
   // The farmerLedgerDues query above is always enabled and provides data for both
 
   // Farmers with ALL dues from Farmer Ledger (pyReceivables + selfDue + merchantDue) - for discount mode
-  const { data: farmersWithAllDues = [] } = useQuery<{ id: string; farmerName: string; village: string; contactNumber: string; pyReceivables: number; selfDue: number; merchantDue: number; totalDue: number }[]>({
+  const { data: farmersWithAllDues = [] } = useQuery<{ id: string; farmerName: string; village: string; contactNumber: string; pyReceivables: number; advanceDue: number; freightDue: number; selfDue: number; merchantDue: number; totalDue: number }[]>({
     queryKey: ["/api/farmer-ledger/dues-for-discount"],
     enabled: expensePaymentMode === "discount",
   });
@@ -535,9 +535,9 @@ export default function CashManagement() {
     
     const result: { buyerName: string; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[] = [];
     
-    // Add Self entry from Farmer Ledger (pyReceivables + selfDue)
+    // Add Self entry from Farmer Ledger (pyReceivables + advanceDue + freightDue + selfDue)
     // Note: Self entries are displayed in separate section, latestSaleDate used for sorting within buyer section only
-    const selfDue = selectedFarmerDetails.pyReceivables + selectedFarmerDetails.selfDue;
+    const selfDue = selectedFarmerDetails.pyReceivables + (selectedFarmerDetails.advanceDue || 0) + (selectedFarmerDetails.freightDue || 0) + selectedFarmerDetails.selfDue;
     if (selfDue > 0) {
       const farmerSelfBuyerName = `${selectedFarmerDetails.farmerName.trim()} - ${selectedFarmerDetails.contactNumber.trim()} - ${selectedFarmerDetails.village.trim()}`;
       result.push({

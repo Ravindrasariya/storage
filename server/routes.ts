@@ -2942,17 +2942,19 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const result = await storage.getFarmerLedger(coldStorageId, false); // exclude archived
       
-      // Filter to only farmers with farmer-liable dues (pyReceivables + selfDue > 0)
+      // Filter to only farmers with farmer-liable dues (receivables + advance + freight + selfDue > 0)
       const farmersWithDues = result.farmers
-        .filter(f => (f.pyReceivables + f.selfDue) > 0)
+        .filter(f => (f.pyReceivables + (f.advanceDue || 0) + (f.freightDue || 0) + f.selfDue) > 0)
         .map(f => ({
           id: f.id,
           farmerName: f.name,
           village: f.village,
           contactNumber: f.contactNumber,
           pyReceivables: f.pyReceivables,
+          advanceDue: f.advanceDue || 0,
+          freightDue: f.freightDue || 0,
           selfDue: f.selfDue,
-          totalDue: f.pyReceivables + f.selfDue,
+          totalDue: f.pyReceivables + (f.advanceDue || 0) + (f.freightDue || 0) + f.selfDue,
         }));
       
       res.json(farmersWithDues);
@@ -2969,18 +2971,20 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const result = await storage.getFarmerLedger(coldStorageId, false); // exclude archived
       
-      // Filter to only farmers with any dues (pyReceivables + selfDue + merchantDue > 0)
+      // Filter to only farmers with any dues (all dues including advance + freight > 0)
       const farmersWithDues = result.farmers
-        .filter(f => (f.pyReceivables + f.selfDue + f.merchantDue) >= 1)
+        .filter(f => (f.pyReceivables + (f.advanceDue || 0) + (f.freightDue || 0) + f.selfDue + f.merchantDue) >= 1)
         .map(f => ({
           id: f.id,
           farmerName: f.name,
           village: f.village,
           contactNumber: f.contactNumber,
           pyReceivables: f.pyReceivables,
+          advanceDue: f.advanceDue || 0,
+          freightDue: f.freightDue || 0,
           selfDue: f.selfDue,
           merchantDue: f.merchantDue,
-          totalDue: f.pyReceivables + f.selfDue + f.merchantDue,
+          totalDue: f.pyReceivables + (f.advanceDue || 0) + (f.freightDue || 0) + f.selfDue + f.merchantDue,
         }));
       
       res.json(farmersWithDues);
