@@ -339,7 +339,7 @@ export default function FarmerLedger() {
       farmer.name,
       farmer.village,
       farmer.contactNumber || '',
-      formatDueValue(farmer.pyReceivables),
+      formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0)),
       formatDueValue(farmer.selfDue),
       formatDueValue(farmer.merchantDue),
       formatDueValue(farmer.totalDue),
@@ -357,7 +357,7 @@ export default function FarmerLedger() {
 
     tableData.push([
       '', t("total"), '', '',
-      formatDueValue(totals.pyReceivables),
+      formatDueValue(totals.pyReceivables + (totals.advanceDue || 0) + (totals.freightDue || 0)),
       formatDueValue(totals.selfDue),
       formatDueValue(totals.merchantDue),
       formatDueValue(totals.totalDue),
@@ -783,7 +783,7 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 font-medium truncate" data-testid={`text-farmer-name-${farmer.id}`}>{farmer.name}</td>
                       <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
-                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">{formatDueValue(farmer.pyReceivables)}</td>
+                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</td>
                       <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
                       <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>
@@ -833,7 +833,7 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 font-medium truncate">{farmer.name}</td>
                       <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
-                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">{formatDueValue(farmer.pyReceivables)}</td>
+                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</td>
                       <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
                       <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>
