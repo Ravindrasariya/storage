@@ -2846,11 +2846,33 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(openingReceivables.createdAt);
     
+    // Look up farmer ledger entry to get farmerLedgerId for advance/freight queries
+    const [farmerLedgerEntry] = await db.select()
+      .from(farmerLedger)
+      .where(and(
+        eq(farmerLedger.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerName}))`,
+        sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${contactNumber})`,
+        sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${village}))`
+      ))
+      .limit(1);
+    
     // Step 1: Reset all farmer receivables paidAmount to 0
     for (const receivable of allFarmerReceivables) {
       await db.update(openingReceivables)
         .set({ paidAmount: 0 })
         .where(eq(openingReceivables.id, receivable.id));
+    }
+    
+    // Step 1c: Reset all farmer advance/freight paidAmount to 0
+    if (farmerLedgerEntry) {
+      await db.update(farmerAdvanceFreight)
+        .set({ paidAmount: 0 })
+        .where(and(
+          eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+          eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
+          eq(farmerAdvanceFreight.isReversed, 0)
+        ));
     }
     
     // Step 1b: Reset all self-sales for this farmer to original due amounts
@@ -2922,7 +2944,65 @@ export class DatabaseStorage implements IStorage {
         if (remainingAmount <= 0) break;
       }
       
-      // Pass 2: Apply remaining to self-sales (FIFO by soldAt)
+      // Pass 2: Apply remaining to farmer FREIGHT records (FIFO by createdAt)
+      if (remainingAmount > 0 && farmerLedgerEntry) {
+        const freightRecords = await db.select()
+          .from(farmerAdvanceFreight)
+          .where(and(
+            eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+            eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
+            eq(farmerAdvanceFreight.type, "freight"),
+            eq(farmerAdvanceFreight.isReversed, 0)
+          ))
+          .orderBy(farmerAdvanceFreight.createdAt);
+        
+        for (const record of freightRecords) {
+          if (remainingAmount <= 0) break;
+          const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
+          if (remainingDue <= 0) continue;
+          
+          const amountToApply = Math.min(remainingAmount, remainingDue);
+          if (amountToApply > 0) {
+            await db.update(farmerAdvanceFreight)
+              .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+              .where(eq(farmerAdvanceFreight.id, record.id));
+            
+            remainingAmount = roundAmount(remainingAmount - amountToApply);
+            receivablesUpdated++;
+          }
+        }
+      }
+      
+      // Pass 3: Apply remaining to farmer ADVANCE records (FIFO by createdAt)
+      if (remainingAmount > 0 && farmerLedgerEntry) {
+        const advanceRecords = await db.select()
+          .from(farmerAdvanceFreight)
+          .where(and(
+            eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+            eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
+            eq(farmerAdvanceFreight.type, "advance"),
+            eq(farmerAdvanceFreight.isReversed, 0)
+          ))
+          .orderBy(farmerAdvanceFreight.createdAt);
+        
+        for (const record of advanceRecords) {
+          if (remainingAmount <= 0) break;
+          const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
+          if (remainingDue <= 0) continue;
+          
+          const amountToApply = Math.min(remainingAmount, remainingDue);
+          if (amountToApply > 0) {
+            await db.update(farmerAdvanceFreight)
+              .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+              .where(eq(farmerAdvanceFreight.id, record.id));
+            
+            remainingAmount = roundAmount(remainingAmount - amountToApply);
+            receivablesUpdated++;
+          }
+        }
+      }
+      
+      // Pass 4: Apply remaining to self-sales (FIFO by soldAt)
       if (remainingAmount > 0) {
         // Get self-sales for this farmer
         const selfSales = await db.select()
@@ -4593,6 +4673,27 @@ export class DatabaseStorage implements IStorage {
         AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
     `);
     
+    // Step 1b: Reset all farmer advance/freight paidAmount to 0
+    const [farmerLedgerEntryForDiscount] = await db.select()
+      .from(farmerLedger)
+      .where(and(
+        eq(farmerLedger.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerName}))`,
+        sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${contactNumber})`,
+        sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${village}))`
+      ))
+      .limit(1);
+    
+    if (farmerLedgerEntryForDiscount) {
+      await db.update(farmerAdvanceFreight)
+        .set({ paidAmount: 0 })
+        .where(and(
+          eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+          eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntryForDiscount.id),
+          eq(farmerAdvanceFreight.isReversed, 0)
+        ));
+    }
+    
     // Step 2: Reset all self-sales for this farmer to original due amounts
     // Match by farmer composite key (name + phone + village)
     // Also match by buyer pattern which contains these elements
@@ -4733,7 +4834,61 @@ export class DatabaseStorage implements IStorage {
           }
         }
         
-        // Pass 2: Self-sales
+        // Pass 2: Farmer FREIGHT records (FIFO by createdAt)
+        if (remainingAmount > 0 && farmerLedgerEntryForDiscount) {
+          const freightRecords = await db.select()
+            .from(farmerAdvanceFreight)
+            .where(and(
+              eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+              eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntryForDiscount.id),
+              eq(farmerAdvanceFreight.type, "freight"),
+              eq(farmerAdvanceFreight.isReversed, 0)
+            ))
+            .orderBy(farmerAdvanceFreight.createdAt);
+          
+          for (const record of freightRecords) {
+            if (remainingAmount <= 0) break;
+            const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
+            if (remainingDue <= 0) continue;
+            const amountToApply = Math.min(remainingAmount, remainingDue);
+            if (amountToApply > 0) {
+              await db.update(farmerAdvanceFreight)
+                .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+                .where(eq(farmerAdvanceFreight.id, record.id));
+              remainingAmount = roundAmount(remainingAmount - amountToApply);
+              receivablesUpdated++;
+            }
+          }
+        }
+        
+        // Pass 3: Farmer ADVANCE records (FIFO by createdAt)
+        if (remainingAmount > 0 && farmerLedgerEntryForDiscount) {
+          const advanceRecords = await db.select()
+            .from(farmerAdvanceFreight)
+            .where(and(
+              eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+              eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntryForDiscount.id),
+              eq(farmerAdvanceFreight.type, "advance"),
+              eq(farmerAdvanceFreight.isReversed, 0)
+            ))
+            .orderBy(farmerAdvanceFreight.createdAt);
+          
+          for (const record of advanceRecords) {
+            if (remainingAmount <= 0) break;
+            const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
+            if (remainingDue <= 0) continue;
+            const amountToApply = Math.min(remainingAmount, remainingDue);
+            if (amountToApply > 0) {
+              await db.update(farmerAdvanceFreight)
+                .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+                .where(eq(farmerAdvanceFreight.id, record.id));
+              remainingAmount = roundAmount(remainingAmount - amountToApply);
+              receivablesUpdated++;
+            }
+          }
+        }
+        
+        // Pass 4: Self-sales
         if (remainingAmount > 0) {
           const selfSales = await db.select()
             .from(salesHistory)
@@ -4811,7 +4966,61 @@ export class DatabaseStorage implements IStorage {
           }
         }
         
-        // Pass 2: Apply remaining discount to self-sales
+        // Pass 2: Apply remaining discount to farmer FREIGHT records (FIFO by createdAt)
+        if (remainingAmount > 0 && farmerLedgerEntryForDiscount) {
+          const freightRecords = await db.select()
+            .from(farmerAdvanceFreight)
+            .where(and(
+              eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+              eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntryForDiscount.id),
+              eq(farmerAdvanceFreight.type, "freight"),
+              eq(farmerAdvanceFreight.isReversed, 0)
+            ))
+            .orderBy(farmerAdvanceFreight.createdAt);
+          
+          for (const record of freightRecords) {
+            if (remainingAmount <= 0) break;
+            const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
+            if (remainingDue <= 0) continue;
+            const amountToApply = Math.min(remainingAmount, remainingDue);
+            if (amountToApply > 0) {
+              await db.update(farmerAdvanceFreight)
+                .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+                .where(eq(farmerAdvanceFreight.id, record.id));
+              remainingAmount = roundAmount(remainingAmount - amountToApply);
+              receivablesUpdated++;
+            }
+          }
+        }
+        
+        // Pass 3: Apply remaining discount to farmer ADVANCE records (FIFO by createdAt)
+        if (remainingAmount > 0 && farmerLedgerEntryForDiscount) {
+          const advanceRecords = await db.select()
+            .from(farmerAdvanceFreight)
+            .where(and(
+              eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+              eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntryForDiscount.id),
+              eq(farmerAdvanceFreight.type, "advance"),
+              eq(farmerAdvanceFreight.isReversed, 0)
+            ))
+            .orderBy(farmerAdvanceFreight.createdAt);
+          
+          for (const record of advanceRecords) {
+            if (remainingAmount <= 0) break;
+            const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
+            if (remainingDue <= 0) continue;
+            const amountToApply = Math.min(remainingAmount, remainingDue);
+            if (amountToApply > 0) {
+              await db.update(farmerAdvanceFreight)
+                .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+                .where(eq(farmerAdvanceFreight.id, record.id));
+              remainingAmount = roundAmount(remainingAmount - amountToApply);
+              receivablesUpdated++;
+            }
+          }
+        }
+        
+        // Pass 4: Apply remaining discount to self-sales
         if (remainingAmount > 0) {
           const selfSales = await db.select()
             .from(salesHistory)
@@ -5793,6 +6002,7 @@ export class DatabaseStorage implements IStorage {
       const advFreightData = await db.select({
         type: farmerAdvanceFreight.type,
         finalAmount: farmerAdvanceFreight.finalAmount,
+        paidAmount: farmerAdvanceFreight.paidAmount,
       })
         .from(farmerAdvanceFreight)
         .where(and(
@@ -5803,10 +6013,10 @@ export class DatabaseStorage implements IStorage {
 
       const advanceDue = advFreightData
         .filter(r => r.type === 'advance')
-        .reduce((sum, r) => sum + (r.finalAmount || 0), 0);
+        .reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
       const freightDue = advFreightData
         .filter(r => r.type === 'freight')
-        .reduce((sum, r) => sum + (r.finalAmount || 0), 0);
+        .reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
       
       const totalDue = pyReceivables + selfDue + merchantDue + advanceDue + freightDue;
       
