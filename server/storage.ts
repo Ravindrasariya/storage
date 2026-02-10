@@ -77,7 +77,6 @@ import {
   type QualityStats,
   type PaymentStats,
   type MerchantStats,
-  calculateProportionalEntryDeductions,
 } from "@shared/schema";
 
 // Entity type prefixes for sequential IDs
@@ -839,9 +838,6 @@ export class DatabaseStorage implements IStorage {
           netWeight: lot.netWeight,
           chargeUnit: coldStorage?.chargeUnit || "bag",
           baseColdChargesBilled: lot.baseColdChargesBilled || 0,
-          advanceDeduction: lot.advanceDeduction || 0,
-          freightDeduction: lot.freightDeduction || 0,
-          otherDeduction: lot.otherDeduction || 0,
         };
       })
       .sort((a, b) => parseInt(a.lotNo, 10) - parseInt(b.lotNo, 10));
@@ -1377,15 +1373,7 @@ export class DatabaseStorage implements IStorage {
     const kata = kataCharges || 0;
     const extraHammaliTotal = extraHammali || 0;
     const grading = gradingCharges || 0;
-    // Proportional entry deductions using shared helper
-    const proportionalDeductions = calculateProportionalEntryDeductions({
-      quantitySold: lot.remainingSize,
-      originalLotSize: lot.size,
-      advanceDeduction: lot.advanceDeduction || 0,
-      freightDeduction: lot.freightDeduction || 0,
-      otherDeduction: lot.otherDeduction || 0,
-    });
-    const totalChargeWithExtras = saleCharge + kata + extraHammaliTotal + grading + proportionalDeductions;
+    const totalChargeWithExtras = saleCharge + kata + extraHammaliTotal + grading;
 
     // Calculate paid/due amounts based on payment status (include all charges)
     let salePaidAmount = 0;
@@ -1484,10 +1472,6 @@ export class DatabaseStorage implements IStorage {
       initialNetWeightKg: lot.netWeight || null,
       baseChargeAmountAtSale: saleCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
       remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
-      // Entry-time deductions (copy from lot)
-      advanceDeduction: lot.advanceDeduction || 0,
-      freightDeduction: lot.freightDeduction || 0,
-      otherDeduction: lot.otherDeduction || 0,
       // Farmer ledger reference (copy from lot)
       farmerLedgerId: lot.farmerLedgerId || null,
       farmerId: lot.farmerId || null,

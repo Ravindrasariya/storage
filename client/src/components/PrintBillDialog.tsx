@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { Printer, FileText, Receipt } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
-import { calculateTotalColdCharges, calculateProportionalEntryDeductions } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 // Format amount: round to 1 decimal if fractional, show integer if whole (e.g., 72.54 → "72.5", 72 → "72")
@@ -20,19 +19,6 @@ const formatAmount = (value: number): string => {
     return rounded.toLocaleString("en-IN");
   }
   return rounded.toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-};
-
-// Calculate proportional entry deductions for a sale (uses shared helper)
-const calculateProportionalDeduction = (sale: SalesHistory, deductionAmount: number): number => {
-  if (deductionAmount <= 0) return 0;
-  // For individual deduction fields, calculate proportionally
-  return calculateProportionalEntryDeductions({
-    quantitySold: sale.quantitySold || 0,
-    originalLotSize: sale.originalLotSize || 1,
-    advanceDeduction: deductionAmount,
-    freightDeduction: 0,
-    otherDeduction: 0,
-  });
 };
 
 interface PrintBillDialogProps {
@@ -273,15 +259,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
   const totalIncome = (sale.netWeight || 0) * (sale.pricePerKg || 0);
   
-  // Calculate proportional entry deductions for this sale
-  const proportionalEntryDeductions = calculateProportionalEntryDeductions({
-    quantitySold: sale.quantitySold || 0,
-    originalLotSize: sale.originalLotSize || 1,
-    advanceDeduction: sale.advanceDeduction || 0,
-    freightDeduction: sale.freightDeduction || 0,
-    otherDeduction: sale.otherDeduction || 0,
-  });
-  
   const hasSeparateCharges = sale.coldCharge != null && sale.hammali != null;
   
   // Determine bagsToUse based on charge basis
@@ -333,13 +310,10 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
   const totalCharges = coldChargeAmount + hammaliAmount + extras;
   
-  // Total Deductions = cold charges + proportional entry deductions
-  const totalDeductions = totalCharges + proportionalEntryDeductions;
+  // Net Cold Bill after discount = Total Charges - Discount
+  const netColdBill = Math.max(0, totalCharges - discountAllocated);
   
-  // Net Cold Bill after discount = Total Deductions - Discount
-  const netColdBill = Math.max(0, totalDeductions - discountAllocated);
-  
-  // Net Payable = Total Income - Net Cold Bill (after discount)
+  // Net Payable = Total Income - Net Cold Bill
   const netPayable = totalIncome - netColdBill;
 
   const renderDeductionBill = () => (
@@ -447,51 +421,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </tbody>
         </table>
         
-        {/* Entry Deductions Section - Proportional to bags sold */}
-        {proportionalEntryDeductions > 0 && (
-          <>
-            <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती ({sale.quantitySold}/{sale.originalLotSize} बोरी)</div>
-            <table className="charges-table">
-              <tbody>
-                {(sale.advanceDeduction || 0) > 0 && (
-                  <tr>
-                    <td>अग्रिम</td>
-                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.advanceDeduction || 0))}</td>
-                  </tr>
-                )}
-                {(sale.freightDeduction || 0) > 0 && (
-                  <tr>
-                    <td>भाड़ा (गाड़ी भाड़ा)</td>
-                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.freightDeduction || 0))}</td>
-                  </tr>
-                )}
-                {(sale.otherDeduction || 0) > 0 && (
-                  <tr>
-                    <td>अन्य शुल्क</td>
-                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.otherDeduction || 0))}</td>
-                  </tr>
-                )}
-                <tr className="total-row">
-                  <td><strong>कुल प्रवेश कटौती</strong></td>
-                  <td className="amount"><strong>रु. {formatAmount(proportionalEntryDeductions)}</strong></td>
-                </tr>
-              </tbody>
-            </table>
-          </>
-        )}
-        
-        {/* Total Deductions Section - Cold charges + Entry deductions */}
-        {proportionalEntryDeductions > 0 && (
-          <table className="charges-table" style={{ marginTop: "16px" }}>
-            <tbody>
-              <tr className="total-row" style={{ backgroundColor: "#f0f0f0" }}>
-                <td><strong>कुल कटौती</strong> (शीत भण्डार शुल्क + प्रवेश कटौती)</td>
-                <td className="amount"><strong>रु. {formatAmount(totalDeductions)}</strong></td>
-              </tr>
-            </tbody>
-          </table>
-        )}
-        
         {/* Discount Row - Show if discount was allocated */}
         {discountAllocated > 0 && (
           <table className="charges-table" style={{ marginTop: "8px" }}>
@@ -501,7 +430,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 <td className="amount" style={{ color: "#16a34a" }}><strong>- रु. {formatAmount(discountAllocated)}</strong></td>
               </tr>
               <tr className="total-row" style={{ backgroundColor: "#e6f4ea" }}>
-                <td><strong>शुद्ध शीत भण्डार शुल्क</strong> (कुल कटौती - छूट)</td>
+                <td><strong>शुद्ध शीत भण्डार शुल्क</strong> (कुल शुल्क - छूट)</td>
                 <td className="amount"><strong>रु. {formatAmount(netColdBill)}</strong></td>
               </tr>
             </tbody>
@@ -650,51 +579,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </tbody>
         </table>
         
-        {/* Entry Deductions Section - Proportional to bags sold */}
-        {proportionalEntryDeductions > 0 && (
-          <>
-            <div className="section-title" style={{ marginTop: "16px", marginBottom: "8px" }}>प्रवेश कटौती ({sale.quantitySold}/{sale.originalLotSize} बोरी)</div>
-            <table className="charges-table">
-              <tbody>
-                {(sale.advanceDeduction || 0) > 0 && (
-                  <tr>
-                    <td>अग्रिम</td>
-                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.advanceDeduction || 0))}</td>
-                  </tr>
-                )}
-                {(sale.freightDeduction || 0) > 0 && (
-                  <tr>
-                    <td>भाड़ा (गाड़ी भाड़ा)</td>
-                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.freightDeduction || 0))}</td>
-                  </tr>
-                )}
-                {(sale.otherDeduction || 0) > 0 && (
-                  <tr>
-                    <td>अन्य शुल्क</td>
-                    <td className="amount">{formatAmount(calculateProportionalDeduction(sale, sale.otherDeduction || 0))}</td>
-                  </tr>
-                )}
-                <tr className="total-row">
-                  <td><strong>कुल प्रवेश कटौती</strong></td>
-                  <td className="amount"><strong>रु. {formatAmount(proportionalEntryDeductions)}</strong></td>
-                </tr>
-              </tbody>
-            </table>
-          </>
-        )}
-        
-        {/* Total Deductions Section - Cold charges + Entry deductions */}
-        {proportionalEntryDeductions > 0 && (
-          <table className="charges-table" style={{ marginTop: "16px" }}>
-            <tbody>
-              <tr className="total-row" style={{ backgroundColor: "#f0f0f0" }}>
-                <td><strong>कुल कटौती</strong> (शीत भण्डार शुल्क + प्रवेश कटौती)</td>
-                <td className="amount"><strong>रु. {formatAmount(totalDeductions)}</strong></td>
-              </tr>
-            </tbody>
-          </table>
-        )}
-        
         {/* Discount Row for Sales Bill - Show if discount was allocated */}
         {discountAllocated > 0 && (
           <table className="charges-table" style={{ marginTop: "8px" }}>
@@ -704,7 +588,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 <td className="amount" style={{ color: "#16a34a" }}><strong>- रु. {formatAmount(discountAllocated)}</strong></td>
               </tr>
               <tr className="total-row" style={{ backgroundColor: "#e6f4ea" }}>
-                <td><strong>शुद्ध शीत भण्डार शुल्क</strong> (कुल कटौती - छूट)</td>
+                <td><strong>शुद्ध शीत भण्डार शुल्क</strong> (कुल शुल्क - छूट)</td>
                 <td className="amount"><strong>रु. {formatAmount(netColdBill)}</strong></td>
               </tr>
             </tbody>
@@ -716,7 +600,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         <table className="charges-table">
           <tbody>
             <tr className="total-row net-income">
-              <td><strong>शुद्ध देय (कुल आय - {discountAllocated > 0 ? "शुद्ध शीत भण्डार शुल्क" : "कुल कटौती"})</strong></td>
+              <td><strong>शुद्ध देय (कुल आय - {discountAllocated > 0 ? "शुद्ध शीत भण्डार शुल्क" : "कुल शुल्क"})</strong></td>
               <td className="amount"><strong>रु. {formatAmount(netPayable)}</strong></td>
             </tr>
           </tbody>

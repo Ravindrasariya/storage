@@ -104,9 +104,6 @@ export default function StockRegister() {
     position: string;
     quality: string;
     netWeight?: number;
-    advanceDeduction: number;
-    freightDeduction: number;
-    otherDeduction: number;
     lotNo: string;
     farmerName: string;
     village: string;
@@ -550,7 +547,6 @@ export default function StockRegister() {
         "Original Size",
         "Remaining Size",
         "Sale Status",
-        "Entry Deductions",
         "Expected Cold Charges",
         "Total Billed Charges",
         "Paid Cold Charges",
@@ -580,9 +576,6 @@ export default function StockRegister() {
         const paidCharge = lot.totalPaidCharge || 0;
         const dueCharge = lot.totalDueCharge || 0;
         const totalBilledCharge = paidCharge + dueCharge;
-        // Total entry deductions for the lot
-        const entryDeductions = (lot.advanceDeduction || 0) + (lot.freightDeduction || 0) + (lot.otherDeduction || 0);
-        
         return [
           lot.lotNo,
           lot.farmerName,
@@ -601,7 +594,6 @@ export default function StockRegister() {
           lot.size,
           lot.remainingSize,
           lot.saleStatus || "stored",
-          entryDeductions > 0 ? entryDeductions.toFixed(1) : "",
           expectedColdCharge.toFixed(1),
           totalBilledCharge.toFixed(1),
           paidCharge.toFixed(1),
@@ -897,9 +889,6 @@ export default function StockRegister() {
       position: lot.position || "",
       quality: lot.quality,
       netWeight: lot.netWeight || undefined,
-      advanceDeduction: lot.advanceDeduction || 0,
-      freightDeduction: lot.freightDeduction || 0,
-      otherDeduction: lot.otherDeduction || 0,
       lotNo: lot.lotNo,
       farmerName: lot.farmerName,
       village: lot.village || "",
@@ -1739,53 +1728,6 @@ export default function StockRegister() {
                 )}
               </div>
               
-              {/* Entry-time Deductions Section */}
-              <div className="mt-4 border-t pt-4">
-                <h4 className="font-medium mb-3">{t("entryDeductions") || "Entry Deductions"}</h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label>{t("advance")}</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min={0}
-                      placeholder="0"
-                      value={editForm.advanceDeduction === 0 ? "" : editForm.advanceDeduction}
-                      onChange={(e) => setEditForm({ ...editForm, advanceDeduction: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
-                      data-testid="input-edit-advance-deduction"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("freightCharges")}</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min={0}
-                      placeholder="0"
-                      value={editForm.freightDeduction === 0 ? "" : editForm.freightDeduction}
-                      onChange={(e) => setEditForm({ ...editForm, freightDeduction: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
-                      data-testid="input-edit-freight-deduction"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("otherCharges")}</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min={0}
-                      placeholder="0"
-                      value={editForm.otherDeduction === 0 ? "" : editForm.otherDeduction}
-                      onChange={(e) => setEditForm({ ...editForm, otherDeduction: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
-                      data-testid="input-edit-other-deduction"
-                    />
-                  </div>
-                </div>
-                {(editForm.advanceDeduction > 0 || editForm.freightDeduction > 0 || editForm.otherDeduction > 0) && (
-                  <div className="mt-2 text-sm text-muted-foreground">
-                    {t("totalDeductions")}: <Currency amount={editForm.advanceDeduction + editForm.freightDeduction + editForm.otherDeduction} />
-                  </div>
-                )}
-              </div>
               {coldStorage?.chargeUnit === "quintal" && editForm.netWeight && editForm.netWeight > 0 && selectedLot && (
                 <div className="mt-4 p-3 bg-muted rounded-md">
                   <div className="flex items-center justify-between">
@@ -1860,9 +1802,6 @@ export default function StockRegister() {
                         position: updatedLot.position || "",
                         quality: updatedLot.quality,
                         netWeight: updatedLot.netWeight || undefined,
-                        advanceDeduction: updatedLot.advanceDeduction || 0,
-                        freightDeduction: updatedLot.freightDeduction || 0,
-                        otherDeduction: updatedLot.otherDeduction || 0,
                         lotNo: updatedLot.lotNo,
                         farmerName: updatedLot.farmerName,
                         village: updatedLot.village || "",

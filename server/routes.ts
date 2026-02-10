@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
-import { lotFormSchema, insertChamberFloorSchema, calculateProportionalEntryDeductions, Lot } from "@shared/schema";
+import { lotFormSchema, insertChamberFloorSchema, Lot } from "@shared/schema";
 import { z } from "zod";
 
 // CAPTCHA verification helper
@@ -412,23 +412,6 @@ export async function registerRoutes(
       
       // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
       const lotsToCreate = lotDataArray.map(lotData => {
-        // Convert deductions array to separate fields
-        let advanceDeduction = 0;
-        let freightDeduction = 0;
-        let otherDeduction = 0;
-        
-        if (lotData.deductions) {
-          for (const deduction of lotData.deductions) {
-            if (deduction.type === "advance") {
-              advanceDeduction += deduction.amount;
-            } else if (deduction.type === "freight") {
-              freightDeduction += deduction.amount;
-            } else if (deduction.type === "other") {
-              otherDeduction += deduction.amount;
-            }
-          }
-        }
-        
         // Destructure to remove deductions from the spread
         const { deductions, ...lotDataWithoutDeductions } = lotData;
         
@@ -438,9 +421,6 @@ export async function registerRoutes(
           lotNo: "", // Will be set by createBatchLots
           coldStorageId: coldStorageId,
           remainingSize: lotData.size,
-          advanceDeduction,
-          freightDeduction,
-          otherDeduction,
           farmerLedgerId: farmerEntry.id,
           farmerId: farmerEntry.farmerId,
         };
@@ -724,10 +704,6 @@ export async function registerRoutes(
     upForSale: z.number().int().min(0).max(1).optional(),
     // Net weight for quintal-based charging
     netWeight: z.number().optional(),
-    // Entry-time deductions
-    advanceDeduction: z.number().min(0).optional(),
-    freightDeduction: z.number().min(0).optional(),
-    otherDeduction: z.number().min(0).optional(),
     // Lot number (editable with uniqueness validation)
     lotNo: z.string().optional(),
     // Farmer details (editable)
@@ -789,9 +765,6 @@ export async function registerRoutes(
         district: lot.district,
         state: lot.state,
         contactNumber: lot.contactNumber,
-        advanceDeduction: lot.advanceDeduction,
-        freightDeduction: lot.freightDeduction,
-        otherDeduction: lot.otherDeduction,
       };
 
       // Update the lot (including lotNo and entrySequence if changed)
@@ -846,9 +819,6 @@ export async function registerRoutes(
           district: validated.district ?? lot.district,
           state: validated.state ?? lot.state,
           contactNumber: validated.contactNumber ?? lot.contactNumber,
-          advanceDeduction: validated.advanceDeduction ?? lot.advanceDeduction,
-          freightDeduction: validated.freightDeduction ?? lot.freightDeduction,
-          otherDeduction: validated.otherDeduction ?? lot.otherDeduction,
         };
         await storage.createEditHistory({
           lotId: lot.id,
@@ -1004,15 +974,7 @@ export async function registerRoutes(
       const kata = kataCharges || 0;
       const extraHammaliTotal = extraHammali || 0;
       const grading = gradingCharges || 0;
-      // Proportional entry deductions using shared helper
-      const proportionalDeductions = calculateProportionalEntryDeductions({
-        quantitySold,
-        originalLotSize: lot.size,
-        advanceDeduction: lot.advanceDeduction || 0,
-        freightDeduction: lot.freightDeduction || 0,
-        otherDeduction: lot.otherDeduction || 0,
-      });
-      const totalChargeForLot = storageCharge + kata + extraHammaliTotal + grading + proportionalDeductions;
+      const totalChargeForLot = storageCharge + kata + extraHammaliTotal + grading;
 
       const updateData: { 
         remainingSize: number; 
@@ -1125,10 +1087,6 @@ export async function registerRoutes(
         initialNetWeightKg: lot.netWeight || null,
         baseChargeAmountAtSale: storageCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
         remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
-        // Entry-time deductions (copy from lot)
-        advanceDeduction: lot.advanceDeduction || 0,
-        freightDeduction: lot.freightDeduction || 0,
-        otherDeduction: lot.otherDeduction || 0,
         // Self sale flag (farmer buying own produce)
         isSelfSale: isSelfSale ? 1 : 0,
         // Farmer ledger reference (copy from lot)
@@ -3765,15 +3723,6 @@ export async function registerRoutes(
         }
         const totalHammali = baseHammali + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
         
-        // Proportional entry deductions using shared helper
-        const proportionalDeductions = calculateProportionalEntryDeductions({
-          quantitySold: sale.quantitySold,
-          originalLotSize: sale.originalLotSize || 1,
-          advanceDeduction: sale.advanceDeduction || 0,
-          freightDeduction: sale.freightDeduction || 0,
-          otherDeduction: sale.otherDeduction || 0,
-        });
-        
         const row = [
           formatDateForExport(sale.soldAt),
           formatDateForExport(sale.entryDate),
@@ -3796,7 +3745,7 @@ export async function registerRoutes(
           sale.hammali || "",
           sale.pricePerBag,
           sale.coldStorageCharge,
-          proportionalDeductions > 0 ? proportionalDeductions.toFixed(1) : "",
+          "",
           sale.kataCharges || 0,
           sale.extraHammali || 0,
           sale.gradingCharges || 0,

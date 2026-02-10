@@ -16,7 +16,6 @@ import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
-import { calculateProportionalEntryDeductions } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency, formatCurrency } from "@/components/Currency";
 
@@ -95,18 +94,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     }
   };
 
-  // Calculate proportional entry deductions based on bags sold (uses shared helper)
-  const calculateProportionalDeductions = () => {
-    if (!sale) return 0;
-    return calculateProportionalEntryDeductions({
-      quantitySold: sale.quantitySold || 0,
-      originalLotSize: sale.originalLotSize || 1,
-      advanceDeduction: sale.advanceDeduction || 0,
-      freightDeduction: sale.freightDeduction || 0,
-      otherDeduction: sale.otherDeduction || 0,
-    });
-  };
-
   const calculateEditableTotal = () => {
     if (!sale) return 0;
     const baseCharge = calculateBaseCharge();
@@ -115,11 +102,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     const extraHammaliPerBag = getEditableChargeValue(editExtraHammali, 0);
     const extraHammaliTotal = extraHammaliPerBag * (sale.quantitySold || 0);
     const grading = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
-    // Proportional entry deductions based on bags sold
-    const proportionalDeductions = calculateProportionalDeductions();
     
-    // Extras (Kata, Extra Hammali, Grading, Entry Deductions) are added on top of base charge
-    return baseCharge + kata + extraHammaliTotal + grading + proportionalDeductions;
+    return baseCharge + kata + extraHammaliTotal + grading;
   };
   
   // Get the calculated base charge for display
@@ -467,31 +451,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 <span className="text-muted-foreground">{t("buyerName")}:</span>
                 <p className="font-medium">{sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")}</p>
               </div>
-              {/* Entry Deductions (read-only, set at lot entry time) */}
-              {((sale.advanceDeduction || 0) > 0 || (sale.freightDeduction || 0) > 0 || (sale.otherDeduction || 0) > 0) && (
-                <div className="col-span-2 pt-2 border-t">
-                  <span className="text-muted-foreground text-sm">{t("entryDeductions")}:</span>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {(sale.advanceDeduction || 0) > 0 && (
-                      <Badge variant="secondary">{t("advance")}: <Currency amount={sale.advanceDeduction || 0} /></Badge>
-                    )}
-                    {(sale.freightDeduction || 0) > 0 && (
-                      <Badge variant="secondary">{t("freightCharges")}: <Currency amount={sale.freightDeduction || 0} /></Badge>
-                    )}
-                    {(sale.otherDeduction || 0) > 0 && (
-                      <Badge variant="secondary">{t("otherCharges")}: <Currency amount={sale.otherDeduction || 0} /></Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("totalDeductions")}: <Currency amount={(sale.advanceDeduction || 0) + (sale.freightDeduction || 0) + (sale.otherDeduction || 0)} />
-                    {calculateProportionalDeductions() > 0 && (
-                      <span className="ml-2">
-                        ({t("proportionalForSale")}: <Currency amount={calculateProportionalDeductions()} /> = {sale.quantitySold}/{sale.originalLotSize})
-                      </span>
-                    )}
-                  </p>
-                </div>
-              )}
             </div>
           </div>
 

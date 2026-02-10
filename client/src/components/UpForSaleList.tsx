@@ -26,7 +26,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SaleLotInfo } from "@shared/schema";
-import { calculateProportionalEntryDeductions } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency } from "@/components/Currency";
 
@@ -341,18 +340,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     return actualQty ?? lot.remainingSize;
   };
 
-  // Calculate proportional entry deductions based on bags being sold (uses shared helper)
-  const calculateProportionalDeductions = (lot: SaleLotInfo, quantity?: number) => {
-    const actualQty = quantity ?? lot.remainingSize;
-    return calculateProportionalEntryDeductions({
-      quantitySold: actualQty,
-      originalLotSize: lot.originalSize,
-      advanceDeduction: lot.advanceDeduction || 0,
-      freightDeduction: lot.freightDeduction || 0,
-      otherDeduction: lot.otherDeduction || 0,
-    });
-  };
-
   const calculateBaseCharge = (lot: SaleLotInfo, quantity?: number, useChargeBasis: boolean = true) => {
     // Skip base charge if already paid
     if (lot.baseColdChargesBilled === 1) {
@@ -404,9 +391,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     // Extra hammali and grading always use actual bags being sold (not charge basis)
     const extraHammali = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
     const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
-    // Proportional entry deductions based on bags being sold
-    const proportionalDeductions = calculateProportionalDeductions(lot, actualQty);
-    return baseCharge + kata + extraHammali + grading + proportionalDeductions;
+    return baseCharge + kata + extraHammali + grading;
   };
 
   const calculateCharge = (lot: SaleLotInfo) => {
@@ -917,9 +902,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         )}
                         {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
                           <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
-                        )}
-                        {calculateProportionalDeductions(selectedLot, partialQuantity) > 0 && (
-                          <div>+ {t("entryDeductions")}: <Currency amount={calculateProportionalDeductions(selectedLot, partialQuantity)} /> ({partialQuantity}/{selectedLot.originalSize} × <Currency amount={(selectedLot.advanceDeduction || 0) + (selectedLot.freightDeduction || 0) + (selectedLot.otherDeduction || 0)} />)</div>
                         )}
                       </div>
                     </>
