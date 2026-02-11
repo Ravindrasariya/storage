@@ -2155,6 +2155,34 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
+    // Look up farmer ledger entry for advance/freight queries
+    const [farmerLedgerEntry] = await db.select()
+      .from(farmerLedger)
+      .where(and(
+        eq(farmerLedger.coldStorageId, data.coldStorageId),
+        sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerIdentity.farmerName}))`,
+        sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${farmerIdentity.contactNumber})`,
+        sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${farmerIdentity.village}))`
+      ))
+      .limit(1);
+    
+    // Get advance/freight dues for totalDueBefore
+    if (farmerLedgerEntry) {
+      const advFreightRecords = await db.select()
+        .from(farmerAdvanceFreight)
+        .where(and(
+          eq(farmerAdvanceFreight.coldStorageId, data.coldStorageId),
+          eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
+          eq(farmerAdvanceFreight.isReversed, 0)
+        ));
+      for (const record of advFreightRecords) {
+        const remainingDue = (record.finalAmount || 0) - (record.paidAmount || 0);
+        if (remainingDue > 0) {
+          totalDueBefore += remainingDue;
+        }
+      }
+    }
+    
     // Get self-sales with dues for this farmer (EXCLUDE transferred unless reversed)
     const selfSalesResult = await db.execute(sql`
       SELECT id, due_amount, extra_due_to_merchant, paid_amount
@@ -2215,7 +2243,67 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    // Then apply to self-sales (FIFO by sold_at)
+    // Pass 2: Apply remaining to farmer FREIGHT records (FIFO by createdAt)
+    if (remainingAmount > 0 && farmerLedgerEntry) {
+      const freightRecords = await db.select()
+        .from(farmerAdvanceFreight)
+        .where(and(
+          eq(farmerAdvanceFreight.coldStorageId, data.coldStorageId),
+          eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
+          eq(farmerAdvanceFreight.type, "freight"),
+          eq(farmerAdvanceFreight.isReversed, 0)
+        ))
+        .orderBy(farmerAdvanceFreight.createdAt);
+      
+      for (const record of freightRecords) {
+        if (remainingAmount <= 0) break;
+        const remainingDue = roundAmount((record.finalAmount || 0) - (record.paidAmount || 0));
+        if (remainingDue <= 0) continue;
+        
+        const amountToApply = Math.min(remainingAmount, remainingDue);
+        if (amountToApply > 0) {
+          await db.update(farmerAdvanceFreight)
+            .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+            .where(eq(farmerAdvanceFreight.id, record.id));
+          
+          remainingAmount = roundAmount(remainingAmount - amountToApply);
+          totalApplied = roundAmount(totalApplied + amountToApply);
+          recordsUpdated++;
+        }
+      }
+    }
+    
+    // Pass 3: Apply remaining to farmer ADVANCE records (FIFO by createdAt)
+    if (remainingAmount > 0 && farmerLedgerEntry) {
+      const advanceRecords = await db.select()
+        .from(farmerAdvanceFreight)
+        .where(and(
+          eq(farmerAdvanceFreight.coldStorageId, data.coldStorageId),
+          eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
+          eq(farmerAdvanceFreight.type, "advance"),
+          eq(farmerAdvanceFreight.isReversed, 0)
+        ))
+        .orderBy(farmerAdvanceFreight.createdAt);
+      
+      for (const record of advanceRecords) {
+        if (remainingAmount <= 0) break;
+        const remainingDue = roundAmount((record.finalAmount || 0) - (record.paidAmount || 0));
+        if (remainingDue <= 0) continue;
+        
+        const amountToApply = Math.min(remainingAmount, remainingDue);
+        if (amountToApply > 0) {
+          await db.update(farmerAdvanceFreight)
+            .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+            .where(eq(farmerAdvanceFreight.id, record.id));
+          
+          remainingAmount = roundAmount(remainingAmount - amountToApply);
+          totalApplied = roundAmount(totalApplied + amountToApply);
+          recordsUpdated++;
+        }
+      }
+    }
+    
+    // Pass 4: Apply remaining to self-sales (FIFO by sold_at)
     for (const sale of selfSalesWithDues) {
       if (remainingAmount <= 0) break;
       
