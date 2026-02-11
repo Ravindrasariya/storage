@@ -2323,29 +2323,15 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/farmer-dues-by-key", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.get("/api/farmer-dues/:farmerLedgerId", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { farmerName, contactNumber, village } = req.query;
-      if (!farmerName) {
-        return res.status(400).json({ error: "farmerName required" });
+      const { farmerLedgerId } = req.params;
+      if (!farmerLedgerId) {
+        return res.status(400).json({ error: "farmerLedgerId required" });
       }
-      const ledger = await storage.getFarmerLedger(coldStorageId);
-      const farmer = ledger.farmers.find(f =>
-        f.name.trim().toLowerCase() === (farmerName as string).trim().toLowerCase() &&
-        (contactNumber ? f.contactNumber.trim() === (contactNumber as string).trim() : true) &&
-        (village ? f.village.trim().toLowerCase() === (village as string).trim().toLowerCase() : true)
-      );
-      if (!farmer) {
-        return res.json({ pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 });
-      }
-      res.json({
-        pyReceivables: farmer.pyReceivables,
-        freightDue: farmer.freightDue,
-        advanceDue: farmer.advanceDue,
-        selfDue: farmer.selfDue,
-        totalDue: farmer.pyReceivables + farmer.freightDue + farmer.advanceDue + farmer.selfDue,
-      });
+      const dues = await storage.getFarmerDuesByLedgerId(farmerLedgerId, coldStorageId);
+      res.json(dues);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch farmer dues" });
     }

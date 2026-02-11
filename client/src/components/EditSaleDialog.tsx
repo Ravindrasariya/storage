@@ -195,13 +195,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   }, [sale, open]);
   
   const { data: farmerDuesForEdit } = useQuery<{ pyReceivables: number; freightDue: number; advanceDue: number; selfDue: number; totalDue: number }>({
-    queryKey: ["/api/farmer-dues-by-key", sale?.farmerName, sale?.contactNumber, sale?.village],
+    queryKey: ["/api/farmer-dues", sale?.farmerLedgerId],
     queryFn: async () => {
-      if (!sale) return { pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 };
-      const res = await fetch(`/api/farmer-dues-by-key?farmerName=${encodeURIComponent(sale.farmerName)}&contactNumber=${encodeURIComponent(sale.contactNumber)}&village=${encodeURIComponent(sale.village)}`, { credentials: "include" });
+      if (!sale?.farmerLedgerId) return { pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 };
+      const res = await fetch(`/api/farmer-dues/${encodeURIComponent(sale.farmerLedgerId)}`, { credentials: "include" });
       return res.json();
     },
-    enabled: !!sale && isNonSelfSale && open,
+    enabled: !!sale?.farmerLedgerId && isNonSelfSale && open,
   });
   
   const maxAdjAmount = (farmerDuesForEdit?.totalDue || 0) + (sale?.adjReceivableSelfDueAmount || 0);

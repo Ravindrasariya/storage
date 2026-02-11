@@ -329,6 +329,7 @@ export interface IStorage {
       totalDue: number;
     };
   }>;
+  getFarmerDuesByLedgerId(farmerLedgerId: string, coldStorageId: string): Promise<{ pyReceivables: number; selfDue: number; merchantDue: number; advanceDue: number; freightDue: number; totalDue: number }>;
   syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number; lotsLinked: number; receivablesLinked: number }>;
   generateFarmerId(coldStorageId: string): Promise<string>;
   checkPotentialMerge(id: string, updates: Partial<FarmerLedgerEntry>): Promise<{
@@ -819,6 +820,7 @@ export class DatabaseStorage implements IStorage {
           farmerName: lot.farmerName,
           contactNumber: lot.contactNumber,
           village: lot.village,
+          farmerLedgerId: lot.farmerLedgerId || null,
           chamberName: chamberMap.get(lot.chamberId) || "Unknown",
           floor: lot.floor,
           position: lot.position,
@@ -5996,6 +5998,103 @@ export class DatabaseStorage implements IStorage {
     };
     
     return { farmers: farmersWithDues, summary };
+  }
+
+  async getFarmerDuesByLedgerId(farmerLedgerId: string, coldStorageId: string): Promise<{ pyReceivables: number; selfDue: number; merchantDue: number; advanceDue: number; freightDue: number; totalDue: number }> {
+    const zero = { pyReceivables: 0, selfDue: 0, merchantDue: 0, advanceDue: 0, freightDue: 0, totalDue: 0 };
+    const [farmer] = await db.select().from(farmerLedger).where(and(eq(farmerLedger.id, farmerLedgerId), eq(farmerLedger.coldStorageId, coldStorageId)));
+    if (!farmer) return zero;
+
+    const pyReceivablesData = await db.select({
+      dueAmount: openingReceivables.dueAmount,
+      paidAmount: openingReceivables.paidAmount,
+    })
+      .from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, 'farmer'),
+        sql`(
+          (${openingReceivables.farmerLedgerId} IS NOT NULL AND ${openingReceivables.farmerLedgerId} = ${farmer.id})
+          OR (
+            ${openingReceivables.farmerLedgerId} IS NULL
+            AND LOWER(TRIM(${openingReceivables.farmerName})) = ${farmer.name.trim().toLowerCase()}
+            AND TRIM(${openingReceivables.contactNumber}) = ${farmer.contactNumber.trim()}
+            AND LOWER(TRIM(${openingReceivables.village})) = ${farmer.village.trim().toLowerCase()}
+          )
+        )`
+      ));
+    const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
+
+    const selfSalesData = await db.select({ dueAmount: salesHistory.dueAmount })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.isSelfSale, 1),
+        sql`(
+          (${salesHistory.farmerLedgerId} IS NOT NULL AND ${salesHistory.farmerLedgerId} = ${farmer.id})
+          OR (
+            ${salesHistory.farmerLedgerId} IS NULL
+            AND LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}
+            AND TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}
+            AND LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}
+          )
+        )`,
+        sql`(
+          (${salesHistory.transferToBuyerName} IS NULL OR TRIM(${salesHistory.transferToBuyerName}) = '')
+          OR ${salesHistory.isTransferReversed} = 1
+        )`
+      ));
+    const selfDue = selfSalesData.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+
+    const merchantSalesData = await db.select({
+      coldStorageCharge: salesHistory.coldStorageCharge,
+      paidAmount: salesHistory.paidAmount,
+      adjReceivableSelfDueAmount: salesHistory.adjReceivableSelfDueAmount,
+    })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`(${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)`,
+        sql`(
+          (${salesHistory.farmerLedgerId} IS NOT NULL AND ${salesHistory.farmerLedgerId} = ${farmer.id})
+          OR (
+            ${salesHistory.farmerLedgerId} IS NULL
+            AND LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}
+            AND TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}
+            AND LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}
+          )
+        )`,
+        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+      ));
+    const merchantDue = merchantSalesData.reduce((sum, s) => {
+      const charge = (s.coldStorageCharge || 0) + (s.adjReceivableSelfDueAmount || 0);
+      const paid = s.paidAmount || 0;
+      return sum + Math.max(0, charge - paid);
+    }, 0);
+
+    const advFreightData = await db.select({
+      type: farmerAdvanceFreight.type,
+      finalAmount: farmerAdvanceFreight.finalAmount,
+      paidAmount: farmerAdvanceFreight.paidAmount,
+    })
+      .from(farmerAdvanceFreight)
+      .where(and(
+        eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+        eq(farmerAdvanceFreight.farmerLedgerId, farmer.id),
+        eq(farmerAdvanceFreight.isReversed, 0)
+      ));
+    const advanceDue = advFreightData.filter(r => r.type === 'advance').reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
+    const freightDue = advFreightData.filter(r => r.type === 'freight').reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
+
+    const totalDue = pyReceivables + selfDue + merchantDue + advanceDue + freightDue;
+    return {
+      pyReceivables: roundAmount(pyReceivables),
+      selfDue: roundAmount(selfDue),
+      merchantDue: roundAmount(merchantDue),
+      advanceDue: roundAmount(advanceDue),
+      freightDue: roundAmount(freightDue),
+      totalDue: roundAmount(totalDue),
+    };
   }
 
   // Check if an edit would result in a merge

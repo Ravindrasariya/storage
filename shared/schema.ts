@@ -622,6 +622,7 @@ export interface SaleLotInfo {
   farmerName: string;
   contactNumber: string;
   village: string;
+  farmerLedgerId: string | null;
   chamberName: string;
   floor: number;
   position: string;

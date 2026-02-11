@@ -316,6 +316,7 @@ const translations: Translations = {
   kataCharges: { en: "Kata (Weighing) Charges", hi: "काटा (तौल) शुल्क" },
   adjReceivableSelfDueAmount: { en: "Adj Receivable & Self Due", hi: "बकाया व स्वयं बिक्री समायोजन" },
   maxAdjAmount: { en: "Max", hi: "अधिकतम" },
+  noFarmerDues: { en: "No farmer dues found", hi: "किसान पर कोई बकाया नहीं" },
   deliveryType: { en: "Delivery Type", hi: "डिलीवरी प्रकार" },
   biltyCut: { en: "Bilty Cut", hi: "बिल्टी कट" },
   gateCut: { en: "Gate Cut", hi: "गेट कट" },
