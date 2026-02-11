@@ -79,11 +79,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   
   const { data: farmerDuesData } = useQuery<{ pyReceivables: number; freightDue: number; advanceDue: number; selfDue: number; totalDue: number }>({
     queryKey: ["/api/farmer-dues", selectedLot?.farmerLedgerId],
-    queryFn: async () => {
-      if (!selectedLot?.farmerLedgerId) return { pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 };
-      const res = await fetch(`/api/farmer-dues/${encodeURIComponent(selectedLot.farmerLedgerId)}`, { credentials: "include" });
-      return res.json();
-    },
     enabled: !!selectedLot?.farmerLedgerId,
   });
 

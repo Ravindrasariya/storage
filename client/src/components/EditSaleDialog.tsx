@@ -196,11 +196,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   
   const { data: farmerDuesForEdit } = useQuery<{ pyReceivables: number; freightDue: number; advanceDue: number; selfDue: number; totalDue: number }>({
     queryKey: ["/api/farmer-dues", sale?.farmerLedgerId],
-    queryFn: async () => {
-      if (!sale?.farmerLedgerId) return { pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 };
-      const res = await fetch(`/api/farmer-dues/${encodeURIComponent(sale.farmerLedgerId)}`, { credentials: "include" });
-      return res.json();
-    },
     enabled: !!sale?.farmerLedgerId && isNonSelfSale && open,
   });
   
