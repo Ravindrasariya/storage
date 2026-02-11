@@ -275,7 +275,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       const customHammali = Number.isFinite(parsedHammali) ? parsedHammali : undefined;
       const editableRate = (customColdCharge ?? selectedLot.coldCharge) + (customHammali ?? selectedLot.hammali);
       
-      const totalCharge = calculateTotalCharge(selectedLot, partialQuantity);
+      const baseChargeTotal = calculateTotalCharge(selectedLot, partialQuantity);
+      const adjAmountForSale = (!isSelfBuyer && parseFloat(adjAmount) > 0) ? parseFloat(adjAmount) : 0;
+      const totalCharge = baseChargeTotal + adjAmountForSale;
       
       // Extra hammali and grading always use actual bags being sold (not charge basis)
       const kata = parseFloat(kataCharges) || 0;

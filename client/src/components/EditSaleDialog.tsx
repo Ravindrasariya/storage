@@ -110,7 +110,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   // Get the calculated base charge for display
   const baseCharge = calculateBaseCharge();
 
-  const totalCharge = calculateEditableTotal();
+  const isNonSelfSale = !sale?.isSelfSale || sale?.isSelfSale === 0;
+  
+  const chargesWithoutAdj = calculateEditableTotal();
+  const adjAmountValue = isNonSelfSale ? (parseFloat(editAdjAmount) || 0) : 0;
+  const totalCharge = chargesWithoutAdj + adjAmountValue;
 
   const { data: editHistory = [] } = useQuery<SaleEditHistory[]>({
     queryKey: ["/api/sales-history", sale?.id, "edit-history"],
@@ -189,8 +193,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setChargesOpen(false);
     }
   }, [sale, open]);
-  
-  const isNonSelfSale = !sale?.isSelfSale || sale.isSelfSale === 0;
   
   const { data: farmerDuesForEdit } = useQuery<{ pyReceivables: number; freightDue: number; advanceDue: number; selfDue: number; totalDue: number }>({
     queryKey: ["/api/farmer-dues-by-key", sale?.farmerName, sale?.contactNumber, sale?.village],
@@ -390,7 +392,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     // Trigger recalculation if any charge-related field changed or if calculated total differs from stored value
     const originalTotal = sale.coldStorageCharge || 0;
     const chargeFieldsChanged = Object.keys(updates).some(key => 
-      ['coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'netWeight'].includes(key)
+      ['coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'netWeight', 'adjReceivableSelfDueAmount'].includes(key)
     ) || Math.abs(totalCharge - originalTotal) > 0.01;
     
     if (chargeFieldsChanged) {

@@ -1537,6 +1537,7 @@ export class DatabaseStorage implements IStorage {
     extraDueHammaliMerchant?: number;
     extraDueGradingMerchant?: number;
     extraDueOtherMerchant?: number;
+    adjReceivableSelfDueAmount?: number;
   }): Promise<SalesHistory | undefined> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) return undefined;
@@ -1610,6 +1611,9 @@ export class DatabaseStorage implements IStorage {
     if (updates.extraDueOtherMerchant !== undefined) {
       updateData.extraDueOtherMerchant = updates.extraDueOtherMerchant;
     }
+    if (updates.adjReceivableSelfDueAmount !== undefined) {
+      updateData.adjReceivableSelfDueAmount = updates.adjReceivableSelfDueAmount;
+    }
 
     // Handle coldStorageCharge - use provided value if present, otherwise recalculate
     if (updates.coldStorageCharge !== undefined) {
@@ -1624,7 +1628,8 @@ export class DatabaseStorage implements IStorage {
       const coldCharge = updates.coldCharge ?? sale.coldCharge ?? 0;
       const hammali = updates.hammali ?? sale.hammali ?? 0;
       const ratePerBag = coldCharge + hammali;
-      updateData.coldStorageCharge = ratePerBag * (sale.quantitySold || 0);
+      const adjAmt = updates.adjReceivableSelfDueAmount ?? sale.adjReceivableSelfDueAmount ?? 0;
+      updateData.coldStorageCharge = ratePerBag * (sale.quantitySold || 0) + adjAmt;
       updateData.pricePerBag = ratePerBag;
     }
 

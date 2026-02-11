@@ -975,7 +975,8 @@ export async function registerRoutes(
       const kata = kataCharges || 0;
       const extraHammaliTotal = extraHammali || 0;
       const grading = gradingCharges || 0;
-      const totalChargeForLot = storageCharge + kata + extraHammaliTotal + grading;
+      const adjAmount = (!isSelfSale && adjReceivableSelfDueAmount > 0) ? adjReceivableSelfDueAmount : 0;
+      const totalChargeForLot = storageCharge + kata + extraHammaliTotal + grading + adjAmount;
 
       const updateData: { 
         remainingSize: number; 
