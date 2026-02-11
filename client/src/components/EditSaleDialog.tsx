@@ -199,7 +199,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     enabled: !!sale?.farmerLedgerId && isNonSelfSale && open,
   });
   
-  const maxAdjAmount = (farmerDuesForEdit?.totalDue || 0) + (sale?.adjReceivableSelfDueAmount || 0);
+  const maxAdjAmount = farmerDuesForEdit 
+    ? (farmerDuesForEdit.pyReceivables || 0) + (farmerDuesForEdit.advanceDue || 0) + (farmerDuesForEdit.freightDue || 0) + (farmerDuesForEdit.selfDue || 0) + (sale?.adjReceivableSelfDueAmount || 0)
+    : 0;
 
   const updateMutation = useMutation({
     mutationFn: async (data: {
@@ -685,6 +687,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       {maxAdjAmount > 0 ? (
                         <p className="text-xs text-muted-foreground">
                           {t("maxAdjAmount") || "Max"}: <Currency amount={maxAdjAmount} />
+                          {farmerDuesForEdit && farmerDuesForEdit.pyReceivables > 0 && <span> | PY: <Currency amount={farmerDuesForEdit.pyReceivables} /></span>}
+                          {farmerDuesForEdit && farmerDuesForEdit.freightDue > 0 && <span> | Freight: <Currency amount={farmerDuesForEdit.freightDue} /></span>}
+                          {farmerDuesForEdit && farmerDuesForEdit.advanceDue > 0 && <span> | Advance: <Currency amount={farmerDuesForEdit.advanceDue} /></span>}
+                          {farmerDuesForEdit && farmerDuesForEdit.selfDue > 0 && <span> | Self: <Currency amount={farmerDuesForEdit.selfDue} /></span>}
                         </p>
                       ) : (
                         <p className="text-xs text-muted-foreground">

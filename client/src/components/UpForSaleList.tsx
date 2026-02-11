@@ -885,11 +885,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <Input
                     type="number"
                     min={0}
-                    max={farmerDuesData?.totalDue || 0}
+                    max={farmerDuesData ? (farmerDuesData.pyReceivables || 0) + (farmerDuesData.advanceDue || 0) + (farmerDuesData.freightDue || 0) + (farmerDuesData.selfDue || 0) : 0}
                     step="0.01"
                     value={adjAmount}
                     onChange={(e) => {
-                      const maxDue = farmerDuesData?.totalDue || 0;
+                      const maxDue = farmerDuesData ? (farmerDuesData.pyReceivables || 0) + (farmerDuesData.advanceDue || 0) + (farmerDuesData.freightDue || 0) + (farmerDuesData.selfDue || 0) : 0;
                       const val = parseFloat(e.target.value);
                       if (maxDue > 0 && val > maxDue) {
                         setAdjAmount(String(maxDue));
@@ -900,9 +900,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     placeholder="0"
                     data-testid="input-adj-receivable-self-due"
                   />
-                  {farmerDuesData && farmerDuesData.totalDue > 0 ? (
+                  {farmerDuesData && ((farmerDuesData.pyReceivables || 0) + (farmerDuesData.advanceDue || 0) + (farmerDuesData.freightDue || 0) + (farmerDuesData.selfDue || 0)) > 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      {t("maxAdjAmount") || "Max"}: <Currency amount={farmerDuesData.totalDue} />
+                      {t("maxAdjAmount") || "Max"}: <Currency amount={(farmerDuesData.pyReceivables || 0) + (farmerDuesData.advanceDue || 0) + (farmerDuesData.freightDue || 0) + (farmerDuesData.selfDue || 0)} />
                       {farmerDuesData.pyReceivables > 0 && <span> | PY: <Currency amount={farmerDuesData.pyReceivables} /></span>}
                       {farmerDuesData.freightDue > 0 && <span> | Freight: <Currency amount={farmerDuesData.freightDue} /></span>}
                       {farmerDuesData.advanceDue > 0 && <span> | Advance: <Currency amount={farmerDuesData.advanceDue} /></span>}
