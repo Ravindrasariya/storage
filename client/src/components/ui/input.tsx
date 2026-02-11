@@ -3,8 +3,28 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
-    // h-9 to match icon buttons and default buttons.
+  ({ className, type, onWheel, onKeyDown, ...props }, ref) => {
+    const handleWheel = React.useCallback(
+      (e: React.WheelEvent<HTMLInputElement>) => {
+        if (type === "number") {
+          (e.target as HTMLInputElement).blur();
+          e.preventDefault();
+        }
+        onWheel?.(e);
+      },
+      [type, onWheel]
+    );
+
+    const handleKeyDown = React.useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (type === "number" && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+          e.preventDefault();
+        }
+        onKeyDown?.(e);
+      },
+      [type, onKeyDown]
+    );
+
     return (
       <input
         type={type}
@@ -13,6 +33,8 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         ref={ref}
+        onWheel={handleWheel}
+        onKeyDown={handleKeyDown}
         {...props}
       />
     )
