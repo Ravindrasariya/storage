@@ -5946,7 +5946,7 @@ export class DatabaseStorage implements IStorage {
         ));
       
       const merchantSalesDue = merchantSalesData.reduce((sum, s) => {
-        const charge = (s.coldStorageCharge || 0) + (s.adjReceivableSelfDueAmount || 0);
+        const charge = s.coldStorageCharge || 0;
         const paid = s.paidAmount || 0;
         return sum + Math.max(0, charge - paid);
       }, 0);
@@ -6067,7 +6067,7 @@ export class DatabaseStorage implements IStorage {
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
       ));
     const merchantDue = merchantSalesData.reduce((sum, s) => {
-      const charge = (s.coldStorageCharge || 0) + (s.adjReceivableSelfDueAmount || 0);
+      const charge = s.coldStorageCharge || 0;
       const paid = s.paidAmount || 0;
       return sum + Math.max(0, charge - paid);
     }, 0);
