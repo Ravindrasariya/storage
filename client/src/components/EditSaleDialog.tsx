@@ -667,18 +667,18 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     </div>
                   </div>
 
-                  {isNonSelfSale && maxAdjAmount > 0 && (
+                  {isNonSelfSale && (
                     <div className="space-y-2">
                       <Label className="text-xs">{t("adjReceivableSelfDueAmount") || "Adj Receivable & Self Due"}</Label>
                       <Input
                         type="number"
                         min={0}
-                        max={maxAdjAmount}
+                        max={maxAdjAmount || undefined}
                         step="0.01"
                         value={editAdjAmount}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value);
-                          if (val > maxAdjAmount) {
+                          if (maxAdjAmount > 0 && val > maxAdjAmount) {
                             setEditAdjAmount(String(maxAdjAmount));
                           } else {
                             setEditAdjAmount(e.target.value);
@@ -687,9 +687,15 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         className="h-8"
                         data-testid="input-edit-adj-receivable-self-due"
                       />
-                      <p className="text-xs text-muted-foreground">
-                        {t("maxAdjAmount") || "Max"}: <Currency amount={maxAdjAmount} />
-                      </p>
+                      {maxAdjAmount > 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          {t("maxAdjAmount") || "Max"}: <Currency amount={maxAdjAmount} />
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          {t("noFarmerDues") || "No farmer dues found / किसान पर कोई बकाया नहीं"}
+                        </p>
+                      )}
                     </div>
                   )}
 

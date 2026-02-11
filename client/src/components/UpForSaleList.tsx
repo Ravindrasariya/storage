@@ -81,10 +81,14 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     queryKey: ["/api/farmer-dues-by-key", selectedLot?.farmerName, selectedLot?.contactNumber, selectedLot?.village],
     queryFn: async () => {
       if (!selectedLot) return { pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 };
-      const res = await fetch(`/api/farmer-dues-by-key?farmerName=${encodeURIComponent(selectedLot.farmerName)}&contactNumber=${encodeURIComponent(selectedLot.contactNumber)}&village=${encodeURIComponent(selectedLot.village)}`, { credentials: "include" });
+      const params = new URLSearchParams();
+      params.set("farmerName", selectedLot.farmerName);
+      if (selectedLot.contactNumber) params.set("contactNumber", selectedLot.contactNumber);
+      if (selectedLot.village) params.set("village", selectedLot.village);
+      const res = await fetch(`/api/farmer-dues-by-key?${params.toString()}`, { credentials: "include" });
       return res.json();
     },
-    enabled: !!selectedLot && !isSelfBuyer,
+    enabled: !!selectedLot,
   });
 
   const buyerSuggestions = useMemo(() => {
@@ -884,19 +888,20 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
               )}
 
-              {!isSelfBuyer && farmerDuesData && farmerDuesData.totalDue > 0 && (
+              {!isSelfBuyer && (
                 <div className="space-y-2">
                   <Label>{t("adjReceivableSelfDueAmount") || "Adj Receivable & Self Due Amt / बकाया व स्वयं बिक्री समायोजन"}</Label>
                   <Input
                     type="number"
                     min={0}
-                    max={farmerDuesData.totalDue}
+                    max={farmerDuesData?.totalDue || 0}
                     step="0.01"
                     value={adjAmount}
                     onChange={(e) => {
+                      const maxDue = farmerDuesData?.totalDue || 0;
                       const val = parseFloat(e.target.value);
-                      if (val > farmerDuesData.totalDue) {
-                        setAdjAmount(String(farmerDuesData.totalDue));
+                      if (maxDue > 0 && val > maxDue) {
+                        setAdjAmount(String(maxDue));
                       } else {
                         setAdjAmount(e.target.value);
                       }
@@ -904,13 +909,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                     placeholder="0"
                     data-testid="input-adj-receivable-self-due"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {t("maxAdjAmount") || "Max"}: <Currency amount={farmerDuesData.totalDue} />
-                    {farmerDuesData.pyReceivables > 0 && <span> | PY: <Currency amount={farmerDuesData.pyReceivables} /></span>}
-                    {farmerDuesData.freightDue > 0 && <span> | Freight: <Currency amount={farmerDuesData.freightDue} /></span>}
-                    {farmerDuesData.advanceDue > 0 && <span> | Advance: <Currency amount={farmerDuesData.advanceDue} /></span>}
-                    {farmerDuesData.selfDue > 0 && <span> | Self: <Currency amount={farmerDuesData.selfDue} /></span>}
-                  </p>
+                  {farmerDuesData && farmerDuesData.totalDue > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t("maxAdjAmount") || "Max"}: <Currency amount={farmerDuesData.totalDue} />
+                      {farmerDuesData.pyReceivables > 0 && <span> | PY: <Currency amount={farmerDuesData.pyReceivables} /></span>}
+                      {farmerDuesData.freightDue > 0 && <span> | Freight: <Currency amount={farmerDuesData.freightDue} /></span>}
+                      {farmerDuesData.advanceDue > 0 && <span> | Advance: <Currency amount={farmerDuesData.advanceDue} /></span>}
+                      {farmerDuesData.selfDue > 0 && <span> | Self: <Currency amount={farmerDuesData.selfDue} /></span>}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t("noFarmerDues") || "No farmer dues found / किसान पर कोई बकाया नहीं"}
+                    </p>
+                  )}
                 </div>
               )}
 

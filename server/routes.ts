@@ -2327,14 +2327,14 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const { farmerName, contactNumber, village } = req.query;
-      if (!farmerName || !contactNumber || !village) {
-        return res.status(400).json({ error: "farmerName, contactNumber, village required" });
+      if (!farmerName) {
+        return res.status(400).json({ error: "farmerName required" });
       }
       const ledger = await storage.getFarmerLedger(coldStorageId);
       const farmer = ledger.farmers.find(f =>
         f.name.trim().toLowerCase() === (farmerName as string).trim().toLowerCase() &&
-        f.contactNumber.trim() === (contactNumber as string).trim() &&
-        f.village.trim().toLowerCase() === (village as string).trim().toLowerCase()
+        (contactNumber ? f.contactNumber.trim() === (contactNumber as string).trim() : true) &&
+        (village ? f.village.trim().toLowerCase() === (village as string).trim().toLowerCase() : true)
       );
       if (!farmer) {
         return res.json({ pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 });
