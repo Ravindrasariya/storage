@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCurrency } from "@/components/Currency";
-import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -425,8 +425,8 @@ export default function FarmerLedger() {
             <div className="text-base font-bold" data-testid="text-farmer-count">{summary.totalFarmers}</div>
           </CardContent>
         </Card>
-        <HoverCard>
-          <HoverCardTrigger asChild>
+        <Popover>
+          <PopoverTrigger asChild>
             <Card className="py-1 cursor-pointer">
               <CardHeader className="py-1 px-3">
                 <CardTitle className="text-xs font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
@@ -435,9 +435,9 @@ export default function FarmerLedger() {
                 <div className="text-base font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables + (summary.advanceDue || 0) + (summary.freightDue || 0))}</div>
               </CardContent>
             </Card>
-          </HoverCardTrigger>
+          </PopoverTrigger>
           {((summary.advanceDue || 0) > 0 || (summary.freightDue || 0) > 0) && (
-            <HoverCardContent className="w-56 p-3" data-testid="hover-summary-receivable-breakup">
+            <PopoverContent className="w-56 p-3" data-testid="hover-summary-receivable-breakup">
               <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
@@ -461,9 +461,9 @@ export default function FarmerLedger() {
                   <span>{formatDueValue(summary.pyReceivables + (summary.advanceDue || 0) + (summary.freightDue || 0))}</span>
                 </div>
               </div>
-            </HoverCardContent>
+            </PopoverContent>
           )}
-        </HoverCard>
+        </Popover>
         <Card className="py-1">
           <CardHeader className="py-1 px-3">
             <CardTitle className="text-xs font-medium text-orange-500 dark:text-orange-400">{t("selfDue")}</CardTitle>
@@ -633,15 +633,15 @@ export default function FarmerLedger() {
                   <div className="font-medium text-base mb-1">{farmer.name}</div>
                   <div className="text-sm text-muted-foreground mb-2">{farmer.village} | {farmer.contactNumber}</div>
                   <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                    <HoverCard>
-                      <HoverCardTrigger asChild>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <div className="cursor-pointer">
                           <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
                           <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</div>
                         </div>
-                      </HoverCardTrigger>
+                      </PopoverTrigger>
                       {(farmer.advanceDue > 0 || farmer.freightDue > 0) && (
-                        <HoverCardContent className="w-56 p-3" data-testid={`hover-receivable-breakup-${farmer.id}`}>
+                        <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-${farmer.id}`}>
                           <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
                           <div className="space-y-1 text-xs">
                             <div className="flex justify-between">
@@ -665,9 +665,9 @@ export default function FarmerLedger() {
                               <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
                             </div>
                           </div>
-                        </HoverCardContent>
+                        </PopoverContent>
                       )}
-                    </HoverCard>
+                    </Popover>
                     <div>
                       <div className="text-orange-500 dark:text-orange-400 font-medium">{t("selfDue")}</div>
                       <div className="text-orange-500 dark:text-orange-400 font-bold">{formatDueValue(farmer.selfDue)}</div>
@@ -707,15 +707,15 @@ export default function FarmerLedger() {
                   <div className="font-medium text-base mb-1">{farmer.name}</div>
                   <div className="text-sm text-muted-foreground mb-2">{farmer.village} | {farmer.contactNumber}</div>
                   <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                    <HoverCard>
-                      <HoverCardTrigger asChild>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <div className="cursor-pointer">
                           <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
                           <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</div>
                         </div>
-                      </HoverCardTrigger>
+                      </PopoverTrigger>
                       {(farmer.advanceDue > 0 || farmer.freightDue > 0) && (
-                        <HoverCardContent className="w-56 p-3" data-testid={`hover-receivable-breakup-archived-card-${farmer.id}`}>
+                        <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-archived-card-${farmer.id}`}>
                           <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
                           <div className="space-y-1 text-xs">
                             <div className="flex justify-between">
@@ -739,9 +739,9 @@ export default function FarmerLedger() {
                               <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
                             </div>
                           </div>
-                        </HoverCardContent>
+                        </PopoverContent>
                       )}
-                    </HoverCard>
+                    </Popover>
                     <div>
                       <div className="text-orange-500 dark:text-orange-400 font-medium">{t("selfDue")}</div>
                       <div className="text-orange-500 dark:text-orange-400 font-bold">{formatDueValue(farmer.selfDue)}</div>
@@ -816,11 +816,11 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
                       <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">
                         {(farmer.advanceDue > 0 || farmer.freightDue > 0) ? (
-                          <HoverCard>
-                            <HoverCardTrigger asChild>
+                          <Popover>
+                            <PopoverTrigger asChild>
                               <span className="cursor-pointer underline decoration-dotted">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</span>
-                            </HoverCardTrigger>
-                            <HoverCardContent className="w-56 p-3" data-testid={`hover-receivable-breakup-table-${farmer.id}`}>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-table-${farmer.id}`}>
                               <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
                               <div className="space-y-1 text-xs">
                                 <div className="flex justify-between">
@@ -844,8 +844,8 @@ export default function FarmerLedger() {
                                   <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
                                 </div>
                               </div>
-                            </HoverCardContent>
-                          </HoverCard>
+                            </PopoverContent>
+                          </Popover>
                         ) : (
                           formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))
                         )}
@@ -901,11 +901,11 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
                       <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">
                         {(farmer.advanceDue > 0 || farmer.freightDue > 0) ? (
-                          <HoverCard>
-                            <HoverCardTrigger asChild>
+                          <Popover>
+                            <PopoverTrigger asChild>
                               <span className="cursor-pointer underline decoration-dotted">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</span>
-                            </HoverCardTrigger>
-                            <HoverCardContent className="w-56 p-3" data-testid={`hover-receivable-breakup-archived-${farmer.id}`}>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-archived-${farmer.id}`}>
                               <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
                               <div className="space-y-1 text-xs">
                                 <div className="flex justify-between">
@@ -929,8 +929,8 @@ export default function FarmerLedger() {
                                   <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
                                 </div>
                               </div>
-                            </HoverCardContent>
-                          </HoverCard>
+                            </PopoverContent>
+                          </Popover>
                         ) : (
                           formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))
                         )}
