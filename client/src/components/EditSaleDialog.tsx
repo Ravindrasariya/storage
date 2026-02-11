@@ -49,6 +49,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editExtraDueHammaliMerchant, setEditExtraDueHammaliMerchant] = useState("");
   const [editExtraDueGradingMerchant, setEditExtraDueGradingMerchant] = useState("");
   const [editExtraDueOtherMerchant, setEditExtraDueOtherMerchant] = useState("");
+  const [editAdjAmount, setEditAdjAmount] = useState("");
 
   // Get charge unit from sale record (recorded at time of sale) with fallback to cold storage
   // This ensures edits use the same calculation method as the original sale
@@ -184,9 +185,24 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditExtraDueHammaliMerchant(sale.extraDueHammaliMerchant?.toString() || "0");
       setEditExtraDueGradingMerchant(sale.extraDueGradingMerchant?.toString() || "0");
       setEditExtraDueOtherMerchant(sale.extraDueOtherMerchant?.toString() || "0");
+      setEditAdjAmount(sale.adjReceivableSelfDueAmount?.toString() || "0");
       setChargesOpen(false);
     }
   }, [sale, open]);
+  
+  const isNonSelfSale = !sale?.isSelfSale || sale.isSelfSale === 0;
+  
+  const { data: farmerDuesForEdit } = useQuery<{ pyReceivables: number; freightDue: number; advanceDue: number; selfDue: number; totalDue: number }>({
+    queryKey: ["/api/farmer-dues-by-key", sale?.farmerName, sale?.contactNumber, sale?.village],
+    queryFn: async () => {
+      if (!sale) return { pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 };
+      const res = await fetch(`/api/farmer-dues-by-key?farmerName=${encodeURIComponent(sale.farmerName)}&contactNumber=${encodeURIComponent(sale.contactNumber)}&village=${encodeURIComponent(sale.village)}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!sale && isNonSelfSale && open,
+  });
+  
+  const maxAdjAmount = (farmerDuesForEdit?.totalDue || 0) + (sale?.adjReceivableSelfDueAmount || 0);
 
   const updateMutation = useMutation({
     mutationFn: async (data: {
@@ -208,6 +224,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       extraDueHammaliMerchant?: number;
       extraDueGradingMerchant?: number;
       extraDueOtherMerchant?: number;
+      adjReceivableSelfDueAmount?: number;
     }) => {
       const response = await apiRequest("PATCH", `/api/sales-history/${sale!.id}`, data);
       return response.json();
@@ -359,6 +376,15 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       updates.extraDueGradingMerchant = newGradingMerchant;
       updates.extraDueOtherMerchant = newOtherMerchant;
       updates.extraDueToMerchant = newExtraDueToMerchant;
+    }
+
+    // Check if adj amount changed (non-self sales only)
+    if (isNonSelfSale) {
+      const newAdj = parseFloat(editAdjAmount) || 0;
+      const oldAdj = sale.adjReceivableSelfDueAmount || 0;
+      if (Math.abs(newAdj - oldAdj) > 0.01) {
+        updates.adjReceivableSelfDueAmount = newAdj;
+      }
     }
 
     // Trigger recalculation if any charge-related field changed or if calculated total differs from stored value
@@ -638,6 +664,32 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       />
                     </div>
                   </div>
+
+                  {isNonSelfSale && maxAdjAmount > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs">{t("adjReceivableSelfDueAmount") || "Adj Receivable & Self Due"}</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={maxAdjAmount}
+                        step="0.01"
+                        value={editAdjAmount}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (val > maxAdjAmount) {
+                            setEditAdjAmount(String(maxAdjAmount));
+                          } else {
+                            setEditAdjAmount(e.target.value);
+                          }
+                        }}
+                        className="h-8"
+                        data-testid="input-edit-adj-receivable-self-due"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {t("maxAdjAmount") || "Max"}: <Currency amount={maxAdjAmount} />
+                      </p>
+                    </div>
+                  )}
 
                   <div className="text-xs text-muted-foreground pt-2 border-t">
                     {baseChargesWereBilled ? (

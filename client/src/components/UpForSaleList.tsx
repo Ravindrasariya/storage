@@ -55,6 +55,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   const [isSelfBuyer, setIsSelfBuyer] = useState(false);
+  const [adjAmount, setAdjAmount] = useState<string>("");
   
   // Farmer filter state
   const [farmerFilterQuery, setFarmerFilterQuery] = useState("");
@@ -74,6 +75,16 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   
   const { data: farmerRecords } = useQuery<FarmerRecord[]>({
     queryKey: ["/api/farmers/lookup"],
+  });
+  
+  const { data: farmerDuesData } = useQuery<{ pyReceivables: number; freightDue: number; advanceDue: number; selfDue: number; totalDue: number }>({
+    queryKey: ["/api/farmer-dues-by-key", selectedLot?.farmerName, selectedLot?.contactNumber, selectedLot?.village],
+    queryFn: async () => {
+      if (!selectedLot) return { pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 };
+      const res = await fetch(`/api/farmer-dues-by-key?farmerName=${encodeURIComponent(selectedLot.farmerName)}&contactNumber=${encodeURIComponent(selectedLot.contactNumber)}&village=${encodeURIComponent(selectedLot.village)}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!selectedLot && !isSelfBuyer,
   });
 
   const buyerSuggestions = useMemo(() => {
@@ -131,8 +142,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   }, [saleLots, selectedFarmerFilter]);
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
@@ -192,6 +203,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setEditableColdCharge("");
     setEditableHammali("");
     setChargeBasis("actual");
+    setAdjAmount("");
   };
 
   const openSaleDialog = (lot: SaleLotInfo) => {
@@ -312,6 +324,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         customHammali,
         chargeBasis: effectiveChargeBasis,
         isSelfSale: isSelfBuyer,
+        adjReceivableSelfDueAmount: !isSelfBuyer ? (parseFloat(adjAmount) || 0) : 0,
       });
     }
   };
@@ -869,6 +882,36 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                 </div>
               )}
 
+              {!isSelfBuyer && farmerDuesData && farmerDuesData.totalDue > 0 && (
+                <div className="space-y-2">
+                  <Label>{t("adjReceivableSelfDueAmount") || "Adj Receivable & Self Due Amt / बकाया व स्वयं बिक्री समायोजन"}</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={farmerDuesData.totalDue}
+                    step="0.01"
+                    value={adjAmount}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (val > farmerDuesData.totalDue) {
+                        setAdjAmount(String(farmerDuesData.totalDue));
+                      } else {
+                        setAdjAmount(e.target.value);
+                      }
+                    }}
+                    placeholder="0"
+                    data-testid="input-adj-receivable-self-due"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("maxAdjAmount") || "Max"}: <Currency amount={farmerDuesData.totalDue} />
+                    {farmerDuesData.pyReceivables > 0 && <span> | PY: <Currency amount={farmerDuesData.pyReceivables} /></span>}
+                    {farmerDuesData.freightDue > 0 && <span> | Freight: <Currency amount={farmerDuesData.freightDue} /></span>}
+                    {farmerDuesData.advanceDue > 0 && <span> | Advance: <Currency amount={farmerDuesData.advanceDue} /></span>}
+                    {farmerDuesData.selfDue > 0 && <span> | Self: <Currency amount={farmerDuesData.selfDue} /></span>}
+                  </p>
+                </div>
+              )}
+
               {partialQuantity > 0 && (
                 <div className="p-4 rounded-lg bg-muted">
                   {selectedLot.chargeUnit === "quintal" && !selectedLot.netWeight ? (
@@ -880,7 +923,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
                         <span className="text-2xl font-bold text-chart-2">
-                          <Currency amount={calculateTotalCharge(selectedLot, partialQuantity)} />
+                          <Currency amount={calculateTotalCharge(selectedLot, partialQuantity) + (!isSelfBuyer ? (parseFloat(adjAmount) || 0) : 0)} />
                         </span>
                       </div>
                       <div className="text-sm text-muted-foreground mt-1 space-y-1">
@@ -904,6 +947,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         )}
                         {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
                           <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
+                        )}
+                        {!isSelfBuyer && (parseFloat(adjAmount) || 0) > 0 && (
+                          <div>+ {t("adjReceivableSelfDueAmount") || "Adj Receivable & Self Due"}: <Currency amount={parseFloat(adjAmount) || 0} /></div>
                         )}
                       </div>
                     </>

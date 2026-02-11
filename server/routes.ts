@@ -915,7 +915,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -1108,6 +1108,8 @@ export async function registerRoutes(
         remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
         // Self sale flag (farmer buying own produce)
         isSelfSale: isSelfSale ? 1 : 0,
+        // Adj Receivable & Self Due Amount (non-self sales only)
+        adjReceivableSelfDueAmount: (!isSelfSale && adjReceivableSelfDueAmount > 0) ? adjReceivableSelfDueAmount : 0,
         // Farmer ledger reference (copy from lot)
         farmerLedgerId: lot.farmerLedgerId || null,
         farmerId: lot.farmerId || null,
@@ -1115,6 +1117,13 @@ export async function registerRoutes(
         buyerLedgerId: buyerEntry?.id || null,
         buyerId: buyerEntry?.buyerId || null,
       });
+
+      // If adj amount was applied, trigger farmer FIFO recomputation to allocate across buckets
+      if (!isSelfSale && adjReceivableSelfDueAmount > 0 && lot.farmerName && lot.contactNumber && lot.village) {
+        await storage.recomputeFarmerPaymentsWithDiscounts(
+          coldStorageId, lot.farmerName, lot.contactNumber, lot.village
+        );
+      }
 
       const updatedLot = await storage.getLot(req.params.id);
       res.json(updatedLot);
@@ -1375,10 +1384,10 @@ export async function registerRoutes(
     coldStorageCharge: z.number().optional(),
     chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
     extraDueToMerchant: z.number().optional(),
-    // Sub-fields for extraDueToMerchant breakdown (sum = extraDueToMerchant)
     extraDueHammaliMerchant: z.number().optional(),
     extraDueGradingMerchant: z.number().optional(),
     extraDueOtherMerchant: z.number().optional(),
+    adjReceivableSelfDueAmount: z.number().optional(),
   });
 
   app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -1429,6 +1438,14 @@ export async function registerRoutes(
             }
           }
         }
+      }
+      
+      // If adj amount changed, trigger farmer FIFO recomputation
+      if (validatedData.adjReceivableSelfDueAmount !== undefined && updated && 
+          updated.farmerName && updated.contactNumber && updated.village) {
+        await storage.recomputeFarmerPaymentsWithDiscounts(
+          coldStorageId, updated.farmerName, updated.contactNumber, updated.village
+        );
       }
       
       // If cold storage charges changed, trigger FIFO recalculation
@@ -1523,6 +1540,14 @@ export async function registerRoutes(
       } else if (result.buyerName && result.coldStorageId) {
         // For regular sales, trigger buyer FIFO recomputation
         await storage.recomputeBuyerPayments(result.buyerName, result.coldStorageId);
+      }
+      
+      // If reversed sale had adj amount, trigger farmer FIFO recomputation to restore dues
+      const hadAdjAmount = (sale.adjReceivableSelfDueAmount || 0) > 0;
+      if (hadAdjAmount && farmerName && sale.contactNumber && sale.village && result.coldStorageId) {
+        await storage.recomputeFarmerPaymentsWithDiscounts(
+          result.coldStorageId, farmerName, sale.contactNumber, sale.village
+        );
       }
 
       res.json({ success: true, lot: result.lot });
@@ -2362,6 +2387,34 @@ export async function registerRoutes(
       res.json(buyers);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch buyer dues" });
+    }
+  });
+
+  app.get("/api/farmer-dues-by-key", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { farmerName, contactNumber, village } = req.query;
+      if (!farmerName || !contactNumber || !village) {
+        return res.status(400).json({ error: "farmerName, contactNumber, village required" });
+      }
+      const ledger = await storage.getFarmerLedger(coldStorageId);
+      const farmer = ledger.farmers.find(f =>
+        f.name.trim().toLowerCase() === (farmerName as string).trim().toLowerCase() &&
+        f.contactNumber.trim() === (contactNumber as string).trim() &&
+        f.village.trim().toLowerCase() === (village as string).trim().toLowerCase()
+      );
+      if (!farmer) {
+        return res.json({ pyReceivables: 0, freightDue: 0, advanceDue: 0, selfDue: 0, totalDue: 0 });
+      }
+      res.json({
+        pyReceivables: farmer.pyReceivables,
+        freightDue: farmer.freightDue,
+        advanceDue: farmer.advanceDue,
+        selfDue: farmer.selfDue,
+        totalDue: farmer.pyReceivables + farmer.freightDue + farmer.advanceDue + farmer.selfDue,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch farmer dues" });
     }
   });
 

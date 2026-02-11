@@ -314,6 +314,8 @@ const translations: Translations = {
 
   // Additional Charges
   kataCharges: { en: "Kata (Weighing) Charges", hi: "काटा (तौल) शुल्क" },
+  adjReceivableSelfDueAmount: { en: "Adj Receivable & Self Due", hi: "बकाया व स्वयं बिक्री समायोजन" },
+  maxAdjAmount: { en: "Max", hi: "अधिकतम" },
   deliveryType: { en: "Delivery Type", hi: "डिलीवरी प्रकार" },
   biltyCut: { en: "Bilty Cut", hi: "बिल्टी कट" },
   gateCut: { en: "Gate Cut", hi: "गेट कट" },
