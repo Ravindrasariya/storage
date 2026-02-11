@@ -190,6 +190,12 @@ export const salesHistory = pgTable("sales_history", {
   advanceDeduction: real("advance_deduction").default(0), // Advance paid to farmer
   freightDeduction: real("freight_deduction").default(0), // Freight / Gadi Bhada charges
   otherDeduction: real("other_deduction").default(0), // Other miscellaneous deductions
+  // Adj Receivable & Self Due Amount - farmer dues adjusted through this sale (non-self sales only)
+  adjReceivableSelfDueAmount: real("adj_receivable_self_due_amount").default(0), // Total amount adjusted
+  adjPyReceivables: real("adj_py_receivables").default(0), // FIFO allocated to PY Receivables
+  adjFreight: real("adj_freight").default(0), // FIFO allocated to Freight
+  adjAdvance: real("adj_advance").default(0), // FIFO allocated to Advance
+  adjSelfDue: real("adj_self_due").default(0), // FIFO allocated to Self Due
   // Self sale flag - when farmer is the buyer (Self checkbox checked)
   isSelfSale: integer("is_self_sale").default(0), // 1 = farmer buying own produce, dues tracked under farmer not cold_merchant
   // Transfer reversal tracking
