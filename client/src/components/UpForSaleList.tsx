@@ -219,7 +219,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       return apiRequest("PATCH", `/api/lots/${lotId}`, { upForSale: 0 });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       toast({
         title: t("success"),

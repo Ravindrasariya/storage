@@ -140,7 +140,7 @@ export function SettingsDialog() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
     },
   });
 
@@ -152,7 +152,7 @@ export function SettingsDialog() {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
     },
   });
 
@@ -165,7 +165,7 @@ export function SettingsDialog() {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
     },
   });
 
@@ -177,7 +177,7 @@ export function SettingsDialog() {
       queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
     },
   });
 
@@ -189,7 +189,7 @@ export function SettingsDialog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
     },
   });
 
@@ -200,7 +200,7 @@ export function SettingsDialog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
     },
   });
 
@@ -211,7 +211,7 @@ export function SettingsDialog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chamber-floors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/chambers/floor-capacity"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
     },
   });
 

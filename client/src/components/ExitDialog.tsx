@@ -67,7 +67,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/exits-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       refetchExits();
     },
     onError: (error: Error) => {

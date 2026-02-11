@@ -918,7 +918,7 @@ export default function StockRegister() {
     },
     onSuccess: async (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
@@ -1818,7 +1818,7 @@ export default function StockRegister() {
                     }
                   }
                   queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
-                  queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+                  queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
                   handleSearch();
                 } catch (error: any) {
                   toast({
