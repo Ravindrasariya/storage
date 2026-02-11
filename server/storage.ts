@@ -21,7 +21,6 @@ import {
   openingPayables,
   dailyIdCounters,
   discounts,
-  farmerToBuyerTransfers,
   bankAccounts,
   type ColdStorage,
   type InsertColdStorage,
@@ -58,7 +57,6 @@ import {
   type InsertOpeningPayable,
   type Discount,
   type InsertDiscount,
-  type FarmerToBuyerTransfer,
   type BankAccount,
   type InsertBankAccount,
   farmerAdvanceFreight,
@@ -295,19 +293,6 @@ export interface IStorage {
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
   getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
-  // Farmer to Buyer debt transfer - only transfers specific self-sale (not receivables)
-  getFarmerToBuyerTransfers(coldStorageId: string): Promise<FarmerToBuyerTransfer[]>;
-  createFarmerToBuyerTransfer(data: {
-    coldStorageId: string;
-    saleId: string;
-    farmerName: string;
-    village: string;
-    contactNumber: string;
-    toBuyerName: string;
-    transferDate: Date;
-    remarks?: string | null;
-  }): Promise<{ success: boolean; selfSalesTransferred: number; transactionId: string }>;
-  reverseFarmerToBuyerTransfer(transferId: string): Promise<{ success: boolean; message?: string }>;
   // Update farmer details in all salesHistory entries for a given lotId
   // Also updates buyerName if it matches the "self" pattern (farmer as buyer)
   updateSalesHistoryFarmerDetails(
@@ -1268,40 +1253,6 @@ export class DatabaseStorage implements IStorage {
           totalValue: 0,
           totalChargePaid: 0,
           totalChargeDue: extraDue,
-          cashPaid: 0,
-          accountPaid: 0,
-        });
-      }
-    }
-    
-    // Add F2B transfer amounts to buyer dues
-    // F2B transfers move farmer liability to buyers, so add transferred amounts to buyer's totalChargeDue
-    const f2bTransfers = await this.getFarmerToBuyerTransfers(coldStorageId);
-    for (const transfer of f2bTransfers) {
-      // Skip reversed transfers
-      if (transfer.isReversed === 1) continue;
-      
-      // Apply year filter if provided
-      if (year) {
-        const transferYear = new Date(transfer.transferDate).getFullYear();
-        if (transferYear !== year) continue;
-      }
-      
-      const buyerName = transfer.toBuyerName?.trim() || "Unknown";
-      const normalizedKey = buyerName.toLowerCase();
-      const transferAmount = roundAmount(transfer.totalAmount || 0);
-      
-      const existing = merchantMap.get(normalizedKey);
-      if (existing) {
-        existing.totalChargeDue += transferAmount;
-      } else {
-        // Buyer doesn't exist from sales - create new entry for F2B transfer
-        merchantMap.set(normalizedKey, {
-          displayName: buyerName,
-          bagsPurchased: 0,
-          totalValue: 0,
-          totalChargePaid: 0,
-          totalChargeDue: transferAmount,
           cashPaid: 0,
           accountPaid: 0,
         });
@@ -3648,7 +3599,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(cashOpeningBalances).where(eq(cashOpeningBalances.coldStorageId, id));
     await db.delete(openingReceivables).where(eq(openingReceivables.coldStorageId, id));
     await db.delete(openingPayables).where(eq(openingPayables.coldStorageId, id));
-    await db.delete(farmerToBuyerTransfers).where(eq(farmerToBuyerTransfers.coldStorageId, id));
     await db.delete(bankAccounts).where(eq(bankAccounts.coldStorageId, id));
     
     // Delete maintenance records
@@ -5397,224 +5347,6 @@ export class DatabaseStorage implements IStorage {
     return result.length;
   }
 
-  // Farmer to Buyer debt transfer - only transfers specific self-sale (not receivables)
-  async createFarmerToBuyerTransfer(data: {
-    coldStorageId: string;
-    saleId: string;
-    farmerName: string;
-    village: string;
-    contactNumber: string;
-    toBuyerName: string;
-    transferDate: Date;
-    remarks?: string | null;
-  }): Promise<{ success: boolean; selfSalesTransferred: number; transactionId: string }> {
-    // Get the specific self-sale to transfer - validate it belongs to the specified farmer
-    const saleResult = await db.execute(sql`
-      SELECT id, due_amount, farmer_name, lot_no, quantity_sold, bag_type
-      FROM sales_history
-      WHERE id = ${data.saleId}
-        AND cold_storage_id = ${data.coldStorageId}
-        AND COALESCE(is_self_sale, 0) = 1
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
-        AND TRIM(contact_number) = TRIM(${data.contactNumber})
-        AND due_amount > 0
-    `);
-    
-    if (saleResult.rows.length === 0) {
-      throw new Error("Self-sale not found, doesn't belong to this farmer, or has no dues");
-    }
-    
-    const sale = saleResult.rows[0] as { id: string; due_amount: number; farmer_name: string; lot_no: string; quantity_sold: number; bag_type: string };
-    const transferAmount = roundAmount(sale.due_amount);
-    
-    // Transfer the entire due amount to the new buyer
-    // Set due_amount to 0 and update transferToBuyerName
-    // Reset is_transfer_reversed to 0 in case this sale was previously transferred and reversed
-    await db.execute(sql`
-      UPDATE sales_history
-      SET 
-        due_amount = 0,
-        transfer_to_buyer_name = ${data.toBuyerName},
-        transfer_date = ${data.transferDate},
-        transfer_remarks = ${data.remarks || null},
-        clearance_type = 'transfer',
-        is_transfer_reversed = 0,
-        transfer_reversed_at = NULL
-      WHERE id = ${data.saleId}
-    `);
-
-    // Generate transaction ID for cash flow record
-    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
-
-    // Calculate remaining farmer dues after this transfer (only self-sales, not receivables)
-    const remainingSelfSalesResult = await db.execute(sql`
-      SELECT COALESCE(SUM(due_amount), 0)::float as total
-      FROM sales_history
-      WHERE cold_storage_id = ${data.coldStorageId}
-        AND COALESCE(is_self_sale, 0) = 1
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
-        AND TRIM(contact_number) = TRIM(${data.contactNumber})
-        AND due_amount > 0
-    `);
-    const dueBalanceAfter = roundAmount(
-      parseFloat((remainingSelfSalesResult.rows[0] as { total: string | number })?.total?.toString() || "0")
-    );
-
-    // Store the transfer in the farmer_to_buyer_transfers table for cash flow history
-    await db.insert(farmerToBuyerTransfers).values({
-      id: randomUUID(),
-      transactionId,
-      coldStorageId: data.coldStorageId,
-      farmerName: data.farmerName.trim(),
-      village: data.village.trim(),
-      contactNumber: data.contactNumber.trim(),
-      toBuyerName: data.toBuyerName,
-      totalAmount: transferAmount,
-      receivablesTransferred: 0, // No receivables transferred anymore
-      selfSalesTransferred: transferAmount,
-      transferDate: data.transferDate,
-      remarks: data.remarks || null,
-      dueBalanceAfter,
-    });
-
-    return {
-      success: true,
-      selfSalesTransferred: transferAmount,
-      transactionId,
-    };
-  }
-
-  // Get all farmer-to-buyer transfers for cash flow history
-  async getFarmerToBuyerTransfers(coldStorageId: string): Promise<FarmerToBuyerTransfer[]> {
-    return db.select()
-      .from(farmerToBuyerTransfers)
-      .where(eq(farmerToBuyerTransfers.coldStorageId, coldStorageId))
-      .orderBy(desc(farmerToBuyerTransfers.createdAt));
-  }
-
-  // Reverse a farmer-to-buyer transfer
-  async reverseFarmerToBuyerTransfer(transferId: string): Promise<{ success: boolean; message?: string }> {
-    // Get the transfer
-    const [transfer] = await db.select()
-      .from(farmerToBuyerTransfers)
-      .where(eq(farmerToBuyerTransfers.id, transferId));
-
-    if (!transfer) {
-      return { success: false, message: "Transfer not found" };
-    }
-
-    if (transfer.isReversed === 1) {
-      return { success: false, message: "Transfer already reversed" };
-    }
-
-    // Restore the farmer's receivables (reduce paid_amount)
-    if (transfer.receivablesTransferred > 0) {
-      let remainingToRestore = roundAmount(transfer.receivablesTransferred);
-      
-      // Get receivables in reverse order (most recent first, opposite of FIFO)
-      const receivablesResult = await db.execute(sql`
-        SELECT id, due_amount, paid_amount
-        FROM opening_receivables
-        WHERE cold_storage_id = ${transfer.coldStorageId}
-          AND payer_type = 'farmer'
-          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${transfer.farmerName}))
-          AND LOWER(TRIM(village)) = LOWER(TRIM(${transfer.village}))
-          AND TRIM(contact_number) = TRIM(${transfer.contactNumber})
-          AND COALESCE(paid_amount, 0) > 0
-        ORDER BY created_at DESC
-      `);
-
-      for (const row of receivablesResult.rows as { id: string; due_amount: number; paid_amount: number }[]) {
-        if (remainingToRestore <= 0) break;
-
-        const currentPaid = row.paid_amount || 0;
-        if (currentPaid <= 0) continue; // Skip if nothing to restore from
-        
-        const amountToRestore = roundAmount(Math.min(remainingToRestore, currentPaid));
-        if (amountToRestore <= 0) continue; // Skip if nothing to restore
-        
-        const newPaidAmount = roundAmount(Math.max(0, currentPaid - amountToRestore)); // Guard against negative
-
-        await db.execute(sql`
-          UPDATE opening_receivables
-          SET paid_amount = ${newPaidAmount}
-          WHERE id = ${row.id}
-        `);
-
-        remainingToRestore = roundAmount(remainingToRestore - amountToRestore);
-      }
-    }
-
-    // Restore the farmer's self-sale dues
-    if (transfer.selfSalesTransferred > 0) {
-      let remainingToRestore = roundAmount(transfer.selfSalesTransferred);
-
-      // Get self-sales in reverse order (most recent first)
-      // These are sales where the farmer bought their own produce and then transferred the debt to a buyer
-      const selfSalesResult = await db.execute(sql`
-        SELECT id, due_amount, cold_storage_charge
-        FROM sales_history
-        WHERE cold_storage_id = ${transfer.coldStorageId}
-          AND COALESCE(is_self_sale, 0) = 1
-          AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${transfer.farmerName}))
-          AND LOWER(TRIM(village)) = LOWER(TRIM(${transfer.village}))
-          AND TRIM(contact_number) = TRIM(${transfer.contactNumber})
-          AND LOWER(TRIM(transfer_to_buyer_name)) = LOWER(TRIM(${transfer.toBuyerName}))
-        ORDER BY sold_at DESC
-      `);
-
-      for (const row of selfSalesResult.rows as { id: string; due_amount: number; cold_storage_charge: number }[]) {
-        if (remainingToRestore <= 0) break;
-
-        const saleId = row.id;
-        // maxCanRestore = how much was transferred from this sale (original charge - current due)
-        const originalCharge = row.cold_storage_charge || 0;
-        const currentDue = row.due_amount || 0;
-        
-        // Calculate max restorable - this is what was transferred out of this sale
-        // Guard against data anomalies where currentDue > originalCharge or missing originalCharge
-        let maxCanRestore = roundAmount(originalCharge - currentDue);
-        
-        // If originalCharge is 0 or missing (legacy records), we can still restore up to remainingToRestore
-        // since the sale was marked with transfer_to_buyer_name, it must have been transferred
-        if (originalCharge <= 0) {
-          maxCanRestore = remainingToRestore; // Allow full restoration for legacy records
-        }
-        
-        // Guard against negative values (data anomalies)
-        if (maxCanRestore < 0) maxCanRestore = 0;
-        
-        const amountToRestore = roundAmount(Math.min(remainingToRestore, maxCanRestore));
-        if (amountToRestore <= 0) continue; // Skip if nothing to restore
-        
-        const newDueAmount = roundAmount(currentDue + amountToRestore);
-
-        await db.execute(sql`
-          UPDATE sales_history
-          SET 
-            due_amount = ${newDueAmount}::real,
-            is_transfer_reversed = 1,
-            transfer_reversed_at = NOW()
-          WHERE id = ${saleId}
-        `);
-
-        remainingToRestore = roundAmount(remainingToRestore - amountToRestore);
-      }
-    }
-
-    // Mark the transfer as reversed
-    await db.update(farmerToBuyerTransfers)
-      .set({
-        isReversed: 1,
-        reversedAt: new Date(),
-      })
-      .where(eq(farmerToBuyerTransfers.id, transferId));
-
-    return { success: true };
-  }
-
   // Bank Accounts
   async getBankAccounts(coldStorageId: string, year: number): Promise<BankAccount[]> {
     return await db.select()
@@ -6217,24 +5949,7 @@ export class DatabaseStorage implements IStorage {
         return sum + Math.max(0, charge - paid);
       }, 0);
       
-      // Component 2: F2B transferred amounts (self-sale debt now owed by buyer)
-      // Get active (non-reversed) F2B transfers for this farmer
-      const f2bTransfers = await db.select({
-        selfSalesTransferred: farmerToBuyerTransfers.selfSalesTransferred,
-      })
-        .from(farmerToBuyerTransfers)
-        .where(and(
-          eq(farmerToBuyerTransfers.coldStorageId, coldStorageId),
-          eq(farmerToBuyerTransfers.isReversed, 0),
-          sql`LOWER(TRIM(${farmerToBuyerTransfers.farmerName})) = ${farmer.name.trim().toLowerCase()}`,
-          sql`TRIM(${farmerToBuyerTransfers.contactNumber}) = ${farmer.contactNumber.trim()}`,
-          sql`LOWER(TRIM(${farmerToBuyerTransfers.village})) = ${farmer.village.trim().toLowerCase()}`
-        ));
-      
-      const f2bTransferredAmount = f2bTransfers.reduce((sum, t) => sum + (t.selfSalesTransferred || 0), 0);
-      
-      // Total merchant due = regular sales cold charges + F2B transferred amounts
-      const merchantDue = merchantSalesDue + f2bTransferredAmount;
+      const merchantDue = merchantSalesDue;
 
       // Advance & Freight dues - from farmerAdvanceFreight table
       const advFreightData = await db.select({
@@ -6785,14 +6500,6 @@ export class DatabaseStorage implements IStorage {
         sql`(${salesHistory.isTransferReversed} IS NULL OR ${salesHistory.isTransferReversed} = 0)`
       ));
     
-    // Get farmer to buyer transfers (transfers IN = dues from farmers transferred to this buyer)
-    const transfersIn = await db.select()
-      .from(farmerToBuyerTransfers)
-      .where(and(
-        eq(farmerToBuyerTransfers.coldStorageId, coldStorageId),
-        eq(farmerToBuyerTransfers.isReversed, 0)
-      ));
-    
     // Calculate dues for each buyer
     const buyersWithDues = buyers.map(buyer => {
       const buyerNameLower = buyer.buyerName.trim().toLowerCase();
@@ -6831,35 +6538,24 @@ export class DatabaseStorage implements IStorage {
         return sum + (s.extraDueHammaliMerchant || 0) + (s.extraDueGradingMerchant || 0) + (s.extraDueOtherMerchant || 0);
       }, 0);
       
-      // Transfer In from farmer-to-buyer transfers (separate table)
-      const farmerTransferIn = transfersIn
-        .filter(t => t.toBuyerName.trim().toLowerCase() === buyerNameLower)
-        .reduce((sum, t) => sum + t.totalAmount, 0);
-      
       // Transfer In from buyer-to-buyer transfers (salesHistory with transferToBuyerName)
-      // Positive: When this buyer is the recipient (transferToBuyerName matches)
-      // dueAmount already represents the remaining unpaid amount (updated when payments are made)
       const buyerTransferIn = allTransferredSales
         .filter(s => s.transferToBuyerName!.trim().toLowerCase() === buyerNameLower)
         .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
       // Transfer Out: When this buyer is the source (buyerName/buyerLedgerId matches, and isSelfSale=0)
-      // dueAmount already represents the remaining unpaid amount
       const buyerTransferOut = allTransferredSales
         .filter(s => matchesBuyer(s) && s.isSelfSale === 0)
         .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
-      // dueTransferIn = Net of all transfers (positive for received, negative for sent out)
-      // For display: shows transfer activity from this buyer's perspective
-      const dueTransferIn = farmerTransferIn + buyerTransferIn - buyerTransferOut;
+      const dueTransferIn = buyerTransferIn - buyerTransferOut;
       
-      // dueTransferOut is 0 since transfer-out is embedded in dueTransferIn as negative
       const dueTransferOut = 0;
       
       // Net Due = PY Receivables + Sales Due + Buyer Extras + Farmer Transfers + Buyer Transfers Received
       // Source buyer's transfer-out does NOT add to their liability (they don't owe it)
       // Destination buyer's transfer-in IS their liability
-      const netDue = roundAmount(pyReceivables + salesDue + buyerExtras + farmerTransferIn + buyerTransferIn);
+      const netDue = roundAmount(pyReceivables + salesDue + buyerExtras + buyerTransferIn);
       
       return {
         ...buyer,
@@ -6931,17 +6627,6 @@ export class DatabaseStorage implements IStorage {
       // cold_merchant receivables store buyer name in buyerName field, not farmerName
       if (rec.buyerName && rec.buyerName.trim()) {
         buyerNames.add(rec.buyerName.trim());
-      }
-    }
-    
-    // From farmer to buyer transfers (toBuyerName)
-    const transfers = await db.select()
-      .from(farmerToBuyerTransfers)
-      .where(eq(farmerToBuyerTransfers.coldStorageId, coldStorageId));
-    
-    for (const transfer of transfers) {
-      if (transfer.toBuyerName && transfer.toBuyerName.trim()) {
-        buyerNames.add(transfer.toBuyerName.trim());
       }
     }
     
@@ -7043,12 +6728,7 @@ export class DatabaseStorage implements IStorage {
             sql`LOWER(TRIM(${salesHistory.buyerName})) = ${buyerNameLower}`
           ));
         
-        const transfersCount = await db.select({ count: sql<number>`count(*)::int` })
-          .from(farmerToBuyerTransfers)
-          .where(and(
-            eq(farmerToBuyerTransfers.coldStorageId, currentBuyer.coldStorageId),
-            sql`LOWER(TRIM(${farmerToBuyerTransfers.toBuyerName})) = ${buyerNameLower}`
-          ));
+        const transfersCount = [{ count: 0 }];
         
         // Get dues for the current buyer
         const ledgerData = await this.getBuyerLedger(currentBuyer.coldStorageId, true);
@@ -7100,14 +6780,6 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
           sql`LOWER(TRIM(${salesHistory.buyerName})) = ${buyerNameLower}`
-        ));
-      
-      // Update farmer to buyer transfers
-      await db.update(farmerToBuyerTransfers)
-        .set({ toBuyerName: targetBuyer.buyerName })
-        .where(and(
-          eq(farmerToBuyerTransfers.coldStorageId, currentBuyer.coldStorageId),
-          sql`LOWER(TRIM(${farmerToBuyerTransfers.toBuyerName})) = ${buyerNameLower}`
         ));
       
       // Archive the current buyer

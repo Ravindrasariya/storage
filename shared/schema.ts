@@ -402,29 +402,6 @@ export const discounts = pgTable("discounts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Farmer to Buyer Transfers - transfers farmer debt (receivables + self-sales) to a buyer
-export const farmerToBuyerTransfers = pgTable("farmer_to_buyer_transfers", {
-  id: varchar("id").primaryKey(),
-  transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (same as other cash flow entries)
-  coldStorageId: varchar("cold_storage_id").notNull(),
-  // Farmer info
-  farmerName: text("farmer_name").notNull(),
-  village: text("village").notNull(),
-  contactNumber: text("contact_number").notNull(),
-  // Transfer details
-  toBuyerName: text("to_buyer_name").notNull(), // Buyer receiving the debt
-  totalAmount: real("total_amount").notNull(), // Total transfer amount
-  receivablesTransferred: real("receivables_transferred").notNull().default(0), // Amount from opening_receivables
-  selfSalesTransferred: real("self_sales_transferred").notNull().default(0), // Amount from self-sales
-  transferDate: timestamp("transfer_date").notNull(),
-  remarks: text("remarks"),
-  dueBalanceAfter: real("due_balance_after"), // Remaining farmer dues after this transfer
-  // Status tracking
-  isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
 // Bank Accounts - dynamic bank accounts for cold storage (Current, Limit, Saving)
 export const bankAccounts = pgTable("bank_accounts", {
   id: varchar("id").primaryKey(),
@@ -555,7 +532,6 @@ export const insertCashOpeningBalanceSchema = createInsertSchema(cashOpeningBala
 export const insertOpeningReceivableSchema = createInsertSchema(openingReceivables).omit({ id: true, createdAt: true });
 export const insertOpeningPayableSchema = createInsertSchema(openingPayables).omit({ id: true, createdAt: true });
 export const insertDiscountSchema = createInsertSchema(discounts).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
-export const insertFarmerToBuyerTransferSchema = createInsertSchema(farmerToBuyerTransfers).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({ id: true, createdAt: true });
 export const insertFarmerAdvanceFreightSchema = createInsertSchema(farmerAdvanceFreight).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true, paidAmount: true });
 export const insertFarmerLedgerSchema = createInsertSchema(farmerLedger).omit({ id: true, createdAt: true, archivedAt: true });
@@ -600,8 +576,6 @@ export type InsertOpeningPayable = z.infer<typeof insertOpeningPayableSchema>;
 export type DailyIdCounter = typeof dailyIdCounters.$inferSelect;
 export type Discount = typeof discounts.$inferSelect;
 export type InsertDiscount = z.infer<typeof insertDiscountSchema>;
-export type FarmerToBuyerTransfer = typeof farmerToBuyerTransfers.$inferSelect;
-export type InsertFarmerToBuyerTransfer = z.infer<typeof insertFarmerToBuyerTransferSchema>;
 export type BankAccount = typeof bankAccounts.$inferSelect;
 export type InsertBankAccount = z.infer<typeof insertBankAccountSchema>;
 export type FarmerAdvanceFreight = typeof farmerAdvanceFreight.$inferSelect;

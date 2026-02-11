@@ -18,7 +18,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, FarmerToBuyerTransfer } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount } from "@shared/schema";
 import { formatCurrency } from "@/components/Currency";
 
 const CASH_MGMT_STATE_KEY_PREFIX = "cashManagementFormState";
@@ -57,19 +57,13 @@ interface PersistedFormState {
   transferAmount: string;
   transferDate: string;
   transferRemarks: string;
-  transferTypeMode: "internal" | "buyer" | "farmer";
+  transferTypeMode: "internal" | "buyer";
   buyerTransferFrom: string;
   buyerTransferTo: string;
   selectedSaleId: string;
   buyerTransferAmount: string;
   buyerTransferDate: string;
   buyerTransferRemarks: string;
-  farmerTransferFrom: string;
-  selectedFarmerSaleId: string;
-  farmerTransferToBuyer: string;
-  farmerTransferAmount: string;
-  farmerTransferDate: string;
-  farmerTransferRemarks: string;
 }
 
 function getStateKey(coldStorageId: string): string {
@@ -107,7 +101,6 @@ type TransactionItem =
   | { type: "transfer"; data: CashTransfer; timestamp: number }
   | { type: "buyerTransfer"; data: SalesHistory; timestamp: number }
   | { type: "discount"; data: Discount; timestamp: number }
-  | { type: "farmerToBuyerTransfer"; data: FarmerToBuyerTransfer; timestamp: number };
 
 export default function CashManagement() {
   const { t } = useI18n();
@@ -176,7 +169,7 @@ export default function CashManagement() {
   const [transferRemarks, setTransferRemarks] = useState(persistedState?.transferRemarks || "");
   
   // Buyer-to-buyer transfer state
-  const [transferTypeMode, setTransferTypeMode] = useState<"internal" | "buyer" | "farmer">(persistedState?.transferTypeMode || "internal");
+  const [transferTypeMode, setTransferTypeMode] = useState<"internal" | "buyer">(persistedState?.transferTypeMode === "internal" || persistedState?.transferTypeMode === "buyer" ? persistedState.transferTypeMode : "internal");
   const [buyerTransferFrom, setBuyerTransferFrom] = useState(persistedState?.buyerTransferFrom || "");
   const [buyerTransferTo, setBuyerTransferTo] = useState(persistedState?.buyerTransferTo || "");
   const [selectedSaleId, setSelectedSaleId] = useState(persistedState?.selectedSaleId || "");
@@ -186,14 +179,6 @@ export default function CashManagement() {
   const [showBuyerFromSuggestions, setShowBuyerFromSuggestions] = useState(false);
   const [showBuyerToSuggestions, setShowBuyerToSuggestions] = useState(false);
   
-  // Farmer-to-buyer transfer state - now uses farmer ID instead of composite key
-  const [farmerTransferFromId, setFarmerTransferFromId] = useState(persistedState?.farmerTransferFrom || "");
-  const [selectedFarmerSaleId, setSelectedFarmerSaleId] = useState(persistedState?.selectedFarmerSaleId || "");
-  const [farmerTransferToBuyer, setFarmerTransferToBuyer] = useState(persistedState?.farmerTransferToBuyer || "");
-  const [farmerTransferAmount, setFarmerTransferAmount] = useState(persistedState?.farmerTransferAmount || "");
-  const [farmerTransferDate, setFarmerTransferDate] = useState(persistedState?.farmerTransferDate || todayDate);
-  const [farmerTransferRemarks, setFarmerTransferRemarks] = useState(persistedState?.farmerTransferRemarks || "");
-
   const [filterTransactionType, setFilterTransactionType] = useState<"all" | "inward" | "expense" | "self" | "buyerTransfer">("all");
   const [filterPaymentMode, setFilterPaymentMode] = useState<string>("");
   const [filterPayerType, setFilterPayerType] = useState<string>("");
@@ -284,12 +269,6 @@ export default function CashManagement() {
       buyerTransferAmount,
       buyerTransferDate,
       buyerTransferRemarks,
-      farmerTransferFrom: farmerTransferFromId,
-      selectedFarmerSaleId,
-      farmerTransferToBuyer,
-      farmerTransferAmount,
-      farmerTransferDate,
-      farmerTransferRemarks,
     };
     sessionStorage.setItem(getStateKey(coldStorageId), JSON.stringify(stateToSave));
   }, [
@@ -298,7 +277,6 @@ export default function CashManagement() {
     expenseAccountId, expenseAmount, expenseDate, expenseRemarks, transferFromAccount, transferToAccount,
     transferAmount, transferDate, transferRemarks, transferTypeMode, buyerTransferFrom, buyerTransferTo,
     selectedSaleId, buyerTransferAmount, buyerTransferDate, buyerTransferRemarks,
-    farmerTransferFromId, selectedFarmerSaleId, farmerTransferToBuyer, farmerTransferAmount, farmerTransferDate, farmerTransferRemarks
   ]);
 
   // Auto-save form state whenever any form field changes
@@ -343,12 +321,6 @@ export default function CashManagement() {
         if (loaded.buyerTransferAmount) setBuyerTransferAmount(loaded.buyerTransferAmount);
         if (loaded.buyerTransferDate) setBuyerTransferDate(loaded.buyerTransferDate);
         if (loaded.buyerTransferRemarks) setBuyerTransferRemarks(loaded.buyerTransferRemarks);
-        if (loaded.farmerTransferFrom) setFarmerTransferFromId(loaded.farmerTransferFrom);
-        if (loaded.selectedFarmerSaleId) setSelectedFarmerSaleId(loaded.selectedFarmerSaleId);
-        if (loaded.farmerTransferToBuyer) setFarmerTransferToBuyer(loaded.farmerTransferToBuyer);
-        if (loaded.farmerTransferAmount) setFarmerTransferAmount(loaded.farmerTransferAmount);
-        if (loaded.farmerTransferDate) setFarmerTransferDate(loaded.farmerTransferDate);
-        if (loaded.farmerTransferRemarks) setFarmerTransferRemarks(loaded.farmerTransferRemarks);
       }
       setHasLoadedPersistedState(true);
     }
@@ -443,12 +415,6 @@ export default function CashManagement() {
   const { data: buyerSalesWithDues = [] } = useQuery<SalesHistory[]>({
     queryKey: ["/api/sales-history/by-buyer", buyerTransferFrom],
     enabled: !!buyerTransferFrom && transferTypeMode === "buyer",
-  });
-
-  // Farmer's self-sales with dues (for F2B transfer selection)
-  const { data: farmerSelfSalesWithDues = [] } = useQuery<SalesHistory[]>({
-    queryKey: ["/api/sales-history/self-sales", farmerTransferFromId],
-    enabled: !!farmerTransferFromId && transferTypeMode === "farmer",
   });
 
   // Payment stats for expense type dropdown (totalHammali, totalGradingCharges)
@@ -613,11 +579,6 @@ export default function CashManagement() {
     queryKey: ["/api/sales-history/buyer-transfers"],
   });
 
-  // Farmer-to-buyer transfers for cash flow history
-  const { data: farmerToBuyerTransfers = [], isLoading: loadingFarmerToBuyerTransfers } = useQuery<FarmerToBuyerTransfer[]>({
-    queryKey: ["/api/farmer-to-buyer-transfers"],
-  });
-
   const createBuyerTransferMutation = useMutation({
     mutationFn: async (data: { saleId: string; fromBuyerName: string; toBuyerName: string; amount: number; transferDate: string; remarks?: string }) => {
       const response = await apiRequest("POST", "/api/buyer-transfer", data);
@@ -648,42 +609,6 @@ export default function CashManagement() {
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record buyer transfer", variant: "destructive" });
-    },
-  });
-
-  const createFarmerToBuyerTransferMutation = useMutation({
-    mutationFn: async (data: { saleId: string; farmerId?: string; farmerName: string; village: string; contactNumber: string; toBuyerName: string; transferDate: string; remarks?: string }) => {
-      const response = await apiRequest("POST", "/api/farmer-to-buyer-transfer", data);
-      return response.json();
-    },
-    onSuccess: (result: { success: boolean; selfSalesTransferred: number }) => {
-      toast({
-        title: t("success"),
-        description: t("farmerToBuyerTransferRecorded") || `Transferred ₹${result.selfSalesTransferred} from farmer to buyer`,
-        variant: "success",
-      });
-      setFarmerTransferFromId("");
-      setSelectedFarmerSaleId("");
-      setFarmerTransferToBuyer("");
-      setFarmerTransferAmount("");
-      setFarmerTransferDate(format(new Date(), "yyyy-MM-dd"));
-      setFarmerTransferRemarks("");
-      clearPersistedState(coldStorageId);
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-to-buyer-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/self-sales"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
-    },
-    onError: () => {
-      toast({ title: t("error"), description: t("farmerToBuyerTransferFailed") || "Failed to record farmer to buyer transfer", variant: "destructive" });
     },
   });
 
@@ -900,41 +825,6 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-    },
-    onError: () => {
-      toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
-    },
-  });
-
-  const reverseFarmerToBuyerTransferMutation = useMutation({
-    mutationFn: async (transferId: string) => {
-      const response = await apiRequest("DELETE", `/api/farmer-to-buyer-transfers/${transferId}`, {});
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: t("success"),
-        description: t("entryReversed"),
-        variant: "success",
-      });
-      // Comprehensive cache invalidation for farmer-to-buyer transfer reversal
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-to-buyer-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      // Also invalidate opening receivables since F2B reversal restores farmer receivables
-      queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -1328,31 +1218,6 @@ export default function CashManagement() {
     });
   };
 
-  const handleFarmerToBuyerTransferSubmit = () => {
-    if (!farmerTransferFromId || !selectedFarmerSaleId || !farmerTransferToBuyer) {
-      toast({ title: t("error"), description: t("fillRequiredFields") || "Please fill all required fields", variant: "destructive" });
-      return;
-    }
-
-    // Get farmer details from ID
-    const selectedFarmer = farmerLedgerDues.find(f => f.id === farmerTransferFromId);
-    if (!selectedFarmer) {
-      toast({ title: t("error"), description: "Invalid farmer selection", variant: "destructive" });
-      return;
-    }
-
-    createFarmerToBuyerTransferMutation.mutate({
-      saleId: selectedFarmerSaleId,
-      farmerId: farmerTransferFromId,
-      farmerName: selectedFarmer.farmerName,
-      village: selectedFarmer.village,
-      contactNumber: selectedFarmer.contactNumber,
-      toBuyerName: farmerTransferToBuyer,
-      transferDate: new Date(farmerTransferDate).toISOString(),
-      remarks: farmerTransferRemarks || undefined,
-    });
-  };
-
   const getAccountLabel = (accountIdOrType: string | null | undefined) => {
     if (!accountIdOrType) return "";
     if (accountIdOrType === "cash") return t("cashInHand");
@@ -1416,10 +1281,7 @@ export default function CashManagement() {
     const rows = transactions.map(transaction => {
       const isReversed = transaction.type === "buyerTransfer" 
         ? Number((transaction.data as SalesHistory).isTransferReversed) === 1
-        : (transaction.type === "farmerToBuyerTransfer" 
-          ? Number((transaction.data as FarmerToBuyerTransfer).isReversed) === 1 
-          : Number((transaction.data as CashReceipt | Expense | CashTransfer).isReversed) === 1
-        );
+        : Number((transaction.data as CashReceipt | Expense | CashTransfer).isReversed) === 1;
       const dateStr = format(new Date(transaction.timestamp), "dd/MM/yyyy");
       
       if (transaction.type === "inflow") {
@@ -1494,25 +1356,6 @@ export default function CashManagement() {
           dueAfterStr,
           `${allocationsStr}${d.remarks ? ` | ${d.remarks}` : ""}`,
           discountIsReversed ? t("reversed") : t("active"),
-        ];
-      } else if (transaction.type === "farmerToBuyerTransfer") {
-        const ft = transaction.data as FarmerToBuyerTransfer;
-        const ftIsReversed = ft.isReversed === 1;
-        const dueAfterStr = ft.dueBalanceAfter !== null && ft.dueBalanceAfter !== undefined 
-          ? ft.dueBalanceAfter.toString() 
-          : "";
-        return [
-          ft.transactionId || "",
-          dateStr,
-          t("farmerToBuyer") || "Farmer→Buyer",
-          `${ft.farmerName} (${ft.village}) → ${ft.toBuyerName}`,
-          ft.totalAmount.toString(),
-          t("liabilityTransfer") || "Liability Transfer",
-          "",
-          "",
-          dueAfterStr,
-          ft.remarks || "",
-          ftIsReversed ? t("reversed") : t("active"),
         ];
       } else {
         const bt = transaction.data as SalesHistory;
@@ -1817,44 +1660,12 @@ export default function CashManagement() {
         data: d, 
         timestamp: getTimestamp(d.discountDate)
       })) : []),
-      // Include farmer-to-buyer transfers (always show if not filtered out by other criteria)
-      ...(!isDiscountFilterOnly && !isExpenseTypeFilterActive && !isPayerTypeFilterActive && (filterTransactionType === "all" || filterTransactionType === "buyerTransfer") 
-        ? farmerToBuyerTransfers.filter(ft => {
-          // Apply buyer name filter - match destination buyer
-          if (filterBuyer) {
-            const filterKey = filterBuyer.trim().toLowerCase();
-            const destBuyer = ft.toBuyerName?.trim().toLowerCase() || "";
-            if (destBuyer !== filterKey) return false;
-          }
-          // Apply month filter
-          if (filterMonth) {
-            const date = new Date(ft.transferDate);
-            if (format(date, "yyyy-MM") !== filterMonth) return false;
-          }
-          // Apply year filter
-          if (filterYear) {
-            const date = new Date(ft.transferDate);
-            if (format(date, "yyyy") !== filterYear) return false;
-          }
-          // Apply remarks filter
-          if (filterRemarks) {
-            const searchKey = filterRemarks.trim().toLowerCase();
-            if (!ft.remarks || !ft.remarks.toLowerCase().includes(searchKey)) return false;
-          }
-          return true;
-        }).map(ft => ({ 
-          type: "farmerToBuyerTransfer" as const, 
-          data: ft, 
-          timestamp: getTimestamp(ft.transferDate)
-        })) 
-        : []),
     ].sort((a, b) => {
       // Sort by transactionId descending (CF + YYYYMMDD + natural number)
       // For buyerTransfer items, use transferTransactionId; fallback to timestamp if no ID
       const getTransactionId = (item: TransactionItem): string | null => {
         if (item.type === "buyerTransfer") return (item.data as SalesHistory).transferTransactionId || null;
         if (item.type === "discount") return (item.data as Discount).transactionId || null;
-        if (item.type === "farmerToBuyerTransfer") return (item.data as FarmerToBuyerTransfer).transactionId || null;
         return (item.data as CashReceipt | Expense | CashTransfer).transactionId || null;
       };
 
@@ -1890,9 +1701,9 @@ export default function CashManagement() {
       if (timeDiff !== 0) return timeDiff;
       return String(b.data.id).localeCompare(String(a.data.id));
     });
-  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, farmerToBuyerTransfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
+  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
 
-  const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers || loadingDiscounts || loadingFarmerToBuyerTransfers;
+  const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers || loadingDiscounts;
 
   const uniqueBuyers = useMemo(() => {
     // Aggregate buyers case-insensitively with trimming
@@ -3529,14 +3340,13 @@ export default function CashManagement() {
                 {/* Transfer Type Selection */}
                 <div className="space-y-2">
                   <Label>{t("transferType")} *</Label>
-                  <Select value={transferTypeMode} onValueChange={(v) => setTransferTypeMode(v as "internal" | "buyer" | "farmer")}>
+                  <Select value={transferTypeMode} onValueChange={(v) => setTransferTypeMode(v as "internal" | "buyer")}>
                     <SelectTrigger data-testid="select-transfer-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="internal">{t("internalTransfer")}</SelectItem>
                       <SelectItem value="buyer">{t("buyerToBuyer")}</SelectItem>
-                      <SelectItem value="farmer">{t("farmerToBuyer") || "Farmer to Buyer"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -3772,122 +3582,6 @@ export default function CashManagement() {
                       </p>
                     )}
                   </>
-                ) : transferTypeMode === "farmer" ? (
-                  <>
-                    {/* Farmer-to-Buyer Transfer Form */}
-                    <div className="space-y-2">
-                      <Label>{t("fromFarmer") || "From Farmer"} *</Label>
-                      <Select value={farmerTransferFromId} onValueChange={(v) => {
-                        setFarmerTransferFromId(v);
-                        setSelectedFarmerSaleId("");
-                        setFarmerTransferAmount("");
-                      }}>
-                        <SelectTrigger data-testid="select-farmer-transfer-from">
-                          <SelectValue placeholder={t("selectFarmer") || "Select Farmer"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {farmerLedgerDues.filter(f => f.totalDue >= 1).map((farmer) => (
-                            <SelectItem key={farmer.id} value={farmer.id}>
-                              {farmer.farmerName} - {farmer.contactNumber} - {farmer.village} (₹{formatCurrency(farmer.totalDue)})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {farmerTransferFromId && (
-                      <div className="space-y-2">
-                        <Label>{t("selectSelfSale") || "Select Self-Sale"} *</Label>
-                        <Select value={selectedFarmerSaleId} onValueChange={(v) => {
-                          setSelectedFarmerSaleId(v);
-                          const sale = farmerSelfSalesWithDues.find(s => s.id === v);
-                          if (sale) {
-                            setFarmerTransferAmount(sale.dueAmount?.toString() || "");
-                          }
-                        }}>
-                          <SelectTrigger data-testid="select-farmer-self-sale">
-                            <SelectValue placeholder={t("selectSelfSale") || "Select Self-Sale"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {farmerSelfSalesWithDues.filter(s => (s.dueAmount || 0) > 0).map((sale) => (
-                              <SelectItem key={sale.id} value={sale.id}>
-                                {t("lot")} {sale.lotNo}, {sale.quantitySold} {t("bags")} - ₹{formatCurrency(sale.dueAmount || 0)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {farmerSelfSalesWithDues.length === 0 && (
-                          <p className="text-xs text-muted-foreground">
-                            {t("noSelfSalesWithDues") || "No self-sales with pending dues for this farmer"}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <Label>{t("toBuyer")} *</Label>
-                      <Select value={farmerTransferToBuyer} onValueChange={setFarmerTransferToBuyer}>
-                        <SelectTrigger data-testid="select-farmer-transfer-to-buyer">
-                          <SelectValue placeholder={t("selectBuyer")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {allBuyers.map((buyer) => (
-                            <SelectItem key={buyer.buyerName} value={buyer.buyerName}>
-                              {buyer.buyerName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {selectedFarmerSaleId && farmerTransferAmount && (
-                      <div className="bg-muted/50 rounded-md p-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">{t("transferAmount") || "Transfer Amount"}:</span>
-                          <span className="font-medium">₹{formatCurrency(parseFloat(farmerTransferAmount) || 0)}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
-                        {t("transferDate")}
-                      </Label>
-                      <Input
-                        type="date"
-                        value={farmerTransferDate}
-                        onChange={(e) => setFarmerTransferDate(e.target.value)}
-                        data-testid="input-farmer-transfer-date"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>{t("remarks")}</Label>
-                      <Input
-                        value={farmerTransferRemarks}
-                        onChange={(e) => setFarmerTransferRemarks(e.target.value)}
-                        placeholder={t("remarks")}
-                        data-testid="input-farmer-transfer-remarks"
-                      />
-                    </div>
-
-                    <Button
-                      onClick={handleFarmerToBuyerTransferSubmit}
-                      disabled={!canEdit || !farmerTransferFromId || !selectedFarmerSaleId || !farmerTransferToBuyer || createFarmerToBuyerTransferMutation.isPending}
-                      className="w-full"
-                      variant="default"
-                      data-testid="button-record-farmer-to-buyer-transfer"
-                    >
-                      <ArrowLeftRight className="h-4 w-4 mr-2" />
-                      {createFarmerToBuyerTransferMutation.isPending ? t("saving") : t("transferDebt")}
-                    </Button>
-                    {!canEdit && (
-                      <p className="text-xs text-muted-foreground text-center mt-2">
-                        {t("viewOnlyAccess") || "View-only access. Contact admin for edit permissions."}
-                      </p>
-                    )}
-                  </>
                 ) : null}
               </>
             ) : null}
@@ -3920,10 +3614,7 @@ export default function CashManagement() {
                       ? Number((transaction.data as Discount).isReversed) === 1 
                       : transaction.type === "buyerTransfer"
                         ? Number((transaction.data as SalesHistory).isTransferReversed) === 1
-                        : (transaction.type === "farmerToBuyerTransfer"
-                            ? Number((transaction.data as FarmerToBuyerTransfer).isReversed) === 1
-                            : Number((transaction.data as CashReceipt | Expense | CashTransfer).isReversed) === 1
-                          );
+                        : Number((transaction.data as CashReceipt | Expense | CashTransfer).isReversed) === 1;
                     return (
                       <div
                         key={`${transaction.type}-${transaction.data.id}`}
@@ -3952,8 +3643,6 @@ export default function CashManagement() {
                               <ArrowUpRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-red-600"}`} />
                             ) : transaction.type === "buyerTransfer" ? (
                               <ArrowLeftRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-purple-600"}`} />
-                            ) : transaction.type === "farmerToBuyerTransfer" ? (
-                              <ArrowLeftRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-teal-600"}`} />
                             ) : transaction.type === "discount" ? (
                               <ArrowUpRight className={`h-4 w-4 flex-shrink-0 ${isReversed ? "text-gray-400" : "text-amber-600"}`} />
                             ) : (
@@ -3966,9 +3655,7 @@ export default function CashManagement() {
                                   ? getExpenseTypeLabel((transaction.data as Expense).expenseType) + ((transaction.data as Expense).receiverName ? ` - ${(transaction.data as Expense).receiverName}` : "")
                                   : transaction.type === "buyerTransfer"
                                     ? `${(transaction.data as SalesHistory).buyerName} → ${(transaction.data as SalesHistory).transferToBuyerName}`
-                                    : transaction.type === "farmerToBuyerTransfer"
-                                      ? `${(transaction.data as FarmerToBuyerTransfer).farmerName} → ${(transaction.data as FarmerToBuyerTransfer).toBuyerName}`
-                                      : transaction.type === "discount"
+                                    : transaction.type === "discount"
                                         ? (transaction.data as Discount).farmerName
                                         : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`
                               }
@@ -3981,16 +3668,13 @@ export default function CashManagement() {
                                 : transaction.type === "inflow" ? "text-green-600" 
                                 : transaction.type === "outflow" ? "text-red-600" 
                                 : transaction.type === "buyerTransfer" ? "text-purple-600" 
-                                : transaction.type === "farmerToBuyerTransfer" ? "text-teal-600"
                                 : transaction.type === "discount" ? "text-amber-600"
                                 : "text-blue-600"
                             }`}>
                               {transaction.type === "inflow" ? "+" : transaction.type === "outflow" || transaction.type === "discount" ? "-" : ""}₹{
                                 transaction.type === "buyerTransfer" 
                                   ? formatCurrency((transaction.data as SalesHistory).transferAmount || (transaction.data as SalesHistory).dueAmount || 0)
-                                  : transaction.type === "farmerToBuyerTransfer"
-                                    ? formatCurrency((transaction.data as FarmerToBuyerTransfer).totalAmount || 0)
-                                    : transaction.type === "discount"
+                                  : transaction.type === "discount"
                                       ? (transaction.data as Discount).totalAmount.toLocaleString()
                                       : (transaction.data as CashReceipt | Expense | CashTransfer).amount.toLocaleString()
                               }
@@ -4003,12 +3687,11 @@ export default function CashManagement() {
                                 className={`text-xs ${
                                   transaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" 
                                   : transaction.type === "buyerTransfer" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" 
-                                  : transaction.type === "farmerToBuyerTransfer" ? "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300" 
                                   : transaction.type === "discount" ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" 
                                   : ""
                                 }`}
                               >
-                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : transaction.type === "buyerTransfer" ? t("buyerToBuyer") : transaction.type === "farmerToBuyerTransfer" ? (t("farmerToBuyer") || "Farmer→Buyer") : transaction.type === "discount" ? (t("discount") || "Discount") : t("transfer")}
+                                {transaction.type === "inflow" ? t("inflow") : transaction.type === "outflow" ? t("outflow") : transaction.type === "buyerTransfer" ? t("buyerToBuyer") : transaction.type === "discount" ? (t("discount") || "Discount") : t("transfer")}
                               </Badge>
                             )}
                           </div>
@@ -4016,7 +3699,7 @@ export default function CashManagement() {
                         {/* Row 2: Date + Payment Mode + Due After */}
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
-                          {transaction.type !== "transfer" && transaction.type !== "buyerTransfer" && transaction.type !== "farmerToBuyerTransfer" && transaction.type !== "discount" && (
+                          {transaction.type !== "transfer" && transaction.type !== "buyerTransfer" && transaction.type !== "discount" && (
                             <Badge variant="outline" className="text-xs py-0 h-5">
                               {transaction.type === "inflow" 
                                 ? ((transaction.data as CashReceipt).receiptType === "cash" 
@@ -4033,11 +3716,6 @@ export default function CashManagement() {
                               {t("lot")} {(transaction.data as SalesHistory).lotNo}
                             </span>
                           )}
-                          {transaction.type === "farmerToBuyerTransfer" && (
-                            <span className="text-teal-600">
-                              {(transaction.data as FarmerToBuyerTransfer).village}
-                            </span>
-                          )}
                           {transaction.type === "discount" && (
                             <span className="text-amber-600">
                               {(transaction.data as Discount).village}
@@ -4052,11 +3730,6 @@ export default function CashManagement() {
                           {transaction.type === "discount" && (transaction.data as Discount).dueBalanceAfter !== null && (transaction.data as Discount).dueBalanceAfter !== undefined && (
                             <Badge variant="outline" className="text-xs py-0 h-5 ml-auto bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300">
                               {t("dueAfter") || "Due After"}: ₹{formatCurrency((transaction.data as Discount).dueBalanceAfter || 0)}
-                            </Badge>
-                          )}
-                          {transaction.type === "farmerToBuyerTransfer" && (transaction.data as FarmerToBuyerTransfer).dueBalanceAfter !== null && (transaction.data as FarmerToBuyerTransfer).dueBalanceAfter !== undefined && (
-                            <Badge variant="outline" className="text-xs py-0 h-5 ml-auto bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300">
-                              {t("dueAfter") || "Due After"}: ₹{formatCurrency((transaction.data as FarmerToBuyerTransfer).dueBalanceAfter || 0)}
                             </Badge>
                           )}
                         </div>
@@ -4090,11 +3763,6 @@ export default function CashManagement() {
                   <ArrowLeftRight className="h-5 w-5 text-purple-600" />
                   {t("buyerToBuyer")}
                 </>
-              ) : selectedTransaction?.type === "farmerToBuyerTransfer" ? (
-                <>
-                  <ArrowLeftRight className="h-5 w-5 text-teal-600" />
-                  {t("farmerToBuyerTransferDetails") || "Farmer→Buyer Transfer"}
-                </>
               ) : selectedTransaction?.type === "discount" ? (
                 <>
                   <ArrowUpRight className="h-5 w-5 text-amber-600" />
@@ -4118,8 +3786,6 @@ export default function CashManagement() {
               <div className="flex flex-col items-center gap-1">
                 {(selectedTransaction.type === "discount" 
                 ? Number((selectedTransaction.data as Discount).isReversed) === 1 
-                : selectedTransaction.type === "farmerToBuyerTransfer"
-                ? Number((selectedTransaction.data as FarmerToBuyerTransfer).isReversed) === 1
                 : selectedTransaction.type === "buyerTransfer"
                 ? Number((selectedTransaction.data as SalesHistory).isTransferReversed) === 1
                 : Number((selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed) === 1) ? (
@@ -4129,20 +3795,16 @@ export default function CashManagement() {
                     </Badge>
                     {(selectedTransaction.type === "discount" 
                       ? (selectedTransaction.data as Discount).reversedAt 
-                      : selectedTransaction.type === "farmerToBuyerTransfer"
-                        ? (selectedTransaction.data as FarmerToBuyerTransfer).reversedAt
-                        : selectedTransaction.type === "buyerTransfer"
-                          ? (selectedTransaction.data as SalesHistory).transferReversedAt
-                          : (selectedTransaction.data as CashReceipt | Expense).reversedAt) && (
+                      : selectedTransaction.type === "buyerTransfer"
+                        ? (selectedTransaction.data as SalesHistory).transferReversedAt
+                        : (selectedTransaction.data as CashReceipt | Expense).reversedAt) && (
                       <span className="text-xs text-muted-foreground">
                         {format(new Date(
                           selectedTransaction.type === "discount" 
                             ? (selectedTransaction.data as Discount).reversedAt! 
-                            : selectedTransaction.type === "farmerToBuyerTransfer"
-                              ? (selectedTransaction.data as FarmerToBuyerTransfer).reversedAt!
-                              : selectedTransaction.type === "buyerTransfer"
-                                ? (selectedTransaction.data as SalesHistory).transferReversedAt!
-                                : (selectedTransaction.data as CashReceipt | Expense).reversedAt!
+                            : selectedTransaction.type === "buyerTransfer"
+                              ? (selectedTransaction.data as SalesHistory).transferReversedAt!
+                              : (selectedTransaction.data as CashReceipt | Expense).reversedAt!
                         ), "dd/MM/yyyy")}
                       </span>
                     )}
@@ -4153,7 +3815,6 @@ export default function CashManagement() {
                     className={`text-base px-4 py-1 ${
                       selectedTransaction.type === "transfer" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" 
                       : selectedTransaction.type === "buyerTransfer" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" 
-                      : selectedTransaction.type === "farmerToBuyerTransfer" ? "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300"
                       : selectedTransaction.type === "discount" ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" 
                       : ""
                     }`}
@@ -4273,60 +3934,6 @@ export default function CashManagement() {
                       </div>
                     )}
                   </>
-                ) : selectedTransaction.type === "farmerToBuyerTransfer" ? (
-                  <>
-                    {(selectedTransaction.data as FarmerToBuyerTransfer).transactionId && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">{t("transactionId") || "Transaction ID"}:</span>
-                        <span className="font-mono text-sm">{(selectedTransaction.data as FarmerToBuyerTransfer).transactionId}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("fromFarmer") || "From Farmer"}:</span>
-                      <span className="font-medium">{(selectedTransaction.data as FarmerToBuyerTransfer).farmerName}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("village")}:</span>
-                      <span>{(selectedTransaction.data as FarmerToBuyerTransfer).village}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("toBuyer")}:</span>
-                      <span className="font-medium">{(selectedTransaction.data as FarmerToBuyerTransfer).toBuyerName}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("totalTransferred") || "Total Transferred"}:</span>
-                      <span className="font-bold text-teal-600">₹{formatCurrency((selectedTransaction.data as FarmerToBuyerTransfer).totalAmount || 0)}</span>
-                    </div>
-                    {(selectedTransaction.data as FarmerToBuyerTransfer).receivablesTransferred > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{t("receivablesTransferred") || "From Receivables"}:</span>
-                        <span>₹{formatCurrency((selectedTransaction.data as FarmerToBuyerTransfer).receivablesTransferred || 0)}</span>
-                      </div>
-                    )}
-                    {(selectedTransaction.data as FarmerToBuyerTransfer).selfSalesTransferred > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{t("selfSalesTransferred") || "From Self-Sales"}:</span>
-                        <span>₹{formatCurrency((selectedTransaction.data as FarmerToBuyerTransfer).selfSalesTransferred || 0)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("date")}:</span>
-                      <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
-                    </div>
-                    {/* Due After for farmer-to-buyer transfers */}
-                    {(selectedTransaction.data as FarmerToBuyerTransfer).dueBalanceAfter !== null && (selectedTransaction.data as FarmerToBuyerTransfer).dueBalanceAfter !== undefined && (
-                      <div className="flex justify-between bg-orange-50 dark:bg-orange-950/30 rounded px-2 py-1 -mx-2">
-                        <span className="text-orange-700 dark:text-orange-300 font-medium">{t("dueAfter")}:</span>
-                        <span className="font-bold text-orange-700 dark:text-orange-300">₹{formatCurrency((selectedTransaction.data as FarmerToBuyerTransfer).dueBalanceAfter || 0)}</span>
-                      </div>
-                    )}
-                    {(selectedTransaction.data as FarmerToBuyerTransfer).remarks && (
-                      <div className="pt-2 border-t">
-                        <span className="text-muted-foreground text-sm">{t("remarks")}:</span>
-                        <p className="text-sm mt-1">{(selectedTransaction.data as FarmerToBuyerTransfer).remarks}</p>
-                      </div>
-                    )}
-                  </>
                 ) : selectedTransaction.type === "discount" ? (
                   <>
                     <div className="flex justify-between">
@@ -4414,11 +4021,9 @@ export default function CashManagement() {
               {canEdit && (
                 selectedTransaction.type === "discount" 
                   ? Number((selectedTransaction.data as Discount).isReversed) !== 1 
-                  : selectedTransaction.type === "farmerToBuyerTransfer"
-                    ? Number((selectedTransaction.data as FarmerToBuyerTransfer).isReversed) !== 1
-                    : selectedTransaction.type === "buyerTransfer"
-                      ? Number((selectedTransaction.data as SalesHistory).isTransferReversed) !== 1
-                      : Number((selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed) !== 1
+                  : selectedTransaction.type === "buyerTransfer"
+                    ? Number((selectedTransaction.data as SalesHistory).isTransferReversed) !== 1
+                    : Number((selectedTransaction.data as CashReceipt | Expense | CashTransfer).isReversed) !== 1
               ) && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -4444,8 +4049,6 @@ export default function CashManagement() {
                             reverseExpenseMutation.mutate(selectedTransaction.data.id);
                           } else if (selectedTransaction.type === "discount") {
                             reverseDiscountMutation.mutate(selectedTransaction.data.id);
-                          } else if (selectedTransaction.type === "farmerToBuyerTransfer") {
-                            reverseFarmerToBuyerTransferMutation.mutate(selectedTransaction.data.id);
                           } else if (selectedTransaction.type === "buyerTransfer") {
                             reverseBuyerToBuyerTransferMutation.mutate(selectedTransaction.data.id);
                           } else {
