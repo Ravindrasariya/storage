@@ -600,7 +600,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       </Card>
 
       <Dialog open={!!selectedLot} onOpenChange={(open) => !open && resetDialog()}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>{t("sale")}</DialogTitle>
             <DialogDescription>
