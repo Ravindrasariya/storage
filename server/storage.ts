@@ -6630,7 +6630,7 @@ export class DatabaseStorage implements IStorage {
       
       // dueAmount already represents the remaining unpaid amount (updated when payments are made)
       // adjReceivableSelfDueAmount: farmer dues adjusted through this sale, also owed by buyer
-      const salesDue = buyerSales.reduce((sum, s) => sum + (s.dueAmount || 0) + (s.adjReceivableSelfDueAmount || 0), 0);
+      const salesDue = buyerSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
       // Buyer Extras: Sum of hammali, grading, and other extras to merchant from sales
       const buyerExtras = buyerSales.reduce((sum, s) => {
