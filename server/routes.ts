@@ -935,6 +935,7 @@ export async function registerRoutes(
       };
 
       const newRemainingSize = lot.remainingSize - quantitySold;
+      const isLotFullySold = newRemainingSize === 0;
       const totalPrice = quantitySold * pricePerBag;
 
       // Get cold storage to calculate storage charge and rate breakdown
@@ -981,9 +982,22 @@ export async function registerRoutes(
         totalPaidCharge?: number; 
         totalDueCharge?: number;
         baseColdChargesBilled?: number;
+        saleStatus?: string;
+        paymentStatus?: string;
+        saleCharge?: number;
+        soldAt?: Date;
+        upForSale?: number;
       } = {
         remainingSize: newRemainingSize,
       };
+
+      if (isLotFullySold) {
+        updateData.saleStatus = "sold";
+        updateData.paymentStatus = paymentStatus;
+        updateData.saleCharge = storageCharge;
+        updateData.soldAt = new Date();
+        updateData.upForSale = 0;
+      }
       
       // Set baseColdChargesBilled flag when using totalRemaining charge basis (only if not already set)
       if (chargeBasis === "totalRemaining" && lot.baseColdChargesBilled !== 1) {
@@ -1008,9 +1022,9 @@ export async function registerRoutes(
 
       await storage.createEditHistory({
         lotId: lot.id,
-        changeType: "partial_sale",
+        changeType: isLotFullySold ? "final_sale" : "partial_sale",
         previousData: JSON.stringify(previousData),
-        newData: JSON.stringify({ remainingSize: newRemainingSize }),
+        newData: JSON.stringify(isLotFullySold ? { remainingSize: 0, saleStatus: "sold" } : { remainingSize: newRemainingSize }),
         soldQuantity: quantitySold,
         pricePerBag,
         coldCharge: coldChargeRate,
@@ -1022,8 +1036,13 @@ export async function registerRoutes(
         saleCharge: storageCharge,
       });
 
-      // Get chamber for sales history
+      // Get chamber for sales history and chamber fill update
       const chamber = await storage.getChamber(lot.chamberId);
+      
+      // Update chamber fill when lot is fully sold
+      if (isLotFullySold && chamber) {
+        await storage.updateChamberFill(chamber.id, Math.max(0, chamber.currentFill - quantitySold));
+      }
       
       // Ensure buyer exists in buyer ledger and get IDs (if buyer name is provided)
       let buyerEntry: { id: string; buyerId: string } | null = null;
@@ -1063,7 +1082,7 @@ export async function registerRoutes(
         bagTypeLabel: lot.bagTypeLabel || null,
         quality: lot.quality,
         originalLotSize: lot.size,
-        saleType: "partial",
+        saleType: isLotFullySold ? "full" : "partial",
         quantitySold,
         pricePerBag: rate,
         coldCharge: coldChargeRate,
@@ -1123,69 +1142,6 @@ export async function registerRoutes(
     }
   });
 
-  // Finalize Sale
-  const finalizeSaleSchema = z.object({
-    paymentStatus: z.enum(["due", "paid", "partial"]),
-    paymentMode: z.enum(["cash", "account"]).optional(),
-    buyerName: z.string().optional(),
-    pricePerKg: z.number().optional(),
-    paidAmount: z.number().optional(),
-    dueAmount: z.number().optional(),
-    position: z.string().optional(),
-    kataCharges: z.number().optional(),
-    extraHammali: z.number().optional(),
-    gradingCharges: z.number().optional(),
-    netWeight: z.number().optional(),
-    customColdCharge: z.number().optional(),
-    customHammali: z.number().optional(),
-  });
-
-  app.post("/api/lots/:id/finalize-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
-    try {
-      const coldStorageId = getColdStorageId(req);
-      const validatedData = finalizeSaleSchema.parse(req.body);
-      
-      // Verify lot ownership before allowing sale
-      const existingLot = await storage.getLot(req.params.id);
-      if (!existingLot) {
-        return res.status(404).json({ error: "Lot not found" });
-      }
-      if (existingLot.coldStorageId !== coldStorageId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-      
-      // Update position if provided
-      if (validatedData.position) {
-        await storage.updateLot(req.params.id, { position: validatedData.position });
-      }
-      
-      const lot = await storage.finalizeSale(
-        req.params.id, 
-        validatedData.paymentStatus,
-        validatedData.buyerName,
-        validatedData.pricePerKg,
-        validatedData.paidAmount,
-        validatedData.dueAmount,
-        validatedData.paymentMode,
-        validatedData.kataCharges,
-        validatedData.extraHammali,
-        validatedData.gradingCharges,
-        validatedData.netWeight,
-        validatedData.customColdCharge,
-        validatedData.customHammali
-      );
-      if (!lot) {
-        return res.status(404).json({ error: "Lot not found or already sold" });
-      }
-      
-      res.json(lot);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid payment status", details: error.errors });
-      }
-      res.status(500).json({ error: "Failed to finalize sale" });
-    }
-  });
 
   // Analytics
   app.get("/api/analytics/quality", requireAuth, async (req: AuthenticatedRequest, res) => {
