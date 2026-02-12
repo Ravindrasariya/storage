@@ -791,6 +791,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -1009,8 +1010,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
-      // Invalidate all farmer receivables queries (any year)
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -1026,6 +1027,10 @@ export default function CashManagement() {
       toast({ title: t("success"), description: t("receivableDeleted"), variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
@@ -2418,10 +2423,10 @@ export default function CashManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t("allExpenseTypes")}</SelectItem>
+                    <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                     <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                     <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                     <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
-                    <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                     <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                     <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
                     <SelectItem value="hammali">{t("hammali")}</SelectItem>
@@ -3123,10 +3128,10 @@ export default function CashManagement() {
                       <SelectValue placeholder={t("selectExpenseType")} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                       <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                       <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                       <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
-                      <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                       <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                       <SelectItem value="grading_charges">
                         {t("gradingCharges")} {paymentStats?.gradingDue ? `(₹${paymentStats.gradingDue.toLocaleString("en-IN")})` : ""}
