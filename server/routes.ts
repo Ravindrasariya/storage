@@ -1764,6 +1764,60 @@ export async function registerRoutes(
     }
   });
 
+  // Merchant Advance - Buyers with outstanding advance dues
+  app.get("/api/merchant-advances/buyers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const buyers = await storage.getBuyersWithAdvanceDues(coldStorageId);
+      res.json(buyers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch buyers with advance dues" });
+    }
+  });
+
+  // Merchant Advance - Pay advance dues
+  app.post("/api/merchant-advances/pay", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const schema = z.object({
+        buyerLedgerId: z.string(),
+        buyerId: z.string(),
+        buyerName: z.string(),
+        amount: z.number().positive(),
+        receivedAt: z.string(),
+        remarks: z.string().optional(),
+        receiptType: z.enum(["cash", "account"]),
+        accountId: z.string().optional(),
+      });
+      const data = schema.parse(req.body);
+
+      const transactionId = await generateSequentialId('cash_flow', coldStorageId);
+
+      const payResult = await storage.payMerchantAdvance(coldStorageId, data.buyerLedgerId, data.amount);
+
+      const receipt = await storage.createMerchantAdvanceReceipt({
+        coldStorageId,
+        transactionId,
+        payerType: "cold_merchant_advance",
+        buyerName: data.buyerName,
+        buyerLedgerId: data.buyerLedgerId,
+        buyerId: data.buyerId,
+        receiptType: data.receiptType,
+        accountId: data.accountId || null,
+        amount: data.amount,
+        receivedAt: new Date(data.receivedAt),
+        notes: data.remarks || null,
+      });
+
+      res.json({ receipt, ...payResult });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid payment data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to process merchant advance payment" });
+    }
+  });
+
   // Cash Receipts (Cash Management)
   app.get("/api/cash-receipts/buyers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {

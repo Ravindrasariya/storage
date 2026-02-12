@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, and, or, like, ilike, desc, sql, gte, lte, inArray, isNull, type SQL } from "drizzle-orm";
+import { eq, and, or, like, ilike, desc, asc, sql, gte, lte, inArray, isNull, type SQL } from "drizzle-orm";
 import { db } from "./db";
 import {
   coldStorages,
@@ -314,6 +314,9 @@ export interface IStorage {
   // Merchant Advance
   createMerchantAdvance(data: InsertMerchantAdvance): Promise<MerchantAdvance>;
   getMerchantAdvances(coldStorageId: string, buyerLedgerId?: string): Promise<MerchantAdvance[]>;
+  getBuyersWithAdvanceDues(coldStorageId: string): Promise<{ buyerLedgerId: string; buyerId: string; buyerName: string; advanceDue: number }[]>;
+  payMerchantAdvance(coldStorageId: string, buyerLedgerId: string, amount: number): Promise<{ totalApplied: number; recordsUpdated: number }>;
+  createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<CashReceipt>;
   accrueInterestForAll(coldStorageId: string): Promise<number>;
   // Farmer Ledger
   getFarmerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
@@ -1851,11 +1854,11 @@ export class DatabaseStorage implements IStorage {
     const ledgerData = await this.getBuyerLedger(coldStorageId, false);
     
     return ledgerData.buyers
-      .filter(buyer => buyer.netDue > 0) // Only include buyers with positive dues
       .map(buyer => ({
         buyerName: buyer.buyerName,
-        totalDue: buyer.netDue
+        totalDue: buyer.netDue - (buyer.advanceDue || 0)
       }))
+      .filter(buyer => buyer.totalDue > 0)
       .sort((a, b) => a.buyerName.toLowerCase().localeCompare(b.buyerName.toLowerCase()));
   }
 
@@ -2626,7 +2629,28 @@ export class DatabaseStorage implements IStorage {
       .where(eq(cashReceipts.id, receiptId));
 
     // Handle recomputation based on payer type
-    if (receipt.payerType === "farmer" && receipt.coldStorageId && receipt.buyerName) {
+    if (receipt.payerType === "cold_merchant_advance" && receipt.coldStorageId && receipt.buyerLedgerId) {
+      // Undo merchant advance payment: reduce paidAmount on merchant advance records (reverse FIFO)
+      const records = await db.select().from(merchantAdvance)
+        .where(and(
+          eq(merchantAdvance.coldStorageId, receipt.coldStorageId),
+          eq(merchantAdvance.buyerLedgerId, receipt.buyerLedgerId),
+          eq(merchantAdvance.isReversed, 0)
+        ))
+        .orderBy(desc(merchantAdvance.effectiveDate));
+
+      let remaining = receipt.amount;
+      for (const record of records) {
+        if (remaining <= 0) break;
+        const paid = record.paidAmount || 0;
+        if (paid <= 0) continue;
+        const reduceBy = Math.min(remaining, paid);
+        await db.update(merchantAdvance)
+          .set({ paidAmount: Math.round((paid - reduceBy) * 100) / 100 })
+          .where(eq(merchantAdvance.id, record.id));
+        remaining -= reduceBy;
+      }
+    } else if (receipt.payerType === "farmer" && receipt.coldStorageId && receipt.buyerName) {
       // For farmer payments, use recomputeFarmerPaymentsWithDiscounts to properly reset self-sales
       // Parse farmer identity from buyerDisplayName format: "FarmerName (Village)"
       const match = receipt.buyerName.match(/^(.+?)\s*\((.+?)\)$/);
@@ -5473,6 +5497,109 @@ export class DatabaseStorage implements IStorage {
         eq(merchantAdvance.isReversed, 0)
       ))
       .orderBy(desc(merchantAdvance.createdAt));
+  }
+
+  async getBuyersWithAdvanceDues(coldStorageId: string): Promise<{ buyerLedgerId: string; buyerId: string; buyerName: string; advanceDue: number }[]> {
+    const records = await db.select()
+      .from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.isReversed, 0)
+      ));
+
+    const grouped = new Map<string, { buyerLedgerId: string; buyerId: string; advanceDue: number }>();
+    for (const r of records) {
+      const remaining = (r.finalAmount || 0) - (r.paidAmount || 0);
+      if (remaining <= 0) continue;
+      const existing = grouped.get(r.buyerLedgerId);
+      if (existing) {
+        existing.advanceDue += remaining;
+      } else {
+        grouped.set(r.buyerLedgerId, {
+          buyerLedgerId: r.buyerLedgerId,
+          buyerId: r.buyerId,
+          advanceDue: remaining,
+        });
+      }
+    }
+
+    const buyerLedgerRecords = await db.select()
+      .from(buyerLedger)
+      .where(eq(buyerLedger.coldStorageId, coldStorageId));
+
+    const buyerNameMap = new Map<string, string>();
+    for (const bl of buyerLedgerRecords) {
+      buyerNameMap.set(bl.id, bl.buyerName);
+    }
+
+    const result: { buyerLedgerId: string; buyerId: string; buyerName: string; advanceDue: number }[] = [];
+    for (const [ledgerId, data] of grouped) {
+      const name = buyerNameMap.get(ledgerId);
+      if (name && data.advanceDue > 0) {
+        result.push({
+          buyerLedgerId: ledgerId,
+          buyerId: data.buyerId,
+          buyerName: name,
+          advanceDue: Math.round(data.advanceDue * 100) / 100,
+        });
+      }
+    }
+
+    return result.sort((a, b) => a.buyerName.toLowerCase().localeCompare(b.buyerName.toLowerCase()));
+  }
+
+  async payMerchantAdvance(coldStorageId: string, buyerLedgerId: string, amount: number): Promise<{ totalApplied: number; recordsUpdated: number }> {
+    const records = await db.select()
+      .from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.buyerLedgerId, buyerLedgerId),
+        eq(merchantAdvance.isReversed, 0)
+      ))
+      .orderBy(asc(merchantAdvance.effectiveDate));
+
+    let remaining = amount;
+    let totalApplied = 0;
+    let recordsUpdated = 0;
+
+    for (const record of records) {
+      if (remaining <= 0) break;
+      const due = (record.finalAmount || 0) - (record.paidAmount || 0);
+      if (due <= 0) continue;
+
+      const applyAmount = Math.min(remaining, due);
+      await db.update(merchantAdvance)
+        .set({ paidAmount: (record.paidAmount || 0) + applyAmount })
+        .where(eq(merchantAdvance.id, record.id));
+
+      totalApplied += applyAmount;
+      remaining -= applyAmount;
+      recordsUpdated++;
+    }
+
+    return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated };
+  }
+
+  async createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<CashReceipt> {
+    const [receipt] = await db.insert(cashReceipts)
+      .values({
+        id: randomUUID(),
+        transactionId: data.transactionId,
+        coldStorageId: data.coldStorageId,
+        payerType: data.payerType,
+        buyerName: data.buyerName,
+        buyerLedgerId: data.buyerLedgerId,
+        buyerId: data.buyerId,
+        receiptType: data.receiptType,
+        accountId: data.accountId,
+        amount: data.amount,
+        receivedAt: data.receivedAt,
+        notes: data.notes,
+        appliedAmount: data.amount,
+        unappliedAmount: 0,
+      })
+      .returning();
+    return receipt;
   }
 
   async accrueInterestForAll(coldStorageId: string): Promise<number> {

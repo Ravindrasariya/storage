@@ -408,6 +408,7 @@ const translations: Translations = {
   inwardCash: { en: "Inward Cash", hi: "आने वाला नकद" },
   payerType: { en: "Payer Type", hi: "भुगतानकर्ता प्रकार" },
   coldMerchant: { en: "Cold Merchant", hi: "कोल्ड व्यापारी" },
+  coldMerchantAdvance: { en: "Cold Merchant - Advance", hi: "व्यापारी - अग्रिम" },
   cold_merchant: { en: "Cold Merchant", hi: "कोल्ड व्यापारी" },
   salesOfGoods: { en: "Sales of Goods", hi: "माल की बिक्री" },
   salesGoods: { en: "Sales of Goods", hi: "माल की बिक्री" },

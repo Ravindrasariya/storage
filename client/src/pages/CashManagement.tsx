@@ -124,9 +124,9 @@ export default function CashManagement() {
   
   const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">(persistedState?.activeTab || "inward");
   
-  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer">(() => {
+  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer" | "cold_merchant_advance">(() => {
     const persisted = persistedState?.payerType;
-    if (persisted === "cold_merchant" || persisted === "farmer") return persisted;
+    if (persisted === "cold_merchant" || persisted === "farmer" || persisted === "cold_merchant_advance") return persisted;
     return "cold_merchant";
   });
   const [buyerName, setBuyerName] = useState(persistedState?.buyerName || "");
@@ -137,6 +137,11 @@ export default function CashManagement() {
   const [farmerSearchQuery, setFarmerSearchQuery] = useState("");
   const [buyerComboboxOpen, setBuyerComboboxOpen] = useState(false);
   const [buyerSearchQuery, setBuyerSearchQuery] = useState("");
+  const [advanceBuyerLedgerId, setAdvanceBuyerLedgerId] = useState("");
+  const [advanceBuyerId, setAdvanceBuyerId] = useState("");
+  const [advanceBuyerName, setAdvanceBuyerName] = useState("");
+  const [advanceBuyerComboboxOpen, setAdvanceBuyerComboboxOpen] = useState(false);
+  const [advanceBuyerSearchQuery, setAdvanceBuyerSearchQuery] = useState("");
   const [receiptType, setReceiptType] = useState<"cash" | "account">((persistedState?.receiptType as "cash" | "account") || "cash");
   const [accountId, setAccountId] = useState<string>(persistedState?.accountId || "");
   const [inwardAmount, setInwardAmount] = useState(persistedState?.inwardAmount || "");
@@ -307,7 +312,7 @@ export default function CashManagement() {
       if (loaded) {
         // Apply loaded state to all form fields
         if (loaded.activeTab) setActiveTab(loaded.activeTab);
-        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer") setPayerType(loaded.payerType);
+        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer" || loaded.payerType === "cold_merchant_advance") setPayerType(loaded.payerType);
         if (loaded.buyerName) setBuyerName(loaded.buyerName);
         if (loaded.customBuyerName) setCustomBuyerName(loaded.customBuyerName);
         if (loaded.salesGoodsBuyerName) setSalesGoodsBuyerName(loaded.salesGoodsBuyerName);
@@ -342,6 +347,11 @@ export default function CashManagement() {
 
   const { data: buyersWithDues = [], isLoading: loadingBuyers } = useQuery<BuyerWithDue[]>({
     queryKey: ["/api/cash-receipts/buyers-with-dues"],
+  });
+
+  const { data: buyersWithAdvanceDues = [], isLoading: loadingAdvanceBuyers } = useQuery<{ buyerLedgerId: string; buyerId: string; buyerName: string; advanceDue: number }[]>({
+    queryKey: ["/api/merchant-advances/buyers-with-dues"],
+    enabled: payerType === "cold_merchant_advance",
   });
 
   // Farmer dues from Farmer Ledger (for Cash Inward "farmer" payer type)
@@ -690,6 +700,33 @@ export default function CashManagement() {
     },
   });
 
+  const payMerchantAdvanceMutation = useMutation({
+    mutationFn: async (data: { buyerLedgerId: string; buyerId: string; buyerName: string; amount: number; receivedAt: string; remarks?: string; receiptType: string; accountId?: string }) => {
+      const response = await apiRequest("POST", "/api/merchant-advances/pay", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("paymentRecorded"), variant: "success" });
+      setInwardAmount("");
+      setReceivedDate(format(new Date(), "yyyy-MM-dd"));
+      setInwardRemarks("");
+      setAdvanceBuyerLedgerId("");
+      setAdvanceBuyerId("");
+      setAdvanceBuyerName("");
+      clearPersistedState(coldStorageId);
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: "Failed to record payment", variant: "destructive" });
+    },
+  });
+
   const createExpenseMutation = useMutation({
     mutationFn: async (data: { expenseType: string; receiverName?: string; paymentMode: string; accountId?: string; amount: number; paidAt: string; remarks?: string }) => {
       const response = await apiRequest("POST", "/api/expenses", data);
@@ -723,6 +760,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record expense", variant: "destructive" });
@@ -759,6 +797,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ 
         predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues")
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -1081,6 +1121,32 @@ export default function CashManagement() {
   });
 
   const handleInwardSubmit = () => {
+    if (payerType === "cold_merchant_advance") {
+      if (!advanceBuyerLedgerId) {
+        toast({ title: t("error"), description: t("selectMerchant"), variant: "destructive" });
+        return;
+      }
+      if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
+        toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+        return;
+      }
+      if (receiptType === "account" && !accountId) {
+        toast({ title: t("error"), description: t("selectBankAccount"), variant: "destructive" });
+        return;
+      }
+      payMerchantAdvanceMutation.mutate({
+        buyerLedgerId: advanceBuyerLedgerId,
+        buyerId: advanceBuyerId,
+        buyerName: advanceBuyerName,
+        amount: parseFloat(inwardAmount),
+        receivedAt: new Date(receivedDate).toISOString(),
+        remarks: inwardRemarks || undefined,
+        receiptType,
+        accountId: receiptType === "account" ? accountId : undefined,
+      });
+      return;
+    }
+
     // Determine buyer name based on payer type
     let finalBuyerName: string | undefined;
     let farmerReceivableId: string | undefined;
@@ -1302,6 +1368,7 @@ export default function CashManagement() {
   const getPayerTypeLabel = (type: string) => {
     switch (type) {
       case "cold_merchant": return t("coldMerchant");
+      case "cold_merchant_advance": return t("coldMerchantAdvance");
       case "sales_goods": return t("salesGoods");
       case "kata": return t("kata");
       case "others": return t("others");
@@ -2569,16 +2636,20 @@ export default function CashManagement() {
                 <div className="space-y-2">
                   <Label>{t("payerType")} *</Label>
                   <Select value={payerType} onValueChange={(v) => {
-                    setPayerType(v as "cold_merchant" | "farmer");
+                    setPayerType(v as "cold_merchant" | "farmer" | "cold_merchant_advance");
                     setBuyerName("");
                     setCustomBuyerName("");
                     setSalesGoodsBuyerName("");
+                    setAdvanceBuyerLedgerId("");
+                    setAdvanceBuyerId("");
+                    setAdvanceBuyerName("");
                   }}>
                     <SelectTrigger data-testid="select-payer-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
+                      <SelectItem value="cold_merchant_advance">{t("coldMerchantAdvance")}</SelectItem>
                       <SelectItem value="farmer">{t("farmer")}</SelectItem>
                     </SelectContent>
                   </Select>
@@ -2663,6 +2734,83 @@ export default function CashManagement() {
                     {selectedFarmerReceivableId && (
                       <p className="text-xs text-muted-foreground">
                         {t("totalDue")}: ₹{formatCurrency(farmerLedgerDues.find(f => f.id === selectedFarmerReceivableId)?.totalDue || 0)}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {payerType === "cold_merchant_advance" && (
+                  <div className="space-y-2">
+                    <Label>{t("selectMerchant")} *</Label>
+                    {loadingAdvanceBuyers ? (
+                      <div className="text-sm text-muted-foreground">{t("loading")}</div>
+                    ) : buyersWithAdvanceDues.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">{t("noBuyersFound") || "No buyers with advance dues"}</p>
+                    ) : (
+                      <Popover open={advanceBuyerComboboxOpen} onOpenChange={setAdvanceBuyerComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={advanceBuyerComboboxOpen}
+                            className="w-full justify-between font-normal"
+                            data-testid="select-advance-buyer"
+                          >
+                            {advanceBuyerLedgerId ? (
+                              <span className="truncate">{advanceBuyerName}</span>
+                            ) : (
+                              <span className="text-muted-foreground">{t("selectMerchant")}</span>
+                            )}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[350px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder={t("searchBuyer") || "Search buyer..."}
+                              value={advanceBuyerSearchQuery}
+                              onValueChange={setAdvanceBuyerSearchQuery}
+                            />
+                            <CommandList>
+                              <CommandEmpty>{t("noBuyersFound") || "No buyers found"}</CommandEmpty>
+                              <CommandGroup>
+                                {buyersWithAdvanceDues
+                                  .filter(buyer => {
+                                    if (!advanceBuyerSearchQuery) return true;
+                                    return buyer.buyerName.toLowerCase().includes(advanceBuyerSearchQuery.toLowerCase());
+                                  })
+                                  .map((buyer) => (
+                                    <CommandItem
+                                      key={buyer.buyerLedgerId}
+                                      value={buyer.buyerLedgerId}
+                                      onSelect={() => {
+                                        setAdvanceBuyerLedgerId(buyer.buyerLedgerId);
+                                        setAdvanceBuyerId(buyer.buyerId);
+                                        setAdvanceBuyerName(buyer.buyerName);
+                                        setAdvanceBuyerComboboxOpen(false);
+                                        setAdvanceBuyerSearchQuery("");
+                                      }}
+                                    >
+                                      <Check
+                                        className={`mr-2 h-4 w-4 ${advanceBuyerLedgerId === buyer.buyerLedgerId ? "opacity-100" : "opacity-0"}`}
+                                      />
+                                      <span className="flex items-center justify-between gap-4 w-full">
+                                        <span>{buyer.buyerName}</span>
+                                        <Badge variant="outline" className="text-xs">
+                                          ₹{formatCurrency(buyer.advanceDue)}
+                                        </Badge>
+                                      </span>
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                    {advanceBuyerLedgerId && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("totalDue")}: ₹{formatCurrency(buyersWithAdvanceDues.find(b => b.buyerLedgerId === advanceBuyerLedgerId)?.advanceDue || 0)}
                       </p>
                     )}
                   </div>
@@ -2806,13 +2954,15 @@ export default function CashManagement() {
                     !canEdit || 
                     !inwardAmount || 
                     createReceiptMutation.isPending ||
-                    (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim())))
+                    payMerchantAdvanceMutation.isPending ||
+                    (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim()))) ||
+                    (payerType === "cold_merchant_advance" && !advanceBuyerLedgerId)
                   }
                   className="w-full"
                   data-testid="button-record-payment"
                 >
                   <Save className="h-4 w-4 mr-2" />
-                  {createReceiptMutation.isPending ? t("saving") : t("recordPayment")}
+                  {(createReceiptMutation.isPending || payMerchantAdvanceMutation.isPending) ? t("saving") : t("recordPayment")}
                 </Button>
                 {!canEdit && (
                   <p className="text-xs text-muted-foreground text-center mt-2">
