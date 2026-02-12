@@ -4941,15 +4941,53 @@ export default function CashManagement() {
 
               {/* Search filter for receivables */}
               {openingReceivables.length > 0 && (
-                <div className="relative mb-2">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder={t("searchByNamePhoneVillage") || "Search by name, phone, village..."}
-                    value={receivableSearchQuery}
-                    onChange={(e) => setReceivableSearchQuery(e.target.value)}
-                    className="pl-8"
-                    data-testid="input-receivable-search"
-                  />
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder={t("searchByNamePhoneVillage") || "Search by name, phone, village..."}
+                      value={receivableSearchQuery}
+                      onChange={(e) => setReceivableSearchQuery(e.target.value)}
+                      className="pl-8"
+                      data-testid="input-receivable-search"
+                    />
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={t("downloadCSV") || "Download CSV"}
+                    data-testid="button-download-receivables-csv"
+                    onClick={() => {
+                      const headers = ["Type", "Name", "Contact", "Village", "Tehsil", "District", "State", "Principal (₹)", "ROI (%)", "Effective Date", "Final Amount (₹)", "Paid Amount (₹)", "Remarks", "Added On"];
+                      const rows = openingReceivables.map((r) => {
+                        const name = r.payerType === "farmer" ? (r.farmerName || "") : (r.buyerName || "");
+                        return [
+                          r.payerType === "farmer" ? "Farmer" : "Cold Merchant",
+                          name,
+                          r.contactNumber || "",
+                          r.village || "",
+                          r.tehsil || "",
+                          r.district || "",
+                          r.state || "",
+                          r.dueAmount.toString(),
+                          r.rateOfInterest.toString(),
+                          r.effectiveDate ? format(new Date(r.effectiveDate), "dd/MM/yyyy") : "",
+                          (r.finalAmount ?? r.dueAmount).toString(),
+                          (r.paidAmount || 0).toString(),
+                          r.remarks || "",
+                          format(new Date(r.createdAt), "dd/MM/yyyy"),
+                        ].map(v => `"${v.replace(/"/g, '""')}"`).join(",");
+                      });
+                      const csv = [headers.join(","), ...rows].join("\n");
+                      const blob = new Blob([csv], { type: "text/csv" });
+                      const link = document.createElement("a");
+                      link.href = URL.createObjectURL(blob);
+                      link.download = `receivables_${format(new Date(), "yyyy-MM-dd")}.csv`;
+                      link.click();
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
 
