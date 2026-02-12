@@ -5428,17 +5428,22 @@ export class DatabaseStorage implements IStorage {
     for (const record of records) {
       if (record.rateOfInterest <= 0) continue;
 
+      const remainingDue = (record.finalAmount || 0) - (record.paidAmount || 0);
+      if (remainingDue <= 0) continue;
+
       const lastAccrual = new Date(record.lastAccrualDate);
       lastAccrual.setHours(0, 0, 0, 0);
 
       if (lastAccrual >= today) continue;
 
-      const newFinalAmount = this.computeCompoundInterest(
-        record.amount,
+      const interestOnRemaining = this.computeCompoundInterest(
+        remainingDue,
         record.rateOfInterest,
-        record.effectiveDate,
+        lastAccrual,
         today
       );
+      const interestAccrued = interestOnRemaining - remainingDue;
+      const newFinalAmount = roundAmount((record.finalAmount || 0) + interestAccrued);
 
       await db.update(farmerAdvanceFreight)
         .set({
