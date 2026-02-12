@@ -124,7 +124,11 @@ export default function CashManagement() {
   
   const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">(persistedState?.activeTab || "inward");
   
-  const [payerType, setPayerType] = useState<"cold_merchant" | "sales_goods" | "kata" | "others" | "farmer">((persistedState?.payerType as "cold_merchant" | "sales_goods" | "kata" | "others" | "farmer") || "cold_merchant");
+  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer">(() => {
+    const persisted = persistedState?.payerType;
+    if (persisted === "cold_merchant" || persisted === "farmer") return persisted;
+    return "cold_merchant";
+  });
   const [buyerName, setBuyerName] = useState(persistedState?.buyerName || "");
   const [customBuyerName, setCustomBuyerName] = useState(persistedState?.customBuyerName || "");
   const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState(persistedState?.salesGoodsBuyerName || "");
@@ -298,7 +302,7 @@ export default function CashManagement() {
       if (loaded) {
         // Apply loaded state to all form fields
         if (loaded.activeTab) setActiveTab(loaded.activeTab);
-        if (loaded.payerType) setPayerType(loaded.payerType as "cold_merchant" | "sales_goods" | "kata" | "others");
+        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer") setPayerType(loaded.payerType);
         if (loaded.buyerName) setBuyerName(loaded.buyerName);
         if (loaded.customBuyerName) setCustomBuyerName(loaded.customBuyerName);
         if (loaded.salesGoodsBuyerName) setSalesGoodsBuyerName(loaded.salesGoodsBuyerName);
@@ -1066,10 +1070,6 @@ export default function CashManagement() {
     
     if (payerType === "cold_merchant") {
       finalBuyerName = buyerName === "__other__" ? customBuyerName.trim() : buyerName;
-    } else if (payerType === "sales_goods") {
-      finalBuyerName = salesGoodsBuyerName.trim();
-    } else if (payerType === "others") {
-      finalBuyerName = customBuyerName.trim();
     } else if (payerType === "farmer") {
       farmerReceivableId = selectedFarmerReceivableId;
       const selectedFarmer = farmerLedgerDues.find(f => f.id === farmerReceivableId);
@@ -1077,14 +1077,12 @@ export default function CashManagement() {
         finalBuyerName = `${selectedFarmer.farmerName} (${selectedFarmer.village})`;
       }
     }
-    // For kata, no buyer name needed
     
-    // Validate required fields based on payer type
     if (payerType === "farmer" && !farmerReceivableId) {
       toast({ title: t("error"), description: t("selectFarmer"), variant: "destructive" });
       return;
     }
-    if (payerType !== "kata" && payerType !== "farmer" && !finalBuyerName) {
+    if (payerType === "cold_merchant" && !finalBuyerName) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
@@ -2306,9 +2304,6 @@ export default function CashManagement() {
                     <SelectItem value="all">{t("allPayerTypes")}</SelectItem>
                     <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                     <SelectItem value="farmer">{t("farmer")}</SelectItem>
-                    <SelectItem value="kata">{t("kata")}</SelectItem>
-                    <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
-                    <SelectItem value="others">{t("others")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2544,8 +2539,7 @@ export default function CashManagement() {
                 <div className="space-y-2">
                   <Label>{t("payerType")} *</Label>
                   <Select value={payerType} onValueChange={(v) => {
-                    setPayerType(v as "cold_merchant" | "sales_goods" | "kata" | "others");
-                    // Reset buyer name fields when changing payer type
+                    setPayerType(v as "cold_merchant" | "farmer");
                     setBuyerName("");
                     setCustomBuyerName("");
                     setSalesGoodsBuyerName("");
@@ -2556,9 +2550,6 @@ export default function CashManagement() {
                     <SelectContent>
                       <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                       <SelectItem value="farmer">{t("farmer")}</SelectItem>
-                      <SelectItem value="kata">{t("kata")}</SelectItem>
-                      <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
-                      <SelectItem value="others">{t("others")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2744,36 +2735,6 @@ export default function CashManagement() {
                   </div>
                 )}
 
-                {payerType === "sales_goods" && (
-                  <div className="space-y-2">
-                    <Label>{t("buyerName")} *</Label>
-                    <Input
-                      value={salesGoodsBuyerName}
-                      onChange={(e) => setSalesGoodsBuyerName(e.target.value)}
-                      placeholder={t("enterBuyerName") || "Enter buyer name"}
-                      list="sales-goods-buyers-list"
-                      data-testid="input-sales-goods-buyer"
-                    />
-                    <datalist id="sales-goods-buyers-list">
-                      {salesGoodsBuyers.map((name) => (
-                        <option key={name} value={name} />
-                      ))}
-                    </datalist>
-                  </div>
-                )}
-
-                {payerType === "others" && (
-                  <div className="space-y-2">
-                    <Label>{t("buyerName")} *</Label>
-                    <Input
-                      value={customBuyerName}
-                      onChange={(e) => setCustomBuyerName(e.target.value)}
-                      placeholder={t("enterBuyerName") || "Enter buyer name"}
-                      data-testid="input-others-buyer"
-                    />
-                  </div>
-                )}
-
                 <div className="space-y-2">
                   <Label>{t("amount")} (₹) *</Label>
                   <Input
@@ -2815,9 +2776,7 @@ export default function CashManagement() {
                     !canEdit || 
                     !inwardAmount || 
                     createReceiptMutation.isPending ||
-                    (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim()))) ||
-                    (payerType === "sales_goods" && !salesGoodsBuyerName.trim()) ||
-                    (payerType === "others" && !customBuyerName.trim())
+                    (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim())))
                   }
                   className="w-full"
                   data-testid="button-record-payment"
@@ -4408,9 +4367,6 @@ export default function CashManagement() {
                         <SelectContent>
                           <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                           <SelectItem value="farmer">{t("farmer")}</SelectItem>
-                          <SelectItem value="kata">{t("kata")}</SelectItem>
-                          <SelectItem value="sales_goods">{t("salesGoods")}</SelectItem>
-                          <SelectItem value="others">{t("others")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -4763,20 +4719,51 @@ export default function CashManagement() {
                                 )}
                               </div>
                               {r.remarks && <p className="text-xs text-muted-foreground">{r.remarks}</p>}
-                              <p className="text-xs text-muted-foreground">
-                                {t("addedOn")}: {format(new Date(r.createdAt), "dd/MM/yyyy")}
-                              </p>
+                              <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+                                <span>{t("addedOn")}: {format(new Date(r.createdAt), "dd/MM/yyyy")}</span>
+                                {r.rateOfInterest > 0 && (
+                                  <span>{t("rateOfInterest")}: {r.rateOfInterest}%</span>
+                                )}
+                                {r.rateOfInterest > 0 && r.effectiveDate && (
+                                  <span>{t("effectiveDate")}: {format(new Date(r.effectiveDate), "dd/MM/yyyy")}</span>
+                                )}
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-green-600">₹{formatCurrency(r.dueAmount)}</span>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => deleteReceivableMutation.mutate(r.id)}
-                                data-testid={`button-delete-receivable-${r.id}`}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
+                              <div className="text-right">
+                                <span className="font-bold text-green-600">₹{formatCurrency(r.finalAmount ?? r.dueAmount)}</span>
+                                {r.rateOfInterest > 0 && r.finalAmount && r.finalAmount !== r.dueAmount && (
+                                  <p className="text-xs text-muted-foreground">({t("principal")}: ₹{formatCurrency(r.dueAmount)})</p>
+                                )}
+                              </div>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    data-testid={`button-delete-receivable-${r.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>{t("confirmDelete")}</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {t("deleteReceivableWarning")}
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => deleteReceivableMutation.mutate(r.id)}
+                                      className="bg-destructive text-destructive-foreground"
+                                    >
+                                      {t("delete")}
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </div>
                           </div>
                         );

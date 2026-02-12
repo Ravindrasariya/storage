@@ -523,6 +523,7 @@ const translations: Translations = {
   openingBalanceAmount: { en: "Opening Balance", hi: "प्रारंभिक शेष" },
   openingCashInHand: { en: "Opening Cash in Hand", hi: "प्रारंभिक हाथ में नकद" },
   deleteBankAccountWarning: { en: "Are you sure you want to delete this bank account?", hi: "क्या आप वाकई इस बैंक खाते को हटाना चाहते हैं?" },
+  deleteReceivableWarning: { en: "Are you sure you want to delete this receivable? This action cannot be undone.", hi: "क्या आप वाकई इस प्राप्य को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।" },
   confirmDelete: { en: "Confirm Delete", hi: "हटाने की पुष्टि करें" },
   delete: { en: "Delete", hi: "हटाएं" },
   accountExpense: { en: "Account Expense", hi: "खाते से खर्च" },
