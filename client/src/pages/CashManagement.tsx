@@ -158,6 +158,11 @@ export default function CashManagement() {
   const [expenseEffectiveDate, setExpenseEffectiveDate] = useState(todayDate);
   const [showExpenseFarmerSearch, setShowExpenseFarmerSearch] = useState(false);
   const [expenseFarmerSearchQuery, setExpenseFarmerSearchQuery] = useState("");
+  const [expenseBuyerLedgerId, setExpenseBuyerLedgerId] = useState("");
+  const [expenseBuyerId, setExpenseBuyerId] = useState("");
+  const [expenseBuyerName, setExpenseBuyerName] = useState("");
+  const [showExpenseBuyerSearch, setShowExpenseBuyerSearch] = useState(false);
+  const [expenseBuyerSearchQuery, setExpenseBuyerSearchQuery] = useState("");
   
   // Discount state - now uses farmer ID instead of composite key
   const [discountFarmerId, setDiscountFarmerId] = useState("");
@@ -346,11 +351,18 @@ export default function CashManagement() {
   });
 
   const isFarmerExpenseType = expenseType === "farmer_advance" || expenseType === "farmer_freight";
+  const isMerchantExpenseType = expenseType === "merchant_advance";
   const { data: allFarmersData } = useQuery<{ farmers: { id: string; farmerId: string; name: string; contactNumber: string; village: string }[] }>({
     queryKey: ["/api/farmer-ledger"],
     enabled: isFarmerExpenseType,
   });
   const allFarmers = allFarmersData?.farmers || [];
+
+  const { data: allBuyerLedgerData } = useQuery<{ buyers: { id: string; buyerId: string; buyerName: string; address: string; contactNumber: string }[] }>({
+    queryKey: ["/api/buyer-ledger"],
+    enabled: isMerchantExpenseType,
+  });
+  const allBuyerLedgerEntries = allBuyerLedgerData?.buyers || [];
 
   const { data: receipts = [], isLoading: loadingReceipts } = useQuery<CashReceipt[]>({
     queryKey: ["/api/cash-receipts"],
@@ -1149,9 +1161,14 @@ export default function CashManagement() {
       return;
     }
 
+    if (isMerchantExpenseType && (!expenseBuyerLedgerId || !expenseBuyerId)) {
+      toast({ title: t("error"), description: t("selectMerchant") || "Please select a merchant", variant: "destructive" });
+      return;
+    }
+
     createExpenseMutation.mutate({
       expenseType,
-      receiverName: isFarmerExpenseType ? expenseFarmerName : (expenseReceiverName || undefined),
+      receiverName: isFarmerExpenseType ? expenseFarmerName : (isMerchantExpenseType ? expenseBuyerName : (expenseReceiverName || undefined)),
       paymentMode: expensePaymentMode,
       accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
       amount: parseFloat(expenseAmount),
@@ -1160,6 +1177,12 @@ export default function CashManagement() {
       ...(isFarmerExpenseType ? {
         farmerLedgerId: expenseFarmerLedgerId,
         farmerId: expenseFarmerId,
+        rateOfInterest: parseFloat(expenseRateOfInterest) || 0,
+        effectiveDate: new Date(expenseEffectiveDate).toISOString(),
+      } : {}),
+      ...(isMerchantExpenseType ? {
+        buyerLedgerId: expenseBuyerLedgerId,
+        buyerId: expenseBuyerId,
         rateOfInterest: parseFloat(expenseRateOfInterest) || 0,
         effectiveDate: new Date(expenseEffectiveDate).toISOString(),
       } : {}),
@@ -1266,6 +1289,7 @@ export default function CashManagement() {
       case "cost_of_goods_sold": return t("costOfGoodsSold");
       case "farmer_advance": return t("farmerAdvance");
       case "farmer_freight": return t("farmerFreight");
+      case "merchant_advance": return t("merchantAdvance");
       default: return type;
     }
   };
@@ -2397,6 +2421,7 @@ export default function CashManagement() {
                     <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                     <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                     <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
+                    <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                     <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                     <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
                     <SelectItem value="hammali">{t("hammali")}</SelectItem>
@@ -3089,6 +3114,10 @@ export default function CashManagement() {
                     setExpenseRateOfInterest("");
                     setExpenseEffectiveDate(format(new Date(), "yyyy-MM-dd"));
                     setExpenseFarmerSearchQuery("");
+                    setExpenseBuyerLedgerId("");
+                    setExpenseBuyerId("");
+                    setExpenseBuyerName("");
+                    setExpenseBuyerSearchQuery("");
                   }}>
                     <SelectTrigger data-testid="select-expense-type">
                       <SelectValue placeholder={t("selectExpenseType")} />
@@ -3097,6 +3126,7 @@ export default function CashManagement() {
                       <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                       <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                       <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
+                      <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                       <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                       <SelectItem value="grading_charges">
                         {t("gradingCharges")} {paymentStats?.gradingDue ? `(₹${paymentStats.gradingDue.toLocaleString("en-IN")})` : ""}
@@ -3192,7 +3222,87 @@ export default function CashManagement() {
                   </div>
                 )}
 
-                {expenseType && !isFarmerExpenseType && (
+                {isMerchantExpenseType && (
+                  <div className="space-y-2 relative">
+                    <Label>{t("selectMerchant")} *</Label>
+                    {expenseBuyerName ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 p-2 border rounded-md bg-muted text-sm">
+                          {expenseBuyerName}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setExpenseBuyerLedgerId("");
+                            setExpenseBuyerId("");
+                            setExpenseBuyerName("");
+                            setExpenseBuyerSearchQuery("");
+                          }}
+                          data-testid="button-clear-expense-buyer"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Input
+                          value={expenseBuyerSearchQuery}
+                          onChange={(e) => setExpenseBuyerSearchQuery(e.target.value)}
+                          onFocus={() => setShowExpenseBuyerSearch(true)}
+                          onBlur={() => setTimeout(() => setShowExpenseBuyerSearch(false), 200)}
+                          placeholder={t("searchMerchant")}
+                          data-testid="input-expense-buyer-search"
+                        />
+                        {showExpenseBuyerSearch && (
+                          <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
+                            <ScrollArea className="max-h-[200px]">
+                              {allBuyerLedgerEntries
+                                .filter(b =>
+                                  !expenseBuyerSearchQuery ||
+                                  b.buyerName.toLowerCase().includes(expenseBuyerSearchQuery.toLowerCase()) ||
+                                  (b.contactNumber && b.contactNumber.includes(expenseBuyerSearchQuery))
+                                )
+                                .slice(0, 20)
+                                .map((buyer) => (
+                                  <Button
+                                    key={buyer.id}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full justify-start text-left"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setExpenseBuyerLedgerId(buyer.id);
+                                      setExpenseBuyerId(buyer.buyerId);
+                                      setExpenseBuyerName(buyer.buyerName);
+                                      setShowExpenseBuyerSearch(false);
+                                      setExpenseBuyerSearchQuery("");
+                                    }}
+                                    data-testid={`suggestion-expense-buyer-${buyer.id}`}
+                                  >
+                                    <div>
+                                      <span className="font-medium">{buyer.buyerName}</span>
+                                      <span className="text-muted-foreground text-xs ml-2">{buyer.address || ''} {buyer.contactNumber ? `| ${buyer.contactNumber}` : ''}</span>
+                                    </div>
+                                  </Button>
+                                ))}
+                              {allBuyerLedgerEntries.filter(b =>
+                                !expenseBuyerSearchQuery ||
+                                b.buyerName.toLowerCase().includes(expenseBuyerSearchQuery.toLowerCase()) ||
+                                (b.contactNumber && b.contactNumber.includes(expenseBuyerSearchQuery))
+                              ).length === 0 && (
+                                <p className="p-2 text-sm text-muted-foreground text-center">No merchants found</p>
+                              )}
+                            </ScrollArea>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {expenseType && !isFarmerExpenseType && !isMerchantExpenseType && (
                   <div className="space-y-2 relative">
                     <Label>{t("receiverName")}</Label>
                     <Input
@@ -3245,7 +3355,7 @@ export default function CashManagement() {
                   />
                 </div>
 
-                {isFarmerExpenseType && (
+                {(isFarmerExpenseType || isMerchantExpenseType) && (
                   <>
                     <div className="flex gap-3">
                       <div className="flex-1 space-y-2">
@@ -3855,7 +3965,7 @@ export default function CashManagement() {
                     {(selectedTransaction.data as Expense).receiverName && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">
-                          {((selectedTransaction.data as Expense).expenseType === "farmer_advance" || (selectedTransaction.data as Expense).expenseType === "farmer_freight") ? t("farmerName") : t("receiverName")}:
+                          {((selectedTransaction.data as Expense).expenseType === "farmer_advance" || (selectedTransaction.data as Expense).expenseType === "farmer_freight") ? t("farmerName") : (selectedTransaction.data as Expense).expenseType === "merchant_advance" ? t("merchantName") : t("receiverName")}:
                         </span>
                         <span className="font-medium">{(selectedTransaction.data as Expense).receiverName}</span>
                       </div>

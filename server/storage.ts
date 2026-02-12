@@ -62,6 +62,9 @@ import {
   farmerAdvanceFreight,
   type FarmerAdvanceFreight,
   type InsertFarmerAdvanceFreight,
+  merchantAdvance,
+  type MerchantAdvance,
+  type InsertMerchantAdvance,
   farmerLedger,
   farmerLedgerEditHistory,
   type FarmerLedgerEntry,
@@ -308,6 +311,9 @@ export interface IStorage {
   // Farmer Advance & Freight
   createFarmerAdvanceFreight(data: InsertFarmerAdvanceFreight): Promise<FarmerAdvanceFreight>;
   getFarmerAdvanceFreight(coldStorageId: string, farmerLedgerId?: string): Promise<FarmerAdvanceFreight[]>;
+  // Merchant Advance
+  createMerchantAdvance(data: InsertMerchantAdvance): Promise<MerchantAdvance>;
+  getMerchantAdvances(coldStorageId: string, buyerLedgerId?: string): Promise<MerchantAdvance[]>;
   accrueInterestForAll(coldStorageId: string): Promise<number>;
   // Farmer Ledger
   getFarmerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
@@ -357,6 +363,7 @@ export interface IStorage {
   getBuyerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
     buyers: (BuyerLedgerEntry & {
       pyReceivables: number;
+      advanceDue: number;
       dueTransferOut: number;
       dueTransferIn: number;
       salesDue: number;
@@ -366,6 +373,7 @@ export interface IStorage {
     summary: {
       totalBuyers: number;
       pyReceivables: number;
+      advanceDue: number;
       dueTransferOut: number;
       dueTransferIn: number;
       salesDue: number;
@@ -2991,6 +2999,16 @@ export class DatabaseStorage implements IStorage {
         .where(eq(farmerAdvanceFreight.expenseId, expenseId));
     }
 
+    // If this is a merchant_advance expense, also reverse the linked merchantAdvance record
+    if (expense.expenseType === "merchant_advance") {
+      await db.update(merchantAdvance)
+        .set({
+          isReversed: 1,
+          reversedAt: new Date(),
+        })
+        .where(eq(merchantAdvance.expenseId, expenseId));
+    }
+
     return { success: true, message: "Expense reversed" };
   }
 
@@ -5429,6 +5447,34 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(farmerAdvanceFreight.createdAt));
   }
 
+  async createMerchantAdvance(data: InsertMerchantAdvance): Promise<MerchantAdvance> {
+    const [record] = await db.insert(merchantAdvance)
+      .values({
+        id: randomUUID(),
+        ...data,
+      })
+      .returning();
+    return record;
+  }
+
+  async getMerchantAdvances(coldStorageId: string, buyerLedgerId?: string): Promise<MerchantAdvance[]> {
+    if (buyerLedgerId) {
+      return db.select().from(merchantAdvance)
+        .where(and(
+          eq(merchantAdvance.coldStorageId, coldStorageId),
+          eq(merchantAdvance.buyerLedgerId, buyerLedgerId),
+          eq(merchantAdvance.isReversed, 0)
+        ))
+        .orderBy(desc(merchantAdvance.createdAt));
+    }
+    return db.select().from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.isReversed, 0)
+      ))
+      .orderBy(desc(merchantAdvance.createdAt));
+  }
+
   async accrueInterestForAll(coldStorageId: string): Promise<number> {
     const records = await db.select().from(farmerAdvanceFreight)
       .where(and(
@@ -5507,6 +5553,43 @@ export class DatabaseStorage implements IStorage {
           lastAccrualDate: today,
         })
         .where(eq(openingReceivables.id, orRecord.id));
+
+      updatedCount++;
+    }
+
+    // ---- Accrue interest on merchant advances with rateOfInterest > 0 ----
+    const maRecords = await db.select().from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.isReversed, 0)
+      ));
+
+    for (const maRecord of maRecords) {
+      if (maRecord.rateOfInterest <= 0) continue;
+
+      const remainingDue = (maRecord.finalAmount || 0) - (maRecord.paidAmount || 0);
+      if (remainingDue <= 0) continue;
+
+      const lastAccrual = new Date(maRecord.lastAccrualDate);
+      lastAccrual.setHours(0, 0, 0, 0);
+
+      if (lastAccrual >= today) continue;
+
+      const interestOnRemaining = this.computeCompoundInterest(
+        remainingDue,
+        maRecord.rateOfInterest,
+        lastAccrual,
+        today
+      );
+      const interestAccrued = interestOnRemaining - remainingDue;
+      const newFinalAmount = roundAmount((maRecord.finalAmount || 0) + interestAccrued);
+
+      await db.update(merchantAdvance)
+        .set({
+          finalAmount: newFinalAmount,
+          lastAccrualDate: today,
+        })
+        .where(eq(merchantAdvance.id, maRecord.id));
 
       updatedCount++;
     }
@@ -6606,6 +6689,7 @@ export class DatabaseStorage implements IStorage {
   async getBuyerLedger(coldStorageId: string, includeArchived: boolean = false): Promise<{
     buyers: (BuyerLedgerEntry & {
       pyReceivables: number;
+      advanceDue: number;
       dueTransferOut: number;
       dueTransferIn: number;
       salesDue: number;
@@ -6615,6 +6699,7 @@ export class DatabaseStorage implements IStorage {
     summary: {
       totalBuyers: number;
       pyReceivables: number;
+      advanceDue: number;
       dueTransferOut: number;
       dueTransferIn: number;
       salesDue: number;
@@ -6642,6 +6727,14 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
         eq(openingReceivables.payerType, 'cold_merchant')
+      ));
+
+    // Get merchant advances (non-reversed)
+    const allMerchantAdvances = await db.select()
+      .from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.isReversed, 0)
       ));
     
     // Get sales history to calculate sales dues (non-self-sales without active transfers)
@@ -6681,6 +6774,11 @@ export class DatabaseStorage implements IStorage {
       const pyReceivables = buyerReceivables
         .filter(r => matchesBuyer(r))
         .reduce((sum, r) => sum + ((r.finalAmount ?? r.dueAmount) - (r.paidAmount || 0)), 0);
+
+      // Merchant Advance Due: Sum of unpaid merchant advances for this buyer
+      const advanceDue = allMerchantAdvances
+        .filter(ma => ma.buyerLedgerId === buyer.id)
+        .reduce((sum, ma) => sum + ((ma.finalAmount || 0) - (ma.paidAmount || 0)), 0);
       
       // Sales Due: Sum of unpaid NON-TRANSFERRED sales to this buyer
       // Transferred sales are tracked separately in Transfer In
@@ -6714,14 +6812,15 @@ export class DatabaseStorage implements IStorage {
       
       const dueTransferOut = 0;
       
-      // Net Due = PY Receivables + Sales Due + Buyer Extras + Farmer Transfers + Buyer Transfers Received
+      // Net Due = PY Receivables + Advance Due + Sales Due + Buyer Extras + Farmer Transfers + Buyer Transfers Received
       // Source buyer's transfer-out does NOT add to their liability (they don't owe it)
       // Destination buyer's transfer-in IS their liability
-      const netDue = roundAmount(pyReceivables + salesDue + buyerExtras + buyerTransferIn);
+      const netDue = roundAmount(pyReceivables + advanceDue + salesDue + buyerExtras + buyerTransferIn);
       
       return {
         ...buyer,
         pyReceivables: roundAmount(pyReceivables),
+        advanceDue: roundAmount(advanceDue),
         dueTransferOut: roundAmount(dueTransferOut),
         dueTransferIn: roundAmount(dueTransferIn),
         salesDue: roundAmount(salesDue),
@@ -6734,6 +6833,7 @@ export class DatabaseStorage implements IStorage {
     const summary = {
       totalBuyers: buyersWithDues.length,
       pyReceivables: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.pyReceivables, 0)),
+      advanceDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.advanceDue, 0)),
       dueTransferOut: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.dueTransferOut, 0)),
       dueTransferIn: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.dueTransferIn, 0)),
       salesDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.salesDue, 0)),

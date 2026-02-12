@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatCurrency } from "@/components/Currency";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -22,6 +23,7 @@ import type { BuyerLedgerEntry, BuyerLedgerEditHistoryEntry } from "@shared/sche
 
 interface BuyerWithDues extends BuyerLedgerEntry {
   pyReceivables: number;
+  advanceDue: number;
   dueTransferOut: number;
   dueTransferIn: number;
   salesDue: number;
@@ -34,6 +36,7 @@ interface BuyerLedgerData {
   summary: {
     totalBuyers: number;
     pyReceivables: number;
+    advanceDue: number;
     dueTransferOut: number;
     dueTransferIn: number;
     salesDue: number;
@@ -282,6 +285,7 @@ export default function BuyerLedger() {
     return {
       totalBuyers: displayedBuyers.length,
       pyReceivables: displayedBuyers.reduce((sum, b) => sum + (b.pyReceivables || 0), 0),
+      advanceDue: displayedBuyers.reduce((sum, b) => sum + (b.advanceDue || 0), 0),
       dueTransferIn: displayedBuyers.reduce((sum, b) => sum + (b.dueTransferIn || 0), 0),
       salesDue: displayedBuyers.reduce((sum, b) => sum + (b.salesDue || 0), 0),
       buyerExtras: displayedBuyers.reduce((sum, b) => sum + (b.buyerExtras || 0), 0),
@@ -341,7 +345,7 @@ export default function BuyerLedger() {
       buyer.buyerName,
       buyer.address || '-',
       buyer.contactNumber || '-',
-      formatDueValue(buyer.pyReceivables),
+      formatDueValue(buyer.pyReceivables + (buyer.advanceDue || 0)),
       formatDueValue(buyer.salesDue),
       formatDueValue(buyer.buyerExtras),
       formatDueValue(buyer.dueTransferIn),
@@ -353,7 +357,7 @@ export default function BuyerLedger() {
       t("total"),
       '',
       '',
-      formatDueValue(summary.pyReceivables),
+      formatDueValue(summary.pyReceivables + (summary.advanceDue || 0)),
       formatDueValue(summary.salesDue),
       formatDueValue(summary.buyerExtras),
       formatDueValue(summary.dueTransferIn),
@@ -410,7 +414,19 @@ export default function BuyerLedger() {
             <CardTitle className="text-xs font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
           </CardHeader>
           <CardContent className="py-1 px-3">
-            <div className="text-base font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables)}</div>
+            <div className="text-base font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables + (summary.advanceDue || 0))}</div>
+            {(summary.advanceDue || 0) > 0 && (
+              <div className="mt-1 space-y-0.5 text-[10px]">
+                <div className="flex justify-between gap-2">
+                  <span>{t("receivableAmount")}</span>
+                  <span className="font-medium">{formatDueValue(summary.pyReceivables)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>{t("advanceTotal")}</span>
+                  <span className="font-medium">{formatDueValue(summary.advanceDue)}</span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card className="py-1">
@@ -567,7 +583,7 @@ export default function BuyerLedger() {
                   <div className="grid grid-cols-4 gap-2 text-center text-xs">
                     <div>
                       <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
-                      <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(buyer.pyReceivables)}</div>
+                      <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(buyer.pyReceivables + (buyer.advanceDue || 0))}</div>
                     </div>
                     <div>
                       <div className="text-green-600 dark:text-green-400 font-medium">{t("salesDue")}</div>
@@ -651,7 +667,34 @@ export default function BuyerLedger() {
                         <td className="p-2 font-medium">{buyer.buyerName}</td>
                         <td className="p-2 font-medium">{buyer.address || '-'}</td>
                         <td className="p-2 font-medium">{buyer.contactNumber || '-'}</td>
-                        <td className="p-2 text-center font-medium text-blue-600 dark:text-blue-400">{formatDueValue(buyer.pyReceivables)}</td>
+                        <td className="p-2 text-center font-medium text-blue-600 dark:text-blue-400">
+                          {(buyer.advanceDue || 0) > 0 ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <span className="cursor-pointer underline decoration-dotted">{formatDueValue(buyer.pyReceivables + (buyer.advanceDue || 0))}</span>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-table-${buyer.id}`}>
+                                <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
+                                <div className="space-y-1 text-xs">
+                                  <div className="flex justify-between">
+                                    <span>{t("receivableAmount")}</span>
+                                    <span className="font-medium">{formatDueValue(buyer.pyReceivables)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>{t("advanceTotal")}</span>
+                                    <span className="font-medium">{formatDueValue(buyer.advanceDue)}</span>
+                                  </div>
+                                  <div className="flex justify-between border-t pt-1 font-semibold">
+                                    <span>{t("total")}</span>
+                                    <span>{formatDueValue(buyer.pyReceivables + buyer.advanceDue)}</span>
+                                  </div>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          ) : (
+                            formatDueValue(buyer.pyReceivables + (buyer.advanceDue || 0))
+                          )}
+                        </td>
                         <td className="p-2 text-center font-medium text-green-600 dark:text-green-400">{formatDueValue(buyer.salesDue)}</td>
                         <td className="p-2 text-center font-medium text-orange-600 dark:text-orange-400">{formatDueValue(buyer.buyerExtras)}</td>
                         <td className="p-2 text-center font-medium" style={{color: buyer.dueTransferIn > 0 ? 'rgb(147, 51, 234)' : buyer.dueTransferIn < 0 ? 'rgb(239, 68, 68)' : undefined}}>{formatDueValue(buyer.dueTransferIn)}</td>

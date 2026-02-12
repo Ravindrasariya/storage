@@ -436,6 +436,24 @@ export const farmerAdvanceFreight = pgTable("farmer_advance_freight", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Merchant Advance - tracks advance given to merchants (buyers) with optional interest
+export const merchantAdvance = pgTable("merchant_advance", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  buyerLedgerId: varchar("buyer_ledger_id").notNull(),
+  buyerId: text("buyer_id").notNull(),
+  amount: real("amount").notNull(),
+  rateOfInterest: real("rate_of_interest").notNull().default(0),
+  effectiveDate: timestamp("effective_date").notNull(),
+  finalAmount: real("final_amount").notNull(),
+  lastAccrualDate: timestamp("last_accrual_date").notNull(),
+  paidAmount: real("paid_amount").notNull().default(0),
+  expenseId: varchar("expense_id"),
+  isReversed: integer("is_reversed").notNull().default(0),
+  reversedAt: timestamp("reversed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Farmer Ledger - master farmer records per cold storage
 // Composite key: name + contact + village (case-insensitive, trimmed)
 export const farmerLedger = pgTable("farmer_ledger", {
@@ -538,6 +556,7 @@ export const insertOpeningPayableSchema = createInsertSchema(openingPayables).om
 export const insertDiscountSchema = createInsertSchema(discounts).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({ id: true, createdAt: true });
 export const insertFarmerAdvanceFreightSchema = createInsertSchema(farmerAdvanceFreight).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true, paidAmount: true });
+export const insertMerchantAdvanceSchema = createInsertSchema(merchantAdvance).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true, paidAmount: true });
 export const insertFarmerLedgerSchema = createInsertSchema(farmerLedger).omit({ id: true, createdAt: true, archivedAt: true });
 export const insertFarmerLedgerEditHistorySchema = createInsertSchema(farmerLedgerEditHistory).omit({ id: true, modifiedAt: true });
 export const insertBuyerLedgerSchema = createInsertSchema(buyerLedger).omit({ id: true, createdAt: true, archivedAt: true });
@@ -584,6 +603,8 @@ export type BankAccount = typeof bankAccounts.$inferSelect;
 export type InsertBankAccount = z.infer<typeof insertBankAccountSchema>;
 export type FarmerAdvanceFreight = typeof farmerAdvanceFreight.$inferSelect;
 export type InsertFarmerAdvanceFreight = z.infer<typeof insertFarmerAdvanceFreightSchema>;
+export type MerchantAdvance = typeof merchantAdvance.$inferSelect;
+export type InsertMerchantAdvance = z.infer<typeof insertMerchantAdvanceSchema>;
 export type FarmerLedgerEntry = typeof farmerLedger.$inferSelect;
 export type InsertFarmerLedger = z.infer<typeof insertFarmerLedgerSchema>;
 export type FarmerLedgerEditHistoryEntry = typeof farmerLedgerEditHistory.$inferSelect;

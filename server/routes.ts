@@ -2077,7 +2077,7 @@ export async function registerRoutes(
   });
 
   const createExpenseSchema = z.object({
-    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "farmer_advance", "farmer_freight"]),
+    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "farmer_advance", "farmer_freight", "merchant_advance"]),
     receiverName: z.string().optional(),
     paymentMode: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
@@ -2087,6 +2087,8 @@ export async function registerRoutes(
     remarks: z.string().optional(),
     farmerLedgerId: z.string().optional(),
     farmerId: z.string().optional(),
+    buyerLedgerId: z.string().optional(),
+    buyerId: z.string().optional(),
     rateOfInterest: z.number().min(0).optional(),
     effectiveDate: z.string().optional(),
   }).refine((data) => {
@@ -2099,7 +2101,12 @@ export async function registerRoutes(
       return false;
     }
     return true;
-  }, { message: "Farmer selection is required for advance/freight expenses" });
+  }, { message: "Farmer selection is required for advance/freight expenses" }).refine((data) => {
+    if (data.expenseType === "merchant_advance" && (!data.buyerLedgerId || !data.buyerId)) {
+      return false;
+    }
+    return true;
+  }, { message: "Merchant selection is required for merchant advance expenses" });
 
   app.post("/api/expenses", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
@@ -2140,6 +2147,37 @@ export async function registerRoutes(
           farmerLedgerId: validatedData.farmerLedgerId,
           farmerId: validatedData.farmerId,
           type: validatedData.expenseType === "farmer_advance" ? "advance" : "freight",
+          amount: principal,
+          rateOfInterest,
+          effectiveDate,
+          finalAmount,
+          lastAccrualDate: new Date(),
+          expenseId: expense.id,
+        });
+      }
+
+      if (validatedData.expenseType === "merchant_advance" && validatedData.buyerLedgerId && validatedData.buyerId) {
+        const effectiveDate = validatedData.effectiveDate ? new Date(validatedData.effectiveDate) : new Date();
+        const rateOfInterest = validatedData.rateOfInterest || 0;
+        const principal = validatedData.amount;
+
+        let finalAmount = principal;
+        if (rateOfInterest > 0) {
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          const startDate = new Date(effectiveDate);
+          startDate.setHours(0, 0, 0, 0);
+          const diffMs = now.getTime() - startDate.getTime();
+          if (diffMs > 0) {
+            const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
+            finalAmount = Math.round(principal * Math.pow(1 + rateOfInterest / 100, years) * 100) / 100;
+          }
+        }
+
+        await storage.createMerchantAdvance({
+          coldStorageId,
+          buyerLedgerId: validatedData.buyerLedgerId,
+          buyerId: validatedData.buyerId,
           amount: principal,
           rateOfInterest,
           effectiveDate,
