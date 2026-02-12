@@ -350,7 +350,11 @@ export const openingReceivables = pgTable("opening_receivables", {
   tehsil: text("tehsil"),
   district: text("district"),
   state: text("state"),
-  dueAmount: real("due_amount").notNull(),
+  dueAmount: real("due_amount").notNull(), // Principal amount (original input)
+  rateOfInterest: real("rate_of_interest").notNull().default(0), // Annual rate in % (0 = no interest)
+  effectiveDate: timestamp("effective_date"), // Date from which interest starts accruing (null = no interest)
+  finalAmount: real("final_amount"), // Current amount with accrued interest (null = use dueAmount for backward compat)
+  lastAccrualDate: timestamp("last_accrual_date"), // Last date interest was computed (null = never accrued)
   paidAmount: real("paid_amount").notNull().default(0), // Track FIFO payments against this receivable
   remarks: text("remarks"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

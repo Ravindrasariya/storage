@@ -222,6 +222,7 @@ const translations: Translations = {
   farmerFreight: { en: "Farmer - Freight", hi: "किसान - भाड़ा" },
   rateOfInterest: { en: "Rate of Interest (%)", hi: "ब्याज दर (%)" },
   effectiveDate: { en: "Effective Date", hi: "प्रभावी तिथि" },
+  principal: { en: "Principal", hi: "मूलधन" },
   finalAmount: { en: "Final Amount", hi: "अंतिम राशि" },
   receivableBreakup: { en: "Receivable Breakup", hi: "प्राप्य विवरण" },
   advanceTotal: { en: "Advance", hi: "अग्रिम" },

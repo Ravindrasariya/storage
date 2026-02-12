@@ -215,6 +215,11 @@ export default function CashManagement() {
   const [newReceivableAmount, setNewReceivableAmount] = useState("");
   const [newReceivableRemarks, setNewReceivableRemarks] = useState("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
+  const [newReceivableRateOfInterest, setNewReceivableRateOfInterest] = useState("");
+  const [newReceivableEffectiveDate, setNewReceivableEffectiveDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   // Farmer-specific fields for receivables
   const [newReceivableFarmerName, setNewReceivableFarmerName] = useState("");
   const [newReceivableContactNumber, setNewReceivableContactNumber] = useState("");
@@ -444,6 +449,21 @@ export default function CashManagement() {
   }, [discountFarmerId, farmersWithAllDues]);
 
   // Farmer autocomplete suggestions for receivables form
+  const receivablePreviewFinalAmount = useMemo(() => {
+    const principal = parseFloat(newReceivableAmount) || 0;
+    if (principal <= 0) return 0;
+    const rate = parseFloat(newReceivableRateOfInterest) || 0;
+    if (rate <= 0 || !newReceivableEffectiveDate) return principal;
+    const startDate = new Date(newReceivableEffectiveDate);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date();
+    endDate.setHours(0, 0, 0, 0);
+    const diffMs = endDate.getTime() - startDate.getTime();
+    if (diffMs <= 0) return principal;
+    const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
+    return Math.round(principal * Math.pow(1 + rate / 100, years) * 100) / 100;
+  }, [newReceivableAmount, newReceivableRateOfInterest, newReceivableEffectiveDate]);
+
   const receivableFarmerNameSuggestions = useMemo(() => {
     if (!farmerRecordsForReceivables || farmerRecordsForReceivables.length === 0 || !newReceivableFarmerName.trim()) return [];
     const nameVal = newReceivableFarmerName.toLowerCase().trim();
@@ -940,6 +960,8 @@ export default function CashManagement() {
       payerType: string; 
       buyerName?: string; 
       dueAmount: number; 
+      rateOfInterest?: number;
+      effectiveDate?: string;
       remarks?: string;
       farmerName?: string;
       contactNumber?: string;
@@ -955,6 +977,11 @@ export default function CashManagement() {
       toast({ title: t("success"), description: t("receivableAdded"), variant: "success" });
       setNewReceivableBuyerName("");
       setNewReceivableAmount("");
+      setNewReceivableRateOfInterest("");
+      setNewReceivableEffectiveDate(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      });
       setNewReceivableRemarks("");
       setNewReceivableFarmerName("");
       setNewReceivableContactNumber("");
@@ -4587,9 +4614,9 @@ export default function CashManagement() {
                     </>
                   )}
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <Label className="text-xs">{t("amount")}</Label>
+                      <Label className="text-xs">{t("amount")} ({t("principal")})</Label>
                       <Input
                         type="number"
                         value={newReceivableAmount}
@@ -4599,14 +4626,39 @@ export default function CashManagement() {
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">{t("remarks")}</Label>
+                      <Label className="text-xs">{t("rateOfInterest") || "Rate of Interest %"}</Label>
                       <Input
-                        value={newReceivableRemarks}
-                        onChange={(e) => setNewReceivableRemarks(e.target.value)}
-                        placeholder={t("optional")}
-                        data-testid="input-receivable-remarks"
+                        type="number"
+                        value={newReceivableRateOfInterest}
+                        onChange={(e) => setNewReceivableRateOfInterest(e.target.value)}
+                        placeholder="0"
+                        step="0.1"
+                        data-testid="input-receivable-rate-of-interest"
                       />
                     </div>
+                    <div>
+                      <Label className="text-xs">{t("effectiveDate") || "Effective Date"}</Label>
+                      <Input
+                        type="date"
+                        value={newReceivableEffectiveDate}
+                        onChange={(e) => setNewReceivableEffectiveDate(e.target.value)}
+                        data-testid="input-receivable-effective-date"
+                      />
+                    </div>
+                  </div>
+                  {receivablePreviewFinalAmount > 0 && receivablePreviewFinalAmount !== (parseFloat(newReceivableAmount) || 0) && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("finalAmount") || "Final Amount"}: {formatCurrency(receivablePreviewFinalAmount)}
+                    </p>
+                  )}
+                  <div>
+                    <Label className="text-xs">{t("remarks")}</Label>
+                    <Input
+                      value={newReceivableRemarks}
+                      onChange={(e) => setNewReceivableRemarks(e.target.value)}
+                      placeholder={t("optional")}
+                      data-testid="input-receivable-remarks"
+                    />
                   </div>
                   <Button
                     size="sm"
@@ -4638,13 +4690,15 @@ export default function CashManagement() {
                           return;
                         }
                       }
+                      const rateVal = parseFloat(newReceivableRateOfInterest) || 0;
                       createReceivableMutation.mutate({
                         year: settingsYear,
                         payerType: newReceivablePayerType,
                         buyerName: newReceivablePayerType !== "farmer" ? (newReceivableBuyerName || undefined) : undefined,
                         dueAmount: parseFloat(newReceivableAmount),
+                        rateOfInterest: rateVal,
+                        effectiveDate: rateVal > 0 && newReceivableEffectiveDate ? new Date(newReceivableEffectiveDate).toISOString() : undefined,
                         remarks: newReceivableRemarks || undefined,
-                        // Farmer-specific fields
                         farmerName: newReceivablePayerType === "farmer" ? newReceivableFarmerName : undefined,
                         contactNumber: newReceivablePayerType === "farmer" ? newReceivableContactNumber : undefined,
                         village: newReceivablePayerType === "farmer" ? newReceivableVillage : undefined,

@@ -2509,7 +2509,7 @@ export async function registerRoutes(
   app.post("/api/opening-receivables", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, payerType, buyerName, dueAmount, remarks, farmerName, contactNumber, village, tehsil, district, state } = req.body;
+      const { year, payerType, buyerName, dueAmount, rateOfInterest, effectiveDate, remarks, farmerName, contactNumber, village, tehsil, district, state } = req.body;
       
       if (!year || !payerType || !dueAmount) {
         return res.status(400).json({ error: "Year, payer type, and amount are required" });
@@ -2537,8 +2537,9 @@ export async function registerRoutes(
           payerType,
           buyerName: buyerName || null,
           dueAmount,
+          rateOfInterest: rateOfInterest || 0,
+          effectiveDate: effectiveDate ? new Date(effectiveDate) : null,
           remarks: remarks || null,
-          // Farmer-specific fields
           farmerName: farmerName || null,
           contactNumber: contactNumber || null,
           village: village || null,
@@ -2564,15 +2565,15 @@ export async function registerRoutes(
           payerType,
           buyerName: buyerName || null,
           dueAmount,
+          rateOfInterest: rateOfInterest || 0,
+          effectiveDate: effectiveDate ? new Date(effectiveDate) : null,
           remarks: remarks || null,
-          // Farmer-specific fields (not used for cold_merchant)
           farmerName: null,
           contactNumber: null,
           village: null,
           tehsil: null,
           district: null,
           state: null,
-          // Buyer-specific fields
           buyerLedgerId: buyerEntry.id,
           buyerId: buyerEntry.buyerId,
         });
@@ -2592,8 +2593,9 @@ export async function registerRoutes(
         payerType,
         buyerName: buyerName || null,
         dueAmount,
+        rateOfInterest: rateOfInterest || 0,
+        effectiveDate: effectiveDate ? new Date(effectiveDate) : null,
         remarks: remarks || null,
-        // Farmer-specific fields
         farmerName: farmerName || null,
         contactNumber: contactNumber || null,
         village: village || null,

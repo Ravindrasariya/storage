@@ -1961,7 +1961,7 @@ export class DatabaseStorage implements IStorage {
     
     // Calculate total due from receivables
     for (const receivable of allFarmerReceivables) {
-      const remainingDue = receivable.dueAmount - (receivable.paidAmount || 0);
+      const remainingDue = (receivable.finalAmount ?? receivable.dueAmount) - (receivable.paidAmount || 0);
       if (remainingDue > 0) {
         totalDueBefore += remainingDue;
       }
@@ -2036,7 +2036,7 @@ export class DatabaseStorage implements IStorage {
     // First apply to receivables (if any)
     for (const receivable of allFarmerReceivables) {
       if (remainingAmount <= 0) break;
-      const remainingDue = roundAmount(receivable.dueAmount - (receivable.paidAmount || 0));
+      const remainingDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount) - (receivable.paidAmount || 0));
       if (remainingDue <= 0) continue;
       
       const amountToApply = Math.min(remainingAmount, remainingDue);
@@ -2244,20 +2244,19 @@ export class DatabaseStorage implements IStorage {
           eq(openingReceivables.year, currentYear),
           eq(openingReceivables.payerType, "cold_merchant"),
           sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
-          sql`(${openingReceivables.dueAmount} - ${openingReceivables.paidAmount}) > 0`
+          sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - ${openingReceivables.paidAmount}) > 0`
         ))
         .orderBy(openingReceivables.createdAt); // FIFO - oldest first
 
       for (const receivable of buyerReceivables) {
         if (remainingAmount <= 0) break;
 
-        const receivableDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
+        const receivableDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount ?? 0) - (receivable.paidAmount || 0));
         if (receivableDue <= 0) continue;
 
         if (remainingAmount >= receivableDue) {
-          // Can fully pay this receivable
           await db.update(openingReceivables)
-            .set({ paidAmount: receivable.dueAmount })
+            .set({ paidAmount: roundAmount((receivable.paidAmount || 0) + receivableDue) })
             .where(eq(openingReceivables.id, receivable.id));
           
           remainingAmount = roundAmount(remainingAmount - receivableDue);
@@ -2472,7 +2471,7 @@ export class DatabaseStorage implements IStorage {
       ));
 
     for (const receivable of receivables) {
-      const remaining = (receivable.dueAmount || 0) - (receivable.paidAmount || 0);
+      const remaining = (receivable.finalAmount ?? receivable.dueAmount ?? 0) - (receivable.paidAmount || 0);
       if (remaining > 0) {
         totalDue += remaining;
       }
@@ -2827,7 +2826,7 @@ export class DatabaseStorage implements IStorage {
         .orderBy(openingReceivables.createdAt);
       
       for (const receivable of currentReceivables) {
-        const remainingDue = roundAmount(receivable.dueAmount - (receivable.paidAmount || 0));
+        const remainingDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount) - (receivable.paidAmount || 0));
         if (remainingDue <= 0) continue;
         
         const amountToApply = Math.min(remainingAmount, remainingDue);
@@ -3165,19 +3164,19 @@ export class DatabaseStorage implements IStorage {
           eq(openingReceivables.year, currentYear),
           eq(openingReceivables.payerType, "cold_merchant"),
           sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName}))`,
-          sql`(${openingReceivables.dueAmount} - ${openingReceivables.paidAmount}) > 0`
+          sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - ${openingReceivables.paidAmount}) > 0`
         ))
         .orderBy(openingReceivables.createdAt);
 
       for (const receivable of buyerReceivables) {
         if (remainingAmount <= 0) break;
 
-        const receivableDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
+        const receivableDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount ?? 0) - (receivable.paidAmount || 0));
         if (receivableDue <= 0) continue;
 
         if (remainingAmount >= receivableDue) {
           await db.update(openingReceivables)
-            .set({ paidAmount: receivable.dueAmount })
+            .set({ paidAmount: roundAmount((receivable.paidAmount || 0) + receivableDue) })
             .where(eq(openingReceivables.id, receivable.id));
           
           remainingAmount = roundAmount(remainingAmount - receivableDue);
@@ -4015,12 +4014,28 @@ export class DatabaseStorage implements IStorage {
       buyerId = buyerEntry.buyerId;
     }
     
+    let computedFinalAmount: number = data.dueAmount;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let computedLastAccrualDate: Date = today;
+    
+    if (data.rateOfInterest && data.rateOfInterest > 0 && data.effectiveDate) {
+      computedFinalAmount = roundAmount(this.computeCompoundInterest(
+        data.dueAmount,
+        data.rateOfInterest,
+        new Date(data.effectiveDate),
+        today
+      ));
+    }
+    
     const [receivable] = await db.insert(openingReceivables)
       .values({
         id: randomUUID(),
         ...data,
         buyerLedgerId,
         buyerId,
+        finalAmount: computedFinalAmount,
+        lastAccrualDate: computedLastAccrualDate,
       })
       .returning();
     return receivable;
@@ -4860,13 +4875,13 @@ export class DatabaseStorage implements IStorage {
             sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
             sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
             sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`,
-            sql`(${openingReceivables.dueAmount} - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
+            sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
           ))
           .orderBy(openingReceivables.createdAt);
         
         for (const receivable of currentReceivables) {
           if (remainingAmount <= 0) break;
-          const remainingDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
+          const remainingDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount ?? 0) - (receivable.paidAmount || 0));
           const amountToApply = Math.min(remainingAmount, remainingDue);
           
           if (amountToApply > 0) {
@@ -4993,13 +5008,13 @@ export class DatabaseStorage implements IStorage {
             sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
             sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
             sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`,
-            sql`(${openingReceivables.dueAmount} - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
+            sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
           ))
           .orderBy(openingReceivables.createdAt);
         
         for (const receivable of adjReceivables) {
           if (remainingAmount <= 0) break;
-          const remainingDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
+          const remainingDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount ?? 0) - (receivable.paidAmount || 0));
           const amountToApply = Math.min(remainingAmount, remainingDue);
           if (amountToApply > 0) {
             await db.update(openingReceivables)
@@ -5137,13 +5152,13 @@ export class DatabaseStorage implements IStorage {
             sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
             sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
             sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`,
-            sql`(${openingReceivables.dueAmount} - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
+            sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
           ))
           .orderBy(openingReceivables.createdAt);
         
         for (const receivable of discountReceivables) {
           if (remainingAmount <= 0) break;
-          const remainingDue = roundAmount((receivable.dueAmount || 0) - (receivable.paidAmount || 0));
+          const remainingDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount ?? 0) - (receivable.paidAmount || 0));
           const amountToApply = Math.min(remainingAmount, remainingDue);
           
           if (amountToApply > 0) {
@@ -5451,6 +5466,47 @@ export class DatabaseStorage implements IStorage {
           lastAccrualDate: today,
         })
         .where(eq(farmerAdvanceFreight.id, record.id));
+
+      updatedCount++;
+    }
+
+    // ---- Accrue interest on opening receivables with rateOfInterest > 0 ----
+    const orRecords = await db.select().from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        sql`${openingReceivables.rateOfInterest} > 0`
+      ));
+
+    for (const orRecord of orRecords) {
+      if (orRecord.rateOfInterest <= 0) continue;
+
+      const remainingDue = (orRecord.finalAmount ?? orRecord.dueAmount) - (orRecord.paidAmount || 0);
+      if (remainingDue <= 0) continue;
+
+      if (orRecord.lastAccrualDate) {
+        const lastAccrual = new Date(orRecord.lastAccrualDate);
+        lastAccrual.setHours(0, 0, 0, 0);
+        if (lastAccrual >= today) continue;
+      }
+
+      const lastDate = orRecord.lastAccrualDate ? new Date(orRecord.lastAccrualDate) : (orRecord.effectiveDate ? new Date(orRecord.effectiveDate) : today);
+      lastDate.setHours(0, 0, 0, 0);
+
+      const interestOnRemaining = this.computeCompoundInterest(
+        remainingDue,
+        orRecord.rateOfInterest,
+        lastDate,
+        today
+      );
+      const interestAccrued = interestOnRemaining - remainingDue;
+      const newFinalAmount = roundAmount((orRecord.finalAmount ?? orRecord.dueAmount) + interestAccrued);
+
+      await db.update(openingReceivables)
+        .set({
+          finalAmount: newFinalAmount,
+          lastAccrualDate: today,
+        })
+        .where(eq(openingReceivables.id, orRecord.id));
 
       updatedCount++;
     }
@@ -5875,6 +5931,7 @@ export class DatabaseStorage implements IStorage {
       // Match by farmerLedgerId (primary) or composite key (fallback for old records)
       const pyReceivablesData = await db.select({
         dueAmount: openingReceivables.dueAmount,
+        finalAmount: openingReceivables.finalAmount,
         paidAmount: openingReceivables.paidAmount,
       })
         .from(openingReceivables)
@@ -5892,7 +5949,7 @@ export class DatabaseStorage implements IStorage {
           )`
         ));
       
-      const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
+      const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + ((r.finalAmount ?? r.dueAmount) - (r.paidAmount || 0)), 0);
       
       // Self Due - from self-sales (isSelfSale = 1) where farmer bought their own produce
       // EXCLUDE self-sales that have been transferred to a buyer (those are now buyer dues)
@@ -6012,6 +6069,7 @@ export class DatabaseStorage implements IStorage {
 
     const pyReceivablesData = await db.select({
       dueAmount: openingReceivables.dueAmount,
+      finalAmount: openingReceivables.finalAmount,
       paidAmount: openingReceivables.paidAmount,
     })
       .from(openingReceivables)
@@ -6028,7 +6086,7 @@ export class DatabaseStorage implements IStorage {
           )
         )`
       ));
-    const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
+    const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + ((r.finalAmount ?? r.dueAmount) - (r.paidAmount || 0)), 0);
 
     const selfSalesData = await db.select({ dueAmount: salesHistory.dueAmount })
       .from(salesHistory)
@@ -6622,7 +6680,7 @@ export class DatabaseStorage implements IStorage {
       // For cold_merchant type, the buyer name is stored in buyerName field
       const pyReceivables = buyerReceivables
         .filter(r => matchesBuyer(r))
-        .reduce((sum, r) => sum + (r.dueAmount - (r.paidAmount || 0)), 0);
+        .reduce((sum, r) => sum + ((r.finalAmount ?? r.dueAmount) - (r.paidAmount || 0)), 0);
       
       // Sales Due: Sum of unpaid NON-TRANSFERRED sales to this buyer
       // Transferred sales are tracked separately in Transfer In
