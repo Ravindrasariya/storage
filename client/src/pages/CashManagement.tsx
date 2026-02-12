@@ -694,6 +694,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record payment", variant: "destructive" });
