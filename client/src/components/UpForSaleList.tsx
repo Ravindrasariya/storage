@@ -163,7 +163,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-dues") });
       toast({
         title: t("success"),
         description: "Partial sale recorded successfully",
