@@ -1140,34 +1140,34 @@ export class DatabaseStorage implements IStorage {
     const gradingDue = Math.max(0, totalGradingCharges - gradingExpensesPaid);
     
     // Calculate Total Receivable Due from Farmer and Buyer ledgers
-    // This sums PY Receivables (opening receivables) that are still due
-    let totalReceivableDue = 0;
-    
-    // Get Farmer Ledger receivable dues
+    // Farmer: PY Receivables + Advance Due + Freight Due
+    // Buyer: PY Receivables + Advance Due
     const farmerLedgerData = await this.getFarmerLedger(coldStorageId);
+    let farmerReceivableDue = 0;
     for (const farmer of farmerLedgerData.farmers) {
-      totalReceivableDue += farmer.pyReceivables || 0;
+      farmerReceivableDue += (farmer.pyReceivables || 0) + (farmer.advanceDue || 0) + (farmer.freightDue || 0);
     }
     
-    // Get Buyer Ledger receivable dues
     const buyerLedgerData = await this.getBuyerLedger(coldStorageId);
+    let buyerReceivableDue = 0;
     for (const buyer of buyerLedgerData.buyers) {
-      totalReceivableDue += buyer.pyReceivables || 0;
+      buyerReceivableDue += (buyer.pyReceivables || 0) + (buyer.advanceDue || 0);
     }
+    
+    const totalReceivableDue = farmerReceivableDue + buyerReceivableDue;
 
     return {
       totalPaid,
       totalDue,
       paidCount,
       dueCount,
-      // Gross totals (for Analytics display)
       totalHammali,
       totalGradingCharges,
-      // Net amounts after expenses (for Cash Management expense dropdowns)
       hammaliDue,
       gradingDue,
-      // Receivable dues from Farmer and Buyer ledgers
       totalReceivableDue,
+      farmerReceivableDue,
+      buyerReceivableDue,
     };
   }
 

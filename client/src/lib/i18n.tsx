@@ -416,6 +416,7 @@ const translations: Translations = {
   kata: { en: "Kata", hi: "काटा" },
   others: { en: "Others", hi: "अन्य" },
   farmer: { en: "Farmer", hi: "किसान" },
+  buyer: { en: "Buyer", hi: "खरीदार" },
   selectFarmer: { en: "Select Farmer", hi: "किसान चुनें" },
   selectBankAccount: { en: "Please select a bank account", hi: "कृपया बैंक खाता चुनें" },
   searchByNamePhoneVillage: { en: "Search by name, phone, village...", hi: "नाम, फ़ोन, गाँव से खोजें..." },

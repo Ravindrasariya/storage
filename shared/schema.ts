@@ -737,8 +737,10 @@ export interface PaymentStats {
   // Net amounts after expenses (for Cash Management expense dropdowns)
   hammaliDue: number;
   gradingDue: number;
-  // Receivable dues (PY Receivables from Farmer and Buyer ledgers)
+  // Receivable dues from Farmer and Buyer ledgers
   totalReceivableDue: number;
+  farmerReceivableDue: number;
+  buyerReceivableDue: number;
 }
 
 // Merchant stats for analytics

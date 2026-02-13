@@ -189,6 +189,10 @@ export default function Analytics() {
               <p className="text-sm sm:text-base font-bold text-orange-600 dark:text-orange-400" data-testid="text-total-receivable-due">
                 <Currency amount={paymentStats?.totalReceivableDue || 0} />
               </p>
+              <div className="flex flex-wrap gap-2 sm:gap-3 mt-1 sm:mt-2 text-xs">
+                <span className="text-orange-600 dark:text-orange-400" data-testid="text-farmer-receivable">{t("farmer")}: <Currency amount={paymentStats?.farmerReceivableDue || 0} /></span>
+                <span className="text-amber-600 dark:text-amber-400" data-testid="text-buyer-receivable">{t("buyer")}: <Currency amount={paymentStats?.buyerReceivableDue || 0} /></span>
+              </div>
             </div>
           </div>
         </Card>
