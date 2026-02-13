@@ -300,15 +300,22 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       hammaliAmount = (sale.hammali || 0) * bagsToUse;
     }
   } else {
-    // Fallback: use stored coldStorageCharge minus extras
+    // Fallback: use stored coldStorageCharge minus extras and adj amount (coldStorageCharge includes both)
     const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
-    coldChargeAmount = (sale.coldStorageCharge || 0) - extras;
+    coldChargeAmount = (sale.coldStorageCharge || 0) - extras - (sale.adjReceivableSelfDueAmount || 0);
     hammaliAmount = 0;
   }
 
   // Calculate total cold charges from recalculated values
   const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
-  const totalCharges = coldChargeAmount + hammaliAmount + extras;
+  const adjAmount = sale.adjReceivableSelfDueAmount || 0;
+  const adjPy = sale.adjPyReceivables || 0;
+  const adjFreightAmt = sale.adjFreight || 0;
+  const adjAdvanceAmt = sale.adjAdvance || 0;
+  const adjSelfDueAmt = sale.adjSelfDue || 0;
+  const adjBreakdownTotal = adjPy + adjFreightAmt + adjAdvanceAmt + adjSelfDueAmt;
+  const hasAdjBreakdown = adjAmount > 0 && adjBreakdownTotal > 0;
+  const totalCharges = coldChargeAmount + hammaliAmount + extras + adjAmount;
   
   // Net Cold Bill after discount = Total Charges - Discount
   const netColdBill = Math.max(0, totalCharges - discountAllocated);
@@ -414,6 +421,39 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               <td>ग्रेडिंग शुल्क</td>
               <td className="amount">{(sale.gradingCharges || 0) > 0 ? formatAmount(sale.gradingCharges || 0) : "-"}</td>
             </tr>
+            {hasAdjBreakdown ? (
+              <>
+                {adjPy > 0 && (
+                  <tr>
+                    <td>पूर्व वर्ष बकाया (PY Receivables)</td>
+                    <td className="amount">{formatAmount(adjPy)}</td>
+                  </tr>
+                )}
+                {adjFreightAmt > 0 && (
+                  <tr>
+                    <td>किसान भाड़ा (Farmer Freight)</td>
+                    <td className="amount">{formatAmount(adjFreightAmt)}</td>
+                  </tr>
+                )}
+                {adjAdvanceAmt > 0 && (
+                  <tr>
+                    <td>किसान अग्रिम (Farmer Advance)</td>
+                    <td className="amount">{formatAmount(adjAdvanceAmt)}</td>
+                  </tr>
+                )}
+                {adjSelfDueAmt > 0 && (
+                  <tr>
+                    <td>स्वयं बिक्री बकाया (Self Due)</td>
+                    <td className="amount">{formatAmount(adjSelfDueAmt)}</td>
+                  </tr>
+                )}
+              </>
+            ) : adjAmount > 0 ? (
+              <tr>
+                <td>बकाया समायोजन (Adj Receivable & Self Due)</td>
+                <td className="amount">{formatAmount(adjAmount)}</td>
+              </tr>
+            ) : null}
             <tr className="total-row">
               <td><strong>कुल शीत भण्डार शुल्क</strong></td>
               <td className="amount"><strong>रु. {formatAmount(totalCharges)}</strong></td>
@@ -572,6 +612,39 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               <td>ग्रेडिंग शुल्क</td>
               <td className="amount">{(sale.gradingCharges || 0) > 0 ? formatAmount(sale.gradingCharges || 0) : "-"}</td>
             </tr>
+            {hasAdjBreakdown ? (
+              <>
+                {adjPy > 0 && (
+                  <tr>
+                    <td>पूर्व वर्ष बकाया (PY Receivables)</td>
+                    <td className="amount">{formatAmount(adjPy)}</td>
+                  </tr>
+                )}
+                {adjFreightAmt > 0 && (
+                  <tr>
+                    <td>किसान भाड़ा (Farmer Freight)</td>
+                    <td className="amount">{formatAmount(adjFreightAmt)}</td>
+                  </tr>
+                )}
+                {adjAdvanceAmt > 0 && (
+                  <tr>
+                    <td>किसान अग्रिम (Farmer Advance)</td>
+                    <td className="amount">{formatAmount(adjAdvanceAmt)}</td>
+                  </tr>
+                )}
+                {adjSelfDueAmt > 0 && (
+                  <tr>
+                    <td>स्वयं बिक्री बकाया (Self Due)</td>
+                    <td className="amount">{formatAmount(adjSelfDueAmt)}</td>
+                  </tr>
+                )}
+              </>
+            ) : adjAmount > 0 ? (
+              <tr>
+                <td>बकाया समायोजन (Adj Receivable & Self Due)</td>
+                <td className="amount">{formatAmount(adjAmount)}</td>
+              </tr>
+            ) : null}
             <tr className="total-row">
               <td><strong>कुल शीत भण्डार शुल्क</strong></td>
               <td className="amount"><strong>रु. {formatAmount(totalCharges)}</strong></td>
