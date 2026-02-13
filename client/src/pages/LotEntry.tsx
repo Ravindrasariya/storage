@@ -83,7 +83,7 @@ interface LotData {
 }
 
 const defaultLotData: LotData = {
-  size: 1,
+  size: 0,
   netWeight: undefined,
   type: "",
   bagType: "wafer",
