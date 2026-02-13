@@ -101,6 +101,8 @@ const defaultLotData: LotData = {
 };
 
 const STORAGE_KEY = "lotEntryFormData";
+const STORAGE_VERSION_KEY = "lotEntryFormVersion";
+const CURRENT_STORAGE_VERSION = "2";
 const BAG_TYPE_PREFERENCE_KEY = "lotEntryBagTypePreference";
 
 export default function LotEntry() {
@@ -197,6 +199,11 @@ export default function LotEntry() {
   // Load saved form data from localStorage on mount
   useEffect(() => {
     try {
+      const savedVersion = localStorage.getItem(STORAGE_VERSION_KEY);
+      if (savedVersion !== CURRENT_STORAGE_VERSION) {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_STORAGE_VERSION);
+      }
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const { farmer, lots: savedLots, imagePreviews: savedPreviews, bagTypeCategory: savedCategory } = JSON.parse(saved);
