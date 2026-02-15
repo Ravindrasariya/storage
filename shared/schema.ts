@@ -287,7 +287,9 @@ export const cashReceipts = pgTable("cash_receipts", {
   // Buyer ledger reference (for cold_merchant payer type)
   buyerLedgerId: varchar("buyer_ledger_id"), // Reference to buyer_ledger table
   buyerId: text("buyer_id"), // User-friendly buyer ID (BYYYYYMMDD format)
-});
+}, (table) => ({
+  uniqueTxnPerColdStorage: uniqueIndex("cash_receipts_cs_txn_idx").on(table.coldStorageId, table.transactionId),
+}));
 
 // Expenses - tracks outward cash/account payments
 export const expenses = pgTable("expenses", {
@@ -305,7 +307,9 @@ export const expenses = pgTable("expenses", {
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  uniqueTxnPerColdStorage: uniqueIndex("expenses_cs_txn_idx").on(table.coldStorageId, table.transactionId),
+}));
 
 // Cash Transfers - internal fund movements between account types (self transfers)
 export const cashTransfers = pgTable("cash_transfers", {
@@ -322,7 +326,9 @@ export const cashTransfers = pgTable("cash_transfers", {
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  uniqueTxnPerColdStorage: uniqueIndex("cash_transfers_cs_txn_idx").on(table.coldStorageId, table.transactionId),
+}));
 
 // Opening Balances - start of year cash balances
 export const cashOpeningBalances = pgTable("cash_opening_balances", {
@@ -404,7 +410,9 @@ export const discounts = pgTable("discounts", {
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  uniqueTxnPerColdStorage: uniqueIndex("discounts_cs_txn_idx").on(table.coldStorageId, table.transactionId),
+}));
 
 // Bank Accounts - dynamic bank accounts for cold storage (Current, Limit, Saving)
 export const bankAccounts = pgTable("bank_accounts", {
