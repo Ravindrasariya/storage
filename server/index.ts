@@ -4,6 +4,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { storage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -95,6 +96,41 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      scheduleMidnightInterestAccrual();
     },
   );
 })();
+
+function scheduleMidnightInterestAccrual() {
+  const runAccrual = async () => {
+    try {
+      const coldStorages = await storage.getAllColdStorages();
+      for (const cs of coldStorages) {
+        if (cs.status !== 'active') continue;
+        const count = await storage.accrueInterestForAll(cs.id);
+        if (count > 0) {
+          log(`Interest accrued for ${count} records in cold storage: ${cs.name}`, "scheduler");
+        }
+      }
+    } catch (error) {
+      log(`Error in midnight interest accrual: ${error}`, "scheduler");
+    }
+  };
+
+  const scheduleNext = () => {
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setDate(midnight.getDate() + 1);
+    midnight.setHours(0, 0, 0, 0);
+    const msUntilMidnight = midnight.getTime() - now.getTime();
+
+    setTimeout(async () => {
+      await runAccrual();
+      scheduleNext();
+    }, msUntilMidnight);
+
+    log(`Next interest accrual scheduled at midnight IST (in ${Math.round(msUntilMidnight / 60000)} minutes)`, "scheduler");
+  };
+
+  scheduleNext();
+}

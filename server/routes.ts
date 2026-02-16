@@ -2186,15 +2186,7 @@ export async function registerRoutes(
 
         let finalAmount = principal;
         if (rateOfInterest > 0) {
-          const now = new Date();
-          now.setHours(0, 0, 0, 0);
-          const startDate = new Date(effectiveDate);
-          startDate.setHours(0, 0, 0, 0);
-          const diffMs = now.getTime() - startDate.getTime();
-          if (diffMs > 0) {
-            const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
-            finalAmount = Math.round(principal * Math.pow(1 + rateOfInterest / 100, years) * 100) / 100;
-          }
+          finalAmount = storage.calculateSimpleInterest(principal, rateOfInterest, effectiveDate, new Date());
         }
 
         await storage.createFarmerAdvanceFreight({
@@ -2218,15 +2210,7 @@ export async function registerRoutes(
 
         let finalAmount = principal;
         if (rateOfInterest > 0) {
-          const now = new Date();
-          now.setHours(0, 0, 0, 0);
-          const startDate = new Date(effectiveDate);
-          startDate.setHours(0, 0, 0, 0);
-          const diffMs = now.getTime() - startDate.getTime();
-          if (diffMs > 0) {
-            const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
-            finalAmount = Math.round(principal * Math.pow(1 + rateOfInterest / 100, years) * 100) / 100;
-          }
+          finalAmount = storage.calculateSimpleInterest(principal, rateOfInterest, effectiveDate, new Date());
         }
 
         await storage.createMerchantAdvance({
@@ -2854,7 +2838,6 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const includeArchived = req.query.includeArchived === 'true';
-      await storage.accrueInterestForAll(coldStorageId);
       const result = await storage.getFarmerLedger(coldStorageId, includeArchived);
       res.json(result);
     } catch (error) {

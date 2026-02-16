@@ -318,6 +318,7 @@ export interface IStorage {
   payMerchantAdvance(coldStorageId: string, buyerLedgerId: string, amount: number): Promise<{ totalApplied: number; recordsUpdated: number }>;
   createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<CashReceipt>;
   accrueInterestForAll(coldStorageId: string): Promise<number>;
+  calculateSimpleInterest(principal: number, annualRate: number, fromDate: Date, toDate: Date): number;
   // Farmer Ledger
   getFarmerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
     farmers: (FarmerLedgerEntry & {
@@ -4047,7 +4048,7 @@ export class DatabaseStorage implements IStorage {
     let computedLastAccrualDate: Date = today;
     
     if (data.rateOfInterest && data.rateOfInterest > 0 && data.effectiveDate) {
-      computedFinalAmount = roundAmount(this.computeCompoundInterest(
+      computedFinalAmount = roundAmount(this.calculateSimpleInterest(
         data.dueAmount,
         data.rateOfInterest,
         new Date(data.effectiveDate),
@@ -5629,7 +5630,7 @@ export class DatabaseStorage implements IStorage {
 
       if (lastAccrual >= today) continue;
 
-      const interestOnRemaining = this.computeCompoundInterest(
+      const interestOnRemaining = this.calculateSimpleInterest(
         remainingDue,
         record.rateOfInterest,
         lastAccrual,
@@ -5670,7 +5671,7 @@ export class DatabaseStorage implements IStorage {
       const lastDate = orRecord.lastAccrualDate ? new Date(orRecord.lastAccrualDate) : (orRecord.effectiveDate ? new Date(orRecord.effectiveDate) : today);
       lastDate.setHours(0, 0, 0, 0);
 
-      const interestOnRemaining = this.computeCompoundInterest(
+      const interestOnRemaining = this.calculateSimpleInterest(
         remainingDue,
         orRecord.rateOfInterest,
         lastDate,
@@ -5707,7 +5708,7 @@ export class DatabaseStorage implements IStorage {
 
       if (lastAccrual >= today) continue;
 
-      const interestOnRemaining = this.computeCompoundInterest(
+      const interestOnRemaining = this.calculateSimpleInterest(
         remainingDue,
         maRecord.rateOfInterest,
         lastAccrual,
@@ -5729,23 +5730,23 @@ export class DatabaseStorage implements IStorage {
     return updatedCount;
   }
 
-  private computeCompoundInterest(
+  calculateSimpleInterest(
     principal: number,
     annualRate: number,
-    effectiveDate: Date,
-    currentDate: Date
+    fromDate: Date,
+    toDate: Date
   ): number {
-    const startDate = new Date(effectiveDate);
+    const startDate = new Date(fromDate);
     startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(currentDate);
+    const endDate = new Date(toDate);
     endDate.setHours(0, 0, 0, 0);
 
     const diffMs = endDate.getTime() - startDate.getTime();
     if (diffMs <= 0) return principal;
 
-    const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
+    const days = diffMs / (24 * 60 * 60 * 1000);
     const rate = annualRate / 100;
-    return Math.round(principal * Math.pow(1 + rate, years) * 100) / 100;
+    return Math.round((principal + (principal * rate * days / 365)) * 100) / 100;
   }
 
   // ============ FARMER LEDGER ============
