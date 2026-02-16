@@ -1122,7 +1122,7 @@ export async function registerRoutes(
       // If adj amount was applied, trigger farmer FIFO recomputation to allocate across buckets
       if (!isSelfSale && adjReceivableSelfDueAmount > 0 && lot.farmerName && lot.contactNumber && lot.village) {
         await storage.recomputeFarmerPaymentsWithDiscounts(
-          coldStorageId, lot.farmerName, lot.contactNumber, lot.village
+          coldStorageId, lot.farmerLedgerId || null, lot.farmerName, lot.contactNumber, lot.village
         );
       }
 
@@ -1445,7 +1445,7 @@ export async function registerRoutes(
       if (validatedData.adjReceivableSelfDueAmount !== undefined && updated && 
           updated.farmerName && updated.contactNumber && updated.village) {
         await storage.recomputeFarmerPaymentsWithDiscounts(
-          coldStorageId, updated.farmerName, updated.contactNumber, updated.village
+          coldStorageId, updated.farmerLedgerId || null, updated.farmerName, updated.contactNumber, updated.village
         );
       }
       
@@ -1459,7 +1459,7 @@ export async function registerRoutes(
         if (updated.isSelfSale === 1 && updated.farmerName && updated.village) {
           // For self-sales, trigger farmer FIFO recalculation
           const buyerDisplayName = `${updated.farmerName} (${updated.village})`;
-          await storage.recomputeFarmerPayments(coldStorageId, buyerDisplayName);
+          await storage.recomputeFarmerPayments(coldStorageId, updated.farmerLedgerId || null, buyerDisplayName);
         } else {
           // Get CurrentDueBuyerName: transferToBuyerName if not blank, else buyerName
           const currentDueBuyerName = (updated.transferToBuyerName && updated.transferToBuyerName.trim() !== '') 
@@ -1537,7 +1537,7 @@ export async function registerRoutes(
       if (isSelfSale && farmerName && village && result.coldStorageId) {
         // For self-sales, trigger farmer FIFO recalculation
         const buyerDisplayName = `${farmerName} (${village})`;
-        await storage.recomputeFarmerPayments(result.coldStorageId, buyerDisplayName);
+        await storage.recomputeFarmerPayments(result.coldStorageId, sale.farmerLedgerId || null, buyerDisplayName);
       } else if (result.buyerName && result.coldStorageId) {
         // For regular sales, trigger buyer FIFO recomputation
         await storage.recomputeBuyerPayments(result.buyerName, result.coldStorageId);
@@ -1547,7 +1547,7 @@ export async function registerRoutes(
       const hadAdjAmount = (sale.adjReceivableSelfDueAmount || 0) > 0;
       if (hadAdjAmount && farmerName && sale.contactNumber && sale.village && result.coldStorageId) {
         await storage.recomputeFarmerPaymentsWithDiscounts(
-          result.coldStorageId, farmerName, sale.contactNumber, sale.village
+          result.coldStorageId, sale.farmerLedgerId || null, farmerName, sale.contactNumber, sale.village
         );
       }
 
@@ -2064,6 +2064,7 @@ export async function registerRoutes(
           const result = await storage.createFarmerReceivablePayment({
             coldStorageId: coldStorageId,
             farmerReceivableId: validatedData.farmerReceivableId,
+            farmerLedgerId: req.body.farmerLedgerId || null,
             farmerDetails: farmerDetails || null,
             buyerName: validatedData.buyerName || null,
             receiptType: validatedData.receiptType,
@@ -2485,6 +2486,8 @@ export async function registerRoutes(
         discountDate: validatedData.discountDate,
         remarks: validatedData.remarks || null,
         buyerAllocations: JSON.stringify(validatedData.buyerAllocations),
+        farmerLedgerId: farmer.id,
+        farmerId: farmer.farmerId,
       });
       
       res.json(result);
@@ -2969,6 +2972,7 @@ export async function registerRoutes(
         .filter(f => (f.pyReceivables + (f.advanceDue || 0) + (f.freightDue || 0) + f.selfDue) > 0)
         .map(f => ({
           id: f.id,
+          farmerLedgerId: f.id,
           farmerName: f.name,
           village: f.village,
           contactNumber: f.contactNumber,

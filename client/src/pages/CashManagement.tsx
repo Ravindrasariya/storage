@@ -356,7 +356,7 @@ export default function CashManagement() {
 
   // Farmer dues from Farmer Ledger (for Cash Inward "farmer" payer type)
   // Returns pyReceivables + selfDue as totalDue (farmer-liable dues only)
-  const { data: farmerLedgerDues = [] } = useQuery<{ id: string; farmerName: string; contactNumber: string; village: string; pyReceivables: number; advanceDue: number; freightDue: number; selfDue: number; totalDue: number }[]>({
+  const { data: farmerLedgerDues = [] } = useQuery<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; pyReceivables: number; advanceDue: number; freightDue: number; selfDue: number; totalDue: number }[]>({
     queryKey: ["/api/farmer-ledger/dues-for-dropdown"],
   });
 
@@ -659,7 +659,7 @@ export default function CashManagement() {
   });
 
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; farmerDetails?: { farmerName: string; contactNumber: string; village: string }; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
+    mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; farmerLedgerId?: string | null; farmerDetails?: { farmerName: string; contactNumber: string; village: string }; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -1189,6 +1189,7 @@ export default function CashManagement() {
       payerType,
       buyerName: finalBuyerName,
       farmerReceivableId,
+      farmerLedgerId: selectedFarmer?.farmerLedgerId || null,
       farmerDetails: selectedFarmer ? {
         farmerName: selectedFarmer.farmerName,
         contactNumber: selectedFarmer.contactNumber,

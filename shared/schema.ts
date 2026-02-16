@@ -406,6 +406,9 @@ export const discounts = pgTable("discounts", {
   // Buyer allocations stored as JSON array: [{buyerName, amount}]
   buyerAllocations: text("buyer_allocations").notNull(), // JSON string of allocations
   dueBalanceAfter: real("due_balance_after"), // Remaining farmer dues after this discount
+  // Farmer ledger reference
+  farmerLedgerId: varchar("farmer_ledger_id"),
+  farmerId: text("farmer_id"),
   // Status tracking
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),

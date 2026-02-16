@@ -223,8 +223,8 @@ export interface IStorage {
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
   // Cash Receipts
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
-  getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
-  createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
+  getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
+  createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerLedgerId: string | null; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
   getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
   getSalesGoodsBuyers(coldStorageId: string): Promise<string[]>;
   createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
@@ -240,8 +240,8 @@ export interface IStorage {
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
   // FIFO Recomputation
   recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
-  recomputeFarmerPayments(coldStorageId: string, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }>;
-  recomputeFarmerPaymentsWithDiscounts(coldStorageId: string, farmerName: string, contactNumber: string, village: string): Promise<{ receivablesUpdated: number; selfSalesUpdated: number }>;
+  recomputeFarmerPayments(coldStorageId: string, farmerLedgerId: string | null, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }>;
+  recomputeFarmerPaymentsWithDiscounts(coldStorageId: string, farmerLedgerId: string | null, farmerName: string, contactNumber: string, village: string): Promise<{ receivablesUpdated: number; selfSalesUpdated: number }>;
   // Admin
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
   // Bill number assignment
@@ -1862,8 +1862,7 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => a.buyerName.toLowerCase().localeCompare(b.buyerName.toLowerCase()));
   }
 
-  async getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }[]> {
-    // Get farmer receivables with outstanding dues for the specified year
+  async getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; totalDue: number }[]> {
     const farmers = await db.select()
       .from(openingReceivables)
       .where(and(
@@ -1872,15 +1871,12 @@ export class DatabaseStorage implements IStorage {
         eq(openingReceivables.payerType, "farmer")
       ));
 
-    // Also get farmer dues from self sales (where farmer is the buyer)
-    // EXCLUDE self-sales that have been transferred to a buyer (transfer_to_buyer_name is set)
-    // because those debts now belong to the buyer, not the farmer
-    // Uses TRIM for space-trimmed grouping, aggregation handles case differences via JavaScript
     const selfSalesResult = await db.execute(sql`
       SELECT 
         TRIM(farmer_name) as farmer_name,
         TRIM(contact_number) as contact_number,
         TRIM(village) as village,
+        farmer_ledger_id,
         COALESCE(SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)), 0)::float as total_due
       FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
@@ -1888,29 +1884,26 @@ export class DatabaseStorage implements IStorage {
         AND sale_year = ${year}
         AND (due_amount > 0 OR extra_due_to_merchant > 0)
         AND (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
-      GROUP BY TRIM(farmer_name), TRIM(village), TRIM(contact_number)
+      GROUP BY farmer_ledger_id, TRIM(farmer_name), TRIM(village), TRIM(contact_number)
       HAVING SUM(COALESCE(due_amount, 0) + COALESCE(extra_due_to_merchant, 0)) >= 1
     `);
-    const selfSales = selfSalesResult.rows as { farmer_name: string; contact_number: string; village: string; total_due: number }[];
+    const selfSales = selfSalesResult.rows as { farmer_name: string; contact_number: string; village: string; farmer_ledger_id: string | null; total_due: number }[];
 
-    // Map to track farmer dues by unique key (farmerName + contactNumber + village)
-    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching
-    const farmerDuesMap = new Map<string, { id: string; farmerName: string; contactNumber: string; village: string; totalDue: number }>();
+    const farmerDuesMap = new Map<string, { id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; totalDue: number }>();
 
-    // Add receivables from openingReceivables
     for (const f of farmers) {
       if (!f.farmerName || !f.contactNumber || !f.village) continue;
       const remainingDue = f.dueAmount - (f.paidAmount || 0);
       if (remainingDue < 1) continue;
       
-      // Normalize key with trim and lowercase for consistent matching
-      const key = `${f.farmerName.trim().toLowerCase()}_${f.contactNumber.trim()}_${f.village.trim().toLowerCase()}`;
+      const key = f.farmerLedgerId || `composite_${f.farmerName.trim().toLowerCase()}_${f.contactNumber.trim()}_${f.village.trim().toLowerCase()}`;
       const existing = farmerDuesMap.get(key);
       if (existing) {
         existing.totalDue += remainingDue;
       } else {
         farmerDuesMap.set(key, {
           id: f.id,
+          farmerLedgerId: f.farmerLedgerId || null,
           farmerName: f.farmerName.trim(),
           contactNumber: f.contactNumber.trim(),
           village: f.village.trim(),
@@ -1919,18 +1912,16 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Add dues from self sales (already trimmed by SQL query)
     for (const sale of selfSales) {
       if (!sale.farmer_name || !sale.contact_number || !sale.village) continue;
-      // Normalize key with trim and lowercase for consistent matching
-      const key = `${sale.farmer_name.trim().toLowerCase()}_${sale.contact_number.trim()}_${sale.village.trim().toLowerCase()}`;
+      const key = sale.farmer_ledger_id || `composite_${sale.farmer_name.trim().toLowerCase()}_${sale.contact_number.trim()}_${sale.village.trim().toLowerCase()}`;
       const existing = farmerDuesMap.get(key);
       if (existing) {
         existing.totalDue += sale.total_due;
       } else {
-        // Generate a synthetic id for self-sale farmers (they have no receivable entry)
         farmerDuesMap.set(key, {
           id: `self_sale_${sale.farmer_name.trim()}_${sale.contact_number.trim()}_${sale.village.trim()}`,
+          farmerLedgerId: sale.farmer_ledger_id || null,
           farmerName: sale.farmer_name.trim(),
           contactNumber: sale.contact_number.trim(),
           village: sale.village.trim(),
@@ -1944,8 +1935,7 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => a.farmerName.toLowerCase().localeCompare(b.farmerName.toLowerCase()));
   }
 
-  async createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
-    // Farmer details are required (from Farmer Ledger dropdown)
+  async createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerLedgerId: string | null; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
     if (!data.farmerDetails) {
       throw new Error("Farmer details are required for farmer payments");
     }
@@ -1956,38 +1946,47 @@ export class DatabaseStorage implements IStorage {
       village: data.farmerDetails.village,
     };
     
+    let farmerLedgerEntry;
+    if (data.farmerLedgerId) {
+      const [entry] = await db.select().from(farmerLedger)
+        .where(eq(farmerLedger.id, data.farmerLedgerId)).limit(1);
+      farmerLedgerEntry = entry;
+    }
+    if (!farmerLedgerEntry) {
+      const [entry] = await db.select().from(farmerLedger)
+        .where(and(
+          eq(farmerLedger.coldStorageId, data.coldStorageId),
+          sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerIdentity.farmerName}))`,
+          sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${farmerIdentity.contactNumber})`,
+          sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${farmerIdentity.village}))`
+        )).limit(1);
+      farmerLedgerEntry = entry;
+    }
+    const resolvedFarmerLedgerId = farmerLedgerEntry?.id || null;
+    
     let totalDueBefore = 0;
     
-    // Get ALL farmer receivables for this farmer (FIFO by createdAt)
     const allFarmerReceivables = await db.select()
       .from(openingReceivables)
       .where(and(
         eq(openingReceivables.coldStorageId, data.coldStorageId),
         sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`,
-        sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerIdentity.farmerName}))`,
-        sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${farmerIdentity.contactNumber})`,
-        sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${farmerIdentity.village}))`
+        sql`(
+          (${openingReceivables.farmerLedgerId} IS NOT NULL AND ${openingReceivables.farmerLedgerId} = ${resolvedFarmerLedgerId})
+          OR (${openingReceivables.farmerLedgerId} IS NULL 
+            AND LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerIdentity.farmerName}))
+            AND TRIM(${openingReceivables.contactNumber}) = TRIM(${farmerIdentity.contactNumber})
+            AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${farmerIdentity.village})))
+        )`
       ))
       .orderBy(openingReceivables.createdAt);
     
-    // Calculate total due from receivables
     for (const receivable of allFarmerReceivables) {
       const remainingDue = (receivable.finalAmount ?? receivable.dueAmount) - (receivable.paidAmount || 0);
       if (remainingDue > 0) {
         totalDueBefore += remainingDue;
       }
     }
-    
-    // Look up farmer ledger entry for advance/freight queries
-    const [farmerLedgerEntry] = await db.select()
-      .from(farmerLedger)
-      .where(and(
-        eq(farmerLedger.coldStorageId, data.coldStorageId),
-        sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerIdentity.farmerName}))`,
-        sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${farmerIdentity.contactNumber})`,
-        sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${farmerIdentity.village}))`
-      ))
-      .limit(1);
     
     // Get advance/freight dues for totalDueBefore
     if (farmerLedgerEntry) {
@@ -2174,14 +2173,12 @@ export class DatabaseStorage implements IStorage {
     // Generate transaction ID
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
     
-    // Get farmer ledger IDs
-    const farmerEntry = await this.ensureFarmerLedgerEntry(data.coldStorageId, {
+    const farmerEntry = farmerLedgerEntry || await this.ensureFarmerLedgerEntry(data.coldStorageId, {
       name: farmerIdentity.farmerName,
       contactNumber: farmerIdentity.contactNumber,
       village: farmerIdentity.village,
     });
     
-    // Create the cash receipt with farmer payer type
     const buyerDisplayName = data.buyerName || `${farmerIdentity.farmerName} (${farmerIdentity.village})`;
     const [receipt] = await db.insert(cashReceipts)
       .values({
@@ -2692,14 +2689,14 @@ export class DatabaseStorage implements IStorage {
         }
         
         if (contactNumber) {
-          await this.recomputeFarmerPaymentsWithDiscounts(receipt.coldStorageId, farmerName, contactNumber, village);
+          await this.recomputeFarmerPaymentsWithDiscounts(receipt.coldStorageId, receipt.farmerLedgerId || null, farmerName, contactNumber, village);
         } else {
           // Fallback to old method if contactNumber not found
-          await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.buyerName);
+          await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.farmerLedgerId || null, receipt.buyerName);
         }
       } else {
         // buyerName doesn't match expected "FarmerName (Village)" format - use old method as fallback
-        await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.buyerName);
+        await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.farmerLedgerId || null, receipt.buyerName);
       }
     } else if (receipt.buyerName && receipt.coldStorageId) {
       // Use unified recomputeBuyerPayments to properly handle both receipts AND discounts
@@ -2710,23 +2707,37 @@ export class DatabaseStorage implements IStorage {
     return { success: true, message: "Receipt reversed and payments recalculated" };
   }
 
-  async recomputeFarmerPayments(coldStorageId: string, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }> {
-    // Parse farmer identity from buyerDisplayName format: "FarmerName (Village)"
+  async recomputeFarmerPayments(coldStorageId: string, farmerLedgerId: string | null, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }> {
+    // If farmerLedgerId is provided, look up farmer details and delegate
+    if (farmerLedgerId) {
+      const [entry] = await db.select()
+        .from(farmerLedger)
+        .where(eq(farmerLedger.id, farmerLedgerId))
+        .limit(1);
+      if (entry) {
+        const result = await this.recomputeFarmerPaymentsWithDiscounts(
+          coldStorageId, farmerLedgerId, entry.name, entry.contactNumber, entry.village
+        );
+        return { receivablesUpdated: result.receivablesUpdated + result.selfSalesUpdated };
+      }
+    }
+
+    // Fallback: parse buyerDisplayName format "FarmerName (Village)" to get composite key
     if (!buyerDisplayName) {
       return { receivablesUpdated: 0 };
     }
-    
-    // Extract farmerName and village from format "FarmerName (Village)"
+
     const match = buyerDisplayName.match(/^(.+?)\s*\((.+?)\)$/);
     if (!match) {
       return { receivablesUpdated: 0 };
     }
-    
+
     const farmerName = match[1].trim();
     const village = match[2].trim();
-    
-    // Find farmer receivables matching name and village to get the contactNumber
-    // This matches the criteria used in createFarmerReceivablePayment
+
+    // Find contactNumber from receivables or self-sales
+    let contactNumber: string | null = null;
+
     const farmerReceivables = await db.select()
       .from(openingReceivables)
       .where(and(
@@ -2735,15 +2746,11 @@ export class DatabaseStorage implements IStorage {
         sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
         sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
       ))
-      .orderBy(openingReceivables.createdAt);
-    
-    // Get the contactNumber - try from receivables first, then from self-sales
-    let contactNumber: string | null = null;
-    
+      .limit(1);
+
     if (farmerReceivables.length > 0) {
       contactNumber = farmerReceivables[0].contactNumber;
     } else {
-      // No receivables found - try to get contact number from self-sales
       const selfSalesForFarmer = await db.select()
         .from(salesHistory)
         .where(and(
@@ -2753,32 +2760,19 @@ export class DatabaseStorage implements IStorage {
           sql`LOWER(TRIM(${salesHistory.village})) = LOWER(TRIM(${village}))`
         ))
         .limit(1);
-      
+
       if (selfSalesForFarmer.length > 0) {
         contactNumber = selfSalesForFarmer[0].contactNumber;
       }
     }
-    
-    // If we couldn't find a contact number from either source, nothing to recompute
+
     if (!contactNumber) {
       return { receivablesUpdated: 0 };
     }
-    
-    // Now get all receivables for this exact farmer (name + village + contactNumber)
-    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
-    const allFarmerReceivables = await db.select()
-      .from(openingReceivables)
-      .where(and(
-        eq(openingReceivables.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`,
-        sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
-        sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
-        sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
-      ))
-      .orderBy(openingReceivables.createdAt);
-    
-    // Look up farmer ledger entry to get farmerLedgerId for advance/freight queries
-    const [farmerLedgerEntry] = await db.select()
+
+    // Try to resolve farmerLedgerId from composite key for the delegation
+    let resolvedLedgerId: string | null = null;
+    const [ledgerEntry] = await db.select()
       .from(farmerLedger)
       .where(and(
         eq(farmerLedger.coldStorageId, coldStorageId),
@@ -2787,208 +2781,14 @@ export class DatabaseStorage implements IStorage {
         sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${village}))`
       ))
       .limit(1);
-    
-    // Step 1: Reset all farmer receivables paidAmount to 0
-    for (const receivable of allFarmerReceivables) {
-      await db.update(openingReceivables)
-        .set({ paidAmount: 0 })
-        .where(eq(openingReceivables.id, receivable.id));
+    if (ledgerEntry) {
+      resolvedLedgerId = ledgerEntry.id;
     }
-    
-    // Step 1c: Reset all farmer advance/freight paidAmount to 0
-    if (farmerLedgerEntry) {
-      await db.update(farmerAdvanceFreight)
-        .set({ paidAmount: 0 })
-        .where(and(
-          eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
-          eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
-          eq(farmerAdvanceFreight.isReversed, 0)
-        ));
-    }
-    
-    // Step 1b: Reset all self-sales for this farmer to original due amounts
-    // Reset due_amount to cold_storage_charge (the original billed amount)
-    // Reset extra_due_to_merchant to extra_due_to_merchant_original (original value set at creation)
-    await db.execute(sql`
-      UPDATE sales_history
-      SET 
-        paid_amount = 0,
-        due_amount = cold_storage_charge,
-        extra_due_to_merchant = COALESCE(extra_due_to_merchant_original, 0),
-        payment_status = CASE 
-          WHEN cold_storage_charge + COALESCE(extra_due_to_merchant_original, 0) < 1 THEN 'paid'
-          ELSE 'due'
-        END
-      WHERE cold_storage_id = ${coldStorageId}
-        AND is_self_sale = 1
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
-        AND contact_number = ${contactNumber}
-    `);
-    
-    // Step 2: Get all non-reversed farmer receipts for this farmer
-    // Match by buyerName pattern "FarmerName (Village)"
-    const activeReceipts = await db.select()
-      .from(cashReceipts)
-      .where(and(
-        eq(cashReceipts.coldStorageId, coldStorageId),
-        eq(cashReceipts.payerType, "farmer"),
-        eq(cashReceipts.isReversed, 0),
-        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName}))`
-      ))
-      .orderBy(cashReceipts.receivedAt);
-    
-    // Step 3: Replay all active receipts in FIFO order
-    let receivablesUpdated = 0;
-    
-    for (const receipt of activeReceipts) {
-      let remainingAmount = receipt.amount;
-      
-      // Re-fetch current state of receivables
-      // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
-      const currentReceivables = await db.select()
-        .from(openingReceivables)
-        .where(and(
-          eq(openingReceivables.coldStorageId, coldStorageId),
-          sql`LOWER(TRIM(${openingReceivables.payerType})) = 'farmer'`,
-          sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
-          sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
-          sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
-        ))
-        .orderBy(openingReceivables.createdAt);
-      
-      for (const receivable of currentReceivables) {
-        const remainingDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount) - (receivable.paidAmount || 0));
-        if (remainingDue <= 0) continue;
-        
-        const amountToApply = Math.min(remainingAmount, remainingDue);
-        
-        if (amountToApply > 0) {
-          await db.update(openingReceivables)
-            .set({ paidAmount: roundAmount((receivable.paidAmount || 0) + amountToApply) })
-            .where(eq(openingReceivables.id, receivable.id));
-          
-          remainingAmount = roundAmount(remainingAmount - amountToApply);
-          receivablesUpdated++;
-        }
-        
-        if (remainingAmount <= 0) break;
-      }
-      
-      // Pass 2: Apply remaining to farmer FREIGHT records (FIFO by createdAt)
-      if (remainingAmount > 0 && farmerLedgerEntry) {
-        const freightRecords = await db.select()
-          .from(farmerAdvanceFreight)
-          .where(and(
-            eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
-            eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
-            eq(farmerAdvanceFreight.type, "freight"),
-            eq(farmerAdvanceFreight.isReversed, 0)
-          ))
-          .orderBy(farmerAdvanceFreight.createdAt);
-        
-        for (const record of freightRecords) {
-          if (remainingAmount <= 0) break;
-          const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
-          if (remainingDue <= 0) continue;
-          
-          const amountToApply = Math.min(remainingAmount, remainingDue);
-          if (amountToApply > 0) {
-            await db.update(farmerAdvanceFreight)
-              .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
-              .where(eq(farmerAdvanceFreight.id, record.id));
-            
-            remainingAmount = roundAmount(remainingAmount - amountToApply);
-            receivablesUpdated++;
-          }
-        }
-      }
-      
-      // Pass 3: Apply remaining to farmer ADVANCE records (FIFO by createdAt)
-      if (remainingAmount > 0 && farmerLedgerEntry) {
-        const advanceRecords = await db.select()
-          .from(farmerAdvanceFreight)
-          .where(and(
-            eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
-            eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntry.id),
-            eq(farmerAdvanceFreight.type, "advance"),
-            eq(farmerAdvanceFreight.isReversed, 0)
-          ))
-          .orderBy(farmerAdvanceFreight.createdAt);
-        
-        for (const record of advanceRecords) {
-          if (remainingAmount <= 0) break;
-          const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
-          if (remainingDue <= 0) continue;
-          
-          const amountToApply = Math.min(remainingAmount, remainingDue);
-          if (amountToApply > 0) {
-            await db.update(farmerAdvanceFreight)
-              .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
-              .where(eq(farmerAdvanceFreight.id, record.id));
-            
-            remainingAmount = roundAmount(remainingAmount - amountToApply);
-            receivablesUpdated++;
-          }
-        }
-      }
-      
-      // Pass 4: Apply remaining to self-sales (FIFO by soldAt)
-      if (remainingAmount > 0) {
-        // Get self-sales for this farmer
-        const selfSales = await db.select()
-          .from(salesHistory)
-          .where(and(
-            eq(salesHistory.coldStorageId, coldStorageId),
-            eq(salesHistory.isSelfSale, 1),
-            sql`LOWER(TRIM(${salesHistory.farmerName})) = LOWER(TRIM(${farmerName}))`,
-            sql`LOWER(TRIM(${salesHistory.village})) = LOWER(TRIM(${village}))`,
-            sql`${salesHistory.contactNumber} = ${contactNumber}`,
-            sql`(${salesHistory.dueAmount} > 0 OR ${salesHistory.extraDueToMerchant} > 0)`
-          ))
-          .orderBy(salesHistory.soldAt);
-        
-        for (const sale of selfSales) {
-          if (remainingAmount <= 0) break;
-          
-          const dueAmount = sale.dueAmount || 0;
-          const extraDue = sale.extraDueToMerchant || 0;
-          const totalSaleDue = roundAmount(dueAmount + extraDue);
-          
-          if (totalSaleDue <= 0) continue;
-          
-          const amountToApply = Math.min(remainingAmount, totalSaleDue);
-          
-          // Apply to due_amount first, then to extra_due_to_merchant
-          let toApply = amountToApply;
-          const applyToDue = Math.min(toApply, dueAmount);
-          toApply = roundAmount(toApply - applyToDue);
-          const applyToExtra = Math.min(toApply, extraDue);
-          
-          const newDueAmount = roundAmount(dueAmount - applyToDue);
-          const newExtraDue = roundAmount(extraDue - applyToExtra);
-          // paidAmount should include both applied to due and applied to extra (total payment applied)
-          const newPaidAmount = roundAmount((sale.paidAmount || 0) + applyToDue + applyToExtra);
-          
-          // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
-          const paymentStatusToSet = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
-          
-          await db.update(salesHistory)
-            .set({
-              dueAmount: newDueAmount,
-              paidAmount: newPaidAmount,
-              extraDueToMerchant: newExtraDue,
-              paymentStatus: paymentStatusToSet
-            })
-            .where(eq(salesHistory.id, sale.id));
-          
-          remainingAmount = roundAmount(remainingAmount - amountToApply);
-          receivablesUpdated++;
-        }
-      }
-    }
-    
-    return { receivablesUpdated };
+
+    const result = await this.recomputeFarmerPaymentsWithDiscounts(
+      coldStorageId, resolvedLedgerId, farmerName, contactNumber, village
+    );
+    return { receivablesUpdated: result.receivablesUpdated + result.selfSalesUpdated };
   }
 
   async reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }> {
@@ -4700,6 +4500,7 @@ export class DatabaseStorage implements IStorage {
     for (const farmer of affectedFarmers) {
       await this.recomputeFarmerPaymentsWithDiscounts(
         discount.coldStorageId, 
+        discount.farmerLedgerId || null,
         farmer.name, 
         farmer.phone, 
         farmer.village
@@ -4713,6 +4514,7 @@ export class DatabaseStorage implements IStorage {
   // Uses farmer identity components (name, phone, village) for exact matching
   async recomputeFarmerPaymentsWithDiscounts(
     coldStorageId: string, 
+    farmerLedgerId: string | null,
     farmerName: string, 
     contactNumber: string, 
     village: string
@@ -4723,21 +4525,32 @@ export class DatabaseStorage implements IStorage {
       SET paid_amount = 0
       WHERE cold_storage_id = ${coldStorageId}
         AND payer_type = 'farmer'
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
-        AND TRIM(contact_number) = TRIM(${contactNumber})
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+        AND (
+          (farmer_ledger_id IS NOT NULL AND farmer_ledger_id = ${farmerLedgerId})
+          OR (farmer_ledger_id IS NULL AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName})) AND TRIM(contact_number) = TRIM(${contactNumber}) AND LOWER(TRIM(village)) = LOWER(TRIM(${village})))
+        )
     `);
     
     // Step 1b: Reset all farmer advance/freight paidAmount to 0
-    const [farmerLedgerEntryForDiscount] = await db.select()
-      .from(farmerLedger)
-      .where(and(
-        eq(farmerLedger.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerName}))`,
-        sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${contactNumber})`,
-        sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${village}))`
-      ))
-      .limit(1);
+    let farmerLedgerEntryForDiscount;
+    if (farmerLedgerId) {
+      const [entry] = await db.select()
+        .from(farmerLedger)
+        .where(eq(farmerLedger.id, farmerLedgerId))
+        .limit(1);
+      farmerLedgerEntryForDiscount = entry;
+    } else {
+      const [entry] = await db.select()
+        .from(farmerLedger)
+        .where(and(
+          eq(farmerLedger.coldStorageId, coldStorageId),
+          sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerName}))`,
+          sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${contactNumber})`,
+          sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${village}))`
+        ))
+        .limit(1);
+      farmerLedgerEntryForDiscount = entry;
+    }
     
     if (farmerLedgerEntryForDiscount) {
       await db.update(farmerAdvanceFreight)
@@ -4777,7 +4590,7 @@ export class DatabaseStorage implements IStorage {
     `);
     
     // Step 3: Get farmer receipts (payerType = 'farmer') for this farmer
-    // Match by buyerName pattern "FarmerName (Village)"
+    // Match by farmerLedgerId first, then fallback to buyerName pattern
     const buyerDisplayName = `${farmerName.trim()} (${village.trim()})`;
     
     const activeReceipts = await db.select()
@@ -4786,7 +4599,10 @@ export class DatabaseStorage implements IStorage {
         eq(cashReceipts.coldStorageId, coldStorageId),
         eq(cashReceipts.payerType, "farmer"),
         eq(cashReceipts.isReversed, 0),
-        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName}))`
+        sql`(
+          (${cashReceipts.farmerLedgerId} IS NOT NULL AND ${cashReceipts.farmerLedgerId} = ${farmerLedgerId})
+          OR (${cashReceipts.farmerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName})))
+        )`
       ))
       .orderBy(cashReceipts.receivedAt);
     
@@ -4796,9 +4612,10 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(discounts.coldStorageId, coldStorageId),
         eq(discounts.isReversed, 0),
-        sql`LOWER(TRIM(${discounts.farmerName})) = LOWER(TRIM(${farmerName}))`,
-        sql`LOWER(TRIM(${discounts.village})) = LOWER(TRIM(${village}))`,
-        sql`TRIM(${discounts.contactNumber}) = TRIM(${contactNumber})`
+        sql`(
+          (${discounts.farmerLedgerId} IS NOT NULL AND ${discounts.farmerLedgerId} = ${farmerLedgerId})
+          OR (${discounts.farmerLedgerId} IS NULL AND LOWER(TRIM(${discounts.farmerName})) = LOWER(TRIM(${farmerName})) AND LOWER(TRIM(${discounts.village})) = LOWER(TRIM(${village})) AND TRIM(${discounts.contactNumber}) = TRIM(${contactNumber}))
+        )`
       ));
     
     // Find discounts with self-sale allocations
@@ -4914,9 +4731,10 @@ export class DatabaseStorage implements IStorage {
           .where(and(
             eq(openingReceivables.coldStorageId, coldStorageId),
             eq(openingReceivables.payerType, "farmer"),
-            sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
-            sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
-            sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`,
+            sql`(
+              (${openingReceivables.farmerLedgerId} IS NOT NULL AND ${openingReceivables.farmerLedgerId} = ${farmerLedgerId})
+              OR (${openingReceivables.farmerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName})) AND TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber}) AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village})))
+            )`,
             sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
           ))
           .orderBy(openingReceivables.createdAt);
@@ -5047,9 +4865,10 @@ export class DatabaseStorage implements IStorage {
           .where(and(
             eq(openingReceivables.coldStorageId, coldStorageId),
             eq(openingReceivables.payerType, "farmer"),
-            sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
-            sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
-            sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`,
+            sql`(
+              (${openingReceivables.farmerLedgerId} IS NOT NULL AND ${openingReceivables.farmerLedgerId} = ${farmerLedgerId})
+              OR (${openingReceivables.farmerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName})) AND TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber}) AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village})))
+            )`,
             sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
           ))
           .orderBy(openingReceivables.createdAt);
@@ -5191,9 +5010,10 @@ export class DatabaseStorage implements IStorage {
           .where(and(
             eq(openingReceivables.coldStorageId, coldStorageId),
             eq(openingReceivables.payerType, "farmer"),
-            sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
-            sql`TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber})`,
-            sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`,
+            sql`(
+              (${openingReceivables.farmerLedgerId} IS NOT NULL AND ${openingReceivables.farmerLedgerId} = ${farmerLedgerId})
+              OR (${openingReceivables.farmerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName})) AND TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber}) AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village})))
+            )`,
             sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
           ))
           .orderBy(openingReceivables.createdAt);
