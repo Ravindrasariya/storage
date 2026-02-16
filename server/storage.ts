@@ -2708,87 +2708,272 @@ export class DatabaseStorage implements IStorage {
   }
 
   async recomputeFarmerPayments(coldStorageId: string, farmerLedgerId: string | null, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }> {
-    // If farmerLedgerId is provided, look up farmer details and delegate
+    let farmerName: string;
+    let contactNumber: string;
+    let village: string;
+    let resolvedLedgerId = farmerLedgerId;
+
     if (farmerLedgerId) {
       const [entry] = await db.select()
         .from(farmerLedger)
         .where(eq(farmerLedger.id, farmerLedgerId))
         .limit(1);
-      if (entry) {
-        const result = await this.recomputeFarmerPaymentsWithDiscounts(
-          coldStorageId, farmerLedgerId, entry.name, entry.contactNumber, entry.village
-        );
-        return { receivablesUpdated: result.receivablesUpdated + result.selfSalesUpdated };
-      }
-    }
-
-    // Fallback: parse buyerDisplayName format "FarmerName (Village)" to get composite key
-    if (!buyerDisplayName) {
-      return { receivablesUpdated: 0 };
-    }
-
-    const match = buyerDisplayName.match(/^(.+?)\s*\((.+?)\)$/);
-    if (!match) {
-      return { receivablesUpdated: 0 };
-    }
-
-    const farmerName = match[1].trim();
-    const village = match[2].trim();
-
-    // Find contactNumber from receivables or self-sales
-    let contactNumber: string | null = null;
-
-    const farmerReceivables = await db.select()
-      .from(openingReceivables)
-      .where(and(
-        eq(openingReceivables.coldStorageId, coldStorageId),
-        eq(openingReceivables.payerType, "farmer"),
-        sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
-        sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
-      ))
-      .limit(1);
-
-    if (farmerReceivables.length > 0) {
-      contactNumber = farmerReceivables[0].contactNumber;
+      if (!entry) return { receivablesUpdated: 0 };
+      farmerName = entry.name;
+      contactNumber = entry.contactNumber;
+      village = entry.village;
     } else {
-      const selfSalesForFarmer = await db.select()
-        .from(salesHistory)
+      if (!buyerDisplayName) return { receivablesUpdated: 0 };
+      const match = buyerDisplayName.match(/^(.+?)\s*\((.+?)\)$/);
+      if (!match) return { receivablesUpdated: 0 };
+      farmerName = match[1].trim();
+      village = match[2].trim();
+
+      let foundContact: string | null = null;
+      const farmerReceivables = await db.select()
+        .from(openingReceivables)
         .where(and(
-          eq(salesHistory.coldStorageId, coldStorageId),
-          eq(salesHistory.isSelfSale, 1),
-          sql`LOWER(TRIM(${salesHistory.farmerName})) = LOWER(TRIM(${farmerName}))`,
-          sql`LOWER(TRIM(${salesHistory.village})) = LOWER(TRIM(${village}))`
+          eq(openingReceivables.coldStorageId, coldStorageId),
+          eq(openingReceivables.payerType, "farmer"),
+          sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName}))`,
+          sql`LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`
         ))
         .limit(1);
 
-      if (selfSalesForFarmer.length > 0) {
-        contactNumber = selfSalesForFarmer[0].contactNumber;
+      if (farmerReceivables.length > 0) {
+        foundContact = farmerReceivables[0].contactNumber;
+      } else {
+        const selfSalesForFarmer = await db.select()
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            eq(salesHistory.isSelfSale, 1),
+            sql`LOWER(TRIM(${salesHistory.farmerName})) = LOWER(TRIM(${farmerName}))`,
+            sql`LOWER(TRIM(${salesHistory.village})) = LOWER(TRIM(${village}))`
+          ))
+          .limit(1);
+        if (selfSalesForFarmer.length > 0) {
+          foundContact = selfSalesForFarmer[0].contactNumber;
+        }
+      }
+
+      if (!foundContact) return { receivablesUpdated: 0 };
+      contactNumber = foundContact;
+
+      const [ledgerEntry] = await db.select()
+        .from(farmerLedger)
+        .where(and(
+          eq(farmerLedger.coldStorageId, coldStorageId),
+          sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerName}))`,
+          sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${contactNumber})`,
+          sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${village}))`
+        ))
+        .limit(1);
+      if (ledgerEntry) {
+        resolvedLedgerId = ledgerEntry.id;
       }
     }
 
-    if (!contactNumber) {
-      return { receivablesUpdated: 0 };
+    const selfSalePattern = `${farmerName.trim()} - ${contactNumber.trim()} - ${village.trim()}`;
+
+    // Step 1: Reset all farmer receivables paidAmount to 0
+    await db.execute(sql`
+      UPDATE opening_receivables
+      SET paid_amount = 0
+      WHERE cold_storage_id = ${coldStorageId}
+        AND payer_type = 'farmer'
+        AND (
+          (farmer_ledger_id IS NOT NULL AND farmer_ledger_id = ${resolvedLedgerId})
+          OR (farmer_ledger_id IS NULL AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName})) AND TRIM(contact_number) = TRIM(${contactNumber}) AND LOWER(TRIM(village)) = LOWER(TRIM(${village})))
+        )
+    `);
+
+    // Step 1b: Reset farmer advance/freight paidAmount to 0
+    if (resolvedLedgerId) {
+      await db.update(farmerAdvanceFreight)
+        .set({ paidAmount: 0 })
+        .where(and(
+          eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+          eq(farmerAdvanceFreight.farmerLedgerId, resolvedLedgerId),
+          eq(farmerAdvanceFreight.isReversed, 0)
+        ));
     }
 
-    // Try to resolve farmerLedgerId from composite key for the delegation
-    let resolvedLedgerId: string | null = null;
-    const [ledgerEntry] = await db.select()
-      .from(farmerLedger)
+    // Step 2: Reset all self-sales for this farmer to original due amounts
+    await db.execute(sql`
+      UPDATE sales_history
+      SET 
+        paid_amount = 0,
+        due_amount = cold_storage_charge,
+        extra_due_to_merchant = COALESCE(extra_due_to_merchant_original, 0),
+        payment_status = CASE 
+          WHEN cold_storage_charge + COALESCE(extra_due_to_merchant_original, 0) < 1 THEN 'paid'
+          ELSE 'due'
+        END
+      WHERE cold_storage_id = ${coldStorageId}
+        AND (
+          (COALESCE(is_self_sale, 0) = 1 
+           AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+           AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+           AND TRIM(contact_number) = TRIM(${contactNumber}))
+          OR
+          (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
+        )
+    `);
+
+    // Step 3: Get farmer receipts for this farmer, ordered chronologically
+    const buyerDisplayNameForMatch = `${farmerName.trim()} (${village.trim()})`;
+
+    const activeReceipts = await db.select()
+      .from(cashReceipts)
       .where(and(
-        eq(farmerLedger.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${farmerLedger.name})) = LOWER(TRIM(${farmerName}))`,
-        sql`TRIM(${farmerLedger.contactNumber}) = TRIM(${contactNumber})`,
-        sql`LOWER(TRIM(${farmerLedger.village})) = LOWER(TRIM(${village}))`
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.payerType, "farmer"),
+        eq(cashReceipts.isReversed, 0),
+        sql`(
+          (${cashReceipts.farmerLedgerId} IS NOT NULL AND ${cashReceipts.farmerLedgerId} = ${resolvedLedgerId})
+          OR (${cashReceipts.farmerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayNameForMatch})))
+        )`
       ))
-      .limit(1);
-    if (ledgerEntry) {
-      resolvedLedgerId = ledgerEntry.id;
+      .orderBy(cashReceipts.receivedAt);
+
+    let receivablesUpdated = 0;
+
+    // Step 4: Apply each receipt in FIFO order: receivables → freight → advance → self-sales
+    for (const receipt of activeReceipts) {
+      let remainingAmount = receipt.amount;
+
+      // Pass 1: Farmer receivables
+      const currentReceivables = await db.select()
+        .from(openingReceivables)
+        .where(and(
+          eq(openingReceivables.coldStorageId, coldStorageId),
+          eq(openingReceivables.payerType, "farmer"),
+          sql`(
+            (${openingReceivables.farmerLedgerId} IS NOT NULL AND ${openingReceivables.farmerLedgerId} = ${resolvedLedgerId})
+            OR (${openingReceivables.farmerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName})) AND TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber}) AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village})))
+          )`,
+          sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - COALESCE(${openingReceivables.paidAmount}, 0)) > 0`
+        ))
+        .orderBy(openingReceivables.createdAt);
+
+      for (const receivable of currentReceivables) {
+        if (remainingAmount <= 0) break;
+        const remainingDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount ?? 0) - (receivable.paidAmount || 0));
+        const amountToApply = Math.min(remainingAmount, remainingDue);
+        if (amountToApply > 0) {
+          await db.update(openingReceivables)
+            .set({ paidAmount: roundAmount((receivable.paidAmount || 0) + amountToApply) })
+            .where(eq(openingReceivables.id, receivable.id));
+          remainingAmount = roundAmount(remainingAmount - amountToApply);
+          receivablesUpdated++;
+        }
+      }
+
+      // Pass 2: Farmer FREIGHT records
+      if (remainingAmount > 0 && resolvedLedgerId) {
+        const freightRecords = await db.select()
+          .from(farmerAdvanceFreight)
+          .where(and(
+            eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+            eq(farmerAdvanceFreight.farmerLedgerId, resolvedLedgerId),
+            eq(farmerAdvanceFreight.type, "freight"),
+            eq(farmerAdvanceFreight.isReversed, 0)
+          ))
+          .orderBy(farmerAdvanceFreight.createdAt);
+
+        for (const record of freightRecords) {
+          if (remainingAmount <= 0) break;
+          const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
+          if (remainingDue <= 0) continue;
+          const amountToApply = Math.min(remainingAmount, remainingDue);
+          if (amountToApply > 0) {
+            await db.update(farmerAdvanceFreight)
+              .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+              .where(eq(farmerAdvanceFreight.id, record.id));
+            remainingAmount = roundAmount(remainingAmount - amountToApply);
+            receivablesUpdated++;
+          }
+        }
+      }
+
+      // Pass 3: Farmer ADVANCE records
+      if (remainingAmount > 0 && resolvedLedgerId) {
+        const advanceRecords = await db.select()
+          .from(farmerAdvanceFreight)
+          .where(and(
+            eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+            eq(farmerAdvanceFreight.farmerLedgerId, resolvedLedgerId),
+            eq(farmerAdvanceFreight.type, "advance"),
+            eq(farmerAdvanceFreight.isReversed, 0)
+          ))
+          .orderBy(farmerAdvanceFreight.createdAt);
+
+        for (const record of advanceRecords) {
+          if (remainingAmount <= 0) break;
+          const remainingDue = roundAmount(record.finalAmount - (record.paidAmount || 0));
+          if (remainingDue <= 0) continue;
+          const amountToApply = Math.min(remainingAmount, remainingDue);
+          if (amountToApply > 0) {
+            await db.update(farmerAdvanceFreight)
+              .set({ paidAmount: roundAmount((record.paidAmount || 0) + amountToApply) })
+              .where(eq(farmerAdvanceFreight.id, record.id));
+            remainingAmount = roundAmount(remainingAmount - amountToApply);
+            receivablesUpdated++;
+          }
+        }
+      }
+
+      // Pass 4: Self-sales
+      if (remainingAmount > 0) {
+        const selfSales = await db.select()
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            sql`(
+              (COALESCE(is_self_sale, 0) = 1 
+               AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
+               AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
+               AND TRIM(contact_number) = TRIM(${contactNumber}))
+              OR
+              (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
+            )`,
+            sql`(due_amount > 0 OR extra_due_to_merchant > 0)`
+          ))
+          .orderBy(salesHistory.soldAt);
+
+        for (const sale of selfSales) {
+          if (remainingAmount <= 0) break;
+          const dueAmount = sale.dueAmount || 0;
+          const extraDue = sale.extraDueToMerchant || 0;
+          const totalDue = roundAmount(dueAmount + extraDue);
+          if (totalDue <= 0) continue;
+
+          const amountToApply = Math.min(remainingAmount, totalDue);
+          const applyToDue = Math.min(amountToApply, dueAmount);
+          const applyToExtra = Math.min(amountToApply - applyToDue, extraDue);
+
+          const newDueAmount = roundAmount(dueAmount - applyToDue);
+          const newExtraDue = roundAmount(extraDue - applyToExtra);
+          const newPaidAmount = roundAmount((sale.paidAmount || 0) + applyToDue + applyToExtra);
+          const paymentStatus = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
+
+          await db.update(salesHistory)
+            .set({
+              dueAmount: newDueAmount,
+              paidAmount: newPaidAmount,
+              extraDueToMerchant: newExtraDue,
+              paymentStatus
+            })
+            .where(eq(salesHistory.id, sale.id));
+
+          remainingAmount = roundAmount(remainingAmount - amountToApply);
+          receivablesUpdated++;
+        }
+      }
     }
 
-    const result = await this.recomputeFarmerPaymentsWithDiscounts(
-      coldStorageId, resolvedLedgerId, farmerName, contactNumber, village
-    );
-    return { receivablesUpdated: result.receivablesUpdated + result.selfSalesUpdated };
+    return { receivablesUpdated };
   }
 
   async reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }> {
