@@ -223,6 +223,13 @@ export default function CashManagement() {
   // Receivable search filter
   const [receivableSearchQuery, setReceivableSearchQuery] = useState("");
   
+  // Receivable edit state
+  const [editingReceivableId, setEditingReceivableId] = useState<string | null>(null);
+  const [editReceivableAmount, setEditReceivableAmount] = useState("");
+  const [editReceivableROI, setEditReceivableROI] = useState("");
+  const [editReceivableEffectiveDate, setEditReceivableEffectiveDate] = useState("");
+  const [editReceivableRemarks, setEditReceivableRemarks] = useState("");
+  
   // Receivable form state
   const [newReceivablePayerType, setNewReceivablePayerType] = useState<string>("cold_merchant");
   const [newReceivableBuyerName, setNewReceivableBuyerName] = useState("");
@@ -1075,6 +1082,27 @@ export default function CashManagement() {
     },
     onError: () => {
       toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
+    },
+  });
+
+  const updateReceivableMutation = useMutation({
+    mutationFn: async (data: { id: string; dueAmount?: number; rateOfInterest?: number; effectiveDate?: string | null; remarks?: string | null }) => {
+      const { id, ...updates } = data;
+      const response = await apiRequest("PATCH", `/api/opening-receivables/${id}`, updates);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableUpdated"), variant: "success" });
+      setEditingReceivableId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/opening-receivables", settingsYear] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
     },
   });
 
@@ -4993,7 +5021,7 @@ export default function CashManagement() {
               )}
 
               {/* List of receivables */}
-              <ScrollArea className="h-48">
+              <ScrollArea className="h-64">
                 {openingReceivables.length === 0 ? (
                   <p className="text-center text-muted-foreground py-4">{t("noReceivables")}</p>
                 ) : (
@@ -5010,66 +5038,157 @@ export default function CashManagement() {
                       .map((r) => {
                         const capitalizeName = (name: string) =>
                           name.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                        const isEditing = editingReceivableId === r.id;
                         return (
-                          <div key={r.id} className="flex items-center justify-between p-2 bg-muted rounded-md">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <Badge variant="outline" className="text-xs">{t(r.payerType)}</Badge>
-                                {r.payerType === "farmer" && r.farmerName ? (
-                                  <span className="text-sm font-medium">
-                                    {capitalizeName(r.farmerName)} - {r.contactNumber} - {r.village}
-                                  </span>
-                                ) : (
-                                  r.buyerName && <span className="text-sm font-medium">{capitalizeName(r.buyerName)}</span>
-                                )}
+                          <div key={r.id} className="p-2 bg-muted rounded-md">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge variant="outline" className="text-xs">{t(r.payerType)}</Badge>
+                                  {r.payerType === "farmer" && r.farmerName ? (
+                                    <span className="text-sm font-medium">
+                                      {capitalizeName(r.farmerName)} - {r.contactNumber} - {r.village}
+                                    </span>
+                                  ) : (
+                                    r.buyerName && <span className="text-sm font-medium">{capitalizeName(r.buyerName)}</span>
+                                  )}
+                                </div>
+                                {!isEditing && r.remarks && <p className="text-xs text-muted-foreground">{r.remarks}</p>}
+                                <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+                                  <span>{t("addedOn")}: {format(new Date(r.createdAt), "dd/MM/yyyy")}</span>
+                                  {!isEditing && r.rateOfInterest != null && r.rateOfInterest > 0 && (
+                                    <span className="text-blue-600 font-medium">{t("rateOfInterest")}: {r.rateOfInterest}%</span>
+                                  )}
+                                  {!isEditing && r.rateOfInterest != null && r.rateOfInterest > 0 && r.effectiveDate && (
+                                    <span className="text-blue-600">{t("effectiveDate")}: {format(new Date(r.effectiveDate), "dd/MM/yyyy")}</span>
+                                  )}
+                                </div>
                               </div>
-                              {r.remarks && <p className="text-xs text-muted-foreground">{r.remarks}</p>}
-                              <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-                                <span>{t("addedOn")}: {format(new Date(r.createdAt), "dd/MM/yyyy")}</span>
-                                {r.rateOfInterest > 0 && (
-                                  <span>{t("rateOfInterest")}: {r.rateOfInterest}%</span>
+                              <div className="flex items-center gap-1">
+                                {!isEditing && (
+                                  <div className="text-right mr-1">
+                                    <span className="font-bold text-green-600">₹{formatCurrency(r.finalAmount ?? r.dueAmount)}</span>
+                                    {r.rateOfInterest != null && r.rateOfInterest > 0 && r.finalAmount && r.finalAmount !== r.dueAmount && (
+                                      <p className="text-xs text-muted-foreground">({t("principal")}: ₹{formatCurrency(r.dueAmount)})</p>
+                                    )}
+                                  </div>
                                 )}
-                                {r.rateOfInterest > 0 && r.effectiveDate && (
-                                  <span>{t("effectiveDate")}: {format(new Date(r.effectiveDate), "dd/MM/yyyy")}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="text-right">
-                                <span className="font-bold text-green-600">₹{formatCurrency(r.finalAmount ?? r.dueAmount)}</span>
-                                {r.rateOfInterest > 0 && r.finalAmount && r.finalAmount !== r.dueAmount && (
-                                  <p className="text-xs text-muted-foreground">({t("principal")}: ₹{formatCurrency(r.dueAmount)})</p>
-                                )}
-                              </div>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
+                                {!isEditing && (
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    data-testid={`button-delete-receivable-${r.id}`}
+                                    data-testid={`button-edit-receivable-${r.id}`}
+                                    onClick={() => {
+                                      setEditingReceivableId(r.id);
+                                      setEditReceivableAmount(r.dueAmount.toString());
+                                      setEditReceivableROI((r.rateOfInterest || 0).toString());
+                                      setEditReceivableEffectiveDate(r.effectiveDate ? format(new Date(r.effectiveDate), "yyyy-MM-dd") : "");
+                                      setEditReceivableRemarks(r.remarks || "");
+                                    }}
                                   >
-                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                    <Pencil className="h-4 w-4 text-blue-500" />
                                   </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>{t("confirmDelete")}</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      {t("deleteReceivableWarning")}
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => deleteReceivableMutation.mutate(r.id)}
-                                      className="bg-destructive text-destructive-foreground"
+                                )}
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      data-testid={`button-delete-receivable-${r.id}`}
                                     >
-                                      {t("delete")}
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                                      <Trash2 className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>{t("confirmDelete")}</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        {t("deleteReceivableWarning")}
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deleteReceivableMutation.mutate(r.id)}
+                                        className="bg-destructive text-destructive-foreground"
+                                      >
+                                        {t("delete")}
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
                             </div>
+                            {isEditing && (
+                              <div className="mt-2 p-2 bg-background rounded border space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs">{t("amount")} (₹)</Label>
+                                    <Input
+                                      type="number"
+                                      value={editReceivableAmount}
+                                      onChange={(e) => setEditReceivableAmount(e.target.value)}
+                                      data-testid="input-edit-receivable-amount"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">{t("rateOfInterest")} (%)</Label>
+                                    <Input
+                                      type="number"
+                                      step="0.1"
+                                      value={editReceivableROI}
+                                      onChange={(e) => setEditReceivableROI(e.target.value)}
+                                      data-testid="input-edit-receivable-roi"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs">{t("effectiveDate")}</Label>
+                                    <Input
+                                      type="date"
+                                      value={editReceivableEffectiveDate}
+                                      onChange={(e) => setEditReceivableEffectiveDate(e.target.value)}
+                                      data-testid="input-edit-receivable-effective-date"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">{t("remarks")}</Label>
+                                    <Input
+                                      value={editReceivableRemarks}
+                                      onChange={(e) => setEditReceivableRemarks(e.target.value)}
+                                      data-testid="input-edit-receivable-remarks"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setEditingReceivableId(null)}
+                                    data-testid="button-cancel-edit-receivable"
+                                  >
+                                    {t("cancel")}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      updateReceivableMutation.mutate({
+                                        id: r.id,
+                                        dueAmount: parseFloat(editReceivableAmount) || r.dueAmount,
+                                        rateOfInterest: parseFloat(editReceivableROI) || 0,
+                                        effectiveDate: editReceivableEffectiveDate || null,
+                                        remarks: editReceivableRemarks || null,
+                                      });
+                                    }}
+                                    disabled={updateReceivableMutation.isPending}
+                                    data-testid="button-save-edit-receivable"
+                                  >
+                                    {updateReceivableMutation.isPending ? "..." : t("save")}
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

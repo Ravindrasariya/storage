@@ -2689,6 +2689,43 @@ export async function registerRoutes(
     }
   });
 
+  // Update opening receivable
+  app.patch("/api/opening-receivables/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { id } = req.params;
+      const { dueAmount, rateOfInterest, effectiveDate, remarks } = req.body;
+
+      const updates: { dueAmount?: number; rateOfInterest?: number; effectiveDate?: Date | null; remarks?: string | null } = {};
+      if (dueAmount !== undefined) updates.dueAmount = parseFloat(dueAmount);
+      if (rateOfInterest !== undefined) updates.rateOfInterest = parseFloat(rateOfInterest);
+      if (effectiveDate !== undefined) updates.effectiveDate = effectiveDate ? new Date(effectiveDate) : null;
+      if (remarks !== undefined) updates.remarks = remarks || null;
+
+      const updated = await storage.updateOpeningReceivable(id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Receivable not found" });
+      }
+
+      // Trigger downstream recalculations
+      if (updated.payerType === "cold_merchant" && updated.buyerName) {
+        await storage.recomputeBuyerPayments(updated.buyerName, coldStorageId);
+      }
+      if (updated.payerType === "farmer" && updated.farmerLedgerId) {
+        await storage.recomputeFarmerPayments(
+          coldStorageId,
+          updated.farmerLedgerId,
+          null
+        );
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating opening receivable:", error);
+      res.status(500).json({ error: "Failed to update opening receivable" });
+    }
+  });
+
   // Delete opening receivable
   app.delete("/api/opening-receivables/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {

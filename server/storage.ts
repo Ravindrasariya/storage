@@ -286,6 +286,7 @@ export interface IStorage {
   // Opening Receivables
   getOpeningReceivables(coldStorageId: string, year: number): Promise<OpeningReceivable[]>;
   createOpeningReceivable(data: InsertOpeningReceivable): Promise<OpeningReceivable>;
+  updateOpeningReceivable(id: string, updates: { dueAmount?: number; rateOfInterest?: number; effectiveDate?: Date | null; remarks?: string | null }): Promise<OpeningReceivable | undefined>;
   deleteOpeningReceivable(id: string): Promise<OpeningReceivable | undefined>;
   // Opening Payables
   getOpeningPayables(coldStorageId: string, year: number): Promise<OpeningPayable[]>;
@@ -4070,6 +4071,47 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return receivable;
+  }
+
+  async updateOpeningReceivable(id: string, updates: { dueAmount?: number; rateOfInterest?: number; effectiveDate?: Date | null; remarks?: string | null }): Promise<OpeningReceivable | undefined> {
+    const [existing] = await db.select()
+      .from(openingReceivables)
+      .where(eq(openingReceivables.id, id));
+    
+    if (!existing) return undefined;
+
+    const newDueAmount = updates.dueAmount ?? existing.dueAmount;
+    const newRateOfInterest = updates.rateOfInterest ?? existing.rateOfInterest;
+    const newEffectiveDate = updates.effectiveDate !== undefined ? updates.effectiveDate : existing.effectiveDate;
+    const newRemarks = updates.remarks !== undefined ? updates.remarks : existing.remarks;
+
+    let computedFinalAmount = newDueAmount;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let computedLastAccrualDate = today;
+
+    if (newRateOfInterest > 0 && newEffectiveDate) {
+      computedFinalAmount = roundAmount(this.calculateSimpleInterest(
+        newDueAmount,
+        newRateOfInterest,
+        new Date(newEffectiveDate),
+        today
+      ));
+    }
+
+    const [updated] = await db.update(openingReceivables)
+      .set({
+        dueAmount: newDueAmount,
+        rateOfInterest: newRateOfInterest,
+        effectiveDate: newEffectiveDate,
+        remarks: newRemarks,
+        finalAmount: computedFinalAmount,
+        lastAccrualDate: computedLastAccrualDate,
+      })
+      .where(eq(openingReceivables.id, id))
+      .returning();
+
+    return updated;
   }
 
   async deleteOpeningReceivable(id: string): Promise<OpeningReceivable | undefined> {
