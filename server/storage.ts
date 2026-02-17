@@ -84,27 +84,30 @@ import {
 } from "@shared/schema";
 
 // Entity type prefixes for sequential IDs
-export type EntityType = 'cold_storage' | 'lot' | 'sales' | 'cash_flow';
+export type EntityType = 'cold_storage' | 'lot' | 'sales' | 'cash_flow' | 'buyer' | 'farmer';
 const ENTITY_PREFIXES: Record<EntityType, string> = {
   cold_storage: 'CS',
   lot: 'LT',
   sales: 'SL',
   cash_flow: 'CF',
+  buyer: 'BY',
+  farmer: 'FM',
 };
+
+const COLD_STORAGE_SCOPED_ENTITIES: EntityType[] = ['cash_flow', 'buyer', 'farmer'];
 
 // Generate a sequential ID in format: PREFIX + YYYYMMDD + counter (no zero-padding)
 // Example: LT202601251, LT202601252, ... LT20260125100
-// For cash_flow entity type, coldStorageId is required to make IDs unique per cold store
-export async function generateSequentialId(entityType: EntityType, coldStorageId?: string): Promise<string> {
-  // Enforce coldStorageId for cash_flow to prevent accidental global IDs
-  if (entityType === 'cash_flow' && !coldStorageId) {
-    throw new Error('coldStorageId is required for cash_flow entity type');
+// For cold-storage-scoped entities (cash_flow, buyer, farmer), coldStorageId is required
+// initialCounter allows seeding the counter on first use (e.g., to continue from existing max after migration)
+export async function generateSequentialId(entityType: EntityType, coldStorageId?: string, initialCounter?: number): Promise<string> {
+  if (COLD_STORAGE_SCOPED_ENTITIES.includes(entityType) && !coldStorageId) {
+    throw new Error(`coldStorageId is required for ${entityType} entity type`);
   }
   
   const now = new Date();
   const dateKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  // For cash_flow, include coldStorageId to make IDs unique per cold store
-  const rowId = entityType === 'cash_flow' && coldStorageId 
+  const rowId = COLD_STORAGE_SCOPED_ENTITIES.includes(entityType) && coldStorageId 
     ? `${entityType}_${coldStorageId}_${dateKey}` 
     : `${entityType}_${dateKey}`;
   const prefix = ENTITY_PREFIXES[entityType];
@@ -121,16 +124,16 @@ export async function generateSequentialId(entityType: EntityType, coldStorageId
     return `${prefix}${dateKey}${updateResult[0].counter}`;
   }
 
-  // No existing row - try to insert (use onConflictDoNothing in case of race)
-  await db
-    .insert(dailyIdCounters)
-    .values({
-      id: rowId,
-      entityType,
-      dateKey,
-      counter: 0, // Start at 0, first update will make it 1
-    })
-    .onConflictDoNothing();
+  // No existing row - try to insert
+  // Use initialCounter to seed from existing max (handles mid-day migration)
+  // ON CONFLICT: if another request raced and inserted first, take the GREATEST counter
+  // to ensure we never go backwards
+  const seedCounter = initialCounter ?? 0;
+  await db.execute(sql`
+    INSERT INTO daily_id_counters (id, entity_type, date_key, counter)
+    VALUES (${rowId}, ${entityType}, ${dateKey}, ${seedCounter})
+    ON CONFLICT (id) DO UPDATE SET counter = GREATEST(daily_id_counters.counter, ${seedCounter})
+  `);
 
   // Now do the atomic update to get the counter
   const finalResult = await db
@@ -139,7 +142,7 @@ export async function generateSequentialId(entityType: EntityType, coldStorageId
     .where(eq(dailyIdCounters.id, rowId))
     .returning({ counter: dailyIdCounters.counter });
 
-  return `${prefix}${dateKey}${finalResult[0]?.counter || 1}`;
+  return `${prefix}${dateKey}${finalResult[0]?.counter || (seedCounter + 1)}`;
 }
 
 export interface IStorage {
@@ -5757,7 +5760,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Generate unique farmer ID in format FMYYYYMMDD1, FMYYYYMMDD2, etc.
-  // Uses atomic counter stored in cold_storages.farmerIdSequences to prevent ID reuse even after deletion
+  // Uses atomic dailyIdCounters table to prevent ID reuse even after merges/deletion
   // Safety: unique constraint on farmer_ledger.farmerId + retry logic ensures no duplicates
   async generateFarmerId(coldStorageId: string): Promise<string> {
     const now = new Date();
@@ -5765,53 +5768,26 @@ export class DatabaseStorage implements IStorage {
       String(now.getMonth() + 1).padStart(2, '0') +
       String(now.getDate()).padStart(2, '0');
     
-    try {
-      // Atomically increment and return the next sequence using a single UPDATE + RETURNING
-      // This ensures no two concurrent calls get the same sequence number
-      const result = await db.execute(sql`
-        UPDATE cold_storages 
-        SET farmer_id_sequences = (
-          CASE 
-            WHEN farmer_id_sequences IS NULL OR farmer_id_sequences = '' THEN 
-              jsonb_build_object(${dateKey}, 1)::text
-            ELSE 
-              (COALESCE(farmer_id_sequences::jsonb, '{}'::jsonb) || 
-               jsonb_build_object(${dateKey}, COALESCE((farmer_id_sequences::jsonb->${dateKey})::int, 0) + 1))::text
-          END
-        )
-        WHERE id = ${coldStorageId}
-        RETURNING (farmer_id_sequences::jsonb->${dateKey})::int as next_sequence
-      `);
-      
-      const nextSequence = (result.rows[0] as { next_sequence: number })?.next_sequence;
-      
-      if (nextSequence) {
-        return `FM${dateKey}${nextSequence}`;
-      }
-    } catch (error) {
-      console.error('Error generating farmer ID via sequence:', error);
-    }
-    
-    // Fallback: compute from existing farmer entries (within transaction for safety)
-    // This ensures we never reuse an ID even if sequence update fails
+    // Compute current max from existing records to seed the counter on first use
+    // This ensures continuity when transitioning from the old approach
+    const datePrefix = 'FM' + dateKey;
     const existingFarmers = await db.select({ farmerId: farmerLedger.farmerId })
       .from(farmerLedger)
       .where(and(
         eq(farmerLedger.coldStorageId, coldStorageId),
-        sql`${farmerLedger.farmerId} LIKE ${'FM' + dateKey + '%'}`
+        sql`${farmerLedger.farmerId} LIKE ${datePrefix + '%'}`
       ));
     
     let maxCounter = 0;
     for (const f of existingFarmers) {
-      const numPart = f.farmerId.replace('FM' + dateKey, '');
+      const numPart = f.farmerId.replace(datePrefix, '');
       const counter = parseInt(numPart, 10);
       if (!isNaN(counter) && counter > maxCounter) {
         maxCounter = counter;
       }
     }
     
-    // Unique constraint + retry logic in caller ensures this won't cause duplicates
-    return `FM${dateKey}${maxCounter + 1}`;
+    return generateSequentialId('farmer', coldStorageId, maxCounter);
   }
 
   // Sync farmers from all touchpoints: lots, receivables
@@ -6798,15 +6774,15 @@ export class DatabaseStorage implements IStorage {
     const today = new Date();
     const datePrefix = `BY${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
     
-    // Get the count of buyers created today in this cold storage
-    const existingBuyers = await db.select()
+    // Compute current max from existing records to seed the counter on first use
+    // This ensures continuity when transitioning from the old approach
+    const existingBuyers = await db.select({ buyerId: buyerLedger.buyerId })
       .from(buyerLedger)
       .where(and(
         eq(buyerLedger.coldStorageId, coldStorageId),
         sql`${buyerLedger.buyerId} LIKE ${datePrefix + '%'}`
       ));
     
-    // Find the highest sequence number used today
     let maxSeq = 0;
     for (const buyer of existingBuyers) {
       const seq = parseInt(buyer.buyerId.substring(datePrefix.length), 10);
@@ -6815,7 +6791,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    return `${datePrefix}${maxSeq + 1}`;
+    return generateSequentialId('buyer', coldStorageId, maxSeq);
   }
 
   // Get buyer ledger with calculated dues
