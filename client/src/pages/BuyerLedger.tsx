@@ -122,6 +122,13 @@ export default function BuyerLedger() {
       }
       queryClient.invalidateQueries({ queryKey: ['/api/buyer-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['/api/buyers/lookup'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/lots'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sales-history'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cash-receipts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/opening-receivables'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chambers'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/merchant-advances/buyers-with-dues'] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       if (result.merged) {
         toast({ title: t("mergedFrom") + " " + result.mergedFromId });
       } else {

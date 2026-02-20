@@ -7222,12 +7222,90 @@ export class DatabaseStorage implements IStorage {
       const targetBuyer = mergeCheck.targetBuyer!;
       const buyerNameLower = currentBuyer.buyerName.trim().toLowerCase();
       
-      // Update sales history to new buyer name
+      // Transfer sales history to target buyer (by buyerLedgerId)
       await db.update(salesHistory)
-        .set({ buyerName: targetBuyer.buyerName })
+        .set({ 
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
         .where(and(
           eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+          eq(salesHistory.buyerLedgerId, currentBuyer.id)
+        ));
+      
+      // Also transfer legacy sales (no buyerLedgerId) matched by name
+      await db.update(salesHistory)
+        .set({ 
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+          isNull(salesHistory.buyerLedgerId),
           sql`LOWER(TRIM(${salesHistory.buyerName})) = ${buyerNameLower}`
+        ));
+      
+      // Transfer cash receipts to target buyer (by buyerLedgerId)
+      await db.update(cashReceipts)
+        .set({
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
+          eq(cashReceipts.buyerLedgerId, currentBuyer.id)
+        ));
+      
+      // Also transfer legacy cash receipts (no buyerLedgerId) matched by name
+      await db.update(cashReceipts)
+        .set({
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
+          isNull(cashReceipts.buyerLedgerId),
+          sql`LOWER(TRIM(${cashReceipts.buyerName})) = ${buyerNameLower}`
+        ));
+      
+      // Transfer opening receivables to target buyer (by buyerLedgerId)
+      await db.update(openingReceivables)
+        .set({
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
+          eq(openingReceivables.buyerLedgerId, currentBuyer.id)
+        ));
+      
+      // Also transfer legacy opening receivables (no buyerLedgerId) matched by name
+      await db.update(openingReceivables)
+        .set({
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
+          isNull(openingReceivables.buyerLedgerId),
+          sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${buyerNameLower}`
+        ));
+      
+      // Transfer merchant advances to target buyer
+      await db.update(merchantAdvance)
+        .set({
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(merchantAdvance.coldStorageId, currentBuyer.coldStorageId),
+          eq(merchantAdvance.buyerLedgerId, currentBuyer.id)
         ));
       
       // Archive the current buyer
@@ -7288,6 +7366,59 @@ export class DatabaseStorage implements IStorage {
         afterValues,
         modifiedBy,
       });
+      
+      // Propagate buyer name changes to all related tables
+      if (currentBuyer.buyerName !== updated.buyerName) {
+        const oldNameLower = currentBuyer.buyerName.trim().toLowerCase();
+        
+        await db.update(salesHistory)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+            eq(salesHistory.buyerLedgerId, id)
+          ));
+        
+        await db.update(cashReceipts)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
+            eq(cashReceipts.buyerLedgerId, id)
+          ));
+        
+        await db.update(openingReceivables)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
+            eq(openingReceivables.buyerLedgerId, id)
+          ));
+        
+        // Also update salesHistory where buyerName matches but buyerLedgerId might be null (legacy)
+        await db.update(salesHistory)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+            isNull(salesHistory.buyerLedgerId),
+            sql`LOWER(TRIM(${salesHistory.buyerName})) = ${oldNameLower}`
+          ));
+        
+        // Also update cashReceipts where buyerLedgerId might be null (legacy)
+        await db.update(cashReceipts)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
+            isNull(cashReceipts.buyerLedgerId),
+            sql`LOWER(TRIM(${cashReceipts.buyerName})) = ${oldNameLower}`
+          ));
+        
+        // Also update openingReceivables where buyerLedgerId might be null (legacy)
+        await db.update(openingReceivables)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
+            isNull(openingReceivables.buyerLedgerId),
+            sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${oldNameLower}`
+          ));
+      }
     }
     
     return { buyer: updated, merged: false };

@@ -126,6 +126,12 @@ export default function FarmerLedger() {
       }
       queryClient.invalidateQueries({ queryKey: ['/api/farmer-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['/api/farmers/lookup'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/lots'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sales-history'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cash-receipts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/opening-receivables'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chambers'] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       if (result.merged) {
         toast({ title: t("mergedFrom") + " " + result.mergedFromId });
       } else {
