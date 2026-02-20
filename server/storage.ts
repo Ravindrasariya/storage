@@ -6562,6 +6562,7 @@ export class DatabaseStorage implements IStorage {
           await db.update(lots)
             .set({ 
               farmerLedgerId: survivorId,
+              farmerId: survivorFarmerId,
               farmerName: survivorFarmerEntry.name,
               contactNumber: survivorFarmerEntry.contactNumber,
               village: survivorFarmerEntry.village,
@@ -6574,6 +6575,7 @@ export class DatabaseStorage implements IStorage {
           await db.update(openingReceivables)
             .set({ 
               farmerLedgerId: survivorId,
+              farmerId: survivorFarmerId,
               farmerName: survivorFarmerEntry.name,
               contactNumber: survivorFarmerEntry.contactNumber,
               village: survivorFarmerEntry.village,
@@ -6586,11 +6588,38 @@ export class DatabaseStorage implements IStorage {
           await db.update(salesHistory)
             .set({ 
               farmerLedgerId: survivorId,
+              farmerId: survivorFarmerId,
               farmerName: survivorFarmerEntry.name,
               contactNumber: survivorFarmerEntry.contactNumber,
               village: survivorFarmerEntry.village,
             })
             .where(eq(salesHistory.farmerLedgerId, mergedId));
+        }
+        
+        // Transfer cash receipts from merged farmer to survivor
+        const mergedCashReceipts = await db.select()
+          .from(cashReceipts)
+          .where(eq(cashReceipts.farmerLedgerId, mergedId));
+        if (mergedCashReceipts.length > 0) {
+          await db.update(cashReceipts)
+            .set({
+              farmerLedgerId: survivorId,
+              farmerId: survivorFarmerId,
+            })
+            .where(eq(cashReceipts.farmerLedgerId, mergedId));
+        }
+        
+        // Transfer farmer advance/freight entries from merged farmer to survivor
+        const mergedAdvances = await db.select()
+          .from(farmerAdvanceFreight)
+          .where(eq(farmerAdvanceFreight.farmerLedgerId, mergedId));
+        if (mergedAdvances.length > 0) {
+          await db.update(farmerAdvanceFreight)
+            .set({
+              farmerLedgerId: survivorId,
+              farmerId: survivorFarmerId,
+            })
+            .where(eq(farmerAdvanceFreight.farmerLedgerId, mergedId));
         }
         
         // Archive the merged farmer
