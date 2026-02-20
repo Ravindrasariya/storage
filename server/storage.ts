@@ -6745,6 +6745,12 @@ export class DatabaseStorage implements IStorage {
     await db.update(salesHistory)
       .set(farmerDetails)
       .where(eq(salesHistory.farmerLedgerId, farmerLedgerId));
+    
+    // Update buyerName on farmer-type cash receipts (stored as "FarmerName (Village)")
+    const farmerDisplayName = `${farmer.name} (${farmer.village})`;
+    await db.update(cashReceipts)
+      .set({ buyerName: farmerDisplayName })
+      .where(eq(cashReceipts.farmerLedgerId, farmerLedgerId));
   }
 
   // Archive a farmer
