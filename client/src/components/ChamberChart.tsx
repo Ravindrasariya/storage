@@ -17,6 +17,8 @@ interface ChamberChartProps {
 }
 
 type FloorCapacityData = Record<string, { floor: number; bags: number }[]>;
+type ConfiguredFloor = { id: string; chamberId: string; floorNumber: number; capacity: number };
+type ConfiguredFloorsData = Record<string, ConfiguredFloor[]>;
 
 export function ChamberChart({ chambers }: ChamberChartProps) {
   const { t } = useI18n();
@@ -24,6 +26,10 @@ export function ChamberChart({ chambers }: ChamberChartProps) {
 
   const { data: floorCapacity } = useQuery<FloorCapacityData>({
     queryKey: ["/api/chambers/floor-capacity"],
+  });
+
+  const { data: configuredFloors } = useQuery<ConfiguredFloorsData>({
+    queryKey: ["/api/chamber-floors"],
   });
 
   const getProgressColor = (percentage: number) => {
@@ -52,8 +58,19 @@ export function ChamberChart({ chambers }: ChamberChartProps) {
           <p className="text-muted-foreground text-sm text-center py-4">No chambers found</p>
         ) : (
           chambers.map((chamber) => {
-            const floors = floorCapacity?.[chamber.id] || [];
-            const hasFloors = floors.length > 0;
+            const lotFloors = floorCapacity?.[chamber.id] || [];
+            const chamberConfiguredFloors = configuredFloors?.[chamber.id] || [];
+            const mergedFloors = chamberConfiguredFloors.map(cf => {
+              const lotData = lotFloors.find(f => f.floor === cf.floorNumber);
+              return { floor: cf.floorNumber, bags: lotData?.bags || 0, capacity: cf.capacity };
+            });
+            if (mergedFloors.length === 0) {
+              for (const lf of lotFloors) {
+                mergedFloors.push({ floor: lf.floor, bags: lf.bags, capacity: 0 });
+              }
+            }
+            mergedFloors.sort((a, b) => a.floor - b.floor);
+            const hasFloors = mergedFloors.length > 0;
             const isExpanded = expandedChambers.has(chamber.id);
 
             return (
@@ -87,9 +104,10 @@ export function ChamberChart({ chambers }: ChamberChartProps) {
 
                 {isExpanded && hasFloors && (
                   <div className="ml-4 pl-4 border-l-2 border-muted space-y-2 mt-2">
-                    {floors.map((floorData) => {
-                      const floorPercentage = chamber.capacity > 0 
-                        ? Math.round((floorData.bags / chamber.capacity) * 100) 
+                    {mergedFloors.map((floorData) => {
+                      const floorCap = floorData.capacity > 0 ? floorData.capacity : chamber.capacity;
+                      const floorPercentage = floorCap > 0
+                        ? Math.round((floorData.bags / floorCap) * 100)
                         : 0;
                       return (
                         <div key={floorData.floor} className="text-sm">
@@ -98,7 +116,7 @@ export function ChamberChart({ chambers }: ChamberChartProps) {
                               {t("floor")} {floorData.floor}
                             </span>
                             <span className="text-muted-foreground">
-                              {floorData.bags.toLocaleString()} {t("bags")}
+                              {floorData.bags.toLocaleString()} / {floorData.capacity > 0 ? floorData.capacity.toLocaleString() : "?"} {t("bags")}
                             </span>
                           </div>
                           <div className="relative h-2 rounded-full bg-muted/50 overflow-hidden">
