@@ -33,9 +33,6 @@ const EXPENSE_TYPE_LABELS: Record<string, { en: string; hi: string }> = {
   hammali: { en: "Hammali", hi: "हम्माली" },
   grading_charges: { en: "Grading Charges", hi: "ग्रेडिंग शुल्क" },
   tds: { en: "TDS", hi: "टीडीएस" },
-  merchant_advance: { en: "Merchant Advance", hi: "व्यापारी अग्रिम" },
-  farmer_advance: { en: "Farmer Advance", hi: "किसान अग्रिम" },
-  farmer_freight: { en: "Farmer Freight", hi: "किसान भाड़ा" },
   cost_of_goods_sold: { en: "Cost of Goods Sold", hi: "बिक्री की लागत" },
 };
 

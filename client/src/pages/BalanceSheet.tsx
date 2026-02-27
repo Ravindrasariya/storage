@@ -18,6 +18,11 @@ interface BalanceSheetData {
       byCategory: Record<string, number>;
       total: number;
     };
+    currentAssets: {
+      byCategory: Record<string, number>;
+      total: number;
+    };
+    total: number;
   };
   liabilities: {
     longTerm: { items: { name: string; type: string; amount: number }[]; total: number };
@@ -36,6 +41,14 @@ const CATEGORY_LABELS: Record<string, { en: string; hi: string }> = {
   computers: { en: "Computers", hi: "कंप्यूटर" },
   electrical_fittings: { en: "Electrical Fittings", hi: "विद्युत फिटिंग" },
   other: { en: "Other", hi: "अन्य" },
+};
+
+const CURRENT_ASSET_LABELS: Record<string, { en: string; hi: string }> = {
+  farmerPYReceivables: { en: "Farmer PY Receivables", hi: "किसान पूर्व वर्ष प्राप्य" },
+  buyerPYReceivables: { en: "Buyer PY Receivables", hi: "व्यापारी पूर्व वर्ष प्राप्य" },
+  farmerAdvance: { en: "Farmer Advance", hi: "किसान अग्रिम" },
+  farmerFreight: { en: "Farmer Freight", hi: "किसान भाड़ा" },
+  merchantAdvance: { en: "Merchant Advance", hi: "व्यापारी अग्रिम" },
 };
 
 export default function BalanceSheet() {
@@ -80,6 +93,12 @@ export default function BalanceSheet() {
     return cat;
   };
 
+  const getCurrentAssetLabel = (key: string) => {
+    const labels = CURRENT_ASSET_LABELS[key];
+    if (labels) return language === "hi" ? labels.hi : labels.en;
+    return key;
+  };
+
   const handleDownloadCSV = async () => {
     try {
       const res = await authFetch(`/api/reports/balance-sheet/${selectedFY}?format=csv`);
@@ -93,7 +112,7 @@ export default function BalanceSheet() {
     } catch { /* ignore */ }
   };
 
-  const totalAssets = data?.assets.fixedAssets.total || 0;
+  const totalAssets = data?.assets.total || 0;
   const totalLiabilitiesAndEquity = data?.totalLiabilitiesAndEquity || 0;
   const isBalanced = Math.abs(totalAssets - totalLiabilitiesAndEquity) < 1;
 
@@ -176,6 +195,24 @@ export default function BalanceSheet() {
                     <span className="text-sm">{formatCurrency(data.assets.fixedAssets.total)}</span>
                   </div>
                 </div>
+
+                {data.assets.currentAssets.total > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-sm text-muted-foreground mb-2">{t("currentAssets")}</h3>
+                    <div className="space-y-2">
+                      {Object.entries(data.assets.currentAssets.byCategory).map(([key, value]) => (
+                        <div key={key} className="flex justify-between items-center py-1 px-2 rounded bg-muted/30" data-testid={`row-current-asset-${key}`}>
+                          <span className="text-sm">{getCurrentAssetLabel(key)}</span>
+                          <span className="text-sm font-medium">{formatCurrency(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between items-center mt-2 pt-2 border-t font-semibold">
+                      <span className="text-sm">{t("totalCurrentAssets")}</span>
+                      <span className="text-sm">{formatCurrency(data.assets.currentAssets.total)}</span>
+                    </div>
+                  </div>
+                )}
 
                 <Separator />
 

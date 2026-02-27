@@ -1323,9 +1323,10 @@ export default function CashManagement() {
       return;
     }
 
+    const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance'];
     createExpenseMutation.mutate({
       expenseType,
-      expenseClass: "revenue",
+      expenseClass: advanceTypes.includes(expenseType) ? "advance" : "revenue",
       receiverName: isFarmerExpenseType ? expenseFarmerName : (isMerchantExpenseType ? expenseBuyerName : (expenseReceiverName || undefined)),
       paymentMode: expensePaymentMode,
       accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,

@@ -2167,6 +2167,8 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = createExpenseSchema.parse(req.body);
+      const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance'];
+      const expenseClass = advanceTypes.includes(validatedData.expenseType) ? 'advance' : (validatedData.expenseClass || 'revenue');
       const expense = await storage.createExpense({
         coldStorageId: coldStorageId,
         expenseType: validatedData.expenseType,
@@ -2177,6 +2179,7 @@ export async function registerRoutes(
         amount: validatedData.amount,
         paidAt: validatedData.paidAt,
         remarks: validatedData.remarks || null,
+        expenseClass,
       });
 
       if ((validatedData.expenseType === "farmer_advance" || validatedData.expenseType === "farmer_freight") && validatedData.farmerLedgerId && validatedData.farmerId) {
@@ -4249,6 +4252,10 @@ export async function registerRoutes(
       const { start: fyStart, end: fyEnd } = getFYRange(fy);
       const format = req.query.format;
 
+      const { db } = await import("./db");
+      const { openingReceivables, farmerAdvanceFreight, merchantAdvance: merchantAdvanceTable } = await import("@shared/schema");
+      const { eq, and, sql } = await import("drizzle-orm");
+
       const allAssets = await storage.getAssets(coldStorageId);
       const depLog = await storage.getDepreciationLog(coldStorageId, fy);
 
@@ -4261,6 +4268,63 @@ export async function registerRoutes(
         fixedAssetsByCategory[asset.assetCategory] = (fixedAssetsByCategory[asset.assetCategory] || 0) + value;
       }
       const totalFixedAssets = Object.values(fixedAssetsByCategory).reduce((s, v) => s + v, 0);
+
+      const farmerPYReceivablesResult = await db.select({
+        total: sql<number>`COALESCE(SUM(COALESCE("final_amount", "due_amount") - "paid_amount"), 0)`,
+      }).from(openingReceivables).where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        sql`"payer_type" = 'farmer'`,
+        sql`COALESCE("final_amount", "due_amount") - "paid_amount" > 0`,
+      ));
+      const farmerPYReceivables = Number(farmerPYReceivablesResult[0]?.total) || 0;
+
+      const buyerPYReceivablesResult = await db.select({
+        total: sql<number>`COALESCE(SUM(COALESCE("final_amount", "due_amount") - "paid_amount"), 0)`,
+      }).from(openingReceivables).where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        sql`"payer_type" = 'cold_merchant'`,
+        sql`COALESCE("final_amount", "due_amount") - "paid_amount" > 0`,
+      ));
+      const buyerPYReceivables = Number(buyerPYReceivablesResult[0]?.total) || 0;
+
+      const farmerAdvanceResult = await db.select({
+        total: sql<number>`COALESCE(SUM("final_amount" - "paid_amount"), 0)`,
+      }).from(farmerAdvanceFreight).where(and(
+        eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+        sql`"type" = 'advance'`,
+        eq(farmerAdvanceFreight.isReversed, 0),
+        sql`"final_amount" - "paid_amount" > 0`,
+      ));
+      const farmerAdvanceOutstanding = Number(farmerAdvanceResult[0]?.total) || 0;
+
+      const farmerFreightResult = await db.select({
+        total: sql<number>`COALESCE(SUM("final_amount" - "paid_amount"), 0)`,
+      }).from(farmerAdvanceFreight).where(and(
+        eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+        sql`"type" = 'freight'`,
+        eq(farmerAdvanceFreight.isReversed, 0),
+        sql`"final_amount" - "paid_amount" > 0`,
+      ));
+      const farmerFreightOutstanding = Number(farmerFreightResult[0]?.total) || 0;
+
+      const merchantAdvanceResult = await db.select({
+        total: sql<number>`COALESCE(SUM("final_amount" - "paid_amount"), 0)`,
+      }).from(merchantAdvanceTable).where(and(
+        eq(merchantAdvanceTable.coldStorageId, coldStorageId),
+        eq(merchantAdvanceTable.isReversed, 0),
+        sql`"final_amount" - "paid_amount" > 0`,
+      ));
+      const merchantAdvanceOutstanding = Number(merchantAdvanceResult[0]?.total) || 0;
+
+      const currentAssetsBreakdown: Record<string, number> = {};
+      if (farmerPYReceivables > 0) currentAssetsBreakdown.farmerPYReceivables = farmerPYReceivables;
+      if (buyerPYReceivables > 0) currentAssetsBreakdown.buyerPYReceivables = buyerPYReceivables;
+      if (farmerAdvanceOutstanding > 0) currentAssetsBreakdown.farmerAdvance = farmerAdvanceOutstanding;
+      if (farmerFreightOutstanding > 0) currentAssetsBreakdown.farmerFreight = farmerFreightOutstanding;
+      if (merchantAdvanceOutstanding > 0) currentAssetsBreakdown.merchantAdvance = merchantAdvanceOutstanding;
+      const totalCurrentAssets = Object.values(currentAssetsBreakdown).reduce((s, v) => s + v, 0);
+
+      const totalAssets = totalFixedAssets + totalCurrentAssets;
 
       const allLiabilities = await storage.getLiabilities(coldStorageId);
       const activeLiabilities = allLiabilities.filter(l => {
@@ -4284,7 +4348,7 @@ export async function registerRoutes(
       const totalCurrentLiabilities = currentLiabilities.reduce((s, l) => s + l.amount, 0);
       const totalLiabilities = totalLongTerm + totalCurrentLiabilities;
 
-      const ownersEquity = totalFixedAssets - totalLiabilities;
+      const ownersEquity = totalAssets - totalLiabilities;
 
       const result = {
         financialYear: fy,
@@ -4294,6 +4358,11 @@ export async function registerRoutes(
             byCategory: fixedAssetsByCategory,
             total: totalFixedAssets,
           },
+          currentAssets: {
+            byCategory: currentAssetsBreakdown,
+            total: totalCurrentAssets,
+          },
+          total: totalAssets,
         },
         liabilities: {
           longTerm: { items: longTermLiabilities, total: totalLongTerm },
@@ -4305,6 +4374,13 @@ export async function registerRoutes(
       };
 
       if (format === 'csv') {
+        const currentAssetLabels: Record<string, string> = {
+          farmerPYReceivables: 'Farmer PY Receivables',
+          buyerPYReceivables: 'Buyer PY Receivables',
+          farmerAdvance: 'Farmer Advance',
+          farmerFreight: 'Farmer Freight',
+          merchantAdvance: 'Merchant Advance',
+        };
         const rows = [
           ['Balance Sheet', `FY ${fy}`, `As of ${result.asOf}`],
           [],
@@ -4312,6 +4388,12 @@ export async function registerRoutes(
           ['Fixed Assets'],
           ...Object.entries(fixedAssetsByCategory).map(([cat, val]) => [`  ${cat}`, '', String(val)]),
           ['Total Fixed Assets', '', String(totalFixedAssets)],
+          [],
+          ['Current Assets'],
+          ...Object.entries(currentAssetsBreakdown).map(([key, val]) => [`  ${currentAssetLabels[key] || key}`, '', String(val)]),
+          ['Total Current Assets', '', String(totalCurrentAssets)],
+          [],
+          ['Total Assets', '', String(totalAssets)],
           [],
           ['LIABILITIES'],
           ['Long-term Liabilities'],
