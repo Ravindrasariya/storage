@@ -472,7 +472,7 @@ export default function AssetRegister() {
 
           <Card className="overflow-hidden">
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-w-[calc(100vw-2rem)]">
                 <table className="w-full text-sm min-w-[700px]">
                   <thead>
                     <tr className="border-b bg-muted/30">
@@ -609,7 +609,7 @@ export default function AssetRegister() {
               {depLogLoading ? (
                 <Skeleton className="h-32" />
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-w-[calc(100vw-2rem)]">
                   <table className="w-full text-sm min-w-[500px]">
                     <thead>
                       <tr className="border-b bg-muted/30">
