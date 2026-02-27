@@ -664,6 +664,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record buyer transfer", variant: "destructive" });
@@ -707,6 +708,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record payment", variant: "destructive" });
@@ -734,6 +736,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record payment", variant: "destructive" });
@@ -774,6 +777,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record expense", variant: "destructive" });
@@ -812,6 +816,7 @@ export default function CashManagement() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -845,6 +850,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -881,6 +887,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: (error: any) => {
       const errorMsg = error?.message || "Failed to record discount";
@@ -915,6 +922,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -940,6 +948,7 @@ export default function CashManagement() {
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: "Failed to record transfer", variant: "destructive" });
@@ -969,6 +978,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -999,6 +1009,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
@@ -1018,6 +1029,7 @@ export default function CashManagement() {
       if (variables.year === currentYear) {
         queryClient.invalidateQueries({ queryKey: ["/api/opening-balances", currentYear] });
       }
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -1065,6 +1077,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -1084,6 +1097,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
@@ -1105,6 +1119,7 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -1120,6 +1135,7 @@ export default function CashManagement() {
     onSuccess: () => {
       toast({ title: t("success"), description: "Bank account added", variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts", settingsYear] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -1134,6 +1150,7 @@ export default function CashManagement() {
     onSuccess: () => {
       toast({ title: t("success"), description: "Bank account updated", variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts", settingsYear] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
@@ -1148,6 +1165,7 @@ export default function CashManagement() {
     onSuccess: () => {
       toast({ title: t("success"), description: "Bank account deleted", variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts", settingsYear] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
