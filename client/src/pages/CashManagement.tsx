@@ -2013,30 +2013,38 @@ export default function CashManagement() {
   }, [receipts]);
 
   const uniqueFarmers = useMemo(() => {
-    const normalizedMap = new Map<string, string>();
+    const normalizedMap = new Map<string, { name: string; contactNumber: string; village: string }>();
+    const farmerLookup = farmerRecordsForReceivables || [];
+    const findFarmerDetails = (nameKey: string) => {
+      return farmerLookup.find(f => f.farmerName.trim().toLowerCase() === nameKey);
+    };
+    const addFarmer = (displayName: string, contactNumber?: string, village?: string) => {
+      const key = displayName.trim().toLowerCase();
+      if (normalizedMap.has(key)) return;
+      const lookup = findFarmerDetails(key);
+      normalizedMap.set(key, {
+        name: displayName.trim(),
+        contactNumber: lookup?.contactNumber || contactNumber || "",
+        village: lookup?.village || village || "",
+      });
+    };
     receipts.forEach(r => {
       if (r.payerType !== "farmer" || !r.buyerName) return;
-      const trimmed = r.buyerName.trim();
-      const key = trimmed.toLowerCase();
-      if (!normalizedMap.has(key)) normalizedMap.set(key, trimmed);
+      addFarmer(r.buyerName);
     });
     expensesList.forEach(e => {
       if ((e.expenseType === "farmer_advance" || e.expenseType === "farmer_freight") && e.receiverName) {
-        const trimmed = e.receiverName.trim();
-        const key = trimmed.toLowerCase();
-        if (!normalizedMap.has(key)) normalizedMap.set(key, trimmed);
+        addFarmer(e.receiverName);
       }
     });
     discountsList.forEach(d => {
       if (!d.farmerName) return;
-      const trimmed = d.farmerName.trim();
-      const key = trimmed.toLowerCase();
-      if (!normalizedMap.has(key)) normalizedMap.set(key, trimmed);
+      addFarmer(d.farmerName, d.contactNumber, d.village);
     });
     return Array.from(normalizedMap.values()).sort((a, b) =>
-      a.toLowerCase().localeCompare(b.toLowerCase())
+      a.name.toLowerCase().localeCompare(b.name.toLowerCase())
     );
-  }, [receipts, expensesList, discountsList]);
+  }, [receipts, expensesList, discountsList, farmerRecordsForReceivables]);
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
@@ -2089,7 +2097,11 @@ export default function CashManagement() {
   const filteredFarmerOptions = useMemo(() => {
     if (!filterFarmerSearch) return uniqueFarmers;
     const search = filterFarmerSearch.toLowerCase();
-    return uniqueFarmers.filter(f => f.toLowerCase().includes(search));
+    return uniqueFarmers.filter(f =>
+      f.name.toLowerCase().includes(search) ||
+      f.contactNumber.toLowerCase().includes(search) ||
+      f.village.toLowerCase().includes(search)
+    );
   }, [uniqueFarmers, filterFarmerSearch]);
 
   const summary = useMemo(() => {
@@ -2694,9 +2706,9 @@ export default function CashManagement() {
                     onChange={(e) => {
                       setFilterFarmerSearch(e.target.value);
                       if (!e.target.value) setFilterFarmer("");
-                      else if (uniqueFarmers.some(f => f.toLowerCase() === e.target.value.toLowerCase())) {
-                        const match = uniqueFarmers.find(f => f.toLowerCase() === e.target.value.toLowerCase());
-                        if (match) setFilterFarmer(match);
+                      else {
+                        const match = uniqueFarmers.find(f => f.name.toLowerCase() === e.target.value.toLowerCase());
+                        if (match) setFilterFarmer(match.name);
                       }
                       setShowFilterFarmerSuggestions(true);
                     }}
@@ -2705,11 +2717,11 @@ export default function CashManagement() {
                       setTimeout(() => {
                         setShowFilterFarmerSuggestions(false);
                         const val = filterFarmerSearch.trim();
-                        if (val && uniqueFarmers.some(f => f.toLowerCase() === val.toLowerCase())) {
-                          const match = uniqueFarmers.find(f => f.toLowerCase() === val.toLowerCase());
+                        if (val) {
+                          const match = uniqueFarmers.find(f => f.name.toLowerCase() === val.toLowerCase());
                           if (match) {
-                            setFilterFarmer(match);
-                            setFilterFarmerSearch(match);
+                            setFilterFarmer(match.name);
+                            setFilterFarmerSearch(match.name);
                           }
                         }
                       }, 150);
@@ -2717,11 +2729,11 @@ export default function CashManagement() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         const val = filterFarmerSearch.trim();
-                        if (val && uniqueFarmers.some(f => f.toLowerCase() === val.toLowerCase())) {
-                          const match = uniqueFarmers.find(f => f.toLowerCase() === val.toLowerCase());
+                        if (val) {
+                          const match = uniqueFarmers.find(f => f.name.toLowerCase() === val.toLowerCase());
                           if (match) {
-                            setFilterFarmer(match);
-                            setFilterFarmerSearch(match);
+                            setFilterFarmer(match.name);
+                            setFilterFarmerSearch(match.name);
                           }
                         }
                         setShowFilterFarmerSuggestions(false);
@@ -2739,19 +2751,26 @@ export default function CashManagement() {
                         ) : (
                           filteredFarmerOptions.map((farmer) => (
                             <Button
-                              key={farmer}
+                              key={farmer.name}
                               variant="ghost"
                               size="sm"
-                              className="w-full justify-start text-left"
+                              className="w-full justify-start text-left h-auto py-1.5"
                               onMouseDown={(e) => {
                                 e.preventDefault();
-                                setFilterFarmer(farmer);
-                                setFilterFarmerSearch(farmer);
+                                setFilterFarmer(farmer.name);
+                                setFilterFarmerSearch(farmer.name);
                                 setShowFilterFarmerSuggestions(false);
                               }}
-                              data-testid={`filter-farmer-suggestion-${farmer}`}
+                              data-testid={`filter-farmer-suggestion-${farmer.name}`}
                             >
-                              {farmer}
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">{farmer.name}</span>
+                                {(farmer.village || farmer.contactNumber) && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {[farmer.village, farmer.contactNumber].filter(Boolean).join(" | ")}
+                                  </span>
+                                )}
+                              </div>
                             </Button>
                           ))
                         )}
