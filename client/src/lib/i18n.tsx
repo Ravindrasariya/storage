@@ -404,7 +404,7 @@ const translations: Translations = {
   liabilityTransfer: { en: "Liability Transfer", hi: "देनदारी हस्तांतरण" },
 
   // Cash Management
-  cashManagement: { en: "Cash Management", hi: "नकद प्रबंधन" },
+  cashManagement: { en: "Cash", hi: "नकद" },
   inwardCash: { en: "Inward Cash", hi: "आने वाला नकद" },
   payerType: { en: "Payer Type", hi: "भुगतानकर्ता प्रकार" },
   coldMerchant: { en: "Cold Merchant", hi: "कोल्ड व्यापारी" },
@@ -588,7 +588,7 @@ const translations: Translations = {
   viewOnly: { en: "View Only", hi: "केवल देखें" },
   
   // Farmer Ledger
-  farmerLedger: { en: "Farmer Ledger", hi: "किसान खाता" },
+  farmerLedger: { en: "Farmers", hi: "किसान" },
   syncFarmers: { en: "Sync Farmers", hi: "किसान सिंक करें" },
   syncingFarmers: { en: "Syncing...", hi: "सिंक हो रहा है..." },
   farmersSynced: { en: "Farmers synced successfully", hi: "किसान सफलतापूर्वक सिंक हो गए" },
@@ -642,7 +642,7 @@ const translations: Translations = {
   actions: { en: "Actions", hi: "क्रियाएं" },
   
   // Buyer Ledger
-  buyerLedger: { en: "Buyer Ledger", hi: "खरीदार खाता" },
+  buyerLedger: { en: "Buyers", hi: "खरीदार" },
   buyers: { en: "Buyers", hi: "खरीदार" },
   buyerId: { en: "Buyer ID", hi: "खरीदार आईडी" },
   salesDue: { en: "Sales Due", hi: "बिक्री बकाया" },
