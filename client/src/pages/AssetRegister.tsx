@@ -393,7 +393,7 @@ export default function AssetRegister() {
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-x-hidden">
       <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold" data-testid="text-asset-register-title">
@@ -470,7 +470,7 @@ export default function AssetRegister() {
             </div>
           </div>
 
-          <Card>
+          <Card className="overflow-hidden">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[700px]">
@@ -571,7 +571,7 @@ export default function AssetRegister() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <Calculator className="w-4 h-4" />

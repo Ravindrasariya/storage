@@ -455,7 +455,7 @@ export default function LiabilityRegister() {
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-x-hidden">
       <div className="p-4 border-b">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
@@ -738,7 +738,7 @@ function LiabilityRow({
   const isSettled = liability.isSettled === 1;
 
   return (
-    <Card className={isSettled ? "opacity-70" : ""} data-testid={`card-liability-${liability.id}`}>
+    <Card className={`overflow-hidden ${isSettled ? "opacity-70" : ""}`} data-testid={`card-liability-${liability.id}`}>
       <CardContent className="p-3">
         <div className="flex flex-col gap-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
