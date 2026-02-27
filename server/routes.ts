@@ -4531,12 +4531,14 @@ export async function registerRoutes(
 
       const salesInFY = await db.select({
         totalCharges: sql<number>`COALESCE(SUM(${salesHistory.coldStorageCharge}), 0)`,
+        totalMerchantExtras: sql<number>`COALESCE(SUM(${salesHistory.extraDueToMerchantOriginal}), 0)`,
       }).from(salesHistory).where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         gte(salesHistory.soldAt, fyStart),
         lte(salesHistory.soldAt, fyEnd),
       ));
       const coldStorageIncome = Number(salesInFY[0]?.totalCharges) || 0;
+      const merchantExtrasIncome = Number(salesInFY[0]?.totalMerchantExtras) || 0;
 
       const otherReceiptsInFY = await db.select({
         total: sql<number>`COALESCE(SUM(${cashReceiptsTable.amount}), 0)`,
@@ -4549,7 +4551,7 @@ export async function registerRoutes(
       ));
       const otherIncome = Number(otherReceiptsInFY[0]?.total) || 0;
 
-      const totalIncome = coldStorageIncome + otherIncome;
+      const totalIncome = coldStorageIncome + merchantExtrasIncome + otherIncome;
 
       const revenueExpenses = await db.select({
         expenseType: expensesTable.expenseType,
@@ -4595,6 +4597,7 @@ export async function registerRoutes(
         period: { from: fyStart.toISOString().split('T')[0], to: fyEnd.toISOString().split('T')[0] },
         income: {
           coldStorageCharges: coldStorageIncome,
+          merchantExtras: merchantExtrasIncome,
           otherIncome,
           total: totalIncome,
         },
@@ -4615,6 +4618,7 @@ export async function registerRoutes(
           [],
           ['INCOME'],
           ['Cold Storage Charges', String(coldStorageIncome)],
+          ['Merchant Extras', String(merchantExtrasIncome)],
           ['Other Income (Kata/Sales Goods)', String(otherIncome)],
           ['Total Income', String(totalIncome)],
           [],

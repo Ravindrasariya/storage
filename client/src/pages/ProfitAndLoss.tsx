@@ -14,6 +14,7 @@ interface PnLData {
   period: { from: string; to: string };
   income: {
     coldStorageCharges: number;
+    merchantExtras: number;
     otherIncome: number;
     total: number;
   };
@@ -150,6 +151,12 @@ export default function ProfitAndLoss() {
                 <span className="text-sm">{t("coldStorageCharges")}</span>
                 <span className="text-sm font-medium">{formatCurrency(data.income.coldStorageCharges)}</span>
               </div>
+              {(data.income.merchantExtras || 0) > 0 && (
+                <div className="flex justify-between items-center py-2 px-3 rounded bg-muted/30" data-testid="row-income-merchant-extras">
+                  <span className="text-sm">{t("merchantExtrasIncome")}</span>
+                  <span className="text-sm font-medium">{formatCurrency(data.income.merchantExtras)}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center py-2 px-3 rounded bg-muted/30" data-testid="row-income-other">
                 <span className="text-sm">{t("otherIncome")}</span>
                 <span className="text-sm font-medium">{formatCurrency(data.income.otherIncome)}</span>

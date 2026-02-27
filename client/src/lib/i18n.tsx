@@ -710,6 +710,7 @@ const translations: Translations = {
   capitalExpense: { en: "Capital Expense", hi: "पूंजीगत व्यय" },
   revenueExpense: { en: "Revenue Expense", hi: "राजस्व व्यय" },
   advanceExpense: { en: "Advance", hi: "अग्रिम" },
+  merchantExtrasIncome: { en: "Merchant Extras", hi: "व्यापारी अतिरिक्त" },
   assetPurchase: { en: "Asset Purchase", hi: "संपत्ति खरीद" },
   expenseCategory: { en: "Expense Category", hi: "व्यय श्रेणी" },
   capitalExpenseRecorded: { en: "Capital expense & asset recorded", hi: "पूंजीगत व्यय और संपत्ति दर्ज" },
