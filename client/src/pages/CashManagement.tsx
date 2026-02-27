@@ -379,7 +379,6 @@ export default function CashManagement() {
   const isMerchantExpenseType = expenseType === "merchant_advance";
   const { data: allFarmersData } = useQuery<{ farmers: { id: string; farmerId: string; name: string; contactNumber: string; village: string }[] }>({
     queryKey: ["/api/farmer-ledger"],
-    enabled: isFarmerExpenseType,
   });
   const allFarmers = allFarmersData?.farmers || [];
 
@@ -2013,38 +2012,10 @@ export default function CashManagement() {
   }, [receipts]);
 
   const uniqueFarmers = useMemo(() => {
-    const normalizedMap = new Map<string, { name: string; contactNumber: string; village: string }>();
-    const farmerLookup = farmerRecordsForReceivables || [];
-    const findFarmerDetails = (nameKey: string) => {
-      return farmerLookup.find(f => f.farmerName.trim().toLowerCase() === nameKey);
-    };
-    const addFarmer = (displayName: string, contactNumber?: string, village?: string) => {
-      const key = displayName.trim().toLowerCase();
-      if (normalizedMap.has(key)) return;
-      const lookup = findFarmerDetails(key);
-      normalizedMap.set(key, {
-        name: displayName.trim(),
-        contactNumber: lookup?.contactNumber || contactNumber || "",
-        village: lookup?.village || village || "",
-      });
-    };
-    receipts.forEach(r => {
-      if (r.payerType !== "farmer" || !r.buyerName) return;
-      addFarmer(r.buyerName);
-    });
-    expensesList.forEach(e => {
-      if ((e.expenseType === "farmer_advance" || e.expenseType === "farmer_freight") && e.receiverName) {
-        addFarmer(e.receiverName);
-      }
-    });
-    discountsList.forEach(d => {
-      if (!d.farmerName) return;
-      addFarmer(d.farmerName, d.contactNumber, d.village);
-    });
-    return Array.from(normalizedMap.values()).sort((a, b) =>
-      a.name.toLowerCase().localeCompare(b.name.toLowerCase())
-    );
-  }, [receipts, expensesList, discountsList, farmerRecordsForReceivables]);
+    return allFarmers
+      .map(f => ({ name: f.name, contactNumber: f.contactNumber, village: f.village }))
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  }, [allFarmers]);
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
