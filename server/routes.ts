@@ -2117,10 +2117,10 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const expenseList = await storage.getExpenses(coldStorageId);
-      // Extract unique receiver names
+      const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance'];
       const namesSet = new Set<string>();
       expenseList.forEach(e => {
-        if (e.receiverName && e.receiverName.trim()) {
+        if (e.receiverName && e.receiverName.trim() && !advanceTypes.includes(e.expenseType)) {
           namesSet.add(e.receiverName.trim());
         }
       });
