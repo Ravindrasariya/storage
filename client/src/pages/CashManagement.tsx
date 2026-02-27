@@ -2228,7 +2228,6 @@ export default function CashManagement() {
     let filteredExpenses = expensesList.filter(e => e.isReversed !== 1);
     let filteredTransfers = transfers.filter(t => t.isReversed !== 1);
 
-    // Apply same filters as allTransactions
     if (filterPaymentMode) {
       if (filterPaymentMode === "cash") {
         filteredReceipts = filteredReceipts.filter(r => r.receiptType === "cash");
@@ -2257,6 +2256,18 @@ export default function CashManagement() {
     if (filterBuyer) {
       const filterKey = filterBuyer.trim().toLowerCase();
       filteredReceipts = filteredReceipts.filter(r => r.buyerName && r.buyerName.trim().toLowerCase() === filterKey);
+    }
+
+    if (filterFarmer) {
+      const filterKey = filterFarmer.trim().toLowerCase();
+      filteredReceipts = filteredReceipts.filter(r => 
+        r.payerType === "farmer" && r.buyerName && r.buyerName.trim().toLowerCase().includes(filterKey)
+      );
+      filteredExpenses = filteredExpenses.filter(e => 
+        (e.expenseType === "farmer_advance" || e.expenseType === "farmer_freight") &&
+        e.receiverName && e.receiverName.trim().toLowerCase().includes(filterKey)
+      );
+      filteredTransfers = [];
     }
 
     if (filterExpenseType) {
@@ -2300,10 +2311,25 @@ export default function CashManagement() {
       filteredTransfers = filteredTransfers.filter(t => t.remarks && t.remarks.toLowerCase().includes(searchKey));
     }
 
-    // Apply transaction type filter
-    const includeInward = filterTransactionType === "all" || filterTransactionType === "inward";
-    const includeExpense = filterTransactionType === "all" || filterTransactionType === "expense";
-    const includeTransfer = filterTransactionType === "all" || filterTransactionType === "self";
+    const isDiscountFilterOnly = filterPaymentMode === "discount";
+    const isExpenseTypeFilterActive = !!filterExpenseType;
+    const isPayerTypeFilterActive = !!filterPayerType;
+
+    let includeInward = !isDiscountFilterOnly && !isExpenseTypeFilterActive && (filterTransactionType === "all" || filterTransactionType === "inward");
+    let includeExpense = !isDiscountFilterOnly && !isPayerTypeFilterActive && (filterTransactionType === "all" || filterTransactionType === "expense");
+    let includeTransfer = !isDiscountFilterOnly && !isExpenseTypeFilterActive && !isPayerTypeFilterActive && (filterTransactionType === "all" || filterTransactionType === "self");
+
+    if (isPayerTypeFilterActive) {
+      includeInward = true;
+      includeExpense = false;
+      includeTransfer = false;
+    }
+
+    if (isExpenseTypeFilterActive) {
+      includeInward = false;
+      includeExpense = true;
+      includeTransfer = false;
+    }
 
     const totalInward = includeInward ? filteredReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0) : 0;
     const totalExpense = includeExpense ? filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0) : 0;
@@ -2313,8 +2339,10 @@ export default function CashManagement() {
       totalInward,
       totalExpense,
       totalTransfer,
+      showInward: includeInward,
+      showExpense: includeExpense,
     };
-  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
+  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterFarmer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
 
   return (
     <div className="container mx-auto p-4 max-w-4xl overflow-x-hidden">
@@ -2791,13 +2819,13 @@ export default function CashManagement() {
             <div className="p-2 bg-muted rounded-lg">
               <div className="flex items-center justify-between text-sm">
                 <div className="flex gap-4">
-                  {(filterTransactionType === "all" || filterTransactionType === "inward") && (
+                  {filteredSummary.showInward && (
                     <span>
                       <span className="text-muted-foreground">{t("inwardCash")}:</span>
                       <span className="ml-1 font-semibold text-green-600">₹{filteredSummary.totalInward.toLocaleString()}</span>
                     </span>
                   )}
-                  {(filterTransactionType === "all" || filterTransactionType === "expense") && (
+                  {filteredSummary.showExpense && (
                     <span>
                       <span className="text-muted-foreground">{t("expense")}:</span>
                       <span className="ml-1 font-semibold text-red-600">₹{filteredSummary.totalExpense.toLocaleString()}</span>
