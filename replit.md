@@ -44,7 +44,8 @@ Preferred communication style: Simple, everyday language.
 - **Balance Sheet Date**: As of March 31 of the FY end.
 
 ### Core Features
-- **Database Schema**: Manages coldStorages, coldStorageUsers, chambers, lots, lotEditHistory, salesHistory, exitEntries, cashFlow, assets, assetDepreciationLog, liabilities, liabilityPayments.
+- **Database Schema**: Manages migrations, coldStorages, coldStorageUsers, chambers, lots, lotEditHistory, salesHistory, exitEntries, cashFlow, assets, assetDepreciationLog, liabilities, liabilityPayments.
+- **One-Time Migrations**: Registry-based system in `server/migrations.ts`. Each migration has a unique name and runs once on startup; the `migrations` table tracks applied migrations. To add: append to `MIGRATIONS` array with a dated name. To remove: delete the entry — the DB record prevents re-runs.
 - **User Authentication**: Mobile number/password login, database-backed sessions, protected routes, change password. Features a KrashuVed splash screen.
 - **Admin Panel**: Hidden `/admin` route for managing cold storages and users (create, edit, delete, set access, reset passwords), protected by `ADMIN_PASSWORD`.
 - **Sales History & Charges**: Allows editing cold storage charges post-sale. Supports quintal and bag-based charge calculation, proportional entry deductions (Advance, Freight, Other), and tracks `extraDueToMerchant` separately. FIFO recalculation triggered by charge edits.

@@ -2,6 +2,12 @@ import { pgTable, text, varchar, integer, real, timestamp, uniqueIndex } from "d
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// One-time data migrations registry
+export const migrations = pgTable("migrations", {
+  name: varchar("name").primaryKey(),
+  appliedAt: timestamp("applied_at").notNull().defaultNow(),
+});
+
 // Cold Storage Configuration
 export const coldStorages = pgTable("cold_storages", {
   id: varchar("id").primaryKey(),
