@@ -204,6 +204,9 @@ export default function CashManagement() {
   const [filterBuyer, setFilterBuyer] = useState<string>("");
   const [filterBuyerSearch, setFilterBuyerSearch] = useState<string>("");
   const [showFilterBuyerSuggestions, setShowFilterBuyerSuggestions] = useState(false);
+  const [filterFarmer, setFilterFarmer] = useState<string>("");
+  const [filterFarmerSearch, setFilterFarmerSearch] = useState<string>("");
+  const [showFilterFarmerSuggestions, setShowFilterFarmerSuggestions] = useState(false);
   const [filterExpenseType, setFilterExpenseType] = useState<string>("");
   const [filterRemarks, setFilterRemarks] = useState<string>("");
   const [filterMonth, setFilterMonth] = useState<string>("");
@@ -1658,6 +1661,14 @@ export default function CashManagement() {
       filteredReceipts = filteredReceipts.filter(r => r.buyerName && r.buyerName.trim().toLowerCase() === filterKey);
     }
     
+    // Farmer name filter for receipts
+    if (filterFarmer) {
+      const filterKey = filterFarmer.trim().toLowerCase();
+      filteredReceipts = filteredReceipts.filter(r => 
+        r.payerType === "farmer" && r.buyerName && r.buyerName.trim().toLowerCase().includes(filterKey)
+      );
+    }
+    
     // Month filter for receipts
     if (filterMonth) {
       filteredReceipts = filteredReceipts.filter(r => {
@@ -1708,6 +1719,15 @@ export default function CashManagement() {
       );
     }
     
+    // Farmer name filter for expenses
+    if (filterFarmer) {
+      const filterKey = filterFarmer.trim().toLowerCase();
+      filteredExpenses = filteredExpenses.filter(e => 
+        (e.expenseType === "farmer_advance" || e.expenseType === "farmer_freight") &&
+        e.receiverName && e.receiverName.trim().toLowerCase().includes(filterKey)
+      );
+    }
+    
     // Month filter for expenses
     if (filterMonth) {
       filteredExpenses = filteredExpenses.filter(e => {
@@ -1746,6 +1766,11 @@ export default function CashManagement() {
     
     // Buyer name filter for internal transfers - exclude all since they don't have buyer association
     if (filterBuyer) {
+      filteredTransfers = [];
+    }
+    
+    // Farmer name filter for transfers - exclude (no farmer association)
+    if (filterFarmer) {
       filteredTransfers = [];
     }
     
@@ -1824,6 +1849,11 @@ export default function CashManagement() {
       });
     }
     
+    // Farmer name filter for buyer transfers - exclude (no farmer association)
+    if (filterFarmer) {
+      filteredBuyerTransfers = [];
+    }
+    
     // Month filter for buyer transfers
     if (filterMonth) {
       filteredBuyerTransfers = filteredBuyerTransfers.filter(bt => {
@@ -1894,6 +1924,12 @@ export default function CashManagement() {
           }
           if (farmerName !== filterKey && !buyerMatches) return false;
         }
+        // Apply farmer name filter for discounts
+        if (filterFarmer) {
+          const filterKey = filterFarmer.trim().toLowerCase();
+          const farmerName = d.farmerName?.trim().toLowerCase() || "";
+          if (!farmerName.includes(filterKey)) return false;
+        }
         // Apply month filter
         if (filterMonth) {
           const date = new Date(d.discountDate);
@@ -1956,7 +1992,7 @@ export default function CashManagement() {
       if (timeDiff !== 0) return timeDiff;
       return String(b.data.id).localeCompare(String(a.data.id));
     });
-  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
+  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterFarmer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
 
   const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers || loadingDiscounts;
 
@@ -1975,6 +2011,32 @@ export default function CashManagement() {
       a.toLowerCase().localeCompare(b.toLowerCase())
     );
   }, [receipts]);
+
+  const uniqueFarmers = useMemo(() => {
+    const normalizedMap = new Map<string, string>();
+    receipts.forEach(r => {
+      if (r.payerType !== "farmer" || !r.buyerName) return;
+      const trimmed = r.buyerName.trim();
+      const key = trimmed.toLowerCase();
+      if (!normalizedMap.has(key)) normalizedMap.set(key, trimmed);
+    });
+    expensesList.forEach(e => {
+      if ((e.expenseType === "farmer_advance" || e.expenseType === "farmer_freight") && e.receiverName) {
+        const trimmed = e.receiverName.trim();
+        const key = trimmed.toLowerCase();
+        if (!normalizedMap.has(key)) normalizedMap.set(key, trimmed);
+      }
+    });
+    discountsList.forEach(d => {
+      if (!d.farmerName) return;
+      const trimmed = d.farmerName.trim();
+      const key = trimmed.toLowerCase();
+      if (!normalizedMap.has(key)) normalizedMap.set(key, trimmed);
+    });
+    return Array.from(normalizedMap.values()).sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase())
+    );
+  }, [receipts, expensesList, discountsList]);
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
@@ -2002,7 +2064,7 @@ export default function CashManagement() {
     return Array.from(years).sort().reverse();
   }, [receipts, expensesList]);
 
-  const hasActiveFilters = filterTransactionType !== "all" || filterPaymentMode || filterPayerType || filterBuyer || filterExpenseType || filterRemarks || filterMonth || filterYear;
+  const hasActiveFilters = filterTransactionType !== "all" || filterPaymentMode || filterPayerType || filterBuyer || filterFarmer || filterExpenseType || filterRemarks || filterMonth || filterYear;
 
   const clearFilters = () => {
     setFilterTransactionType("all");
@@ -2010,6 +2072,8 @@ export default function CashManagement() {
     setFilterPayerType("");
     setFilterBuyer("");
     setFilterBuyerSearch("");
+    setFilterFarmer("");
+    setFilterFarmerSearch("");
     setFilterExpenseType("");
     setFilterRemarks("");
     setFilterMonth("");
@@ -2021,6 +2085,12 @@ export default function CashManagement() {
     const search = filterBuyerSearch.toLowerCase();
     return uniqueBuyers.filter(b => b.toLowerCase().includes(search));
   }, [uniqueBuyers, filterBuyerSearch]);
+
+  const filteredFarmerOptions = useMemo(() => {
+    if (!filterFarmerSearch) return uniqueFarmers;
+    const search = filterFarmerSearch.toLowerCase();
+    return uniqueFarmers.filter(f => f.toLowerCase().includes(search));
+  }, [uniqueFarmers, filterFarmerSearch]);
 
   const summary = useMemo(() => {
     const activeReceipts = receipts.filter(r => r.isReversed !== 1);
@@ -2605,6 +2675,83 @@ export default function CashManagement() {
                               data-testid={`filter-buyer-suggestion-${buyer}`}
                             >
                               {buyer}
+                            </Button>
+                          ))
+                        )}
+                      </ScrollArea>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(filterTransactionType === "all" || filterTransactionType === "inward" || filterTransactionType === "expense") && (filterPayerType === "" || filterPayerType === "farmer") && (
+              <div className="space-y-1">
+                <Label className="text-xs">{t("filterByFarmer")}</Label>
+                <div className="relative">
+                  <Input
+                    value={filterFarmerSearch}
+                    onChange={(e) => {
+                      setFilterFarmerSearch(e.target.value);
+                      if (!e.target.value) setFilterFarmer("");
+                      else if (uniqueFarmers.some(f => f.toLowerCase() === e.target.value.toLowerCase())) {
+                        const match = uniqueFarmers.find(f => f.toLowerCase() === e.target.value.toLowerCase());
+                        if (match) setFilterFarmer(match);
+                      }
+                      setShowFilterFarmerSuggestions(true);
+                    }}
+                    onFocus={() => setShowFilterFarmerSuggestions(true)}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setShowFilterFarmerSuggestions(false);
+                        const val = filterFarmerSearch.trim();
+                        if (val && uniqueFarmers.some(f => f.toLowerCase() === val.toLowerCase())) {
+                          const match = uniqueFarmers.find(f => f.toLowerCase() === val.toLowerCase());
+                          if (match) {
+                            setFilterFarmer(match);
+                            setFilterFarmerSearch(match);
+                          }
+                        }
+                      }, 150);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const val = filterFarmerSearch.trim();
+                        if (val && uniqueFarmers.some(f => f.toLowerCase() === val.toLowerCase())) {
+                          const match = uniqueFarmers.find(f => f.toLowerCase() === val.toLowerCase());
+                          if (match) {
+                            setFilterFarmer(match);
+                            setFilterFarmerSearch(match);
+                          }
+                        }
+                        setShowFilterFarmerSuggestions(false);
+                      }
+                    }}
+                    placeholder={t("searchFarmer")}
+                    className="h-8 text-sm"
+                    data-testid="input-filter-farmer-search"
+                  />
+                  {showFilterFarmerSuggestions && (
+                    <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md" data-testid="filter-farmer-dropdown">
+                      <ScrollArea className="max-h-[200px]">
+                        {filteredFarmerOptions.length === 0 ? (
+                          <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
+                        ) : (
+                          filteredFarmerOptions.map((farmer) => (
+                            <Button
+                              key={farmer}
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start text-left"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setFilterFarmer(farmer);
+                                setFilterFarmerSearch(farmer);
+                                setShowFilterFarmerSuggestions(false);
+                              }}
+                              data-testid={`filter-farmer-suggestion-${farmer}`}
+                            >
+                              {farmer}
                             </Button>
                           ))
                         )}
