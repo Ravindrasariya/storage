@@ -12,7 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank, Check, ChevronsUpDown, Search } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank, Check, ChevronsUpDown, Search, Package } from "lucide-react";
+import { DEPRECIATION_RATES } from "@shared/schema";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -148,6 +149,10 @@ export default function CashManagement() {
   const [receivedDate, setReceivedDate] = useState(persistedState?.receivedDate || todayDate);
   const [inwardRemarks, setInwardRemarks] = useState(persistedState?.inwardRemarks || "");
 
+  const [expenseClass, setExpenseClass] = useState<"revenue" | "capital">("revenue");
+  const [assetName, setAssetName] = useState("");
+  const [assetCategory, setAssetCategory] = useState("");
+  const [depreciationRate, setDepreciationRate] = useState("");
   const [expenseType, setExpenseType] = useState<string>(persistedState?.expenseType || "");
   const [expenseReceiverName, setExpenseReceiverName] = useState(persistedState?.expenseReceiverName || "");
   const [showReceiverSuggestions, setShowReceiverSuggestions] = useState(false);
@@ -1246,7 +1251,58 @@ export default function CashManagement() {
     return Math.round(amount * Math.pow(1 + rate / 100, years) * 100) / 100;
   };
 
-  const handleExpenseSubmit = () => {
+  const handleExpenseSubmit = async () => {
+    if (expenseClass === "capital") {
+      if (!assetName || !assetCategory || !expenseAmount || parseFloat(expenseAmount) <= 0) {
+        toast({ title: t("error"), description: "Please fill asset name, category, and amount", variant: "destructive" });
+        return;
+      }
+      if (expensePaymentMode === "account" && !expenseAccountId) {
+        toast({ title: t("error"), description: t("selectBankAccount") || "Please select a bank account", variant: "destructive" });
+        return;
+      }
+
+      try {
+        const expenseRes = await apiRequest("POST", "/api/expenses", {
+          expenseType: "asset_purchase",
+          expenseClass: "capital",
+          receiverName: assetName,
+          paymentMode: expensePaymentMode === "discount" ? "cash" : expensePaymentMode,
+          accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
+          amount: parseFloat(expenseAmount),
+          paidAt: new Date(expenseDate).toISOString(),
+          remarks: expenseRemarks || undefined,
+        });
+        const expenseData = await expenseRes.json();
+
+        await apiRequest("POST", "/api/assets", {
+          assetName,
+          assetCategory,
+          purchaseDate: new Date(expenseDate).toISOString(),
+          originalCost: parseFloat(expenseAmount),
+          currentBookValue: parseFloat(expenseAmount),
+          depreciationRate: parseFloat(depreciationRate) || DEPRECIATION_RATES[assetCategory] || 10,
+          depreciationMethod: "wdv",
+          isOpening: 0,
+          linkedExpenseId: expenseData.id,
+        });
+
+        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+        toast({ title: t("success"), description: t("capitalExpenseRecorded") || "Capital expense & asset recorded" });
+        setAssetName("");
+        setAssetCategory("");
+        setDepreciationRate("");
+        setExpenseAmount("");
+        setExpenseRemarks("");
+        setExpenseClass("revenue");
+      } catch (error) {
+        toast({ title: t("error"), description: "Failed to record capital expense", variant: "destructive" });
+      }
+      return;
+    }
+
     if (!expenseType || !expenseAmount || parseFloat(expenseAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
@@ -1269,6 +1325,7 @@ export default function CashManagement() {
 
     createExpenseMutation.mutate({
       expenseType,
+      expenseClass: "revenue",
       receiverName: isFarmerExpenseType ? expenseFarmerName : (isMerchantExpenseType ? expenseBuyerName : (expenseReceiverName || undefined)),
       paymentMode: expensePaymentMode,
       accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
@@ -1391,6 +1448,7 @@ export default function CashManagement() {
       case "farmer_advance": return t("farmerAdvance");
       case "farmer_freight": return t("farmerFreight");
       case "merchant_advance": return t("merchantAdvance");
+      case "asset_purchase": return t("assetPurchase") || "Asset Purchase";
       default: return type;
     }
   };
@@ -1427,6 +1485,7 @@ export default function CashManagement() {
       "Due After",
       "Remarks",
       "Status",
+      "Expense Class",
     ];
 
     const rows = transactions.map(transaction => {
@@ -1452,6 +1511,7 @@ export default function CashManagement() {
           dueAfterStr,
           r.notes || "",
           isReversed ? t("reversed") : t("active"),
+          "",
         ];
       } else if (transaction.type === "outflow") {
         const e = transaction.data as Expense;
@@ -1467,6 +1527,7 @@ export default function CashManagement() {
           "",
           e.remarks || "",
           isReversed ? t("reversed") : t("active"),
+          e.expenseClass === "capital" ? "Capital" : "Revenue",
         ];
       } else if (transaction.type === "transfer") {
         const tr = transaction.data as CashTransfer;
@@ -1482,6 +1543,7 @@ export default function CashManagement() {
           "",
           tr.remarks || "",
           isReversed ? t("reversed") : t("active"),
+          "",
         ];
       } else if (transaction.type === "discount") {
         const d = transaction.data as Discount;
@@ -1507,6 +1569,7 @@ export default function CashManagement() {
           dueAfterStr,
           `${allocationsStr}${d.remarks ? ` | ${d.remarks}` : ""}`,
           discountIsReversed ? t("reversed") : t("active"),
+          "",
         ];
       } else {
         const bt = transaction.data as SalesHistory;
@@ -1523,6 +1586,7 @@ export default function CashManagement() {
           "",
           bt.transferRemarks || "",
           btIsReversed ? t("reversed") : t("active"),
+          "",
         ];
       }
     });
@@ -3289,6 +3353,76 @@ export default function CashManagement() {
                     )}
 
                 <div className="space-y-2">
+                  <Label>{t("expenseCategory") || "Expense Category"}</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={expenseClass === "revenue" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      data-testid="btn-revenue-expense"
+                      onClick={() => { setExpenseClass("revenue"); setAssetName(""); setAssetCategory(""); setDepreciationRate(""); }}
+                    >
+                      {t("revenueExpense") || "Revenue Expense"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={expenseClass === "capital" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      data-testid="btn-capital-expense"
+                      onClick={() => { setExpenseClass("capital"); setExpenseType(""); }}
+                    >
+                      <Package className="h-4 w-4 mr-1" />
+                      {t("capitalExpense") || "Capital Expense"}
+                    </Button>
+                  </div>
+                </div>
+
+                {expenseClass === "capital" ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>{t("assetName") || "Asset Name"} *</Label>
+                      <Input
+                        value={assetName}
+                        onChange={(e) => setAssetName(e.target.value)}
+                        placeholder={t("enterAssetName") || "Enter asset name"}
+                        data-testid="input-asset-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t("assetCategory") || "Asset Category"} *</Label>
+                      <Select value={assetCategory} onValueChange={(v) => {
+                        setAssetCategory(v);
+                        setDepreciationRate(String(DEPRECIATION_RATES[v] || 10));
+                      }}>
+                        <SelectTrigger data-testid="select-asset-category">
+                          <SelectValue placeholder={t("selectCategory") || "Select category"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="building">{t("building") || "Building"}</SelectItem>
+                          <SelectItem value="plant_machinery">{t("plantMachinery") || "Plant & Machinery"}</SelectItem>
+                          <SelectItem value="furniture">{t("furniture") || "Furniture"}</SelectItem>
+                          <SelectItem value="vehicles">{t("vehicles") || "Vehicles"}</SelectItem>
+                          <SelectItem value="computers">{t("computers") || "Computers"}</SelectItem>
+                          <SelectItem value="electrical_fittings">{t("electricalFittings") || "Electrical Fittings"}</SelectItem>
+                          <SelectItem value="other">{t("other") || "Other"}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t("depreciationRate") || "Depreciation Rate (%)"}</Label>
+                      <Input
+                        type="number"
+                        value={depreciationRate}
+                        onChange={(e) => setDepreciationRate(e.target.value)}
+                        placeholder="10"
+                        data-testid="input-depreciation-rate"
+                      />
+                    </div>
+                  </>
+                ) : (
+                <div className="space-y-2">
                   <Label>{t("expenseType")} *</Label>
                   <Select value={expenseType} onValueChange={(v) => {
                     setExpenseType(v);
@@ -3324,6 +3458,7 @@ export default function CashManagement() {
                     </SelectContent>
                   </Select>
                 </div>
+                )}
 
                 {isFarmerExpenseType && (
                   <div className="space-y-2 relative">
@@ -3941,6 +4076,12 @@ export default function CashManagement() {
                                         : `${getAccountLabel((transaction.data as CashTransfer).fromAccountType)} → ${getAccountLabel((transaction.data as CashTransfer).toAccountType)}`
                               }
                             </span>
+                            {transaction.type === "outflow" && (transaction.data as Expense).expenseClass === "capital" && (
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 flex-shrink-0" data-testid="badge-capital-expense">
+                                <Package className="h-3 w-3 mr-1" />
+                                {t("asset") || "Asset"}
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0 min-w-fit">
                             <span className={`font-semibold text-sm whitespace-nowrap ${

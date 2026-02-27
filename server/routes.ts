@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
-import { lotFormSchema, insertChamberFloorSchema, Lot } from "@shared/schema";
+import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema } from "@shared/schema";
 import { z } from "zod";
 
 // CAPTCHA verification helper
@@ -4063,6 +4063,401 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid date range" });
       }
       res.status(500).json({ error: "Failed to export cash data" });
+    }
+  });
+
+  // ==================== Asset Routes ====================
+
+  app.get("/api/assets", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.getAssets(coldStorageId);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch assets" });
+    }
+  });
+
+  app.post("/api/assets", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const data = insertAssetSchema.parse({
+        ...req.body,
+        coldStorageId,
+        purchaseDate: new Date(req.body.purchaseDate),
+      });
+      const asset = await storage.createAsset(data);
+      res.json(asset);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid asset data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create asset" });
+    }
+  });
+
+  app.patch("/api/assets/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const updates = { ...req.body };
+      if (updates.purchaseDate) updates.purchaseDate = new Date(updates.purchaseDate);
+      const asset = await storage.updateAsset(req.params.id, updates);
+      if (!asset) return res.status(404).json({ error: "Asset not found" });
+      res.json(asset);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update asset" });
+    }
+  });
+
+  app.post("/api/assets/:id/dispose", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { disposalAmount, disposedAt } = req.body;
+      const asset = await storage.disposeAsset(
+        req.params.id,
+        Number(disposalAmount) || 0,
+        new Date(disposedAt || new Date()),
+      );
+      if (!asset) return res.status(404).json({ error: "Asset not found" });
+      res.json(asset);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to dispose asset" });
+    }
+  });
+
+  app.post("/api/assets/depreciation", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { financialYear } = req.body;
+      if (!financialYear || !/^\d{4}-\d{2}$/.test(financialYear)) {
+        return res.status(400).json({ error: "Invalid financial year format. Use YYYY-YY (e.g., 2025-26)" });
+      }
+      const log = await storage.runDepreciation(coldStorageId, financialYear);
+      res.json({ message: `Depreciation calculated for ${log.length} assets`, log });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to run depreciation" });
+    }
+  });
+
+  app.get("/api/assets/depreciation/:fy", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const log = await storage.getDepreciationLog(coldStorageId, req.params.fy);
+      res.json(log);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch depreciation log" });
+    }
+  });
+
+  // ==================== Liability Routes ====================
+
+  app.get("/api/liabilities", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.getLiabilities(coldStorageId);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch liabilities" });
+    }
+  });
+
+  app.post("/api/liabilities", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const data = insertLiabilitySchema.parse({
+        ...req.body,
+        coldStorageId,
+        startDate: new Date(req.body.startDate),
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null,
+      });
+      const liability = await storage.createLiability(data);
+      res.json(liability);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid liability data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create liability" });
+    }
+  });
+
+  app.patch("/api/liabilities/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const updates = { ...req.body };
+      if (updates.startDate) updates.startDate = new Date(updates.startDate);
+      if (updates.dueDate) updates.dueDate = new Date(updates.dueDate);
+      const liability = await storage.updateLiability(req.params.id, updates);
+      if (!liability) return res.status(404).json({ error: "Liability not found" });
+      res.json(liability);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update liability" });
+    }
+  });
+
+  app.post("/api/liabilities/:id/settle", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const liability = await storage.settleLiability(req.params.id);
+      if (!liability) return res.status(404).json({ error: "Liability not found" });
+      res.json(liability);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to settle liability" });
+    }
+  });
+
+  app.get("/api/liabilities/:id/payments", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const payments = await storage.getLiabilityPayments(req.params.id);
+      res.json(payments);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch liability payments" });
+    }
+  });
+
+  app.post("/api/liabilities/:id/payments", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const data = insertLiabilityPaymentSchema.parse({
+        ...req.body,
+        liabilityId: req.params.id,
+        coldStorageId,
+        paidAt: new Date(req.body.paidAt),
+      });
+      const payment = await storage.createLiabilityPayment(data);
+      res.json(payment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid payment data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create liability payment" });
+    }
+  });
+
+  app.post("/api/liability-payments/:id/reverse", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const payment = await storage.reverseLiabilityPayment(req.params.id);
+      if (!payment) return res.status(404).json({ error: "Payment not found or already reversed" });
+      res.json(payment);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reverse liability payment" });
+    }
+  });
+
+  // ==================== Financial Report Routes ====================
+
+  app.get("/api/reports/balance-sheet/:fy", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const fy = req.params.fy;
+      const coldStorageId = getColdStorageId(req);
+      const { getFYDateRange: getFYRange } = await import("@shared/schema");
+      const { start: fyStart, end: fyEnd } = getFYRange(fy);
+      const format = req.query.format;
+
+      const allAssets = await storage.getAssets(coldStorageId);
+      const depLog = await storage.getDepreciationLog(coldStorageId, fy);
+
+      const fixedAssetsByCategory: Record<string, number> = {};
+      for (const asset of allAssets) {
+        if (asset.isDisposed && asset.disposedAt && new Date(asset.disposedAt) < fyStart) continue;
+        if (new Date(asset.purchaseDate) > fyEnd) continue;
+        const depEntry = depLog.find(d => d.assetId === asset.id);
+        const value = depEntry ? depEntry.closingValue : asset.currentBookValue;
+        fixedAssetsByCategory[asset.assetCategory] = (fixedAssetsByCategory[asset.assetCategory] || 0) + value;
+      }
+      const totalFixedAssets = Object.values(fixedAssetsByCategory).reduce((s, v) => s + v, 0);
+
+      const allLiabilities = await storage.getLiabilities(coldStorageId);
+      const activeLiabilities = allLiabilities.filter(l => {
+        if (l.isSettled && l.settledAt && new Date(l.settledAt) <= fyEnd) return false;
+        if (new Date(l.startDate) > fyEnd) return false;
+        return l.outstandingAmount > 0;
+      });
+
+      const longTermLiabilities: { name: string; type: string; amount: number }[] = [];
+      const currentLiabilities: { name: string; type: string; amount: number }[] = [];
+      for (const l of activeLiabilities) {
+        const item = { name: l.liabilityName, type: l.liabilityType, amount: l.outstandingAmount };
+        if (['bank_loan', 'equipment_loan'].includes(l.liabilityType)) {
+          longTermLiabilities.push(item);
+        } else {
+          currentLiabilities.push(item);
+        }
+      }
+
+      const totalLongTerm = longTermLiabilities.reduce((s, l) => s + l.amount, 0);
+      const totalCurrentLiabilities = currentLiabilities.reduce((s, l) => s + l.amount, 0);
+      const totalLiabilities = totalLongTerm + totalCurrentLiabilities;
+
+      const ownersEquity = totalFixedAssets - totalLiabilities;
+
+      const result = {
+        financialYear: fy,
+        asOf: fyEnd.toISOString().split('T')[0],
+        assets: {
+          fixedAssets: {
+            byCategory: fixedAssetsByCategory,
+            total: totalFixedAssets,
+          },
+        },
+        liabilities: {
+          longTerm: { items: longTermLiabilities, total: totalLongTerm },
+          current: { items: currentLiabilities, total: totalCurrentLiabilities },
+          total: totalLiabilities,
+        },
+        ownersEquity,
+        totalLiabilitiesAndEquity: totalLiabilities + ownersEquity,
+      };
+
+      if (format === 'csv') {
+        const rows = [
+          ['Balance Sheet', `FY ${fy}`, `As of ${result.asOf}`],
+          [],
+          ['ASSETS'],
+          ['Fixed Assets'],
+          ...Object.entries(fixedAssetsByCategory).map(([cat, val]) => [`  ${cat}`, '', String(val)]),
+          ['Total Fixed Assets', '', String(totalFixedAssets)],
+          [],
+          ['LIABILITIES'],
+          ['Long-term Liabilities'],
+          ...longTermLiabilities.map(l => [`  ${l.name} (${l.type})`, '', String(l.amount)]),
+          ['Total Long-term', '', String(totalLongTerm)],
+          ['Current Liabilities'],
+          ...currentLiabilities.map(l => [`  ${l.name} (${l.type})`, '', String(l.amount)]),
+          ['Total Current', '', String(totalCurrentLiabilities)],
+          [],
+          ['Total Liabilities', '', String(totalLiabilities)],
+          ["Owner's Equity", '', String(ownersEquity)],
+          ['Total Liabilities + Equity', '', String(totalLiabilities + ownersEquity)],
+        ];
+        const csv = rows.map(r => r.join(',')).join('\n');
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="balance_sheet_${fy}.csv"`);
+        return res.send("\uFEFF" + csv);
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("Balance sheet error:", error);
+      res.status(500).json({ error: "Failed to generate balance sheet" });
+    }
+  });
+
+  app.get("/api/reports/pnl/:fy", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const fy = req.params.fy;
+      const coldStorageId = getColdStorageId(req);
+      const { getFYDateRange: getFYRange } = await import("@shared/schema");
+      const { start: fyStart, end: fyEnd } = getFYRange(fy);
+      const format = req.query.format;
+
+      const { db } = await import("./db");
+      const { salesHistory, expenses: expensesTable, cashReceipts: cashReceiptsTable, assetDepreciationLog: depLogTable, liabilityPayments: liabPayTable } = await import("@shared/schema");
+      const { eq, and, gte, lte, sql } = await import("drizzle-orm");
+
+      const salesInFY = await db.select({
+        totalCharges: sql<number>`COALESCE(SUM(${salesHistory.coldStorageCharge}), 0)`,
+      }).from(salesHistory).where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        gte(salesHistory.soldAt, fyStart),
+        lte(salesHistory.soldAt, fyEnd),
+        eq(salesHistory.isReversed, 0),
+      ));
+      const coldStorageIncome = Number(salesInFY[0]?.totalCharges) || 0;
+
+      const otherReceiptsInFY = await db.select({
+        total: sql<number>`COALESCE(SUM(${cashReceiptsTable.amount}), 0)`,
+      }).from(cashReceiptsTable).where(and(
+        eq(cashReceiptsTable.coldStorageId, coldStorageId),
+        gte(cashReceiptsTable.receivedAt, fyStart),
+        lte(cashReceiptsTable.receivedAt, fyEnd),
+        eq(cashReceiptsTable.isReversed, 0),
+        sql`${cashReceiptsTable.payerType} IN ('kata', 'sales_goods')`,
+      ));
+      const otherIncome = Number(otherReceiptsInFY[0]?.total) || 0;
+
+      const totalIncome = coldStorageIncome + otherIncome;
+
+      const revenueExpenses = await db.select({
+        expenseType: expensesTable.expenseType,
+        total: sql<number>`COALESCE(SUM(${expensesTable.amount}), 0)`,
+      }).from(expensesTable).where(and(
+        eq(expensesTable.coldStorageId, coldStorageId),
+        gte(expensesTable.paidAt, fyStart),
+        lte(expensesTable.paidAt, fyEnd),
+        eq(expensesTable.isReversed, 0),
+        eq(expensesTable.expenseClass, 'revenue'),
+      )).groupBy(expensesTable.expenseType);
+
+      const expenseByType: Record<string, number> = {};
+      let totalRevenueExpenses = 0;
+      for (const e of revenueExpenses) {
+        expenseByType[e.expenseType] = Number(e.total) || 0;
+        totalRevenueExpenses += Number(e.total) || 0;
+      }
+
+      const depEntries = await db.select({
+        total: sql<number>`COALESCE(SUM(${depLogTable.depreciationAmount}), 0)`,
+      }).from(depLogTable).where(and(
+        eq(depLogTable.coldStorageId, coldStorageId),
+        eq(depLogTable.financialYear, fy),
+      ));
+      const depreciationExpense = Number(depEntries[0]?.total) || 0;
+
+      const interestPaid = await db.select({
+        total: sql<number>`COALESCE(SUM(${liabPayTable.interestComponent}), 0)`,
+      }).from(liabPayTable).where(and(
+        eq(liabPayTable.coldStorageId, coldStorageId),
+        gte(liabPayTable.paidAt, fyStart),
+        lte(liabPayTable.paidAt, fyEnd),
+        eq(liabPayTable.isReversed, 0),
+      ));
+      const interestExpense = Number(interestPaid[0]?.total) || 0;
+
+      const totalExpenses = totalRevenueExpenses + depreciationExpense + interestExpense;
+      const netProfitOrLoss = totalIncome - totalExpenses;
+
+      const result = {
+        financialYear: fy,
+        period: { from: fyStart.toISOString().split('T')[0], to: fyEnd.toISOString().split('T')[0] },
+        income: {
+          coldStorageCharges: coldStorageIncome,
+          otherIncome,
+          total: totalIncome,
+        },
+        expenses: {
+          byType: expenseByType,
+          totalRevenue: totalRevenueExpenses,
+          depreciation: depreciationExpense,
+          interestOnLiabilities: interestExpense,
+          total: totalExpenses,
+        },
+        netProfitOrLoss,
+      };
+
+      if (format === 'csv') {
+        const rows = [
+          ['Profit & Loss Statement', `FY ${fy}`],
+          [`Period: ${result.period.from} to ${result.period.to}`],
+          [],
+          ['INCOME'],
+          ['Cold Storage Charges', String(coldStorageIncome)],
+          ['Other Income (Kata/Sales Goods)', String(otherIncome)],
+          ['Total Income', String(totalIncome)],
+          [],
+          ['EXPENSES'],
+          ...Object.entries(expenseByType).map(([type, val]) => [`  ${type}`, String(val)]),
+          ['Depreciation', String(depreciationExpense)],
+          ['Interest on Liabilities', String(interestExpense)],
+          ['Total Expenses', String(totalExpenses)],
+          [],
+          [netProfitOrLoss >= 0 ? 'Net Profit' : 'Net Loss', String(Math.abs(netProfitOrLoss))],
+        ];
+        const csv = rows.map(r => r.join(',')).join('\n');
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="pnl_${fy}.csv"`);
+        return res.send("\uFEFF" + csv);
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("P&L error:", error);
+      res.status(500).json({ error: "Failed to generate P&L statement" });
     }
   });
 

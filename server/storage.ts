@@ -77,6 +77,20 @@ import {
   type InsertBuyerLedger,
   type BuyerLedgerEditHistoryEntry,
   type InsertBuyerLedgerEditHistory,
+  assets,
+  assetDepreciationLog,
+  liabilities,
+  liabilityPayments,
+  type Asset,
+  type InsertAsset,
+  type AssetDepreciationLog,
+  type InsertAssetDepreciationLog,
+  type Liability,
+  type InsertLiability,
+  type LiabilityPayment,
+  type InsertLiabilityPayment,
+  getFinancialYear,
+  getFYDateRange,
   type DashboardStats,
   type QualityStats,
   type PaymentStats,
@@ -408,6 +422,21 @@ export interface IStorage {
     address?: string;
     contactNumber?: string;
   }): Promise<{ id: string; buyerId: string }>;
+  // Assets
+  getAssets(coldStorageId: string): Promise<Asset[]>;
+  createAsset(data: InsertAsset): Promise<Asset>;
+  updateAsset(id: string, updates: Partial<Asset>): Promise<Asset | undefined>;
+  disposeAsset(id: string, disposalAmount: number, disposedAt: Date): Promise<Asset | undefined>;
+  getDepreciationLog(coldStorageId: string, financialYear: string): Promise<AssetDepreciationLog[]>;
+  runDepreciation(coldStorageId: string, financialYear: string): Promise<AssetDepreciationLog[]>;
+  // Liabilities
+  getLiabilities(coldStorageId: string): Promise<Liability[]>;
+  createLiability(data: InsertLiability): Promise<Liability>;
+  updateLiability(id: string, updates: Partial<Liability>): Promise<Liability | undefined>;
+  settleLiability(id: string): Promise<Liability | undefined>;
+  getLiabilityPayments(liabilityId: string): Promise<LiabilityPayment[]>;
+  createLiabilityPayment(data: InsertLiabilityPayment): Promise<LiabilityPayment>;
+  reverseLiabilityPayment(id: string): Promise<LiabilityPayment | undefined>;
 }
 
 /**
@@ -3633,6 +3662,14 @@ export class DatabaseStorage implements IStorage {
     await db.delete(openingReceivables).where(eq(openingReceivables.coldStorageId, id));
     await db.delete(openingPayables).where(eq(openingPayables.coldStorageId, id));
     await db.delete(bankAccounts).where(eq(bankAccounts.coldStorageId, id));
+    
+    // Delete assets and depreciation log
+    await db.delete(assetDepreciationLog).where(eq(assetDepreciationLog.coldStorageId, id));
+    await db.delete(assets).where(eq(assets.coldStorageId, id));
+    
+    // Delete liabilities and payments
+    await db.delete(liabilityPayments).where(eq(liabilityPayments.coldStorageId, id));
+    await db.delete(liabilities).where(eq(liabilities.coldStorageId, id));
     
     // Delete maintenance records
     await db.delete(maintenanceRecords).where(eq(maintenanceRecords.coldStorageId, id));
@@ -7572,6 +7609,234 @@ export class DatabaseStorage implements IStorage {
     }
     
     throw new Error('Failed to generate unique buyer ID after multiple attempts');
+  }
+
+  // ==================== Assets ====================
+
+  async getAssets(coldStorageId: string): Promise<Asset[]> {
+    return await db.select().from(assets)
+      .where(eq(assets.coldStorageId, coldStorageId))
+      .orderBy(desc(assets.createdAt));
+  }
+
+  async createAsset(data: InsertAsset): Promise<Asset> {
+    const id = randomUUID();
+    const [asset] = await db.insert(assets).values({
+      ...data,
+      id,
+      isDisposed: 0,
+    }).returning();
+    return asset;
+  }
+
+  async updateAsset(id: string, updates: Partial<Asset>): Promise<Asset | undefined> {
+    const [updated] = await db.update(assets)
+      .set(updates)
+      .where(eq(assets.id, id))
+      .returning();
+    return updated;
+  }
+
+  async disposeAsset(id: string, disposalAmount: number, disposedAt: Date): Promise<Asset | undefined> {
+    const [updated] = await db.update(assets)
+      .set({
+        isDisposed: 1,
+        disposedAt,
+        disposalAmount,
+      })
+      .where(eq(assets.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getDepreciationLog(coldStorageId: string, financialYear: string): Promise<AssetDepreciationLog[]> {
+    return await db.select().from(assetDepreciationLog)
+      .where(and(
+        eq(assetDepreciationLog.coldStorageId, coldStorageId),
+        eq(assetDepreciationLog.financialYear, financialYear),
+      ))
+      .orderBy(asc(assetDepreciationLog.calculatedAt));
+  }
+
+  async runDepreciation(coldStorageId: string, financialYear: string): Promise<AssetDepreciationLog[]> {
+    const { start: fyStart, end: fyEnd } = getFYDateRange(financialYear);
+    
+    const allAssets = await db.select().from(assets)
+      .where(and(
+        eq(assets.coldStorageId, coldStorageId),
+        lte(assets.purchaseDate, fyEnd),
+        sql`(${assets.isDisposed} = 0 OR ${assets.disposedAt} >= ${fyStart})`,
+      ));
+
+    const results: AssetDepreciationLog[] = [];
+
+    for (const asset of allAssets) {
+      const purchaseDate = new Date(asset.purchaseDate);
+      if (purchaseDate > fyEnd) continue;
+
+      let startMonth: number;
+      if (purchaseDate >= fyStart) {
+        startMonth = purchaseDate.getMonth();
+      } else {
+        startMonth = 3; // April
+      }
+
+      let endMonth = 2; // March of next year
+      let endYear = fyStart.getFullYear() + 1;
+
+      if (asset.isDisposed && asset.disposedAt) {
+        const disposedDate = new Date(asset.disposedAt);
+        if (disposedDate >= fyStart && disposedDate <= fyEnd) {
+          endMonth = disposedDate.getMonth();
+          endYear = disposedDate.getFullYear();
+        }
+      }
+
+      let monthsUsed: number;
+      const startDate = new Date(startMonth >= 3 ? fyStart.getFullYear() : fyStart.getFullYear() + 1, startMonth, 1);
+      const endDate = new Date(endMonth >= 3 ? fyStart.getFullYear() : fyStart.getFullYear() + 1, endMonth + 1, 0);
+      
+      if (startMonth >= 3) {
+        // April onwards in first calendar year
+        if (endMonth >= 3) {
+          monthsUsed = endMonth - startMonth + 1;
+        } else {
+          monthsUsed = (12 - startMonth) + (endMonth + 1);
+        }
+      } else {
+        // Jan-March in second calendar year
+        monthsUsed = endMonth - startMonth + 1;
+      }
+
+      monthsUsed = Math.max(1, Math.min(12, monthsUsed));
+
+      const openingValue = asset.currentBookValue;
+      const depreciationAmount = roundAmount(openingValue * (asset.depreciationRate / 100) * (monthsUsed / 12));
+      const closingValue = roundAmount(openingValue - depreciationAmount);
+
+      const existing = await db.select().from(assetDepreciationLog)
+        .where(and(
+          eq(assetDepreciationLog.assetId, asset.id),
+          eq(assetDepreciationLog.financialYear, financialYear),
+        ));
+
+      let logEntry: AssetDepreciationLog;
+      if (existing.length > 0) {
+        const [updated] = await db.update(assetDepreciationLog)
+          .set({
+            openingValue,
+            depreciationAmount,
+            closingValue,
+            monthsUsed,
+            calculatedAt: new Date(),
+          })
+          .where(eq(assetDepreciationLog.id, existing[0].id))
+          .returning();
+        logEntry = updated;
+      } else {
+        const [inserted] = await db.insert(assetDepreciationLog).values({
+          id: randomUUID(),
+          assetId: asset.id,
+          coldStorageId,
+          financialYear,
+          openingValue,
+          depreciationAmount,
+          closingValue,
+          monthsUsed,
+        }).returning();
+        logEntry = inserted;
+      }
+
+      await db.update(assets)
+        .set({ currentBookValue: closingValue })
+        .where(eq(assets.id, asset.id));
+
+      results.push(logEntry);
+    }
+
+    return results;
+  }
+
+  // ==================== Liabilities ====================
+
+  async getLiabilities(coldStorageId: string): Promise<Liability[]> {
+    return await db.select().from(liabilities)
+      .where(eq(liabilities.coldStorageId, coldStorageId))
+      .orderBy(desc(liabilities.createdAt));
+  }
+
+  async createLiability(data: InsertLiability): Promise<Liability> {
+    const id = randomUUID();
+    const [liability] = await db.insert(liabilities).values({
+      ...data,
+      id,
+      isSettled: 0,
+    }).returning();
+    return liability;
+  }
+
+  async updateLiability(id: string, updates: Partial<Liability>): Promise<Liability | undefined> {
+    const [updated] = await db.update(liabilities)
+      .set(updates)
+      .where(eq(liabilities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async settleLiability(id: string): Promise<Liability | undefined> {
+    const [updated] = await db.update(liabilities)
+      .set({
+        isSettled: 1,
+        settledAt: new Date(),
+        outstandingAmount: 0,
+      })
+      .where(eq(liabilities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getLiabilityPayments(liabilityId: string): Promise<LiabilityPayment[]> {
+    return await db.select().from(liabilityPayments)
+      .where(eq(liabilityPayments.liabilityId, liabilityId))
+      .orderBy(desc(liabilityPayments.paidAt));
+  }
+
+  async createLiabilityPayment(data: InsertLiabilityPayment): Promise<LiabilityPayment> {
+    const id = randomUUID();
+    const [payment] = await db.insert(liabilityPayments).values({
+      ...data,
+      id,
+      isReversed: 0,
+    }).returning();
+
+    await db.update(liabilities)
+      .set({
+        outstandingAmount: sql`${liabilities.outstandingAmount} - ${data.principalComponent}`,
+      })
+      .where(eq(liabilities.id, data.liabilityId));
+
+    return payment;
+  }
+
+  async reverseLiabilityPayment(id: string): Promise<LiabilityPayment | undefined> {
+    const [payment] = await db.select().from(liabilityPayments)
+      .where(eq(liabilityPayments.id, id));
+    if (!payment || payment.isReversed) return undefined;
+
+    const [updated] = await db.update(liabilityPayments)
+      .set({ isReversed: 1 })
+      .where(eq(liabilityPayments.id, id))
+      .returning();
+
+    await db.update(liabilities)
+      .set({
+        outstandingAmount: sql`${liabilities.outstandingAmount} + ${payment.principalComponent}`,
+        isSettled: 0,
+        settledAt: null,
+      })
+      .where(eq(liabilities.id, payment.liabilityId));
+
+    return updated;
   }
 }
 

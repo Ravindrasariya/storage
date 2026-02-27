@@ -296,7 +296,8 @@ export const expenses = pgTable("expenses", {
   id: varchar("id").primaryKey(),
   transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (e.g., CF202601220)
   coldStorageId: varchar("cold_storage_id").notNull(),
-  expenseType: text("expense_type").notNull(), // 'salary', 'hammali', 'grading_charges', 'general_expenses'
+  expenseType: text("expense_type").notNull(), // 'salary', 'hammali', 'grading_charges', 'general_expenses', 'asset_purchase'
+  expenseClass: text("expense_class").notNull().default("revenue"), // 'revenue' or 'capital'
   receiverName: text("receiver_name"), // Name of the person receiving the payment
   paymentMode: text("payment_mode").notNull(), // 'cash' or 'account'
   accountType: text("account_type"), // DEPRECATED: Use accountId instead. Legacy values: 'limit' or 'current'
@@ -547,6 +548,76 @@ export const buyerLedgerEditHistory = pgTable("buyer_ledger_edit_history", {
   modifiedAt: timestamp("modified_at").notNull().defaultNow(),
 });
 
+// Assets - fixed asset register for balance sheet tracking
+export const assets = pgTable("assets", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  assetName: text("asset_name").notNull(),
+  assetCategory: text("asset_category").notNull(), // 'building', 'plant_machinery', 'furniture', 'vehicles', 'computers', 'electrical_fittings', 'other'
+  purchaseDate: timestamp("purchase_date").notNull(),
+  originalCost: real("original_cost").notNull(),
+  currentBookValue: real("current_book_value").notNull(),
+  depreciationRate: real("depreciation_rate").notNull(), // Annual rate in % (WDV method)
+  depreciationMethod: text("depreciation_method").notNull().default("wdv"), // 'wdv' = Written Down Value
+  isOpening: integer("is_opening").notNull().default(0), // 1 = entered as existing asset, 0 = from new expense
+  linkedExpenseId: varchar("linked_expense_id"), // FK to expenses table (set when created via capital expense)
+  isDisposed: integer("is_disposed").notNull().default(0), // 0 = active, 1 = disposed/sold
+  disposedAt: timestamp("disposed_at"),
+  disposalAmount: real("disposal_amount"),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Asset Depreciation Log - yearly depreciation records per asset (FY-based: April–March)
+export const assetDepreciationLog = pgTable("asset_depreciation_log", {
+  id: varchar("id").primaryKey(),
+  assetId: varchar("asset_id").notNull(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  financialYear: text("financial_year").notNull(), // e.g. "2025-26"
+  openingValue: real("opening_value").notNull(),
+  depreciationAmount: real("depreciation_amount").notNull(),
+  closingValue: real("closing_value").notNull(),
+  monthsUsed: integer("months_used").notNull(), // For proration tracking
+  calculatedAt: timestamp("calculated_at").notNull().defaultNow(),
+});
+
+// Liabilities - tracks debts, loans, and obligations
+export const liabilities = pgTable("liabilities", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  liabilityName: text("liability_name").notNull(),
+  liabilityType: text("liability_type").notNull(), // 'bank_loan', 'equipment_loan', 'credit_line', 'outstanding_payable', 'other'
+  partyName: text("party_name").notNull(),
+  originalAmount: real("original_amount").notNull(),
+  outstandingAmount: real("outstanding_amount").notNull(),
+  interestRate: real("interest_rate").notNull().default(0), // Annual rate in %
+  startDate: timestamp("start_date").notNull(),
+  dueDate: timestamp("due_date"),
+  emiAmount: real("emi_amount"),
+  isOpening: integer("is_opening").notNull().default(0), // 1 = existing liability, 0 = new
+  isSettled: integer("is_settled").notNull().default(0), // 0 = active, 1 = settled
+  settledAt: timestamp("settled_at"),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Liability Payments - tracks payments made against liabilities
+export const liabilityPayments = pgTable("liability_payments", {
+  id: varchar("id").primaryKey(),
+  liabilityId: varchar("liability_id").notNull(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  amount: real("amount").notNull(),
+  principalComponent: real("principal_component").notNull(),
+  interestComponent: real("interest_component").notNull(),
+  paidAt: timestamp("paid_at").notNull(),
+  paymentMode: text("payment_mode").notNull(), // 'cash' or 'account'
+  accountId: varchar("account_id"),
+  linkedExpenseId: varchar("linked_expense_id"), // FK to expenses table
+  isReversed: integer("is_reversed").notNull().default(0),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertColdStorageSchema = createInsertSchema(coldStorages).omit({ id: true });
 export const insertColdStorageUserSchema = createInsertSchema(coldStorageUsers).omit({ id: true, createdAt: true });
@@ -572,6 +643,10 @@ export const insertFarmerLedgerSchema = createInsertSchema(farmerLedger).omit({ 
 export const insertFarmerLedgerEditHistorySchema = createInsertSchema(farmerLedgerEditHistory).omit({ id: true, modifiedAt: true });
 export const insertBuyerLedgerSchema = createInsertSchema(buyerLedger).omit({ id: true, createdAt: true, archivedAt: true });
 export const insertBuyerLedgerEditHistorySchema = createInsertSchema(buyerLedgerEditHistory).omit({ id: true, modifiedAt: true });
+export const insertAssetSchema = createInsertSchema(assets).omit({ id: true, createdAt: true, isDisposed: true, disposedAt: true, disposalAmount: true });
+export const insertAssetDepreciationLogSchema = createInsertSchema(assetDepreciationLog).omit({ id: true, calculatedAt: true });
+export const insertLiabilitySchema = createInsertSchema(liabilities).omit({ id: true, createdAt: true, isSettled: true, settledAt: true });
+export const insertLiabilityPaymentSchema = createInsertSchema(liabilityPayments).omit({ id: true, createdAt: true, isReversed: true });
 
 // Types
 export type ColdStorage = typeof coldStorages.$inferSelect;
@@ -624,6 +699,49 @@ export type BuyerLedgerEntry = typeof buyerLedger.$inferSelect;
 export type InsertBuyerLedger = z.infer<typeof insertBuyerLedgerSchema>;
 export type BuyerLedgerEditHistoryEntry = typeof buyerLedgerEditHistory.$inferSelect;
 export type InsertBuyerLedgerEditHistory = z.infer<typeof insertBuyerLedgerEditHistorySchema>;
+export type Asset = typeof assets.$inferSelect;
+export type InsertAsset = z.infer<typeof insertAssetSchema>;
+export type AssetDepreciationLog = typeof assetDepreciationLog.$inferSelect;
+export type InsertAssetDepreciationLog = z.infer<typeof insertAssetDepreciationLogSchema>;
+export type Liability = typeof liabilities.$inferSelect;
+export type InsertLiability = z.infer<typeof insertLiabilitySchema>;
+export type LiabilityPayment = typeof liabilityPayments.$inferSelect;
+export type InsertLiabilityPayment = z.infer<typeof insertLiabilityPaymentSchema>;
+
+// Helper: Get Financial Year from a date (April–March)
+// Returns "YYYY-YY" format, e.g. "2025-26" for dates between April 2025 and March 2026
+export function getFinancialYear(date: Date): string {
+  const month = date.getMonth(); // 0-indexed: 0=Jan, 3=Apr
+  const year = date.getFullYear();
+  const fyStart = month >= 3 ? year : year - 1; // April (month 3) starts new FY
+  const fyEnd = (fyStart + 1) % 100;
+  return `${fyStart}-${String(fyEnd).padStart(2, '0')}`;
+}
+
+// Helper: Get FY start year from FY string
+export function getFYStartYear(fy: string): number {
+  return parseInt(fy.split('-')[0], 10);
+}
+
+// Helper: Get FY date range (April 1 to March 31)
+export function getFYDateRange(fy: string): { start: Date; end: Date } {
+  const startYear = getFYStartYear(fy);
+  return {
+    start: new Date(startYear, 3, 1), // April 1
+    end: new Date(startYear + 1, 2, 31, 23, 59, 59, 999), // March 31 end of day
+  };
+}
+
+// Default depreciation rates per Indian IT Act (WDV method)
+export const DEPRECIATION_RATES: Record<string, number> = {
+  building: 10,
+  plant_machinery: 15,
+  furniture: 10,
+  vehicles: 15,
+  computers: 40,
+  electrical_fittings: 10,
+  other: 10,
+};
 
 // Form validation schema for lot entry
 export const lotFormSchema = z.object({

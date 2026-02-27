@@ -24,6 +24,10 @@ import {
   Loader2,
   Users,
   ShoppingCart,
+  Building2,
+  Landmark,
+  FileSpreadsheet,
+  TrendingUp,
 } from "lucide-react";
 import Dashboard from "@/pages/Dashboard";
 import LotEntry from "@/pages/LotEntry";
@@ -33,6 +37,10 @@ import SalesHistory from "@/pages/SalesHistory";
 import CashManagement from "@/pages/CashManagement";
 import FarmerLedger from "@/pages/FarmerLedger";
 import BuyerLedger from "@/pages/BuyerLedger";
+import AssetRegister from "@/pages/AssetRegister";
+import LiabilityRegister from "@/pages/LiabilityRegister";
+import BalanceSheet from "@/pages/BalanceSheet";
+import ProfitAndLoss from "@/pages/ProfitAndLoss";
 import Admin from "@/pages/Admin";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/not-found";
@@ -53,6 +61,10 @@ function Navigation() {
     { href: "/cash-management", label: t("cashManagement"), icon: Banknote },
     { href: "/farmer-ledger", label: t("farmerLedger"), icon: Users },
     { href: "/buyer-ledger", label: t("buyerLedger"), icon: ShoppingCart },
+    { href: "/assets", label: t("assetRegister") || "Asset Register", icon: Building2 },
+    { href: "/liabilities", label: t("liabilityRegister") || "Liability Register", icon: Landmark },
+    { href: "/balance-sheet", label: t("balanceSheet") || "Balance Sheet", icon: FileSpreadsheet },
+    { href: "/profit-and-loss", label: t("profitAndLoss") || "Profit & Loss", icon: TrendingUp },
   ];
 
   const NavLinks = ({ onClick }: { onClick?: () => void }) => (
@@ -137,6 +149,10 @@ function ProtectedRoutes() {
       <Route path="/cash-management" component={CashManagement} />
       <Route path="/farmer-ledger" component={FarmerLedger} />
       <Route path="/buyer-ledger" component={BuyerLedger} />
+      <Route path="/assets" component={AssetRegister} />
+      <Route path="/liabilities" component={LiabilityRegister} />
+      <Route path="/balance-sheet" component={BalanceSheet} />
+      <Route path="/profit-and-loss" component={ProfitAndLoss} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
