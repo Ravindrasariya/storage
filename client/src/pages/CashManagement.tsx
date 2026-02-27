@@ -149,7 +149,7 @@ export default function CashManagement() {
   const [receivedDate, setReceivedDate] = useState(persistedState?.receivedDate || todayDate);
   const [inwardRemarks, setInwardRemarks] = useState(persistedState?.inwardRemarks || "");
 
-  const [expenseClass, setExpenseClass] = useState<"revenue" | "capital">("revenue");
+  const [expenseClass, setExpenseClass] = useState<"revenue" | "capital" | "advance">("revenue");
   const [assetName, setAssetName] = useState("");
   const [assetCategory, setAssetCategory] = useState("");
   const [depreciationRate, setDepreciationRate] = useState("");
@@ -1341,10 +1341,9 @@ export default function CashManagement() {
       return;
     }
 
-    const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance'];
     createExpenseMutation.mutate({
       expenseType,
-      expenseClass: advanceTypes.includes(expenseType) ? "advance" : "revenue",
+      expenseClass: expenseClass === "advance" ? "advance" : "revenue",
       receiverName: isFarmerExpenseType ? expenseFarmerName : (isMerchantExpenseType ? expenseBuyerName : (expenseReceiverName || undefined)),
       paymentMode: expensePaymentMode,
       accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
@@ -1546,7 +1545,7 @@ export default function CashManagement() {
           "",
           e.remarks || "",
           isReversed ? t("reversed") : t("active"),
-          e.expenseClass === "capital" ? "Capital" : "Revenue",
+          e.expenseClass === "capital" ? "Capital" : e.expenseClass === "advance" ? "Advance" : "Revenue",
         ];
       } else if (transaction.type === "transfer") {
         const tr = transaction.data as CashTransfer;
@@ -3380,7 +3379,7 @@ export default function CashManagement() {
                       size="sm"
                       className="flex-1"
                       data-testid="btn-revenue-expense"
-                      onClick={() => { setExpenseClass("revenue"); setAssetName(""); setAssetCategory(""); setDepreciationRate(""); }}
+                      onClick={() => { setExpenseClass("revenue"); setExpenseType(""); setAssetName(""); setAssetCategory(""); setDepreciationRate(""); }}
                     >
                       {t("revenueExpense") || "Revenue Expense"}
                     </Button>
@@ -3394,6 +3393,16 @@ export default function CashManagement() {
                     >
                       <Package className="h-4 w-4 mr-1" />
                       {t("capitalExpense") || "Capital Expense"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={expenseClass === "advance" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      data-testid="btn-advance-expense"
+                      onClick={() => { setExpenseClass("advance"); setExpenseType(""); setAssetName(""); setAssetCategory(""); setDepreciationRate(""); }}
+                    >
+                      {t("advanceExpense") || "Advance"}
                     </Button>
                   </div>
                 </div>
@@ -3440,7 +3449,7 @@ export default function CashManagement() {
                       />
                     </div>
                   </>
-                ) : (
+                ) : expenseClass === "advance" ? (
                 <div className="space-y-2">
                   <Label>{t("expenseType")} *</Label>
                   <Select value={expenseType} onValueChange={(v) => {
@@ -3462,9 +3471,33 @@ export default function CashManagement() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
-                      <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                       <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                       <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                ) : (
+                <div className="space-y-2">
+                  <Label>{t("expenseType")} *</Label>
+                  <Select value={expenseType} onValueChange={(v) => {
+                    setExpenseType(v);
+                    setExpenseReceiverName("");
+                    setExpenseFarmerLedgerId("");
+                    setExpenseFarmerId("");
+                    setExpenseFarmerName("");
+                    setExpenseRateOfInterest("");
+                    setExpenseEffectiveDate(format(new Date(), "yyyy-MM-dd"));
+                    setExpenseFarmerSearchQuery("");
+                    setExpenseBuyerLedgerId("");
+                    setExpenseBuyerId("");
+                    setExpenseBuyerName("");
+                    setExpenseBuyerSearchQuery("");
+                  }}>
+                    <SelectTrigger data-testid="select-expense-type">
+                      <SelectValue placeholder={t("selectExpenseType")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                       <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                       <SelectItem value="grading_charges">
                         {t("gradingCharges")} {paymentStats?.gradingDue ? `(₹${paymentStats.gradingDue.toLocaleString("en-IN")})` : ""}

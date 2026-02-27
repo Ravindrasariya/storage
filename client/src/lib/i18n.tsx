@@ -709,6 +709,7 @@ const translations: Translations = {
   cat_other: { en: "Other", hi: "अन्य" },
   capitalExpense: { en: "Capital Expense", hi: "पूंजीगत व्यय" },
   revenueExpense: { en: "Revenue Expense", hi: "राजस्व व्यय" },
+  advanceExpense: { en: "Advance", hi: "अग्रिम" },
   assetPurchase: { en: "Asset Purchase", hi: "संपत्ति खरीद" },
   expenseCategory: { en: "Expense Category", hi: "व्यय श्रेणी" },
   capitalExpenseRecorded: { en: "Capital expense & asset recorded", hi: "पूंजीगत व्यय और संपत्ति दर्ज" },
