@@ -1733,9 +1733,20 @@ export default function CashManagement() {
     // Apply filters to transfers (internal cash transfers between payment modes)
     let filteredTransfers = transfers;
     
+    // Payment mode filter for transfers
+    if (filterPaymentMode) {
+      if (filterPaymentMode === "cash" || filterPaymentMode === "discount") {
+        filteredTransfers = [];
+      } else {
+        filteredTransfers = filteredTransfers.filter(t =>
+          t.fromAccountId === filterPaymentMode || t.toAccountId === filterPaymentMode
+        );
+      }
+    }
+    
     // Buyer name filter for internal transfers - exclude all since they don't have buyer association
     if (filterBuyer) {
-      filteredTransfers = []; // Internal transfers are not buyer-specific
+      filteredTransfers = [];
     }
     
     // Month filter for transfers
@@ -1797,6 +1808,11 @@ export default function CashManagement() {
 
     // Apply filters to buyer transfers
     let filteredBuyerTransfers = buyerTransfers;
+    
+    // Payment mode filter for buyer transfers - exclude when a payment mode is selected (buyer transfers don't have payment modes)
+    if (filterPaymentMode) {
+      filteredBuyerTransfers = [];
+    }
     
     // Buyer name filter for buyer transfers - match either source or destination buyer
     if (filterBuyer) {
@@ -1863,11 +1879,12 @@ export default function CashManagement() {
       })) : []),
       ...(includeDiscount ? discountsList.filter(d => {
         // Note: Don't filter out reversed discounts - show them with visual styling instead
+        // Payment mode filter - exclude discounts when a non-discount payment mode is selected
+        if (filterPaymentMode && filterPaymentMode !== "discount") return false;
         // Apply buyer name filter for discounts - match by farmerName or buyers in allocations
         if (filterBuyer) {
           const filterKey = filterBuyer.trim().toLowerCase();
           const farmerName = d.farmerName?.trim().toLowerCase() || "";
-          // Parse buyerAllocations JSON to check if any buyer matches
           let buyerMatches = false;
           try {
             const allocations = JSON.parse(d.buyerAllocations || "[]") as Array<{buyerName: string; amount: number}>;
@@ -1886,6 +1903,11 @@ export default function CashManagement() {
         if (filterYear) {
           const date = new Date(d.discountDate);
           if (format(date, "yyyy") !== filterYear) return false;
+        }
+        // Apply remarks filter
+        if (filterRemarks) {
+          const searchKey = filterRemarks.trim().toLowerCase();
+          if (!d.remarks || !d.remarks.toLowerCase().includes(searchKey)) return false;
         }
         return true;
       }).map(d => ({ 
