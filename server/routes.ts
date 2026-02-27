@@ -4356,7 +4356,6 @@ export async function registerRoutes(
         eq(salesHistory.coldStorageId, coldStorageId),
         gte(salesHistory.soldAt, fyStart),
         lte(salesHistory.soldAt, fyEnd),
-        eq(salesHistory.isReversed, 0),
       ));
       const coldStorageIncome = Number(salesInFY[0]?.totalCharges) || 0;
 
@@ -4367,7 +4366,7 @@ export async function registerRoutes(
         gte(cashReceiptsTable.receivedAt, fyStart),
         lte(cashReceiptsTable.receivedAt, fyEnd),
         eq(cashReceiptsTable.isReversed, 0),
-        sql`${cashReceiptsTable.payerType} IN ('kata', 'sales_goods')`,
+        sql`"payer_type" IN ('kata', 'sales_goods')`,
       ));
       const otherIncome = Number(otherReceiptsInFY[0]?.total) || 0;
 
@@ -4381,7 +4380,7 @@ export async function registerRoutes(
         gte(expensesTable.paidAt, fyStart),
         lte(expensesTable.paidAt, fyEnd),
         eq(expensesTable.isReversed, 0),
-        sql`${expensesTable.expenseClass} = 'revenue'`,
+        sql`"expense_class" = 'revenue'`,
       )).groupBy(expensesTable.expenseType);
 
       const expenseByType: Record<string, number> = {};

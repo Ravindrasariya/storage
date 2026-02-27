@@ -473,16 +473,16 @@ export default function AssetRegister() {
           <Card>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm min-w-[700px]">
                   <thead>
                     <tr className="border-b bg-muted/30">
-                      <th className="px-3 py-2 text-left font-medium">{t("assetName")}</th>
-                      <th className="px-3 py-2 text-left font-medium">{t("assetCategory")}</th>
-                      <th className="px-3 py-2 text-left font-medium">{t("purchaseDate")}</th>
-                      <th className="px-3 py-2 text-right font-medium">{t("originalCost")}</th>
-                      <th className="px-3 py-2 text-right font-medium">{t("currentBookValue")}</th>
-                      <th className="px-3 py-2 text-right font-medium">{t("depRate")}</th>
-                      <th className="px-3 py-2 text-center font-medium">{t("status")}</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">{t("assetName")}</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">{t("assetCategory")}</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">{t("purchaseDate")}</th>
+                      <th className="px-3 py-2 text-right font-medium whitespace-nowrap">{t("originalCost")}</th>
+                      <th className="px-3 py-2 text-right font-medium whitespace-nowrap">{t("currentBookValue")}</th>
+                      <th className="px-3 py-2 text-right font-medium whitespace-nowrap">{t("depRate")}</th>
+                      <th className="px-3 py-2 text-center font-medium whitespace-nowrap">{t("status")}</th>
                       {canEdit && (
                         <th className="px-3 py-2 text-center font-medium">{t("actions")}</th>
                       )}
@@ -502,7 +502,7 @@ export default function AssetRegister() {
                         className="border-b last:border-b-0"
                         data-testid={`row-asset-${asset.id}`}
                       >
-                        <td className="px-3 py-2 font-medium" data-testid={`text-asset-name-${asset.id}`}>
+                        <td className="px-3 py-2 font-medium whitespace-nowrap" data-testid={`text-asset-name-${asset.id}`}>
                           {asset.assetName}
                           {asset.isOpening === 1 && (
                             <Badge variant="outline" className="ml-1 text-[10px]">
@@ -510,18 +510,18 @@ export default function AssetRegister() {
                             </Badge>
                           )}
                         </td>
-                        <td className="px-3 py-2">{t(`cat_${asset.assetCategory}`)}</td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 whitespace-nowrap">{t(`cat_${asset.assetCategory}`)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
                           {format(new Date(asset.purchaseDate), "dd/MM/yyyy")}
                         </td>
-                        <td className="px-3 py-2 text-right">
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
                           {formatCurrency(asset.originalCost)}
                         </td>
-                        <td className="px-3 py-2 text-right font-medium" data-testid={`text-book-value-${asset.id}`}>
+                        <td className="px-3 py-2 text-right font-medium whitespace-nowrap" data-testid={`text-book-value-${asset.id}`}>
                           {formatCurrency(asset.currentBookValue)}
                         </td>
-                        <td className="px-3 py-2 text-right">{asset.depreciationRate}%</td>
-                        <td className="px-3 py-2 text-center">
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{asset.depreciationRate}%</td>
+                        <td className="px-3 py-2 text-center whitespace-nowrap">
                           {asset.isDisposed === 1 ? (
                             <Badge variant="secondary" data-testid={`badge-status-${asset.id}`}>
                               {t("disposed")}
@@ -610,14 +610,14 @@ export default function AssetRegister() {
                 <Skeleton className="h-32" />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm min-w-[500px]">
                     <thead>
                       <tr className="border-b bg-muted/30">
-                        <th className="px-3 py-2 text-left font-medium">{t("assetName")}</th>
-                        <th className="px-3 py-2 text-right font-medium">{t("openingValue")}</th>
-                        <th className="px-3 py-2 text-center font-medium">{t("monthsUsed")}</th>
-                        <th className="px-3 py-2 text-right font-medium">{t("depreciationAmount")}</th>
-                        <th className="px-3 py-2 text-right font-medium">{t("closingValue")}</th>
+                        <th className="px-3 py-2 text-left font-medium whitespace-nowrap">{t("assetName")}</th>
+                        <th className="px-3 py-2 text-right font-medium whitespace-nowrap">{t("openingValue")}</th>
+                        <th className="px-3 py-2 text-center font-medium whitespace-nowrap">{t("monthsUsed")}</th>
+                        <th className="px-3 py-2 text-right font-medium whitespace-nowrap">{t("depreciationAmount")}</th>
+                        <th className="px-3 py-2 text-right font-medium whitespace-nowrap">{t("closingValue")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -636,15 +636,15 @@ export default function AssetRegister() {
                             className="border-b last:border-b-0"
                             data-testid={`row-dep-log-${log.id}`}
                           >
-                            <td className="px-3 py-2">{assetInfo?.assetName || log.assetId}</td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 whitespace-nowrap">{assetInfo?.assetName || log.assetId}</td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap">
                               {formatCurrency(log.openingValue)}
                             </td>
-                            <td className="px-3 py-2 text-center">{log.monthsUsed}</td>
-                            <td className="px-3 py-2 text-right text-red-600 dark:text-red-400">
+                            <td className="px-3 py-2 text-center whitespace-nowrap">{log.monthsUsed}</td>
+                            <td className="px-3 py-2 text-right text-red-600 dark:text-red-400 whitespace-nowrap">
                               {formatCurrency(log.depreciationAmount)}
                             </td>
-                            <td className="px-3 py-2 text-right font-medium">
+                            <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
                               {formatCurrency(log.closingValue)}
                             </td>
                           </tr>
