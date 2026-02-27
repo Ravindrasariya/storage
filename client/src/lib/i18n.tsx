@@ -726,6 +726,7 @@ const translations: Translations = {
   farmerAdvanceOutstanding: { en: "Farmer Advance", hi: "किसान अग्रिम" },
   farmerFreightOutstanding: { en: "Farmer Freight", hi: "किसान भाड़ा" },
   merchantAdvanceOutstanding: { en: "Merchant Advance", hi: "व्यापारी अग्रिम" },
+  limitAccountOutstanding: { en: "Limit Account Outstanding", hi: "लिमिट खाता बकाया" },
   bankBalances: { en: "Bank Balances", hi: "बैंक शेष" },
   inventory: { en: "Inventory", hi: "माल-सूची" },
   totalAssets: { en: "Total Assets", hi: "कुल संपत्तियां" },

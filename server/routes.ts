@@ -4253,7 +4253,7 @@ export async function registerRoutes(
       const format = req.query.format;
 
       const { db } = await import("./db");
-      const { openingReceivables, farmerAdvanceFreight, merchantAdvance: merchantAdvanceTable } = await import("@shared/schema");
+      const { openingReceivables, farmerAdvanceFreight, merchantAdvance: merchantAdvanceTable, bankAccounts: bankAccountsTable, cashOpeningBalances: cashOBTable, expenses: expTable, cashReceipts: crTable, cashTransfers: ctTable, getFYStartYear } = await import("@shared/schema");
       const { eq, and, sql } = await import("drizzle-orm");
 
       const allAssets = await storage.getAssets(coldStorageId);
@@ -4341,6 +4341,92 @@ export async function registerRoutes(
           longTermLiabilities.push(item);
         } else {
           currentLiabilities.push(item);
+        }
+      }
+
+      const fyStartYear = getFYStartYear(fy);
+      const fyEndYear = fyStartYear + 1;
+      const endYearLimitAccounts = await db.select().from(bankAccountsTable).where(and(
+        eq(bankAccountsTable.coldStorageId, coldStorageId),
+        sql`"account_type" = 'limit'`,
+        eq(bankAccountsTable.year, fyEndYear),
+      ));
+      const endYearNames = new Set(endYearLimitAccounts.map(a => a.accountName.trim().toLowerCase()));
+      const startYearLimitAccounts = await db.select().from(bankAccountsTable).where(and(
+        eq(bankAccountsTable.coldStorageId, coldStorageId),
+        sql`"account_type" = 'limit'`,
+        eq(bankAccountsTable.year, fyStartYear),
+      ));
+      const limitAccounts = [
+        ...endYearLimitAccounts,
+        ...startYearLimitAccounts.filter(a => !endYearNames.has(a.accountName.trim().toLowerCase())),
+      ];
+
+      for (const account of limitAccounts) {
+        const [expResult] = await db.select({
+          total: sql<number>`COALESCE(SUM("amount"), 0)`,
+        }).from(expTable).where(and(
+          eq(expTable.coldStorageId, coldStorageId),
+          eq(expTable.accountId, account.id),
+          sql`"is_reversed" = 0`,
+          sql`"paid_at" <= ${fyEnd}`,
+        ));
+        const [recResult] = await db.select({
+          total: sql<number>`COALESCE(SUM("amount"), 0)`,
+        }).from(crTable).where(and(
+          eq(crTable.coldStorageId, coldStorageId),
+          eq(crTable.accountId, account.id),
+          sql`"is_reversed" = 0`,
+          sql`"received_at" <= ${fyEnd}`,
+        ));
+        const [trInResult] = await db.select({
+          total: sql<number>`COALESCE(SUM("amount"), 0)`,
+        }).from(ctTable).where(and(
+          eq(ctTable.coldStorageId, coldStorageId),
+          eq(ctTable.toAccountId, account.id),
+          sql`"is_reversed" = 0`,
+          sql`"transferred_at" <= ${fyEnd}`,
+        ));
+        const [trOutResult] = await db.select({
+          total: sql<number>`COALESCE(SUM("amount"), 0)`,
+        }).from(ctTable).where(and(
+          eq(ctTable.coldStorageId, coldStorageId),
+          eq(ctTable.fromAccountId, account.id),
+          sql`"is_reversed" = 0`,
+          sql`"transferred_at" <= ${fyEnd}`,
+        ));
+
+        const balance = account.openingBalance
+          + (Number(recResult?.total) || 0)
+          - (Number(expResult?.total) || 0)
+          + (Number(trInResult?.total) || 0)
+          - (Number(trOutResult?.total) || 0);
+
+        if (balance < 0) {
+          currentLiabilities.push({
+            name: account.accountName,
+            type: 'limit_account',
+            amount: Math.abs(balance),
+          });
+        }
+      }
+
+      if (limitAccounts.length === 0) {
+        const legacyOB = await db.select().from(cashOBTable).where(and(
+          eq(cashOBTable.coldStorageId, coldStorageId),
+          eq(cashOBTable.year, fyEndYear),
+        ));
+        const legacyRecord = legacyOB[0] || (await db.select().from(cashOBTable).where(and(
+          eq(cashOBTable.coldStorageId, coldStorageId),
+          eq(cashOBTable.year, fyStartYear),
+        )))[0];
+
+        if (legacyRecord && legacyRecord.limitBalance < 0) {
+          currentLiabilities.push({
+            name: 'Limit Account',
+            type: 'limit_account',
+            amount: Math.abs(legacyRecord.limitBalance),
+          });
         }
       }
 
