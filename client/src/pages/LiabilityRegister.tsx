@@ -867,7 +867,7 @@ function PaymentHistorySection({
   }
 
   return (
-    <div className="border-t pt-2 space-y-1">
+    <div className="border-t pt-2 space-y-1 overflow-x-auto">
       <div className="text-xs font-medium text-muted-foreground mb-1">{t("paymentHistory")}</div>
       {payments.map(payment => {
         const isReversed = payment.isReversed === 1;

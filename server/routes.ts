@@ -4381,7 +4381,7 @@ export async function registerRoutes(
         gte(expensesTable.paidAt, fyStart),
         lte(expensesTable.paidAt, fyEnd),
         eq(expensesTable.isReversed, 0),
-        eq(expensesTable.expenseClass, 'revenue'),
+        sql`${expensesTable.expenseClass} = 'revenue'`,
       )).groupBy(expensesTable.expenseType);
 
       const expenseByType: Record<string, number> = {};
