@@ -1132,7 +1132,6 @@ export class DatabaseStorage implements IStorage {
     // adjSelfDue inflates coldStorageCharge on the new sale (billed side)
     // AND the FIFO system inflates paidAmount on the original self-sale (paid side)
     totalPaid = Math.max(0, totalPaid - totalAdjSelfDue);
-    totalDue = Math.max(0, totalDue - totalAdjSelfDue);
     
     // Count unique lots: a lot is "paid" only if all tranches are paid
     let paidCount = 0;

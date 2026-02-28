@@ -292,7 +292,6 @@ export default function SalesHistoryPage() {
   );
 
   summary.amountPaid = Math.max(0, summary.amountPaid - summary.totalAdjSelfDue);
-  summary.amountDue = Math.max(0, summary.amountDue - summary.totalAdjSelfDue);
   summary.totalColdStorageCharges = Math.max(0, summary.totalColdStorageCharges - summary.totalAdjSelfDue);
 
   return (
