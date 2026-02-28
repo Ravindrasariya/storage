@@ -1090,7 +1090,7 @@ export class DatabaseStorage implements IStorage {
       // Calculate base hammali proportionally from coldStorageCharge (same as CSV export)
       // coldStorageCharge = base charges + extras (kata + extraHammali + grading)
       const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
-      const baseChargesTotal = Math.max(0, (sale.coldStorageCharge || 0) - extras); // Clamp to prevent negative
+      const baseChargesTotal = Math.max(0, (sale.coldStorageCharge || 0) - extras - (sale.adjReceivableSelfDueAmount || 0));
       let baseHammali = 0;
       if (sale.coldCharge && sale.hammali) {
         // Both rates present - use proportional split

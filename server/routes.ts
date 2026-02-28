@@ -3808,7 +3808,7 @@ export async function registerRoutes(
         
         // Calculate Total Hammali: base hammali + extra hammali (bilty cut) + extra hammali to merchant
         const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
-        const baseChargesTotal = (sale.coldStorageCharge || 0) - extras;
+        const baseChargesTotal = (sale.coldStorageCharge || 0) - extras - (sale.adjReceivableSelfDueAmount || 0);
         let baseHammali = 0;
         if (sale.coldCharge && sale.hammali) {
           const totalRate = sale.coldCharge + sale.hammali;
