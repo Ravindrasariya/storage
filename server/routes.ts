@@ -2132,7 +2132,7 @@ export async function registerRoutes(
   });
 
   const createExpenseSchema = z.object({
-    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "farmer_advance", "farmer_freight", "merchant_advance"]),
+    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "interest_on_loan", "electricity_charges", "chemical_spray_charges", "farmer_advance", "farmer_freight", "merchant_advance"]),
     receiverName: z.string().optional(),
     paymentMode: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
