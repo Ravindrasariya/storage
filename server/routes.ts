@@ -4537,7 +4537,7 @@ export async function registerRoutes(
       const salesInFY = await db.select({
         totalCharges: sql<number>`COALESCE(SUM(${salesHistory.coldStorageCharge}), 0)`,
         totalMerchantExtras: sql<number>`COALESCE(SUM(${salesHistory.extraDueToMerchantOriginal}), 0)`,
-        totalAdjReceivables: sql<number>`COALESCE(SUM(${salesHistory.adjReceivableSelfDueAmount}), 0)`,
+        totalAdjSelfDue: sql<number>`COALESCE(SUM(COALESCE(${salesHistory.adjSelfDue}, 0)), 0)`,
         displayAdjReceivables: sql<number>`COALESCE(SUM(COALESCE(${salesHistory.adjPyReceivables}, 0) + COALESCE(${salesHistory.adjAdvance}, 0) + COALESCE(${salesHistory.adjFreight}, 0)), 0)`,
       }).from(salesHistory).where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
@@ -4545,9 +4545,9 @@ export async function registerRoutes(
         lte(salesHistory.soldAt, fyEnd),
       ));
       const rawColdStorageCharges = Number(salesInFY[0]?.totalCharges) || 0;
-      const receivableAdjustments = Number(salesInFY[0]?.totalAdjReceivables) || 0;
+      const totalAdjSelfDue = Number(salesInFY[0]?.totalAdjSelfDue) || 0;
       const displayReceivableAdjustments = Number(salesInFY[0]?.displayAdjReceivables) || 0;
-      const coldStorageIncome = rawColdStorageCharges - receivableAdjustments;
+      const coldStorageIncome = rawColdStorageCharges - totalAdjSelfDue;
       const merchantExtrasIncome = Number(salesInFY[0]?.totalMerchantExtras) || 0;
 
       const otherReceiptsInFY = await db.select({
@@ -4561,7 +4561,7 @@ export async function registerRoutes(
       ));
       const otherIncome = Number(otherReceiptsInFY[0]?.total) || 0;
 
-      const totalIncome = coldStorageIncome + merchantExtrasIncome + otherIncome;
+      const totalIncome = coldStorageIncome - displayReceivableAdjustments + merchantExtrasIncome + otherIncome;
 
       const revenueExpenses = await db.select({
         expenseType: expensesTable.expenseType,
