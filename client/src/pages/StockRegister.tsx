@@ -1213,6 +1213,7 @@ export default function StockRegister() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
+                      setFarmerNameQuery("");
                       setSelectedFarmerVillage("");
                       setSelectedFarmerMobile("");
                     }}

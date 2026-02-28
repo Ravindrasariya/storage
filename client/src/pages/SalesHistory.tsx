@@ -383,6 +383,7 @@ export default function SalesHistoryPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => {
+                        setFarmerFilter("");
                         setSelectedFarmerVillage("");
                         setSelectedFarmerMobile("");
                       }}
