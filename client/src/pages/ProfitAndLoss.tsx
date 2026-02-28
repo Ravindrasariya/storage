@@ -36,6 +36,9 @@ const EXPENSE_TYPE_LABELS: Record<string, { en: string; hi: string }> = {
   grading_charges: { en: "Grading Charges", hi: "ग्रेडिंग शुल्क" },
   tds: { en: "TDS", hi: "टीडीएस" },
   cost_of_goods_sold: { en: "Cost of Goods Sold", hi: "बिक्री की लागत" },
+  interest_on_loan: { en: "Interest on Loan/Credit Line", hi: "ऋण/क्रेडिट लाइन पर ब्याज" },
+  electricity_charges: { en: "Electricity/Power Charges", hi: "बिजली शुल्क" },
+  chemical_spray_charges: { en: "Chemical Spray Charges", hi: "रासायनिक स्प्रे शुल्क" },
 };
 
 export default function ProfitAndLoss() {

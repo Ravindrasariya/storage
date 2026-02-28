@@ -1465,6 +1465,9 @@ export default function CashManagement() {
       case "grading_charges": return t("gradingCharges");
       case "general_expenses": return t("generalExpenses");
       case "cost_of_goods_sold": return t("costOfGoodsSold");
+      case "interest_on_loan": return t("interestOnLoan");
+      case "electricity_charges": return t("electricityCharges");
+      case "chemical_spray_charges": return t("chemicalSprayCharges");
       case "farmer_advance": return t("farmerAdvance");
       case "farmer_freight": return t("farmerFreight");
       case "merchant_advance": return t("merchantAdvance");
@@ -2793,9 +2796,12 @@ export default function CashManagement() {
                     <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                     <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                     <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
+                    <SelectItem value="chemical_spray_charges">{t("chemicalSprayCharges")}</SelectItem>
+                    <SelectItem value="electricity_charges">{t("electricityCharges")}</SelectItem>
                     <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                     <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
                     <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                    <SelectItem value="interest_on_loan">{t("interestOnLoan")}</SelectItem>
                     <SelectItem value="salary">{t("salary")}</SelectItem>
                     <SelectItem value="tds">{t("tds")}</SelectItem>
                   </SelectContent>
@@ -3684,7 +3690,9 @@ export default function CashManagement() {
                       <SelectValue placeholder={t("selectExpenseType")} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="chemical_spray_charges">{t("chemicalSprayCharges")}</SelectItem>
                       <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
+                      <SelectItem value="electricity_charges">{t("electricityCharges")}</SelectItem>
                       <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                       <SelectItem value="grading_charges">
                         {t("gradingCharges")} {paymentStats?.gradingDue ? `(₹${paymentStats.gradingDue.toLocaleString("en-IN")})` : ""}
@@ -3692,6 +3700,7 @@ export default function CashManagement() {
                       <SelectItem value="hammali">
                         {t("hammali")} {paymentStats?.hammaliDue ? `(₹${paymentStats.hammaliDue.toLocaleString("en-IN")})` : ""}
                       </SelectItem>
+                      <SelectItem value="interest_on_loan">{t("interestOnLoan")}</SelectItem>
                       <SelectItem value="salary">{t("salary")}</SelectItem>
                       <SelectItem value="tds">{t("tds")}</SelectItem>
                     </SelectContent>
