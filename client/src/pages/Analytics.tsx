@@ -134,7 +134,7 @@ export default function Analytics() {
               <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground leading-tight">{t("totalColdStorageCharges")}</p>
+              <p className="text-xs text-muted-foreground leading-tight">{t("totalBilledCharges")}</p>
               <p className="text-sm sm:text-base font-bold" data-testid="text-total-charges">
                 <Currency amount={(paymentStats?.totalPaid || 0) + (paymentStats?.totalDue || 0)} />
               </p>
