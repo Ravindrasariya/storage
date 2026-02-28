@@ -4414,13 +4414,13 @@ export async function registerRoutes(
         const totalTransfersOut = Number(trOutResult?.total) || 0;
         const totalTransfersIn = Number(trInResult?.total) || 0;
 
-        const outstanding = group.openingBalance + totalExpenses + totalTransfersOut - totalReceipts - totalTransfersIn;
+        const balance = group.openingBalance + totalReceipts - totalExpenses + totalTransfersIn - totalTransfersOut;
 
-        if (outstanding > 0) {
+        if (balance < 0) {
           currentLiabilities.push({
             name: group.name,
             type: 'limit_account',
-            amount: outstanding,
+            amount: Math.abs(balance),
           });
         }
       }
@@ -4437,11 +4437,11 @@ export async function registerRoutes(
           eq(cashOBTable.year, fyStartYear),
         )))[0];
 
-        if (legacyRecord && legacyRecord.limitBalance > 0) {
+        if (legacyRecord && legacyRecord.limitBalance < 0) {
           currentLiabilities.push({
             name: 'Limit Account',
             type: 'limit_account',
-            amount: legacyRecord.limitBalance,
+            amount: Math.abs(legacyRecord.limitBalance),
           });
         }
       }
