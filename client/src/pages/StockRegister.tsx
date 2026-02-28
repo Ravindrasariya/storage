@@ -548,7 +548,7 @@ export default function StockRegister() {
         "Remaining Size",
         "Sale Status",
         "Expected Cold Charges",
-        "Total Billed Charges",
+        "Cold Storage Charges",
         "Paid Cold Charges",
         "Due Cold Charges",
       ];
