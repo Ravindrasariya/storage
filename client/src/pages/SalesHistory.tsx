@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut, ArrowLeftRight, Download, Loader2 } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { EditSaleDialog } from "@/components/EditSaleDialog";
@@ -286,9 +286,11 @@ export default function SalesHistoryPage() {
       // This matches Analytics calculation for consistency
       const coldStorageDue = Math.max(0, (sale.coldStorageCharge || 0) - (sale.paidAmount || 0));
       acc.amountDue += coldStorageDue + (sale.extraDueToMerchant || 0);
+      acc.totalColdStorageCharges += sale.coldStorageCharge || 0;
+      acc.totalReceivableAdj += (sale.adjPyReceivables || 0) + (sale.adjAdvance || 0) + (sale.adjFreight || 0) + (sale.adjSelfDue || 0);
       return acc;
     },
-    { totalBags: 0, amountPaid: 0, amountDue: 0 }
+    { totalBags: 0, amountPaid: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0 }
   );
 
   return (
@@ -491,7 +493,7 @@ export default function SalesHistoryPage() {
 
       {/* Summary Section */}
       {!historyLoading && salesHistory.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 lg:gap-4">
           <Card data-testid="card-summary-bags">
             <CardContent className="p-3 lg:pt-6 lg:px-6">
               <div className="flex items-center gap-2">
@@ -548,6 +550,38 @@ export default function SalesHistoryPage() {
                   <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("sold")}/{t("exit")}</p>
                   <p className="text-base lg:text-lg font-bold truncate" data-testid="text-bags-sold-exited">
                     {summary.totalBags}/{exitsSummary?.totalBagsExited || 0}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-summary-cold-charges">
+            <CardContent className="p-3 lg:pt-6 lg:px-6">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 lg:p-2 rounded-lg bg-sky-500/10 shrink-0">
+                  <Warehouse className="h-4 w-4 lg:h-5 lg:w-5 text-sky-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("coldStorageCharges")}</p>
+                  <p className="text-base lg:text-lg font-bold text-sky-600 dark:text-sky-400 truncate" data-testid="text-cold-charges">
+                    <Currency amount={summary.totalColdStorageCharges} />
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-summary-receivable-adj">
+            <CardContent className="p-3 lg:pt-6 lg:px-6">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 lg:p-2 rounded-lg bg-orange-500/10 shrink-0">
+                  <FileCheck className="h-4 w-4 lg:h-5 lg:w-5 text-orange-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("receivableAdjustments")}</p>
+                  <p className="text-base lg:text-lg font-bold text-orange-600 dark:text-orange-400 truncate" data-testid="text-receivable-adj">
+                    <Currency amount={summary.totalReceivableAdj} />
                   </p>
                 </div>
               </div>
