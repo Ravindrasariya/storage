@@ -1077,6 +1077,7 @@ export class DatabaseStorage implements IStorage {
     let totalHammali = 0;
     let totalGradingCharges = 0;
     let totalExtraDueToMerchant = 0;
+    let totalAdjSelfDue = 0;
     
     // Group sales by lotId to count unique lots, not individual partial sales
     const lotPaymentMap = new Map<string, { paidAmount: number; dueAmount: number }>();
@@ -1110,15 +1111,12 @@ export class DatabaseStorage implements IStorage {
       // Track extraDueToMerchant (remaining due, already reduced by FIFO payments)
       totalExtraDueToMerchant += (sale.extraDueToMerchant || 0);
       
-      // Subtract adjSelfDue from charges/paid to avoid double-counting:
-      // adjSelfDue inflates coldStorageCharge on this sale AND inflates paidAmount on the original self-sale
-      const selfDueAdj = sale.adjSelfDue || 0;
-      const adjustedCharges = totalCharges - selfDueAdj;
-      const salePaid = Math.min(sale.paidAmount || 0, adjustedCharges);
-      const saleDue = Math.max(0, adjustedCharges - salePaid);
+      const salePaid = sale.paidAmount || 0;
+      const saleDue = Math.max(0, totalCharges - salePaid);
       
       totalPaid += salePaid;
       totalDue += saleDue;
+      totalAdjSelfDue += sale.adjSelfDue || 0;
       
       // Track payment status by lot for counting unique lots
       const existing = lotPaymentMap.get(sale.lotId) || { paidAmount: 0, dueAmount: 0 };
@@ -1129,6 +1127,12 @@ export class DatabaseStorage implements IStorage {
     
     // Add extraDueToMerchant to totalDue for consistency with Merchant Analysis
     totalDue += totalExtraDueToMerchant;
+    
+    // Subtract adjSelfDue globally to avoid double-counting:
+    // adjSelfDue inflates coldStorageCharge on the new sale (billed side)
+    // AND the FIFO system inflates paidAmount on the original self-sale (paid side)
+    totalPaid = Math.max(0, totalPaid - totalAdjSelfDue);
+    totalDue = Math.max(0, totalDue - totalAdjSelfDue);
     
     // Count unique lots: a lot is "paid" only if all tranches are paid
     let paidCount = 0;

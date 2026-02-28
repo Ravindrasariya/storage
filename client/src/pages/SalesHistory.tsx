@@ -280,18 +280,20 @@ export default function SalesHistoryPage() {
   const summary = salesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
-      const selfDueAdj = sale.adjSelfDue || 0;
-      const adjustedCharges = (sale.coldStorageCharge || 0) - selfDueAdj;
-      const adjustedPaid = Math.min(sale.paidAmount || 0, adjustedCharges);
-      acc.amountPaid += adjustedPaid;
-      const coldStorageDue = Math.max(0, adjustedCharges - adjustedPaid);
+      acc.amountPaid += sale.paidAmount || 0;
+      const coldStorageDue = Math.max(0, (sale.coldStorageCharge || 0) - (sale.paidAmount || 0));
       acc.amountDue += coldStorageDue + (sale.extraDueToMerchant || 0);
-      acc.totalColdStorageCharges += adjustedCharges;
+      acc.totalColdStorageCharges += sale.coldStorageCharge || 0;
       acc.totalReceivableAdj += (sale.adjPyReceivables || 0) + (sale.adjAdvance || 0) + (sale.adjFreight || 0) + (sale.adjSelfDue || 0);
+      acc.totalAdjSelfDue += sale.adjSelfDue || 0;
       return acc;
     },
-    { totalBags: 0, amountPaid: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0 }
+    { totalBags: 0, amountPaid: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0, totalAdjSelfDue: 0 }
   );
+
+  summary.amountPaid = Math.max(0, summary.amountPaid - summary.totalAdjSelfDue);
+  summary.amountDue = Math.max(0, summary.amountDue - summary.totalAdjSelfDue);
+  summary.totalColdStorageCharges = Math.max(0, summary.totalColdStorageCharges - summary.totalAdjSelfDue);
 
   return (
     <div className="p-4 md:p-6 space-y-6">
