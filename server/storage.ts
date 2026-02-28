@@ -1110,9 +1110,12 @@ export class DatabaseStorage implements IStorage {
       // Track extraDueToMerchant (remaining due, already reduced by FIFO payments)
       totalExtraDueToMerchant += (sale.extraDueToMerchant || 0);
       
-      // Use paidAmount from sale, calculate due as remainder to ensure consistency
-      const salePaid = sale.paidAmount || 0;
-      const saleDue = Math.max(0, totalCharges - salePaid);
+      // Subtract adjSelfDue from charges/paid to avoid double-counting:
+      // adjSelfDue inflates coldStorageCharge on this sale AND inflates paidAmount on the original self-sale
+      const selfDueAdj = sale.adjSelfDue || 0;
+      const adjustedCharges = totalCharges - selfDueAdj;
+      const salePaid = Math.min(sale.paidAmount || 0, adjustedCharges);
+      const saleDue = Math.max(0, adjustedCharges - salePaid);
       
       totalPaid += salePaid;
       totalDue += saleDue;

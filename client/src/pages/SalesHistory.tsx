@@ -280,13 +280,13 @@ export default function SalesHistoryPage() {
   const summary = salesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
-      acc.amountPaid += sale.paidAmount || 0;
-      // Calculate due from authoritative coldStorageCharge field, not persisted dueAmount
-      // Formula: max(0, coldStorageCharge - paidAmount) + extraDueToMerchant
-      // This matches Analytics calculation for consistency
-      const coldStorageDue = Math.max(0, (sale.coldStorageCharge || 0) - (sale.paidAmount || 0));
+      const selfDueAdj = sale.adjSelfDue || 0;
+      const adjustedCharges = (sale.coldStorageCharge || 0) - selfDueAdj;
+      const adjustedPaid = Math.min(sale.paidAmount || 0, adjustedCharges);
+      acc.amountPaid += adjustedPaid;
+      const coldStorageDue = Math.max(0, adjustedCharges - adjustedPaid);
       acc.amountDue += coldStorageDue + (sale.extraDueToMerchant || 0);
-      acc.totalColdStorageCharges += sale.coldStorageCharge || 0;
+      acc.totalColdStorageCharges += adjustedCharges;
       acc.totalReceivableAdj += (sale.adjPyReceivables || 0) + (sale.adjAdvance || 0) + (sale.adjFreight || 0) + (sale.adjSelfDue || 0);
       return acc;
     },
