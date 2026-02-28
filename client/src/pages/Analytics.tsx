@@ -204,9 +204,10 @@ export default function Analytics() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground leading-tight">{t("totalHammali")}</p>
-              <p className="text-sm sm:text-base font-bold text-purple-600 dark:text-purple-400" data-testid="text-total-hammali">
-                <Currency amount={paymentStats?.totalHammali || 0} />
-              </p>
+              <div className="flex flex-wrap gap-1 sm:gap-2 text-xs sm:text-sm font-bold">
+                <span className="text-purple-600 dark:text-purple-400" data-testid="text-total-hammali">{t("total")}: <Currency amount={paymentStats?.totalHammali || 0} /></span>
+                <span className="text-amber-600 dark:text-amber-400" data-testid="text-hammali-due">| {t("due")}: <Currency amount={paymentStats?.hammaliDue || 0} /></span>
+              </div>
             </div>
           </div>
         </Card>
@@ -218,9 +219,10 @@ export default function Analytics() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground leading-tight">{t("totalGradingCharges")}</p>
-              <p className="text-sm sm:text-base font-bold text-cyan-600 dark:text-cyan-400" data-testid="text-total-grading">
-                <Currency amount={paymentStats?.totalGradingCharges || 0} />
-              </p>
+              <div className="flex flex-wrap gap-1 sm:gap-2 text-xs sm:text-sm font-bold">
+                <span className="text-cyan-600 dark:text-cyan-400" data-testid="text-total-grading">{t("total")}: <Currency amount={paymentStats?.totalGradingCharges || 0} /></span>
+                <span className="text-amber-600 dark:text-amber-400" data-testid="text-grading-due">| {t("due")}: <Currency amount={paymentStats?.gradingDue || 0} /></span>
+              </div>
             </div>
           </div>
         </Card>

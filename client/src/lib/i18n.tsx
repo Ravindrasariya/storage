@@ -234,6 +234,7 @@ const translations: Translations = {
   freightTotal: { en: "Freight", hi: "भाड़ा" },
   receivableAmount: { en: "Receivable", hi: "प्राप्य" },
   total: { en: "Total", hi: "कुल" },
+  due: { en: "Due", hi: "बकाया" },
   
   // Up for Sale
   upForSale: { en: "Up for Sale", hi: "बिक्री के लिए" },
