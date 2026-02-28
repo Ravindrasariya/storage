@@ -4541,6 +4541,7 @@ export async function registerRoutes(
         totalCharges: sql<number>`COALESCE(SUM(${salesHistory.coldStorageCharge}), 0)`,
         totalMerchantExtras: sql<number>`COALESCE(SUM(${salesHistory.extraDueToMerchantOriginal}), 0)`,
         totalAdjReceivables: sql<number>`COALESCE(SUM(${salesHistory.adjReceivableSelfDueAmount}), 0)`,
+        displayAdjReceivables: sql<number>`COALESCE(SUM(COALESCE(${salesHistory.adjPyReceivables}, 0) + COALESCE(${salesHistory.adjAdvance}, 0) + COALESCE(${salesHistory.adjFreight}, 0)), 0)`,
       }).from(salesHistory).where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         gte(salesHistory.soldAt, fyStart),
@@ -4548,6 +4549,7 @@ export async function registerRoutes(
       ));
       const rawColdStorageCharges = Number(salesInFY[0]?.totalCharges) || 0;
       const receivableAdjustments = Number(salesInFY[0]?.totalAdjReceivables) || 0;
+      const displayReceivableAdjustments = Number(salesInFY[0]?.displayAdjReceivables) || 0;
       const coldStorageIncome = rawColdStorageCharges - receivableAdjustments;
       const merchantExtrasIncome = Number(salesInFY[0]?.totalMerchantExtras) || 0;
 
@@ -4608,7 +4610,7 @@ export async function registerRoutes(
         period: { from: fyStart.toISOString().split('T')[0], to: fyEnd.toISOString().split('T')[0] },
         income: {
           coldStorageCharges: coldStorageIncome,
-          receivableAdjustments: receivableAdjustments,
+          receivableAdjustments: displayReceivableAdjustments,
           merchantExtras: merchantExtrasIncome,
           otherIncome,
           total: totalIncome,
@@ -4630,7 +4632,7 @@ export async function registerRoutes(
           [],
           ['INCOME'],
           ['Cold Storage Charges', String(coldStorageIncome)],
-          ...(receivableAdjustments > 0 ? [['Less: Receivable Adjustments', String(-receivableAdjustments)]] : []),
+          ...(displayReceivableAdjustments > 0 ? [['Less: Receivable Adjustments', String(-displayReceivableAdjustments)]] : []),
           ['Merchant Extras', String(merchantExtrasIncome)],
           ['Other Income (Kata/Sales Goods)', String(otherIncome)],
           ['Total Income', String(totalIncome)],
