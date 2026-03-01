@@ -384,7 +384,6 @@ export default function CashManagement() {
 
   const { data: allBuyerLedgerData } = useQuery<{ buyers: { id: string; buyerId: string; buyerName: string; address: string; contactNumber: string }[] }>({
     queryKey: ["/api/buyer-ledger"],
-    enabled: isMerchantExpenseType,
   });
   const allBuyerLedgerEntries = allBuyerLedgerData?.buyers || [];
 
@@ -1999,11 +1998,10 @@ export default function CashManagement() {
   const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers || loadingDiscounts;
 
   const uniqueBuyers = useMemo(() => {
-    // Aggregate buyers case-insensitively with trimming
-    const normalizedMap = new Map<string, string>(); // lowercase -> canonical display name
-    receipts.forEach(r => {
-      if (!r.buyerName) return;
-      const trimmed = r.buyerName.trim();
+    const normalizedMap = new Map<string, string>();
+    (allBuyerLedgerEntries || []).forEach(b => {
+      if (!b.buyerName) return;
+      const trimmed = b.buyerName.trim();
       const key = trimmed.toLowerCase();
       if (!normalizedMap.has(key)) {
         normalizedMap.set(key, trimmed);
@@ -2012,7 +2010,7 @@ export default function CashManagement() {
     return Array.from(normalizedMap.values()).sort((a, b) => 
       a.toLowerCase().localeCompare(b.toLowerCase())
     );
-  }, [receipts]);
+  }, [allBuyerLedgerEntries]);
 
   const uniqueFarmers = useMemo(() => {
     return allFarmers
