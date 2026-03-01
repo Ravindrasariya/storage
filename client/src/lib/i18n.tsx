@@ -120,6 +120,8 @@ const translations: Translations = {
   searchBy: { en: "Search By", hi: "द्वारा खोजें" },
   phoneNumber: { en: "Phone Number", hi: "फोन नंबर" },
   lotNumber: { en: "Lot Number", hi: "लॉट नंबर" },
+  fromLotNo: { en: "From Lot #", hi: "लॉट # से" },
+  toLotNo: { en: "To Lot #", hi: "लॉट # तक" },
   startingLotNumbers: { en: "Starting Lot Numbers", hi: "प्रारंभिक लॉट नंबर" },
   startingLotNumbersDesc: { en: "Set the starting lot number for each category at the beginning of a season", hi: "सीज़न की शुरुआत में प्रत्येक श्रेणी के लिए प्रारंभिक लॉट नंबर सेट करें" },
   search: { en: "Search", hi: "खोजें" },

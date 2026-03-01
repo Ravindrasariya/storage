@@ -181,7 +181,7 @@ export interface IStorage {
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
   searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]>;
-  searchLotsByLotNoAndSize(lotNo: string, size: string, coldStorageId: string): Promise<Lot[]>;
+  searchLotsByLotNoAndSize(lotNoFrom: string, lotNoTo: string, size: string, coldStorageId: string): Promise<Lot[]>;
   searchLotsByFarmerName(query: string, coldStorageId: string, village?: string, contactNumber?: string): Promise<Lot[]>;
   getAllLots(coldStorageId: string): Promise<Lot[]>;
   getLotsByEntrySequence(entrySequence: number, coldStorageId: string): Promise<Lot[]>;
@@ -723,11 +723,21 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  async searchLotsByLotNoAndSize(lotNo: string, size: string, coldStorageId: string): Promise<Lot[]> {
+  async searchLotsByLotNoAndSize(lotNoFrom: string, lotNoTo: string, size: string, coldStorageId: string): Promise<Lot[]> {
     const allLots = await db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
     
     return allLots.filter((lot) => {
-      const matchesLotNo = !lotNo || lot.lotNo.toLowerCase().includes(lotNo.toLowerCase());
+      const lotNum = parseInt(lot.lotNo, 10);
+      const fromNum = lotNoFrom ? parseInt(lotNoFrom, 10) : NaN;
+      const toNum = lotNoTo ? parseInt(lotNoTo, 10) : NaN;
+      let matchesLotNo = true;
+      if (!isNaN(fromNum) && !isNaN(toNum)) {
+        matchesLotNo = !isNaN(lotNum) && lotNum >= fromNum && lotNum <= toNum;
+      } else if (!isNaN(fromNum)) {
+        matchesLotNo = !isNaN(lotNum) && lotNum === fromNum;
+      } else if (!isNaN(toNum)) {
+        matchesLotNo = !isNaN(lotNum) && lotNum <= toNum;
+      }
       const sizeNum = parseInt(size, 10);
       const matchesSize = !size || isNaN(sizeNum) || lot.size === sizeNum;
       return matchesLotNo && matchesSize;
@@ -1196,6 +1206,41 @@ export class DatabaseStorage implements IStorage {
     
     const totalReceivableDue = farmerReceivableDue + buyerReceivableDue;
 
+    // Calculate original receivable totals (before payments)
+    // Farmer: PY Receivables original + Advance original + Freight original
+    const farmerPYOriginal = await db.select({
+      total: sql<number>`COALESCE(SUM(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount})), 0)`
+    }).from(openingReceivables).where(and(
+      eq(openingReceivables.coldStorageId, coldStorageId),
+      eq(openingReceivables.payerType, "farmer")
+    ));
+
+    const farmerAdvFreightOriginal = await db.select({
+      total: sql<number>`COALESCE(SUM(${farmerAdvanceFreight.finalAmount}), 0)`
+    }).from(farmerAdvanceFreight).where(and(
+      eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+      eq(farmerAdvanceFreight.isReversed, 0)
+    ));
+
+    const farmerReceivableTotal = (farmerPYOriginal[0]?.total || 0) + (farmerAdvFreightOriginal[0]?.total || 0);
+
+    // Buyer: PY Receivables original + Merchant Advance original
+    const buyerPYOriginal = await db.select({
+      total: sql<number>`COALESCE(SUM(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount})), 0)`
+    }).from(openingReceivables).where(and(
+      eq(openingReceivables.coldStorageId, coldStorageId),
+      eq(openingReceivables.payerType, "cold_merchant")
+    ));
+
+    const merchantAdvOriginal = await db.select({
+      total: sql<number>`COALESCE(SUM(${merchantAdvance.finalAmount}), 0)`
+    }).from(merchantAdvance).where(and(
+      eq(merchantAdvance.coldStorageId, coldStorageId),
+      eq(merchantAdvance.isReversed, 0)
+    ));
+
+    const buyerReceivableTotal = (buyerPYOriginal[0]?.total || 0) + (merchantAdvOriginal[0]?.total || 0);
+
     return {
       totalPaid,
       totalDue,
@@ -1208,6 +1253,8 @@ export class DatabaseStorage implements IStorage {
       totalReceivableDue,
       farmerReceivableDue,
       buyerReceivableDue,
+      farmerReceivableTotal,
+      buyerReceivableTotal,
     };
   }
 

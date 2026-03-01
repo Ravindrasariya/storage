@@ -553,7 +553,7 @@ export async function registerRoutes(
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { type, query, lotNo, size, quality, paymentDue, potatoType, year } = req.query;
+      const { type, query, size, quality, paymentDue, potatoType, year } = req.query;
       const filterYear = year ? parseInt(year as string, 10) : undefined;
       
       const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
@@ -566,8 +566,10 @@ export async function registerRoutes(
         // Get all lots and apply filters
         lots = await storage.getAllLots(coldStorageId);
       } else if (type === "lotNoSize") {
+        const { lotNoFrom, lotNoTo } = req.query;
         lots = await storage.searchLotsByLotNoAndSize(
-          lotNo as string || "",
+          (lotNoFrom as string) || "",
+          (lotNoTo as string) || "",
           size as string || "",
           coldStorageId
         );

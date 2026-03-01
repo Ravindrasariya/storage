@@ -185,13 +185,14 @@ export default function Analytics() {
               <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground leading-tight">{t("totalReceivableDue")}</p>
-              <p className="text-sm sm:text-base font-bold text-orange-600 dark:text-orange-400" data-testid="text-total-receivable-due">
-                <Currency amount={paymentStats?.totalReceivableDue || 0} />
-              </p>
-              <div className="flex flex-wrap gap-2 sm:gap-3 mt-1 sm:mt-2 text-xs">
-                <span className="text-orange-600 dark:text-orange-400" data-testid="text-farmer-receivable">{t("farmer")}: <Currency amount={paymentStats?.farmerReceivableDue || 0} /></span>
-                <span className="text-amber-600 dark:text-amber-400" data-testid="text-buyer-receivable">{t("buyer")}: <Currency amount={paymentStats?.buyerReceivableDue || 0} /></span>
+              <p className="text-xs text-muted-foreground leading-tight">{t("receivables")}</p>
+              <div className="flex flex-wrap gap-1 sm:gap-2 text-xs sm:text-sm font-bold mt-1">
+                <span className="text-orange-600 dark:text-orange-400" data-testid="text-farmer-receivable">{t("farmer")}: {t("total")}: <Currency amount={paymentStats?.farmerReceivableTotal || 0} /></span>
+                <span className="text-amber-600 dark:text-amber-400" data-testid="text-farmer-receivable-due">| {t("due")}: <Currency amount={paymentStats?.farmerReceivableDue || 0} /></span>
+              </div>
+              <div className="flex flex-wrap gap-1 sm:gap-2 text-xs sm:text-sm font-bold mt-0.5">
+                <span className="text-orange-600 dark:text-orange-400" data-testid="text-buyer-receivable">{t("buyer")}: {t("total")}: <Currency amount={paymentStats?.buyerReceivableTotal || 0} /></span>
+                <span className="text-amber-600 dark:text-amber-400" data-testid="text-buyer-receivable-due">| {t("due")}: <Currency amount={paymentStats?.buyerReceivableDue || 0} /></span>
               </div>
             </div>
           </div>

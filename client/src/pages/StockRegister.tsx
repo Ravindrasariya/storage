@@ -81,7 +81,8 @@ export default function StockRegister() {
   const [selectedFarmerVillage, setSelectedFarmerVillage] = useState(savedState?.selectedFarmerVillage || "");
   const [selectedFarmerMobile, setSelectedFarmerMobile] = useState(savedState?.selectedFarmerMobile || "");
   const [searchQuery, setSearchQuery] = useState(savedState?.searchQuery || "");
-  const [lotNoQuery, setLotNoQuery] = useState(savedState?.lotNoQuery || "");
+  const [lotNoFrom, setLotNoFrom] = useState(savedState?.lotNoFrom || "");
+  const [lotNoTo, setLotNoTo] = useState(savedState?.lotNoTo || "");
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
@@ -288,7 +289,7 @@ export default function StockRegister() {
     const hasInput = 
       (searchType === "phone" && searchQuery.trim().length >= 3) ||
       (searchType === "farmerName" && farmerNameQuery.trim().length >= 2) ||
-      (searchType === "lotNoSize" && (lotNoQuery.trim() || sizeQuery.trim())) ||
+      (searchType === "lotNoSize" && (lotNoFrom.trim() || lotNoTo.trim() || sizeQuery.trim())) ||
       (searchType === "filter" && (qualityFilter !== "all" || potatoTypeFilter !== "all" || paymentDueFilter));
     
     if (hasInput) {
@@ -303,7 +304,7 @@ export default function StockRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoQuery, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, selectedYear]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, selectedYear]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
@@ -313,7 +314,8 @@ export default function StockRegister() {
       selectedFarmerVillage,
       selectedFarmerMobile,
       searchQuery,
-      lotNoQuery,
+      lotNoFrom,
+      lotNoTo,
       sizeQuery,
       qualityFilter,
       potatoTypeFilter,
@@ -322,7 +324,7 @@ export default function StockRegister() {
       selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoQuery, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -336,7 +338,7 @@ export default function StockRegister() {
         const hasValidQuery = 
           (saved.searchType === "phone" && saved.searchQuery?.trim().length >= 3) ||
           (saved.searchType === "farmerName" && saved.farmerNameQuery?.trim().length >= 2) ||
-          (saved.searchType === "lotNoSize" && (saved.lotNoQuery?.trim() || saved.sizeQuery?.trim())) ||
+          (saved.searchType === "lotNoSize" && (saved.lotNoFrom?.trim() || saved.lotNoTo?.trim() || saved.sizeQuery?.trim())) ||
           (saved.searchType === "filter" && (saved.qualityFilter !== "all" || saved.potatoTypeFilter !== "all" || saved.paymentDueFilter));
         
         if (hasValidQuery) {
@@ -353,7 +355,7 @@ export default function StockRegister() {
       const inputEmpty = 
         (searchType === "phone" && !searchQuery.trim()) ||
         (searchType === "farmerName" && !farmerNameQuery.trim()) ||
-        (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) ||
+        (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim()) ||
         (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter);
       
       if (inputEmpty) {
@@ -366,7 +368,7 @@ export default function StockRegister() {
         }
       }
     }
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoQuery, sizeQuery, qualityFilter, paymentDueFilter, searchType, hasSearched]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, paymentDueFilter, searchType, hasSearched]);
 
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
@@ -827,7 +829,7 @@ export default function StockRegister() {
 
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
-    if (searchType === "lotNoSize" && !lotNoQuery.trim() && !sizeQuery.trim()) return;
+    if (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim()) return;
     if (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter) return;
     if (searchType === "farmerName" && !farmerNameQuery.trim()) return;
     
@@ -839,7 +841,7 @@ export default function StockRegister() {
       if (searchType === "filter") {
         url = `/api/lots/search?type=filter&year=${selectedYear}`;
       } else if (searchType === "lotNoSize") {
-        url = `/api/lots/search?type=lotNoSize&lotNo=${encodeURIComponent(lotNoQuery)}&size=${encodeURIComponent(sizeQuery)}&year=${selectedYear}`;
+        url = `/api/lots/search?type=lotNoSize&lotNoFrom=${encodeURIComponent(lotNoFrom)}&lotNoTo=${encodeURIComponent(lotNoTo)}&size=${encodeURIComponent(sizeQuery)}&year=${selectedYear}`;
       } else if (searchType === "farmerName") {
         url = `/api/lots/search?type=farmerName&query=${encodeURIComponent(farmerNameQuery)}&year=${selectedYear}`;
         if (selectedFarmerVillage) {
@@ -1262,12 +1264,21 @@ export default function StockRegister() {
             <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3">
               <div className="flex flex-wrap items-center gap-2 flex-1">
                 <Input
-                  placeholder={`${t("lotNumber")} (${t("optional")})`}
-                  value={lotNoQuery}
-                  onChange={(e) => setLotNoQuery(e.target.value)}
+                  placeholder={`${t("fromLotNo")}`}
+                  value={lotNoFrom}
+                  onChange={(e) => setLotNoFrom(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1"
-                  data-testid="input-search-lotno"
+                  className="flex-1 min-w-[80px]"
+                  data-testid="input-search-lotno-from"
+                />
+                <span className="text-sm font-medium text-muted-foreground">–</span>
+                <Input
+                  placeholder={`${t("toLotNo")}`}
+                  value={lotNoTo}
+                  onChange={(e) => setLotNoTo(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="flex-1 min-w-[80px]"
+                  data-testid="input-search-lotno-to"
                 />
                 <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
                 <Input
@@ -1275,7 +1286,7 @@ export default function StockRegister() {
                   value={sizeQuery}
                   onChange={(e) => setSizeQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1"
+                  className="flex-1 min-w-[80px]"
                   data-testid="input-search-size"
                 />
                 {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
