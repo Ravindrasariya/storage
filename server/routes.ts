@@ -272,10 +272,26 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const coldStorage = await storage.getColdStorage(coldStorageId);
-      const allLots = await storage.getAllLots(coldStorageId);
+      let allLots = await storage.getAllLots(coldStorageId);
       const allSalesHistory = await storage.getSalesHistory(coldStorageId);
+
+      const { bagType, year } = req.query;
+
+      if (bagType && typeof bagType === "string" && bagType !== "all") {
+        allLots = allLots.filter(lot => lot.bagType === bagType);
+      }
+
+      if (year) {
+        const filterYear = parseInt(year as string, 10);
+        if (!isNaN(filterYear)) {
+          allLots = allLots.filter(lot => {
+            if (!lot.createdAt) return false;
+            return new Date(lot.createdAt).getFullYear() === filterYear;
+          });
+        }
+      }
       
-      // Calculate summary totals for all lots
+      // Calculate summary totals for filtered lots
       let totalBags = 0;
       let remainingBags = 0;
       let chargesPaid = 0;

@@ -236,7 +236,7 @@ export default function StockRegister() {
     queryKey: ["/api/sales-history"],
   });
 
-  // Fetch summary totals for ALL lots (used when no filter is applied)
+  // Fetch summary totals for ALL lots (with optional bag type and year filter)
   const { data: allLotsSummary } = useQuery<{
     totalBags: number;
     remainingBags: number;
@@ -244,7 +244,16 @@ export default function StockRegister() {
     chargesDue: number;
     expectedColdCharges: number;
   }>({
-    queryKey: ["/api/lots/summary"],
+    queryKey: ["/api/lots/summary", { bagType: bagTypeFilter, year: selectedYear }],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (bagTypeFilter !== "all") params.set("bagType", bagTypeFilter);
+      if (selectedYear) params.set("year", String(selectedYear));
+      const url = `/api/lots/summary${params.toString() ? `?${params.toString()}` : ""}`;
+      const response = await authFetch(url);
+      if (!response.ok) throw new Error("Failed to fetch summary");
+      return response.json();
+    },
   });
 
   // Calculate charges for selected lot from sales history (same calculation as Analytics)
@@ -427,13 +436,12 @@ export default function StockRegister() {
 
   // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
-    // When no filter is active (no search, bagType = all), use the API summary for ALL lots
-    const noFilterActive = !hasSearched && bagTypeFilter === "all";
-    if (noFilterActive && allLotsSummary) {
+    // When no search is active, use the API summary which covers ALL lots (with bag type/year filter applied server-side)
+    if (!hasSearched && allLotsSummary) {
       return allLotsSummary;
     }
     
-    // Use search results if searched, otherwise use initial lots
+    // Use search results when searched
     const baseLots = hasSearched ? searchResults : (initialLots || []);
     if (baseLots.length === 0) return null;
     
