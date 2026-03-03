@@ -105,6 +105,7 @@ export default function StockRegister() {
     position: string;
     quality: string;
     netWeight?: number;
+    size: number;
     lotNo: string;
     farmerName: string;
     village: string;
@@ -891,6 +892,7 @@ export default function StockRegister() {
       position: lot.position || "",
       quality: lot.quality,
       netWeight: lot.netWeight || undefined,
+      size: lot.size,
       lotNo: lot.lotNo,
       farmerName: lot.farmerName,
       village: lot.village || "",
@@ -1623,7 +1625,18 @@ export default function StockRegister() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("originalSize")}</p>
-                <p className="font-medium text-sm">{selectedLot?.size} {t("bags")}</p>
+                {editForm && canEdit ? (
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editForm.size}
+                    onChange={(e) => setEditForm({ ...editForm, size: parseInt(e.target.value, 10) || 0 })}
+                    className="h-8 w-24 text-sm"
+                    data-testid="input-edit-size"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.size} {t("bags")}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("remainingBags")}</p>

@@ -876,6 +876,8 @@ export interface PaymentStats {
   totalReceivableDue: number;
   farmerReceivableDue: number;
   buyerReceivableDue: number;
+  farmerReceivableTotal: number;
+  buyerReceivableTotal: number;
 }
 
 // Merchant stats for analytics

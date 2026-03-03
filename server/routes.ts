@@ -706,6 +706,8 @@ export async function registerRoutes(
     upForSale: z.number().int().min(0).max(1).optional(),
     // Net weight for quintal-based charging
     netWeight: z.number().optional(),
+    // Original bag count (editable)
+    size: z.number().int().min(1).optional(),
     // Lot number (editable with uniqueness validation)
     lotNo: z.string().optional(),
     // Farmer details (editable)
@@ -748,12 +750,21 @@ export async function registerRoutes(
         }
       }
       
+      // Validate size change: new size can't be less than bags already sold
+      if (validated.size !== undefined && validated.size !== lot.size) {
+        const bagsSold = lot.size - lot.remainingSize;
+        if (validated.size < bagsSold) {
+          return res.status(400).json({ error: `Cannot set size below ${bagsSold} (bags already sold)` });
+        }
+      }
+
       // Only create edit history if location/quality fields are being changed (not just upForSale toggle)
       const isLocationOrQualityEdit = validated.chamberId !== undefined || 
                                        validated.floor !== undefined || 
                                        validated.position !== undefined || 
                                        validated.quality !== undefined ||
-                                       validated.lotNo !== undefined;
+                                       validated.lotNo !== undefined ||
+                                       validated.size !== undefined;
 
       const previousData = {
         chamberId: lot.chamberId,
@@ -761,6 +772,7 @@ export async function registerRoutes(
         position: lot.position,
         quality: lot.quality,
         lotNo: lot.lotNo,
+        size: lot.size,
         farmerName: lot.farmerName,
         village: lot.village,
         tehsil: lot.tehsil,
@@ -770,7 +782,13 @@ export async function registerRoutes(
       };
 
       // Update the lot (including lotNo and entrySequence if changed)
-      const updateData: Partial<typeof validated & { entrySequence?: number }> = { ...validated };
+      const updateData: Partial<typeof validated & { entrySequence?: number; remainingSize?: number }> = { ...validated };
+
+      // Adjust remainingSize by the same delta when size changes
+      if (validated.size !== undefined && validated.size !== lot.size) {
+        const delta = validated.size - lot.size;
+        updateData.remainingSize = lot.remainingSize + delta;
+      }
       if (validated.lotNo && validated.lotNo !== lot.lotNo) {
         updateData.entrySequence = parseInt(validated.lotNo, 10);
       }
@@ -815,6 +833,7 @@ export async function registerRoutes(
           position: validated.position ?? lot.position,
           quality: validated.quality ?? lot.quality,
           lotNo: validated.lotNo ?? lot.lotNo,
+          size: validated.size ?? lot.size,
           farmerName: validated.farmerName ?? lot.farmerName,
           village: validated.village ?? lot.village,
           tehsil: validated.tehsil ?? lot.tehsil,
