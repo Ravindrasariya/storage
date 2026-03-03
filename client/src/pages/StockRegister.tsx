@@ -1608,8 +1608,8 @@ export default function StockRegister() {
           <div className="space-y-4 border-t pt-4">
             <h4 className="font-semibold text-sm text-muted-foreground">{t("lotInformation")}</h4>
             <div className="grid grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{t("lotNo")}</Label>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("lotNo")}</Label>
                 {editForm && canEdit ? (
                   <div>
                     <Input
@@ -1620,7 +1620,7 @@ export default function StockRegister() {
                         setEditForm({ ...editForm, lotNo: e.target.value });
                         setLotNoError(null);
                       }}
-                      className={lotNoError ? "border-destructive" : ""}
+                      className={`h-8 w-16 text-sm ${lotNoError ? "border-destructive" : ""}`}
                       data-testid="input-edit-lot-no"
                     />
                     {lotNoError && (
@@ -1631,23 +1631,23 @@ export default function StockRegister() {
                   <p className="font-medium text-sm">{selectedLot?.lotNo}</p>
                 )}
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("originalSize")}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground whitespace-nowrap">{t("originalSize")}</p>
                 {editForm && canEdit ? (
                   <Input
                     type="number"
                     min={1}
                     value={editForm.size}
                     onChange={(e) => setEditForm({ ...editForm, size: parseInt(e.target.value, 10) || 0 })}
-                    className="h-8 w-24 text-sm"
+                    className="h-8 w-16 text-sm"
                     data-testid="input-edit-size"
                   />
                 ) : (
                   <p className="font-medium text-sm">{selectedLot?.size} {t("bags")}</p>
                 )}
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("remainingBags")}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground whitespace-nowrap">{t("remainingBags")}</p>
                 <p className="font-medium text-sm">{selectedLot?.remainingSize} {t("bags")}</p>
               </div>
             </div>
