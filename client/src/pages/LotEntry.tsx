@@ -403,14 +403,6 @@ export default function LotEntry() {
     }, 3000);
   };
 
-  // Check for exact mobile match and auto-fill
-  const checkExactMobileMatch = (mobile: string) => {
-    if (!farmerRecords || mobile.length !== 10) return;
-    const exactMatches = farmerRecords.filter(f => f.contactNumber === mobile);
-    if (exactMatches.length === 1) {
-      selectFarmerRecord(exactMatches[0]);
-    }
-  };
 
   const createBatchLotsMutation = useMutation({
     mutationFn: async (data: { farmer: FarmerData; lots: LotData[]; bagTypeCategory: "wafer" | "rationSeed" }) => {
@@ -650,9 +642,6 @@ export default function LotEntry() {
                           const val = e.target.value.replace(/\D/g, "");
                           field.onChange(val);
                           setShowMobileSuggestions(true);
-                          if (val.length === 10) {
-                            checkExactMobileMatch(val);
-                          }
                         }}
                         onFocus={() => setShowMobileSuggestions(true)}
                         onBlur={() => setTimeout(() => setShowMobileSuggestions(false), 200)}
