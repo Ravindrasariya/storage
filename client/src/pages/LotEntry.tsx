@@ -368,10 +368,11 @@ export default function LotEntry() {
       return matches;
     });
 
-    // Deduplicate by mobile
+    // Deduplicate by mobile + farmer name (same phone, different farmer = separate suggestions)
     const mobiles = new Map<string, FarmerRecord>();
     filtered.forEach(f => {
-      if (!mobiles.has(f.contactNumber)) mobiles.set(f.contactNumber, f);
+      const key = f.contactNumber + '|' + f.farmerName.toLowerCase().trim();
+      if (!mobiles.has(key)) mobiles.set(key, f);
     });
     return Array.from(mobiles.values());
   }, [farmerRecords, watchedFarmerName, watchedVillage, watchedContactNumber]);
