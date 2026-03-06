@@ -374,7 +374,11 @@ export default function LotEntry() {
       const key = f.contactNumber + '|' + f.farmerName.toLowerCase().trim();
       if (!mobiles.has(key)) mobiles.set(key, f);
     });
-    return Array.from(mobiles.values());
+    return Array.from(mobiles.values()).sort((a, b) => {
+      const phoneCompare = a.contactNumber.localeCompare(b.contactNumber);
+      if (phoneCompare !== 0) return phoneCompare;
+      return a.farmerName.localeCompare(b.farmerName);
+    });
   }, [farmerRecords, watchedFarmerName, watchedVillage, watchedContactNumber]);
 
   // Auto-fill all fields from a selected farmer record
@@ -659,7 +663,7 @@ export default function LotEntry() {
                         data-testid="input-contact"
                       />
                     </FormControl>
-                    {showMobileSuggestions && getMobileSuggestions.length > 0 && field.value && field.value.length < 10 && (
+                    {showMobileSuggestions && getMobileSuggestions.length > 0 && field.value && (
                       <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
                         {getMobileSuggestions.slice(0, 8).map((farmer, idx) => (
                           <button
