@@ -418,6 +418,9 @@ export default function LotEntry() {
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/chambers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers/lookup"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
     },
     onError: (error: Error) => {
       toast({
