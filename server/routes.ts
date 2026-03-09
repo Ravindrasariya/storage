@@ -1082,9 +1082,9 @@ export async function registerRoutes(
         await storage.updateChamberFill(chamber.id, Math.max(0, chamber.currentFill - quantitySold));
       }
       
-      // Ensure buyer exists in buyer ledger and get IDs (if buyer name is provided)
+      // Ensure buyer exists in buyer ledger and get IDs (skip for self-sales)
       let buyerEntry: { id: string; buyerId: string } | null = null;
-      if (buyerName && buyerName.trim()) {
+      if (buyerName && buyerName.trim() && !isSelfSale) {
         buyerEntry = await storage.ensureBuyerLedgerEntry(lot.coldStorageId, { buyerName: buyerName.trim() });
       }
       

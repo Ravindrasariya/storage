@@ -34,6 +34,37 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-03-09_cleanup_self_sale_buyer_ledger",
+    up: async () => {
+      // 1. Nullify buyer ledger references on self-sale salesHistory rows
+      await db.execute(sql`
+        UPDATE sales_history
+        SET buyer_ledger_id = NULL, buyer_id = NULL
+        WHERE is_self_sale = 1
+          AND (buyer_ledger_id IS NOT NULL OR buyer_id IS NOT NULL)
+      `);
+
+      // 2. Delete buyer_ledger entries that match the self-sale composite name pattern
+      //    ("Name - Phone - Village") AND have no non-self references
+      await db.execute(sql`
+        DELETE FROM buyer_ledger
+        WHERE buyer_name ~ '^.+ - [0-9]{10} - .+$'
+        AND id NOT IN (
+          SELECT DISTINCT buyer_ledger_id FROM sales_history
+          WHERE buyer_ledger_id IS NOT NULL AND is_self_sale = 0
+        )
+        AND id NOT IN (
+          SELECT DISTINCT buyer_ledger_id FROM opening_receivables
+          WHERE buyer_ledger_id IS NOT NULL
+        )
+        AND id NOT IN (
+          SELECT DISTINCT buyer_ledger_id FROM cash_receipts
+          WHERE buyer_ledger_id IS NOT NULL
+        )
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {
