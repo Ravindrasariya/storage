@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
@@ -56,6 +57,7 @@ export default function BuyerLedger() {
 
   const [nameSearch, setNameSearch] = useState("");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+  const nameNav = useDropdownNavigation();
   const [showArchived, setShowArchived] = useState(false);
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>('buyerId');
@@ -482,17 +484,18 @@ export default function BuyerLedger() {
               setNameSearch(e.target.value);
               setShowNameSuggestions(true);
             }}
-            onFocus={() => setShowNameSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
+            onFocus={() => { setShowNameSuggestions(true); nameNav.resetActive(); }}
+            onBlur={() => setTimeout(() => { setShowNameSuggestions(false); nameNav.resetActive(); }, 200)}
+            onKeyDown={(e) => nameNav.handleKeyDown(e, nameSuggestions.length, (i) => { setNameSearch(nameSuggestions[i].buyerName); setShowNameSuggestions(false); }, () => setShowNameSuggestions(false))}
             className="w-[200px]"
             data-testid="input-search-name"
           />
           {showNameSuggestions && nameSuggestions.length > 0 && (
             <div className="absolute top-full left-0 mt-1 w-[280px] max-w-[90vw] bg-popover border rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
-              {nameSuggestions.map(buyer => (
+              {nameSuggestions.map((buyer, idx) => (
                 <div
                   key={buyer.id}
-                  className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0"
+                  className={`px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0 ${nameNav.activeIndex === idx ? "bg-accent" : ""}`}
                   onMouseDown={() => {
                     setNameSearch(buyer.buyerName);
                     setShowNameSuggestions(false);

@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
@@ -56,6 +57,7 @@ export default function FarmerLedger() {
   const [villageSearch, setVillageSearch] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+  const nameNav = useDropdownNavigation();
   const [showArchived, setShowArchived] = useState(false);
   const [sortField, setSortField] = useState<SortField>('farmerId');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -519,17 +521,18 @@ export default function FarmerLedger() {
               setNameSearch(e.target.value);
               setShowNameSuggestions(true);
             }}
-            onFocus={() => setShowNameSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
+            onFocus={() => { setShowNameSuggestions(true); nameNav.resetActive(); }}
+            onBlur={() => setTimeout(() => { setShowNameSuggestions(false); nameNav.resetActive(); }, 200)}
+            onKeyDown={(e) => nameNav.handleKeyDown(e, nameSuggestions.length, (i) => { setNameSearch(nameSuggestions[i].name); setShowNameSuggestions(false); }, () => setShowNameSuggestions(false))}
             className="w-[160px]"
             data-testid="input-search-name"
           />
           {showNameSuggestions && nameSuggestions.length > 0 && (
             <div className="absolute top-full left-0 mt-1 w-[280px] max-w-[90vw] bg-popover border rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
-              {nameSuggestions.map(farmer => (
+              {nameSuggestions.map((farmer, idx) => (
                 <div
                   key={farmer.id}
-                  className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0"
+                  className={`px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0 ${nameNav.activeIndex === idx ? "bg-accent" : ""}`}
                   onMouseDown={() => {
                     setNameSearch(farmer.name);
                     setShowNameSuggestions(false);

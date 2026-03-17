@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react";
+import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useI18n } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [editableColdCharge, setEditableColdCharge] = useState<string>("");
   const [editableHammali, setEditableHammali] = useState<string>("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
+  const buyerNav = useDropdownNavigation();
+  const farmerFilterNav = useDropdownNavigation();
   const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   const [isSelfBuyer, setIsSelfBuyer] = useState(false);
   const [adjAmount, setAdjAmount] = useState<string>("");
@@ -448,8 +451,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       setSelectedFarmerFilter(null);
                     }
                   }}
-                  onFocus={() => setShowFarmerFilterSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowFarmerFilterSuggestions(false), 200)}
+                  onFocus={() => { setShowFarmerFilterSuggestions(true); farmerFilterNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowFarmerFilterSuggestions(false); farmerFilterNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => farmerFilterNav.handleKeyDown(e, farmerFilterSuggestions.length, (i) => { selectFarmerFilter(farmerFilterSuggestions[i]); setShowFarmerFilterSuggestions(false); }, () => setShowFarmerFilterSuggestions(false))}
                   className={`pl-7 h-8 w-full text-sm ${selectedFarmerFilter ? 'pr-8' : ''}`}
                   data-testid="input-upforsale-farmer-filter"
                 />
@@ -471,7 +475,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                   <button
                     key={idx}
                     type="button"
-                    className="w-full text-left px-3 py-2 hover-elevate text-sm"
+                    className={`w-full text-left px-3 py-2 hover-elevate text-sm ${farmerFilterNav.activeIndex === idx ? "bg-accent" : ""}`}
                     onClick={() => selectFarmerFilter(farmer)}
                     data-testid={`farmer-filter-suggestion-${idx}`}
                   >
@@ -740,8 +744,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                       setBuyerName(capitalizeFirstLetter(e.target.value));
                       setShowBuyerSuggestions(true);
                     }}
-                    onFocus={() => setShowBuyerSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 200)}
+                    onFocus={() => { setShowBuyerSuggestions(true); buyerNav.resetActive(); }}
+                    onBlur={() => setTimeout(() => { setShowBuyerSuggestions(false); buyerNav.resetActive(); }, 200)}
+                    onKeyDown={(e) => buyerNav.handleKeyDown(e, buyerSuggestions.length, (i) => { selectBuyerSuggestion(buyerSuggestions[i]); setShowBuyerSuggestions(false); }, () => setShowBuyerSuggestions(false))}
                     placeholder={t("buyerName")}
                     autoComplete="off"
                     disabled={isSelfBuyer}
@@ -754,7 +759,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
                         <button
                           key={idx}
                           type="button"
-                          className="w-full px-3 py-2 text-left hover-elevate text-sm"
+                          className={`w-full px-3 py-2 text-left hover-elevate text-sm ${buyerNav.activeIndex === idx ? "bg-accent" : ""}`}
                           onClick={() => selectBuyerSuggestion(buyer)}
                           data-testid={`suggestion-partial-buyer-${idx}`}
                         >

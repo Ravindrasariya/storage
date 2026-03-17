@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -173,6 +174,12 @@ export default function LotEntry() {
   const [showVillageSuggestions, setShowVillageSuggestions] = useState(false);
   const [showTehsilSuggestions, setShowTehsilSuggestions] = useState(false);
   const [showMobileSuggestions, setShowMobileSuggestions] = useState(false);
+
+  // Keyboard navigation for each suggestion dropdown
+  const nameNav = useDropdownNavigation();
+  const mobileNav = useDropdownNavigation();
+  const villageNav = useDropdownNavigation();
+  const tehsilNav = useDropdownNavigation();
   const [showBagTypeLabelSuggestions, setShowBagTypeLabelSuggestions] = useState<Record<number, boolean>>({});
   
   // State for tracking auto-filled fields (for visual highlight)
@@ -604,8 +611,9 @@ export default function LotEntry() {
                           field.onChange(capitalizeFirstLetter(e.target.value));
                           setShowNameSuggestions(true);
                         }}
-                        onFocus={() => setShowNameSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
+                        onFocus={() => { setShowNameSuggestions(true); nameNav.resetActive(); }}
+                        onBlur={() => setTimeout(() => { setShowNameSuggestions(false); nameNav.resetActive(); }, 200)}
+                        onKeyDown={(e) => nameNav.handleKeyDown(e, Math.min(getNameSuggestions.length, 8), (i) => { selectFarmerRecord(getNameSuggestions.slice(0, 8)[i]); setShowNameSuggestions(false); }, () => setShowNameSuggestions(false))}
                         placeholder="Enter farmer name"
                         autoComplete="off"
                         className={autoFilledFields.has("farmerName") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
@@ -618,7 +626,7 @@ export default function LotEntry() {
                           <button
                             key={idx}
                             type="button"
-                            className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                            className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${nameNav.activeIndex === idx ? "bg-accent" : ""}`}
                             onClick={() => selectFarmerRecord(farmer)}
                             data-testid={`suggestion-name-${idx}`}
                           >
@@ -646,8 +654,9 @@ export default function LotEntry() {
                           field.onChange(val);
                           setShowMobileSuggestions(true);
                         }}
-                        onFocus={() => setShowMobileSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowMobileSuggestions(false), 200)}
+                        onFocus={() => { setShowMobileSuggestions(true); mobileNav.resetActive(); }}
+                        onBlur={() => setTimeout(() => { setShowMobileSuggestions(false); mobileNav.resetActive(); }, 200)}
+                        onKeyDown={(e) => mobileNav.handleKeyDown(e, Math.min(getMobileSuggestions.length, 8), (i) => { selectFarmerRecord(getMobileSuggestions.slice(0, 8)[i]); setShowMobileSuggestions(false); }, () => setShowMobileSuggestions(false))}
                         placeholder="Enter 10-digit number"
                         maxLength={10}
                         autoComplete="off"
@@ -661,7 +670,7 @@ export default function LotEntry() {
                           <button
                             key={idx}
                             type="button"
-                            className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                            className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${mobileNav.activeIndex === idx ? "bg-accent" : ""}`}
                             onClick={() => selectFarmerRecord(farmer)}
                             data-testid={`suggestion-mobile-${idx}`}
                           >
@@ -688,46 +697,27 @@ export default function LotEntry() {
                           field.onChange(capitalizeFirstLetter(e.target.value));
                           setShowVillageSuggestions(true);
                         }}
-                        onFocus={() => setShowVillageSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowVillageSuggestions(false), 200)}
+                        onFocus={() => { setShowVillageSuggestions(true); villageNav.resetActive(); }}
+                        onBlur={() => setTimeout(() => { setShowVillageSuggestions(false); villageNav.resetActive(); }, 200)}
+                        onKeyDown={(e) => villageNav.handleKeyDown(e, Math.min(getVillageSuggestions.length, 5), (i) => { selectFarmerRecord(getVillageSuggestions.slice(0, 5)[i]); setShowVillageSuggestions(false); }, () => setShowVillageSuggestions(false))}
                         placeholder="Enter village"
                         autoComplete="off"
                         className={autoFilledFields.has("village") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
                         data-testid="input-village"
                       />
                     </FormControl>
-                    {showVillageSuggestions && (getVillageSuggestions.length > 0 || getLocationVillageSuggestions.length > 0) && (
+                    {showVillageSuggestions && getVillageSuggestions.length > 0 && (
                       <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                        {getVillageSuggestions.length > 0 && (
-                          <>
-                            {getVillageSuggestions.slice(0, 5).map((farmer, idx) => (
-                              <button
-                                key={`farmer-${idx}`}
-                                type="button"
-                                className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
-                                onClick={() => selectFarmerRecord(farmer)}
-                                data-testid={`suggestion-village-farmer-${idx}`}
-                              >
-                                <span className="font-medium">{farmer.village}</span>
-                                <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.contactNumber}</span>
-                              </button>
-                            ))}
-                          </>
-                        )}
-                        {getLocationVillageSuggestions.filter(v => 
-                          !getVillageSuggestions.some(f => f.village.toLowerCase() === v.toLowerCase())
-                        ).slice(0, 5).map((village, idx) => (
+                        {getVillageSuggestions.slice(0, 5).map((farmer, idx) => (
                           <button
-                            key={`loc-${idx}`}
+                            key={idx}
                             type="button"
-                            className="w-full px-3 py-2 text-left hover-elevate text-sm"
-                            onClick={() => {
-                              field.onChange(village);
-                              setShowVillageSuggestions(false);
-                            }}
-                            data-testid={`suggestion-village-loc-${idx}`}
+                            className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${villageNav.activeIndex === idx ? "bg-accent" : ""}`}
+                            onClick={() => selectFarmerRecord(farmer)}
+                            data-testid={`suggestion-village-farmer-${idx}`}
                           >
-                            <span className="font-medium">{village}</span>
+                            <span className="font-medium">{farmer.village}</span>
+                            <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.contactNumber}</span>
                           </button>
                         ))}
                       </div>
@@ -749,8 +739,9 @@ export default function LotEntry() {
                           field.onChange(capitalizeFirstLetter(e.target.value));
                           setShowTehsilSuggestions(true);
                         }}
-                        onFocus={() => setShowTehsilSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowTehsilSuggestions(false), 200)}
+                        onFocus={() => { setShowTehsilSuggestions(true); tehsilNav.resetActive(); }}
+                        onBlur={() => setTimeout(() => { setShowTehsilSuggestions(false); tehsilNav.resetActive(); }, 200)}
+                        onKeyDown={(e) => tehsilNav.handleKeyDown(e, getTehsilSuggestions.length, (i) => { field.onChange(getTehsilSuggestions[i]); setShowTehsilSuggestions(false); }, () => setShowTehsilSuggestions(false))}
                         placeholder="Enter tehsil"
                         autoComplete="off"
                         className={autoFilledFields.has("tehsil") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
@@ -763,7 +754,7 @@ export default function LotEntry() {
                           <button
                             key={idx}
                             type="button"
-                            className="w-full px-3 py-2 text-left hover-elevate text-sm"
+                            className={`w-full px-3 py-2 text-left hover-elevate text-sm ${tehsilNav.activeIndex === idx ? "bg-accent" : ""}`}
                             onClick={() => {
                               field.onChange(tehsil);
                               setShowTehsilSuggestions(false);

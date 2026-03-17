@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -119,6 +120,8 @@ export default function StockRegister() {
   // Autocomplete state for search fields
   const [showPhoneSuggestions, setShowPhoneSuggestions] = useState(false);
   const [showFarmerNameSuggestions, setShowFarmerNameSuggestions] = useState(false);
+  const phoneNav = useDropdownNavigation();
+  const farmerNameNav = useDropdownNavigation();
 
   // Farmer records for autocomplete
   type FarmerRecord = {
@@ -1118,9 +1121,12 @@ export default function StockRegister() {
                       setSearchQuery(e.target.value.replace(/\D/g, ""));
                       setShowPhoneSuggestions(true);
                     }}
-                    onFocus={() => setShowPhoneSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowPhoneSuggestions(false), 200)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    onFocus={() => { setShowPhoneSuggestions(true); phoneNav.resetActive(); }}
+                    onBlur={() => setTimeout(() => { setShowPhoneSuggestions(false); phoneNav.resetActive(); }, 200)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && phoneNav.activeIndex < 0) { handleSearch(); return; }
+                      phoneNav.handleKeyDown(e, getPhoneSuggestions.length, (i) => { selectPhoneSuggestion(getPhoneSuggestions[i]); setShowPhoneSuggestions(false); }, () => setShowPhoneSuggestions(false));
+                    }}
                     autoComplete="off"
                     data-testid="input-search-phone"
                   />
@@ -1130,7 +1136,7 @@ export default function StockRegister() {
                         <button
                           key={idx}
                           type="button"
-                          className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                          className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${phoneNav.activeIndex === idx ? "bg-accent" : ""}`}
                           onClick={() => selectPhoneSuggestion(farmer)}
                           data-testid={`suggestion-phone-${idx}`}
                         >
@@ -1191,9 +1197,12 @@ export default function StockRegister() {
                       setSelectedFarmerMobile("");
                       setShowFarmerNameSuggestions(true);
                     }}
-                    onFocus={() => setShowFarmerNameSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowFarmerNameSuggestions(false), 200)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    onFocus={() => { setShowFarmerNameSuggestions(true); farmerNameNav.resetActive(); }}
+                    onBlur={() => setTimeout(() => { setShowFarmerNameSuggestions(false); farmerNameNav.resetActive(); }, 200)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && farmerNameNav.activeIndex < 0) { handleSearch(); return; }
+                      farmerNameNav.handleKeyDown(e, getFarmerNameSuggestions.length, (i) => { selectFarmerNameSuggestion(getFarmerNameSuggestions[i]); setShowFarmerNameSuggestions(false); }, () => setShowFarmerNameSuggestions(false));
+                    }}
                     autoComplete="off"
                     data-testid="input-search-farmer"
                   />
@@ -1203,7 +1212,7 @@ export default function StockRegister() {
                         <button
                           key={idx}
                           type="button"
-                          className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                          className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${farmerNameNav.activeIndex === idx ? "bg-accent" : ""}`}
                           onClick={() => selectFarmerNameSuggestion(farmer)}
                           data-testid={`suggestion-farmer-${idx}`}
                         >

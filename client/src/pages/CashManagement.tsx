@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
@@ -244,6 +245,7 @@ export default function CashManagement() {
   const [newReceivableAmount, setNewReceivableAmount] = useState("");
   const [newReceivableRemarks, setNewReceivableRemarks] = useState("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
+  const buyerNav = useDropdownNavigation();
   const [newReceivableRateOfInterest, setNewReceivableRateOfInterest] = useState("");
   const [newReceivableEffectiveDate, setNewReceivableEffectiveDate] = useState(() => {
     const d = new Date();
@@ -5061,10 +5063,15 @@ export default function CashManagement() {
                           onFocus={() => {
                             if (newReceivablePayerType !== "sales_goods") {
                               setShowBuyerSuggestions(true);
+                              buyerNav.resetActive();
                             }
                           }}
                           onBlur={() => {
-                            setTimeout(() => setShowBuyerSuggestions(false), 150);
+                            setTimeout(() => { setShowBuyerSuggestions(false); buyerNav.resetActive(); }, 150);
+                          }}
+                          onKeyDown={(e) => {
+                            const filtered = buyersWithDues.filter(b => !newReceivableBuyerName || b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase()));
+                            buyerNav.handleKeyDown(e, filtered.length, (i) => { setNewReceivableBuyerName(filtered[i].buyerName); setShowBuyerSuggestions(false); }, () => setShowBuyerSuggestions(false));
                           }}
                           placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
                           data-testid="input-receivable-buyer"
@@ -5072,23 +5079,17 @@ export default function CashManagement() {
                         {showBuyerSuggestions && newReceivablePayerType !== "sales_goods" && (
                           <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
                             <ScrollArea className="max-h-[200px]">
-                              {buyersWithDues.filter(b => 
-                                !newReceivableBuyerName || 
-                                b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
-                              ).length === 0 ? (
-                                <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
-                              ) : (
-                                buyersWithDues
-                                  .filter(b => 
-                                    !newReceivableBuyerName || 
-                                    b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase())
-                                  )
-                                  .map((b) => (
+                              {(() => {
+                                const filtered = buyersWithDues.filter(b => !newReceivableBuyerName || b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase()));
+                                return filtered.length === 0 ? (
+                                  <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
+                                ) : (
+                                  filtered.map((b, idx) => (
                                     <Button
                                       key={b.buyerName}
                                       variant="ghost"
                                       size="sm"
-                                      className="w-full justify-start"
+                                      className={`w-full justify-start ${buyerNav.activeIndex === idx ? "bg-accent" : ""}`}
                                       onMouseDown={(e) => {
                                         e.preventDefault();
                                         setNewReceivableBuyerName(b.buyerName);
@@ -5099,7 +5100,8 @@ export default function CashManagement() {
                                       {b.buyerName}
                                     </Button>
                                   ))
-                              )}
+                                );
+                              })()}
                             </ScrollArea>
                           </div>
                         )}

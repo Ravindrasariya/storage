@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/queryClient";
 import { useI18n } from "@/lib/i18n";
@@ -83,6 +84,9 @@ export default function SalesHistoryPage() {
   const [showFarmerSuggestions, setShowFarmerSuggestions] = useState(false);
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   const [showMobileSuggestions, setShowMobileSuggestions] = useState(false);
+  const farmerNav = useDropdownNavigation();
+  const mobileNav = useDropdownNavigation();
+  const buyerNav = useDropdownNavigation();
 
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/sales-history/years"],
@@ -351,8 +355,9 @@ export default function SalesHistoryPage() {
                     setSelectedFarmerMobile("");
                     setShowFarmerSuggestions(true);
                   }}
-                  onFocus={() => setShowFarmerSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowFarmerSuggestions(false), 200)}
+                  onFocus={() => { setShowFarmerSuggestions(true); farmerNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowFarmerSuggestions(false); farmerNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => farmerNav.handleKeyDown(e, getFarmerSuggestions.length, (i) => { selectFarmerSuggestion(getFarmerSuggestions[i]); setShowFarmerSuggestions(false); }, () => setShowFarmerSuggestions(false))}
                   placeholder={t("farmerName")}
                   className="pl-10"
                   autoComplete="off"
@@ -364,7 +369,7 @@ export default function SalesHistoryPage() {
                       <button
                         key={idx}
                         type="button"
-                        className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                        className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${farmerNav.activeIndex === idx ? "bg-accent" : ""}`}
                         onClick={() => selectFarmerSuggestion(farmer)}
                         data-testid={`suggestion-farmer-${idx}`}
                       >
@@ -406,8 +411,9 @@ export default function SalesHistoryPage() {
                     setMobileFilter(e.target.value);
                     setShowMobileSuggestions(true);
                   }}
-                  onFocus={() => setShowMobileSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowMobileSuggestions(false), 200)}
+                  onFocus={() => { setShowMobileSuggestions(true); mobileNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowMobileSuggestions(false); mobileNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => mobileNav.handleKeyDown(e, getMobileSuggestions.length, (i) => { selectMobileSuggestion(getMobileSuggestions[i]); setShowMobileSuggestions(false); }, () => setShowMobileSuggestions(false))}
                   placeholder={t("contactNumber")}
                   className="pl-10"
                   autoComplete="off"
@@ -419,7 +425,7 @@ export default function SalesHistoryPage() {
                       <button
                         key={idx}
                         type="button"
-                        className="w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col"
+                        className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${mobileNav.activeIndex === idx ? "bg-accent" : ""}`}
                         onClick={() => selectMobileSuggestion(farmer)}
                         data-testid={`suggestion-mobile-${idx}`}
                       >
@@ -442,8 +448,9 @@ export default function SalesHistoryPage() {
                     setBuyerFilter(capitalizeFirstLetter(e.target.value));
                     setShowBuyerSuggestions(true);
                   }}
-                  onFocus={() => setShowBuyerSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 200)}
+                  onFocus={() => { setShowBuyerSuggestions(true); buyerNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowBuyerSuggestions(false); buyerNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => buyerNav.handleKeyDown(e, getBuyerSuggestions.length, (i) => { selectBuyerSuggestion(getBuyerSuggestions[i]); setShowBuyerSuggestions(false); }, () => setShowBuyerSuggestions(false))}
                   placeholder={t("buyerName")}
                   className="pl-10"
                   autoComplete="off"
@@ -455,7 +462,7 @@ export default function SalesHistoryPage() {
                       <button
                         key={idx}
                         type="button"
-                        className="w-full px-3 py-2 text-left hover-elevate text-sm"
+                        className={`w-full px-3 py-2 text-left hover-elevate text-sm ${buyerNav.activeIndex === idx ? "bg-accent" : ""}`}
                         onClick={() => selectBuyerSuggestion(buyer)}
                         data-testid={`suggestion-buyer-${idx}`}
                       >
