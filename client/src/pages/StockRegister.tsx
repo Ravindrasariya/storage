@@ -143,6 +143,10 @@ export default function StockRegister() {
     queryKey: ["/api/chambers"],
   });
 
+  const { data: chamberFloors } = useQuery<Record<string, { id: string; chamberId: string; floorNumber: number; capacity: number }[]>>({
+    queryKey: ["/api/chamber-floors"],
+  });
+
   // Fetch cold storage settings to get rates
   type ColdStorageSettings = {
     name: string;
@@ -1726,7 +1730,7 @@ export default function StockRegister() {
                   <Label>{t("chamber")}</Label>
                   <Select
                     value={editForm.chamberId}
-                    onValueChange={(value) => setEditForm({ ...editForm, chamberId: value })}
+                    onValueChange={(value) => setEditForm({ ...editForm, chamberId: value, floor: 0 })}
                   >
                     <SelectTrigger data-testid="select-edit-chamber">
                       <SelectValue placeholder={t("selectChamber")} />
@@ -1742,17 +1746,22 @@ export default function StockRegister() {
                 </div>
                 <div className="space-y-2">
                   <Label>{t("floor")}</Label>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={editForm.floor === 0 ? "" : editForm.floor}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, "");
-                      setEditForm({ ...editForm, floor: val === "" ? 0 : parseInt(val, 10) });
-                    }}
-                    data-testid="input-edit-floor"
-                  />
+                  <Select
+                    value={editForm.floor === 0 ? "" : editForm.floor.toString()}
+                    onValueChange={(v) => setEditForm({ ...editForm, floor: parseInt(v, 10) })}
+                    disabled={!editForm.chamberId}
+                  >
+                    <SelectTrigger data-testid="select-edit-floor">
+                      <SelectValue placeholder={editForm.chamberId ? t("selectFloor") : t("selectChamberFirst")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {editForm.chamberId && chamberFloors?.[editForm.chamberId]?.map((floor) => (
+                        <SelectItem key={floor.id} value={floor.floorNumber.toString()}>
+                          {t("floor")} {floor.floorNumber}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>{t("position")}</Label>
