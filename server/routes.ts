@@ -409,13 +409,31 @@ export async function registerRoutes(
       })).optional().default([]),
     })).min(1),
     bagTypeCategory: z.enum(["wafer", "rationSeed"]).optional(), // Category for lot number counter
+    manualLotNo: z.number().int().positive().optional(), // User-supplied lot# override
   });
 
   app.post("/api/lots/batch", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { farmer, lots: lotDataArray, bagTypeCategory } = batchLotSchema.parse(req.body);
-      
+      const { farmer, lots: lotDataArray, bagTypeCategory, manualLotNo } = batchLotSchema.parse(req.body);
+
+      // If user supplied a manual lot#, check for duplicates in the same category/year
+      if (manualLotNo !== undefined) {
+        const isWaferCategory = bagTypeCategory === "wafer";
+        const currentYear = new Date().getFullYear();
+        const allLots = await storage.getAllLots(coldStorageId);
+        const duplicate = allLots.find((lot) => {
+          const lotIsWafer = lot.bagType === "wafer";
+          if (lotIsWafer !== isWaferCategory) return false;
+          const lotYear = lot.createdAt ? new Date(lot.createdAt).getFullYear() : currentYear;
+          if (lotYear !== currentYear) return false;
+          return parseInt(lot.lotNo, 10) === manualLotNo;
+        });
+        if (duplicate) {
+          return res.status(409).json({ error: `Lot # ${manualLotNo} already exists for this category` });
+        }
+      }
+
       // Ensure farmer ledger entry exists and get both IDs
       const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
         name: farmer.farmerName,
@@ -442,7 +460,7 @@ export async function registerRoutes(
         };
       });
       
-      const result = await storage.createBatchLots(lotsToCreate, coldStorageId, bagTypeCategory);
+      const result = await storage.createBatchLots(lotsToCreate, coldStorageId, bagTypeCategory, manualLotNo);
       
       res.status(201).json({
         lots: result.lots,

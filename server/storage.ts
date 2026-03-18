@@ -613,7 +613,7 @@ export class DatabaseStorage implements IStorage {
     return result?.entrySequence ?? 1;
   }
 
-  async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed"): Promise<{ lots: Lot[]; entrySequence: number }> {
+  async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number): Promise<{ lots: Lot[]; entrySequence: number }> {
     // Lot numbers reset to 1 at the start of each calendar year
     // Separate counters: Wafer has its own sequence, Ration/Seed share another
     const isWaferCategory = bagTypeCategory === "wafer";
@@ -637,8 +637,9 @@ export class DatabaseStorage implements IStorage {
       }
     });
     
-    // Next sequence is max + 1, or 1 if no lots exist for current year
-    const entrySequence = maxLotNo + 1;
+    // Next sequence is max + 1, or 1 if no lots exist for current year.
+    // If caller supplied a manual lot#, use it instead of the auto-calculated value.
+    const entrySequence = (manualLotNo !== undefined && manualLotNo > 0) ? manualLotNo : maxLotNo + 1;
     
     const createdLots: Lot[] = [];
     

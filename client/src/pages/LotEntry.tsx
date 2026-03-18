@@ -128,6 +128,7 @@ export default function LotEntry() {
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [manualLotNo, setManualLotNo] = useState<number | null>(null);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
@@ -261,6 +262,11 @@ export default function LotEntry() {
     } catch (e) {
       console.error("Failed to save bag type preference", e);
     }
+  }, [bagTypeCategory]);
+
+  // Reset manual lot# when category changes (different sequence counter)
+  useEffect(() => {
+    setManualLotNo(null);
   }, [bagTypeCategory]);
 
   const clearSavedData = () => {
@@ -412,7 +418,7 @@ export default function LotEntry() {
 
 
   const createBatchLotsMutation = useMutation({
-    mutationFn: async (data: { farmer: FarmerData; lots: LotData[]; bagTypeCategory: "wafer" | "rationSeed" }) => {
+    mutationFn: async (data: { farmer: FarmerData; lots: LotData[]; bagTypeCategory: "wafer" | "rationSeed"; manualLotNo?: number }) => {
       const response = await apiRequest("POST", "/api/lots/batch", data);
       return response.json();
     },
@@ -498,7 +504,12 @@ export default function LotEntry() {
 
     setIsSubmitting(true);
     try {
-      const result = await createBatchLotsMutation.mutateAsync({ farmer: farmerData, lots, bagTypeCategory });
+      const result = await createBatchLotsMutation.mutateAsync({
+        farmer: farmerData,
+        lots,
+        bagTypeCategory,
+        ...(manualLotNo !== null ? { manualLotNo } : {}),
+      });
       
       toast({
         title: t("success"),
@@ -519,6 +530,7 @@ export default function LotEntry() {
       });
       setLots([{ ...defaultLotData }]);
       setImagePreviews({});
+      setManualLotNo(null);
       
       // Scroll to top of page
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -857,9 +869,41 @@ export default function LotEntry() {
                 <div className={`grid grid-cols-1 gap-4 ${coldStorage?.chargeUnit === "quintal" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                   <div>
                     <label className="text-sm font-medium">{t("lotNo")}</label>
-                    <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center text-muted-foreground">
-                      {nextSequenceData?.nextSequence ?? "..."} (Auto-assigned)
-                    </div>
+                    {index === 0 ? (
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "")}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "") {
+                              setManualLotNo(null);
+                            } else {
+                              const num = parseInt(val, 10);
+                              if (!isNaN(num) && num > 0) {
+                                const autoVal = nextSequenceData?.nextSequence;
+                                setManualLotNo(num === autoVal ? null : num);
+                              }
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (e.target.value === "") setManualLotNo(null);
+                          }}
+                          className="pr-28"
+                          data-testid="input-lot-no-0"
+                        />
+                        {manualLotNo === null && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                            Auto-assigned
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center text-muted-foreground">
+                        {manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "...")}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-sm font-medium">{t("size")} *</label>
