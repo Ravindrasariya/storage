@@ -278,7 +278,11 @@ export async function registerRoutes(
       const { bagType, year } = req.query;
 
       if (bagType && typeof bagType === "string" && bagType !== "all") {
-        allLots = allLots.filter(lot => lot.bagType === bagType);
+        if (bagType === "ration_seed") {
+          allLots = allLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed");
+        } else {
+          allLots = allLots.filter(lot => lot.bagType === bagType);
+        }
       }
 
       if (year) {

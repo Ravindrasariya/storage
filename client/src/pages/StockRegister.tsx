@@ -89,7 +89,7 @@ export default function StockRegister() {
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
   const [filterEntryDate, setFilterEntryDate] = useState<string>(savedState?.filterEntryDate || "");
-  const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "Ration" | "seed">(savedState?.bagTypeFilter || "all");
+  const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "ration_seed">(savedState?.bagTypeFilter || "all");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -457,7 +457,9 @@ export default function StockRegister() {
     // Apply bag type filter for summary calculation
     const filteredResults = bagTypeFilter === "all" 
       ? baseLots 
-      : baseLots.filter(lot => lot.bagType === bagTypeFilter);
+      : bagTypeFilter === "ration_seed"
+        ? baseLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
+        : baseLots.filter(lot => lot.bagType === bagTypeFilter);
     
     if (filteredResults.length === 0) return null;
     
@@ -518,7 +520,9 @@ export default function StockRegister() {
     const rawLots = hasSearched ? searchResults : (initialLots || []);
     return bagTypeFilter === "all" 
       ? rawLots 
-      : rawLots.filter(lot => lot.bagType === bagTypeFilter);
+      : bagTypeFilter === "ration_seed"
+        ? rawLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
+        : rawLots.filter(lot => lot.bagType === bagTypeFilter);
   }, [hasSearched, searchResults, initialLots, bagTypeFilter]);
 
   // Export filtered results to CSV
@@ -1079,20 +1083,12 @@ export default function StockRegister() {
             {t("wafer")}
           </ToggleGroupItem>
           <ToggleGroupItem 
-            value="Ration" 
+            value="ration_seed" 
             size="sm" 
-            data-testid="toggle-bagtype-ration"
+            data-testid="toggle-bagtype-ration-seed"
             className="flex-1 sm:flex-none data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
-            {t("ration")}
-          </ToggleGroupItem>
-          <ToggleGroupItem 
-            value="seed" 
-            size="sm" 
-            data-testid="toggle-bagtype-seed"
-            className="flex-1 sm:flex-none data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-          >
-            {t("seed")}
+            {t("ration")}/{t("seed")}
           </ToggleGroupItem>
         </ToggleGroup>
         </div>
@@ -1500,7 +1496,9 @@ export default function StockRegister() {
           // Apply bag type filter
           const baseLots = bagTypeFilter === "all" 
             ? rawLots 
-            : rawLots.filter(lot => lot.bagType === bagTypeFilter);
+            : bagTypeFilter === "ration_seed"
+              ? rawLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
+              : rawLots.filter(lot => lot.bagType === bagTypeFilter);
           
           // Pre-calculate charges for each lot for sorting and display
           const lotsWithCharges = baseLots.map((lot) => {
