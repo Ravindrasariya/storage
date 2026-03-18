@@ -265,9 +265,10 @@ export default function LotEntry() {
     }
   }, [bagTypeCategory]);
 
-  // Reset manual lot# when category changes (different sequence counter)
+  // Reset manual lot# and inline error when category changes (different sequence counter)
   useEffect(() => {
     setManualLotNo(null);
+    setLotNoError(null);
   }, [bagTypeCategory]);
 
   const clearSavedData = () => {
@@ -437,6 +438,8 @@ export default function LotEntry() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
     },
     onError: (error: Error) => {
+      // Duplicate lot# errors are shown inline on the field — suppress generic toast
+      if (error.message.includes("already exists")) return;
       toast({
         title: t("error"),
         description: error.message,
@@ -536,7 +539,10 @@ export default function LotEntry() {
       // Scroll to top of page
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
-      // Error handled by mutation onError
+      if (error instanceof Error && error.message.includes("already exists")) {
+        setLotNoError(error.message);
+      }
+      // Other errors handled by mutation onError toast
     } finally {
       setIsSubmitting(false);
     }
@@ -871,35 +877,41 @@ export default function LotEntry() {
                   <div>
                     <label className="text-sm font-medium">{t("lotNo")}</label>
                     {index === 0 ? (
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min={1}
-                          value={manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "")}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === "") {
-                              setManualLotNo(null);
-                            } else {
-                              const num = parseInt(val, 10);
-                              if (!isNaN(num) && num > 0) {
-                                const autoVal = nextSequenceData?.nextSequence;
-                                setManualLotNo(num === autoVal ? null : num);
+                      <>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "")}
+                            onChange={(e) => {
+                              setLotNoError(null);
+                              const val = e.target.value;
+                              if (val === "") {
+                                setManualLotNo(null);
+                              } else {
+                                const num = parseInt(val, 10);
+                                if (!isNaN(num) && num > 0) {
+                                  const autoVal = nextSequenceData?.nextSequence;
+                                  setManualLotNo(num === autoVal ? null : num);
+                                }
                               }
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (e.target.value === "") setManualLotNo(null);
-                          }}
-                          className="pr-28"
-                          data-testid="input-lot-no-0"
-                        />
-                        {manualLotNo === null && (
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
-                            Auto-assigned
-                          </span>
+                            }}
+                            onBlur={(e) => {
+                              if (e.target.value === "") setManualLotNo(null);
+                            }}
+                            className={`pr-36 ${lotNoError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                            data-testid="input-lot-no-0"
+                          />
+                          {manualLotNo === null && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                              (Auto-assigned)
+                            </span>
+                          )}
+                        </div>
+                        {lotNoError && (
+                          <p className="text-sm text-destructive mt-1" data-testid="error-lot-no">{lotNoError}</p>
                         )}
-                      </div>
+                      </>
                     ) : (
                       <div className="h-9 px-3 py-2 border rounded-md bg-muted flex items-center text-muted-foreground">
                         {manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "...")}

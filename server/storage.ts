@@ -637,6 +637,20 @@ export class DatabaseStorage implements IStorage {
       }
     });
     
+    // If caller supplied a manual lot#, validate no duplicate exists for same category+year
+    if (manualLotNo !== undefined && manualLotNo > 0) {
+      const isDuplicate = allLots.some((lot) => {
+        const lotIsWafer = lot.bagType === "wafer";
+        if (lotIsWafer !== isWaferCategory) return false;
+        const lotYear = lot.createdAt ? new Date(lot.createdAt).getFullYear() : currentYear;
+        if (lotYear !== currentYear) return false;
+        return parseInt(lot.lotNo, 10) === manualLotNo;
+      });
+      if (isDuplicate) {
+        throw new Error(`Lot # ${manualLotNo} already exists for this category.`);
+      }
+    }
+
     // Next sequence is max + 1, or 1 if no lots exist for current year.
     // If caller supplied a manual lot#, use it instead of the auto-calculated value.
     const entrySequence = (manualLotNo !== undefined && manualLotNo > 0) ? manualLotNo : maxLotNo + 1;

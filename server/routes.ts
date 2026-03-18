@@ -469,6 +469,8 @@ export async function registerRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: "Validation error", details: error.errors });
+      } else if (error instanceof Error && error.message.includes("already exists")) {
+        res.status(409).json({ error: error.message });
       } else {
         console.error("Batch lot creation error:", error);
         res.status(500).json({ error: "Failed to create lots" });
