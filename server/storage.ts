@@ -7778,18 +7778,28 @@ export class DatabaseStorage implements IStorage {
 
       monthsUsed = Math.max(1, Math.min(12, monthsUsed));
 
-      const openingValue = asset.currentBookValue;
-      const depreciationAmount = roundAmount(openingValue * (asset.depreciationRate / 100) * (monthsUsed / 12));
-      const closingValue = roundAmount(openingValue - depreciationAmount);
-
+      // Check for an existing log BEFORE computing opening value so re-runs
+      // are anchored to the original opening value stored in the log, not the
+      // already-reduced currentBookValue.
       const existing = await db.select().from(assetDepreciationLog)
         .where(and(
           eq(assetDepreciationLog.assetId, asset.id),
           eq(assetDepreciationLog.financialYear, financialYear),
         ));
 
+      // For a re-run use the opening value from the existing log so the result
+      // is identical every time (idempotent). For the first run, use the live
+      // book value as usual.
+      const openingValue = existing.length > 0
+        ? existing[0].openingValue
+        : asset.currentBookValue;
+
+      const depreciationAmount = roundAmount(openingValue * (asset.depreciationRate / 100) * (monthsUsed / 12));
+      const closingValue = roundAmount(openingValue - depreciationAmount);
+
       let logEntry: AssetDepreciationLog;
       if (existing.length > 0) {
+        const oldDepAmount = existing[0].depreciationAmount;
         const [updated] = await db.update(assetDepreciationLog)
           .set({
             openingValue,
@@ -7801,6 +7811,13 @@ export class DatabaseStorage implements IStorage {
           .where(eq(assetDepreciationLog.id, existing[0].id))
           .returning();
         logEntry = updated;
+
+        // Adjust currentBookValue relatively: undo the old depreciation that
+        // was already applied, then apply the newly calculated amount.
+        const adjustedBookValue = roundAmount(asset.currentBookValue + oldDepAmount - depreciationAmount);
+        await db.update(assets)
+          .set({ currentBookValue: adjustedBookValue })
+          .where(eq(assets.id, asset.id));
       } else {
         const [inserted] = await db.insert(assetDepreciationLog).values({
           id: randomUUID(),
@@ -7813,11 +7830,11 @@ export class DatabaseStorage implements IStorage {
           monthsUsed,
         }).returning();
         logEntry = inserted;
-      }
 
-      await db.update(assets)
-        .set({ currentBookValue: closingValue })
-        .where(eq(assets.id, asset.id));
+        await db.update(assets)
+          .set({ currentBookValue: closingValue })
+          .where(eq(assets.id, asset.id));
+      }
 
       results.push(logEntry);
     }
