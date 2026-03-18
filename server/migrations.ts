@@ -65,6 +65,26 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-03-18_unique_asset_depreciation_log_per_fy",
+    up: async () => {
+      // Remove any duplicate (assetId, financialYear) rows that may exist,
+      // keeping the most recently calculated one before adding the unique index.
+      await db.execute(sql`
+        DELETE FROM asset_depreciation_log
+        WHERE id NOT IN (
+          SELECT DISTINCT ON (asset_id, financial_year) id
+          FROM asset_depreciation_log
+          ORDER BY asset_id, financial_year, calculated_at DESC
+        )
+      `);
+      // Create the unique index so the DB enforces one log per asset per FY.
+      await db.execute(sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS asset_dep_log_asset_fy_idx
+        ON asset_depreciation_log (asset_id, financial_year)
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

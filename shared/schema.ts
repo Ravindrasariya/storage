@@ -585,7 +585,9 @@ export const assetDepreciationLog = pgTable("asset_depreciation_log", {
   closingValue: real("closing_value").notNull(),
   monthsUsed: integer("months_used").notNull(), // For proration tracking
   calculatedAt: timestamp("calculated_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  uniqueAssetFY: uniqueIndex("asset_dep_log_asset_fy_idx").on(table.assetId, table.financialYear),
+}));
 
 // Liabilities - tracks debts, loans, and obligations
 export const liabilities = pgTable("liabilities", {
