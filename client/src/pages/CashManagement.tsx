@@ -3984,7 +3984,7 @@ export default function CashManagement() {
 
                 <Button
                   onClick={handleExpenseSubmit}
-                  disabled={!canEdit || !expenseType || !expenseAmount || createExpenseMutation.isPending}
+                  disabled={!canEdit || (expenseClass !== "capital" && !expenseType) || !expenseAmount || createExpenseMutation.isPending}
                   className="w-full"
                   data-testid="button-record-expense"
                 >
