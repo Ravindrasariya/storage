@@ -874,7 +874,7 @@ export default function LotEntry() {
                   <h3 className="font-semibold">{t("lotInformation")}</h3>
                 </div>
                 <div className={`grid grid-cols-2 gap-4 ${coldStorage?.chargeUnit === "quintal" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-                  <div>
+                  <div className="col-span-2 sm:col-span-1">
                     <label className="text-sm font-medium">{t("lotNo")}</label>
                     {index === 0 ? (
                       <>
@@ -882,7 +882,7 @@ export default function LotEntry() {
                           <Input
                             type="number"
                             min={1}
-                            value={manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "")}
+                            value={manualLotNo !== null ? manualLotNo : ""}
                             onChange={(e) => {
                               setLotNoError(null);
                               const val = e.target.value;
@@ -891,20 +891,17 @@ export default function LotEntry() {
                               } else {
                                 const num = parseInt(val, 10);
                                 if (!isNaN(num) && num > 0) {
-                                  const autoVal = nextSequenceData?.nextSequence;
-                                  setManualLotNo(num === autoVal ? null : num);
+                                  setManualLotNo(num);
                                 }
                               }
                             }}
-                            onBlur={(e) => {
-                              if (e.target.value === "") setManualLotNo(null);
-                            }}
-                            className={`pr-36 ${lotNoError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                            placeholder={String(nextSequenceData?.nextSequence ?? "...")}
+                            className={`pr-28 ${lotNoError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                             data-testid="input-lot-no-0"
                           />
                           {manualLotNo === null && (
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
-                              (Auto-assigned)
+                              (Auto)
                             </span>
                           )}
                         </div>
