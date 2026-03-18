@@ -1093,7 +1093,7 @@ export default function LotEntry() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="col-span-2">
                     <label className="text-sm font-medium">{t("assayingType")} *</label>
                     <RadioGroup
                       value={lot.assayingType}
@@ -1117,7 +1117,7 @@ export default function LotEntry() {
 
                   {lot.assayingType === "Quality Check" && (
                     <>
-                      <div className="sm:col-span-2">
+                      <div className="col-span-2">
                         <label className="text-sm font-medium">{t("assayerImage")}</label>
                         <div className="flex flex-col gap-4 mt-2">
                           <div className="flex items-center gap-4">
@@ -1169,7 +1169,7 @@ export default function LotEntry() {
                     </>
                   )}
 
-                  <div className="sm:col-span-2">
+                  <div className="col-span-2">
                     <label className="text-sm font-medium">{t("remarks")}</label>
                     <Textarea
                       value={lot.remarks}
