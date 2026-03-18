@@ -430,7 +430,7 @@ export async function registerRoutes(
           return parseInt(lot.lotNo, 10) === manualLotNo;
         });
         if (duplicate) {
-          return res.status(409).json({ error: `Lot # ${manualLotNo} already exists for this category` });
+          return res.status(409).json({ error: `Lot # ${manualLotNo} already exists for this category.` });
         }
       }
 
