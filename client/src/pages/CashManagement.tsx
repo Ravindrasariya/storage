@@ -246,6 +246,8 @@ export default function CashManagement() {
   const [newReceivableRemarks, setNewReceivableRemarks] = useState("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   const buyerNav = useDropdownNavigation();
+  const filterBuyerNav = useDropdownNavigation();
+  const filterFarmerNav = useDropdownNavigation();
   const [newReceivableRateOfInterest, setNewReceivableRateOfInterest] = useState("");
   const [newReceivableEffectiveDate, setNewReceivableEffectiveDate] = useState(() => {
     const d = new Date();
@@ -2637,10 +2639,11 @@ export default function CashManagement() {
                       }
                       setShowFilterBuyerSuggestions(true);
                     }}
-                    onFocus={() => setShowFilterBuyerSuggestions(true)}
+                    onFocus={() => { setShowFilterBuyerSuggestions(true); filterBuyerNav.resetActive(); }}
                     onBlur={() => {
                       setTimeout(() => {
                         setShowFilterBuyerSuggestions(false);
+                        filterBuyerNav.resetActive();
                         const val = filterBuyerSearch.trim();
                         if (val && uniqueBuyers.some(b => b.toLowerCase() === val.toLowerCase())) {
                           const match = uniqueBuyers.find(b => b.toLowerCase() === val.toLowerCase());
@@ -2651,19 +2654,12 @@ export default function CashManagement() {
                         }
                       }, 150);
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const val = filterBuyerSearch.trim();
-                        if (val && uniqueBuyers.some(b => b.toLowerCase() === val.toLowerCase())) {
-                          const match = uniqueBuyers.find(b => b.toLowerCase() === val.toLowerCase());
-                          if (match) {
-                            setFilterBuyer(match);
-                            setFilterBuyerSearch(match);
-                          }
-                        }
-                        setShowFilterBuyerSuggestions(false);
-                      }
-                    }}
+                    onKeyDown={(e) => filterBuyerNav.handleKeyDown(e, filteredBuyerOptions.length, (i) => {
+                      const selected = filteredBuyerOptions[i];
+                      setFilterBuyer(selected);
+                      setFilterBuyerSearch(selected);
+                      setShowFilterBuyerSuggestions(false);
+                    }, () => setShowFilterBuyerSuggestions(false))}
                     placeholder={t("searchBuyerName")}
                     className="h-8 text-sm"
                     data-testid="input-filter-buyer-search"
@@ -2674,12 +2670,12 @@ export default function CashManagement() {
                         {filteredBuyerOptions.length === 0 ? (
                           <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
                         ) : (
-                          filteredBuyerOptions.map((buyer) => (
+                          filteredBuyerOptions.map((buyer, idx) => (
                             <Button
                               key={buyer}
                               variant="ghost"
                               size="sm"
-                              className="w-full justify-start text-left"
+                              className={`w-full justify-start text-left ${filterBuyerNav.activeIndex === idx ? "bg-accent" : ""}`}
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 setFilterBuyer(buyer);
@@ -2714,10 +2710,11 @@ export default function CashManagement() {
                       }
                       setShowFilterFarmerSuggestions(true);
                     }}
-                    onFocus={() => setShowFilterFarmerSuggestions(true)}
+                    onFocus={() => { setShowFilterFarmerSuggestions(true); filterFarmerNav.resetActive(); }}
                     onBlur={() => {
                       setTimeout(() => {
                         setShowFilterFarmerSuggestions(false);
+                        filterFarmerNav.resetActive();
                         const val = filterFarmerSearch.trim();
                         if (val) {
                           const match = uniqueFarmers.find(f => f.name.toLowerCase() === val.toLowerCase());
@@ -2728,19 +2725,12 @@ export default function CashManagement() {
                         }
                       }, 150);
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const val = filterFarmerSearch.trim();
-                        if (val) {
-                          const match = uniqueFarmers.find(f => f.name.toLowerCase() === val.toLowerCase());
-                          if (match) {
-                            setFilterFarmer(match.name);
-                            setFilterFarmerSearch(match.name);
-                          }
-                        }
-                        setShowFilterFarmerSuggestions(false);
-                      }
-                    }}
+                    onKeyDown={(e) => filterFarmerNav.handleKeyDown(e, filteredFarmerOptions.length, (i) => {
+                      const selected = filteredFarmerOptions[i];
+                      setFilterFarmer(selected.name);
+                      setFilterFarmerSearch(selected.name);
+                      setShowFilterFarmerSuggestions(false);
+                    }, () => setShowFilterFarmerSuggestions(false))}
                     placeholder={t("searchFarmer")}
                     className="h-8 text-sm"
                     data-testid="input-filter-farmer-search"
@@ -2751,12 +2741,12 @@ export default function CashManagement() {
                         {filteredFarmerOptions.length === 0 ? (
                           <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
                         ) : (
-                          filteredFarmerOptions.map((farmer) => (
+                          filteredFarmerOptions.map((farmer, idx) => (
                             <Button
                               key={farmer.name}
                               variant="ghost"
                               size="sm"
-                              className="w-full justify-start text-left h-auto py-1.5"
+                              className={`w-full justify-start text-left h-auto py-1.5 ${filterFarmerNav.activeIndex === idx ? "bg-accent" : ""}`}
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 setFilterFarmer(farmer.name);

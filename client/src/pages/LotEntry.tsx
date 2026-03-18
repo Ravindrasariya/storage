@@ -129,6 +129,7 @@ export default function LotEntry() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [manualLotNo, setManualLotNo] = useState<number | null>(null);
+  const [lotNoError, setLotNoError] = useState<string | null>(null);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
