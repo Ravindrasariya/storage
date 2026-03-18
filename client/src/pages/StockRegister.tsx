@@ -32,7 +32,7 @@ import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
@@ -88,6 +88,7 @@ export default function StockRegister() {
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
+  const [filterEntryDate, setFilterEntryDate] = useState<string>(savedState?.filterEntryDate || "");
   const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "Ration" | "seed">(savedState?.bagTypeFilter || "all");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -303,7 +304,7 @@ export default function StockRegister() {
       (searchType === "phone" && searchQuery.trim().length >= 3) ||
       (searchType === "farmerName" && farmerNameQuery.trim().length >= 2) ||
       (searchType === "lotNoSize" && (lotNoFrom.trim() || lotNoTo.trim() || sizeQuery.trim())) ||
-      (searchType === "filter" && (qualityFilter !== "all" || potatoTypeFilter !== "all" || paymentDueFilter));
+      (searchType === "filter" && (qualityFilter !== "all" || potatoTypeFilter !== "all" || paymentDueFilter || !!filterEntryDate));
     
     if (hasInput) {
       // Debounce search by 300ms
@@ -317,7 +318,7 @@ export default function StockRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, selectedYear]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, selectedYear]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
@@ -333,11 +334,12 @@ export default function StockRegister() {
       qualityFilter,
       potatoTypeFilter,
       paymentDueFilter,
+      filterEntryDate,
       bagTypeFilter,
       selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -352,7 +354,7 @@ export default function StockRegister() {
           (saved.searchType === "phone" && saved.searchQuery?.trim().length >= 3) ||
           (saved.searchType === "farmerName" && saved.farmerNameQuery?.trim().length >= 2) ||
           (saved.searchType === "lotNoSize" && (saved.lotNoFrom?.trim() || saved.lotNoTo?.trim() || saved.sizeQuery?.trim())) ||
-          (saved.searchType === "filter" && (saved.qualityFilter !== "all" || saved.potatoTypeFilter !== "all" || saved.paymentDueFilter));
+          (saved.searchType === "filter" && (saved.qualityFilter !== "all" || saved.potatoTypeFilter !== "all" || saved.paymentDueFilter || !!saved.filterEntryDate));
         
         if (hasValidQuery) {
           // Trigger search with saved state - use setTimeout to ensure state is fully initialized
@@ -369,7 +371,7 @@ export default function StockRegister() {
         (searchType === "phone" && !searchQuery.trim()) ||
         (searchType === "farmerName" && !farmerNameQuery.trim()) ||
         (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim()) ||
-        (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter);
+        (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter && !filterEntryDate);
       
       if (inputEmpty) {
         setHasSearched(false);
@@ -842,7 +844,7 @@ export default function StockRegister() {
   const handleSearch = async () => {
     if (searchType === "phone" && !searchQuery.trim()) return;
     if (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim()) return;
-    if (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter) return;
+    if (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter && !filterEntryDate) return;
     if (searchType === "farmerName" && !farmerNameQuery.trim()) return;
     
     setIsSearching(true);
@@ -874,6 +876,9 @@ export default function StockRegister() {
       }
       if (paymentDueFilter) {
         url += `&paymentDue=true`;
+      }
+      if (filterEntryDate) {
+        url += `&entryDate=${encodeURIComponent(filterEntryDate)}`;
       }
       
       const response = await authFetch(url);
@@ -1092,13 +1097,13 @@ export default function StockRegister() {
       <Card className="p-4 sm:p-6">
         <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)}>
           <TabsList className="grid w-full grid-cols-4 mb-4">
-            <TabsTrigger value="phone" className="gap-2" data-testid="tab-search-phone">
-              <Phone className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("phoneNumber")}</span>
-            </TabsTrigger>
             <TabsTrigger value="farmerName" className="gap-2" data-testid="tab-search-farmer">
               <User className="h-4 w-4" />
               <span className="hidden sm:inline">{t("farmerName")}</span>
+            </TabsTrigger>
+            <TabsTrigger value="phone" className="gap-2" data-testid="tab-search-phone">
+              <Phone className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("phoneNumber")}</span>
             </TabsTrigger>
             <TabsTrigger value="lotNoSize" className="gap-2" data-testid="tab-search-lot">
               <Package className="h-4 w-4" />
@@ -1386,6 +1391,25 @@ export default function StockRegister() {
                   <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer whitespace-nowrap">
                     {t("coldChargesDue")}
                   </Label>
+                </div>
+                <div className="flex items-center gap-1">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    value={filterEntryDate}
+                    onChange={(e) => setFilterEntryDate(e.target.value)}
+                    className="w-36 h-8 text-sm"
+                    data-testid="input-filter-entry-date"
+                  />
+                  {filterEntryDate && (
+                    <button
+                      onClick={() => setFilterEntryDate("")}
+                      className="text-muted-foreground hover:text-foreground"
+                      data-testid="btn-clear-entry-date"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
                 {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
               </div>

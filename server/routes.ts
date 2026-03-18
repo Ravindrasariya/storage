@@ -569,7 +569,7 @@ export async function registerRoutes(
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { type, query, size, quality, paymentDue, potatoType, year } = req.query;
+      const { type, query, size, quality, paymentDue, potatoType, year, entryDate } = req.query;
       const filterYear = year ? parseInt(year as string, 10) : undefined;
       
       const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
@@ -621,6 +621,18 @@ export async function registerRoutes(
         });
       }
       
+      // Apply entry date filter (match by calendar day in local date string)
+      if (entryDate && typeof entryDate === "string" && entryDate.trim()) {
+        lots = lots.filter((lot) => {
+          if (!lot.createdAt) return false;
+          const lotDate = new Date(lot.createdAt);
+          const y = lotDate.getFullYear();
+          const m = String(lotDate.getMonth() + 1).padStart(2, "0");
+          const d = String(lotDate.getDate()).padStart(2, "0");
+          return `${y}-${m}-${d}` === entryDate.trim();
+        });
+      }
+
       // Apply quality filter
       if (quality && ["poor", "medium", "good"].includes(quality as string)) {
         lots = lots.filter((lot) => lot.quality === quality);
