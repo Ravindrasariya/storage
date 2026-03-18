@@ -7069,10 +7069,10 @@ export class DatabaseStorage implements IStorage {
       // adjReceivableSelfDueAmount: farmer dues adjusted through this sale, also owed by buyer
       const salesDue = buyerSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
-      // Buyer Extras: Sum of hammali, grading, and other extras to merchant from sales
-      const buyerExtras = buyerSales.reduce((sum, s) => {
-        return sum + (s.extraDueHammaliMerchant || 0) + (s.extraDueGradingMerchant || 0) + (s.extraDueOtherMerchant || 0);
-      }, 0);
+      // Buyer Extras: Use extraDueToMerchant (the FIFO-maintained remaining due), NOT the
+      // sub-fields (extraDueHammaliMerchant etc.) which are set once at sale time and never
+      // reduced by payments. extraDueToMerchant is correctly decremented by recomputeBuyerPayments.
+      const buyerExtras = buyerSales.reduce((sum, s) => sum + (s.extraDueToMerchant || 0), 0);
       
       // Transfer In from buyer-to-buyer transfers (salesHistory with transferToBuyerName)
       const buyerTransferIn = allTransferredSales
