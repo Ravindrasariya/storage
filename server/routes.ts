@@ -417,23 +417,6 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const { farmer, lots: lotDataArray, bagTypeCategory, manualLotNo } = batchLotSchema.parse(req.body);
 
-      // If user supplied a manual lot#, check for duplicates in the same category/year
-      if (manualLotNo !== undefined) {
-        const isWaferCategory = bagTypeCategory === "wafer";
-        const currentYear = new Date().getFullYear();
-        const allLots = await storage.getAllLots(coldStorageId);
-        const duplicate = allLots.find((lot) => {
-          const lotIsWafer = lot.bagType === "wafer";
-          if (lotIsWafer !== isWaferCategory) return false;
-          const lotYear = lot.createdAt ? new Date(lot.createdAt).getFullYear() : currentYear;
-          if (lotYear !== currentYear) return false;
-          return parseInt(lot.lotNo, 10) === manualLotNo;
-        });
-        if (duplicate) {
-          return res.status(409).json({ error: `Lot # ${manualLotNo} already exists for this category.` });
-        }
-      }
-
       // Ensure farmer ledger entry exists and get both IDs
       const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
         name: farmer.farmerName,
