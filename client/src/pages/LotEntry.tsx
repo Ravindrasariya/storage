@@ -616,12 +616,12 @@ export default function LotEntry() {
               <User className="h-5 w-5 text-chart-1" />
               <h2 className="text-lg font-semibold">{t("farmerDetails")}</h2>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="farmerName"
                 render={({ field }) => (
-                  <FormItem className="relative">
+                  <FormItem className="relative col-span-2 sm:col-span-1">
                     <FormLabel>{t("farmerName")} *</FormLabel>
                     <FormControl>
                       <Input
@@ -663,7 +663,7 @@ export default function LotEntry() {
                 control={form.control}
                 name="contactNumber"
                 render={({ field }) => (
-                  <FormItem className="relative">
+                  <FormItem className="relative col-span-2 sm:col-span-1">
                     <FormLabel>{t("contactNumber")} *</FormLabel>
                     <FormControl>
                       <Input
@@ -873,7 +873,7 @@ export default function LotEntry() {
                   <Package className="h-4 w-4 text-chart-2" />
                   <h3 className="font-semibold">{t("lotInformation")}</h3>
                 </div>
-                <div className={`grid grid-cols-1 gap-4 ${coldStorage?.chargeUnit === "quintal" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+                <div className={`grid grid-cols-2 gap-4 ${coldStorage?.chargeUnit === "quintal" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                   <div>
                     <label className="text-sm font-medium">{t("lotNo")}</label>
                     {index === 0 ? (
@@ -1017,7 +1017,7 @@ export default function LotEntry() {
                   <Layers className="h-4 w-4 text-chart-3" />
                   <h3 className="font-semibold">{t("storageLocation")}</h3>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="text-sm font-medium">{t("chamber")}</label>
                     <Select value={lot.chamberId} onValueChange={(v) => updateLot(index, "chamberId", v)}>
@@ -1070,7 +1070,7 @@ export default function LotEntry() {
                   <ClipboardCheck className="h-4 w-4 text-chart-4" />
                   <h3 className="font-semibold">{t("qualityAssessment")}</h3>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">{t("quality")}</label>
                     <Select value={lot.quality} onValueChange={(v) => updateLot(index, "quality", v as "poor" | "medium" | "good")}>
