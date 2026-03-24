@@ -126,9 +126,9 @@ export default function CashManagement() {
   
   const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">(persistedState?.activeTab || "inward");
   
-  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer" | "cold_merchant_advance">(() => {
+  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer" | "cold_merchant_advance" | "kata">(() => {
     const persisted = persistedState?.payerType;
-    if (persisted === "cold_merchant" || persisted === "farmer" || persisted === "cold_merchant_advance") return persisted;
+    if (persisted === "cold_merchant" || persisted === "farmer" || persisted === "cold_merchant_advance" || persisted === "kata") return persisted;
     return "cold_merchant";
   });
   const [buyerName, setBuyerName] = useState(persistedState?.buyerName || "");
@@ -248,6 +248,7 @@ export default function CashManagement() {
   const buyerNav = useDropdownNavigation();
   const filterBuyerNav = useDropdownNavigation();
   const filterFarmerNav = useDropdownNavigation();
+  const receiverNav = useDropdownNavigation();
   const [newReceivableRateOfInterest, setNewReceivableRateOfInterest] = useState("");
   const [newReceivableEffectiveDate, setNewReceivableEffectiveDate] = useState(() => {
     const d = new Date();
@@ -331,7 +332,7 @@ export default function CashManagement() {
       if (loaded) {
         // Apply loaded state to all form fields
         if (loaded.activeTab) setActiveTab(loaded.activeTab);
-        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer" || loaded.payerType === "cold_merchant_advance") setPayerType(loaded.payerType);
+        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer" || loaded.payerType === "cold_merchant_advance" || loaded.payerType === "kata") setPayerType(loaded.payerType as "cold_merchant" | "farmer" | "cold_merchant_advance" | "kata");
         if (loaded.buyerName) setBuyerName(loaded.buyerName);
         if (loaded.customBuyerName) setCustomBuyerName(loaded.customBuyerName);
         if (loaded.salesGoodsBuyerName) setSalesGoodsBuyerName(loaded.salesGoodsBuyerName);
@@ -1226,6 +1227,7 @@ export default function CashManagement() {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
+    // kata: no buyer or farmer needed — just amount/date/remarks
     
     if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
@@ -2620,6 +2622,7 @@ export default function CashManagement() {
                     <SelectItem value="all">{t("allPayerTypes")}</SelectItem>
                     <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                     <SelectItem value="farmer">{t("farmer")}</SelectItem>
+                    <SelectItem value="kata">{t("kata")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2931,7 +2934,7 @@ export default function CashManagement() {
                 <div className="space-y-2">
                   <Label>{t("payerType")} *</Label>
                   <Select value={payerType} onValueChange={(v) => {
-                    setPayerType(v as "cold_merchant" | "farmer" | "cold_merchant_advance");
+                    setPayerType(v as "cold_merchant" | "farmer" | "cold_merchant_advance" | "kata");
                     setBuyerName("");
                     setCustomBuyerName("");
                     setSalesGoodsBuyerName("");
@@ -2946,6 +2949,7 @@ export default function CashManagement() {
                       <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                       <SelectItem value="cold_merchant_advance">{t("coldMerchantAdvance")}</SelectItem>
                       <SelectItem value="farmer">{t("farmer")}</SelectItem>
+                      <SelectItem value="kata">{t("kata")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -3251,7 +3255,8 @@ export default function CashManagement() {
                     createReceiptMutation.isPending ||
                     payMerchantAdvanceMutation.isPending ||
                     (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim()))) ||
-                    (payerType === "cold_merchant_advance" && !advanceBuyerLedgerId)
+                    (payerType === "cold_merchant_advance" && !advanceBuyerLedgerId) ||
+                    (payerType === "farmer" && !selectedFarmerReceivableId)
                   }
                   className="w-full"
                   data-testid="button-record-payment"
@@ -3860,31 +3865,31 @@ export default function CashManagement() {
                   </div>
                 )}
 
-                {expenseType && !isFarmerExpenseType && !isMerchantExpenseType && (
-                  <div className="space-y-2 relative">
-                    <Label>{t("receiverName")}</Label>
-                    <Input
-                      value={expenseReceiverName}
-                      onChange={(e) => setExpenseReceiverName(e.target.value)}
-                      onFocus={() => setShowReceiverSuggestions(true)}
-                      onBlur={() => setTimeout(() => setShowReceiverSuggestions(false), 150)}
-                      placeholder={t("enterReceiverName") || "Enter receiver name"}
-                      data-testid="input-expense-receiver"
-                    />
-                    {showReceiverSuggestions && receiverNames.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
-                        <ScrollArea className="max-h-[150px]">
-                          {receiverNames
-                            .filter(name => 
-                              !expenseReceiverName || 
-                              name.toLowerCase().includes(expenseReceiverName.toLowerCase())
-                            )
-                            .map((name) => (
+                {expenseType && !isFarmerExpenseType && !isMerchantExpenseType && (() => {
+                  const filteredReceiverNames = receiverNames.filter(name =>
+                    !expenseReceiverName || name.toLowerCase().includes(expenseReceiverName.toLowerCase())
+                  );
+                  return (
+                    <div className="space-y-2 relative">
+                      <Label>{t("receiverName")}</Label>
+                      <Input
+                        value={expenseReceiverName}
+                        onChange={(e) => setExpenseReceiverName(e.target.value)}
+                        onFocus={() => { setShowReceiverSuggestions(true); receiverNav.resetActive(); }}
+                        onBlur={() => setTimeout(() => { setShowReceiverSuggestions(false); receiverNav.resetActive(); }, 150)}
+                        onKeyDown={(e) => receiverNav.handleKeyDown(e, filteredReceiverNames.length, (i) => { setExpenseReceiverName(filteredReceiverNames[i]); setShowReceiverSuggestions(false); }, () => setShowReceiverSuggestions(false))}
+                        placeholder={t("enterReceiverName") || "Enter receiver name"}
+                        data-testid="input-expense-receiver"
+                      />
+                      {showReceiverSuggestions && filteredReceiverNames.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
+                          <ScrollArea className="max-h-[150px]">
+                            {filteredReceiverNames.map((name, idx) => (
                               <Button
                                 key={name}
                                 variant="ghost"
                                 size="sm"
-                                className="w-full justify-start"
+                                className={`w-full justify-start ${receiverNav.activeIndex === idx ? "bg-accent" : ""}`}
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   setExpenseReceiverName(name);
@@ -3895,11 +3900,12 @@ export default function CashManagement() {
                                 {name}
                               </Button>
                             ))}
-                        </ScrollArea>
-                      </div>
-                    )}
-                  </div>
-                )}
+                          </ScrollArea>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="space-y-2">
                   <Label>{t("amount")} (₹) *</Label>
