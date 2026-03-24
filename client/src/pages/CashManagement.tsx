@@ -5087,7 +5087,7 @@ export default function CashManagement() {
                             setTimeout(() => { setShowBuyerSuggestions(false); buyerNav.resetActive(); }, 150);
                           }}
                           onKeyDown={(e) => {
-                            const filtered = buyersWithDues.filter(b => !newReceivableBuyerName || b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase()));
+                            const filtered = allBuyerLedgerEntries.filter(b => !newReceivableBuyerName || b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase()));
                             buyerNav.handleKeyDown(e, filtered.length, (i) => { setNewReceivableBuyerName(filtered[i].buyerName); setShowBuyerSuggestions(false); }, () => setShowBuyerSuggestions(false));
                           }}
                           placeholder={newReceivablePayerType === "sales_goods" ? t("enterManually") : t("selectOrEnter")}
@@ -5097,7 +5097,7 @@ export default function CashManagement() {
                           <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
                             <ScrollArea className="max-h-[200px]">
                               {(() => {
-                                const filtered = buyersWithDues.filter(b => !newReceivableBuyerName || b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase()));
+                                const filtered = allBuyerLedgerEntries.filter(b => !newReceivableBuyerName || b.buyerName.toLowerCase().includes(newReceivableBuyerName.toLowerCase()));
                                 return filtered.length === 0 ? (
                                   <p className="text-sm text-muted-foreground p-2 text-center">{t("noResults")}</p>
                                 ) : (
