@@ -3137,6 +3137,28 @@ export async function registerRoutes(
     }
   });
 
+  // Manually create a new buyer (rejects if name already exists)
+  app.post("/api/buyer-ledger/manual", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const schema = z.object({
+        buyerName: z.string().min(1),
+        address: z.string().optional(),
+        contactNumber: z.string().optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
+      const result = await storage.createManualBuyer(coldStorageId, parsed.data);
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error?.code === 'DUPLICATE_NAME') {
+        return res.status(409).json({ error: "A buyer with this name already exists" });
+      }
+      console.error("Error creating buyer manually:", error);
+      res.status(500).json({ error: "Failed to create buyer" });
+    }
+  });
+
   // Check if buyer update would cause a merge
   app.post("/api/buyer-ledger/:id/check-merge", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {

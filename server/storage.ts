@@ -422,6 +422,11 @@ export interface IStorage {
     address?: string;
     contactNumber?: string;
   }): Promise<{ id: string; buyerId: string }>;
+  createManualBuyer(coldStorageId: string, buyerData: {
+    buyerName: string;
+    address?: string;
+    contactNumber?: string;
+  }): Promise<{ id: string; buyerId: string }>;
   // Assets
   getAssets(coldStorageId: string): Promise<Asset[]>;
   createAsset(data: InsertAsset): Promise<Asset>;
@@ -7676,6 +7681,52 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
+    throw new Error('Failed to generate unique buyer ID after multiple attempts');
+  }
+
+  // Create buyer manually — rejects if name already exists (unlike ensureBuyerLedgerEntry)
+  async createManualBuyer(coldStorageId: string, buyerData: {
+    buyerName: string;
+    address?: string;
+    contactNumber?: string;
+  }): Promise<{ id: string; buyerId: string }> {
+    // Reject if a buyer with this name already exists
+    const [existing] = await db.select({ id: buyerLedger.id })
+      .from(buyerLedger)
+      .where(and(
+        eq(buyerLedger.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${buyerLedger.buyerName})) = ${buyerData.buyerName.trim().toLowerCase()}`
+      ));
+
+    if (existing) {
+      const err = new Error('A buyer with this name already exists') as any;
+      err.code = 'DUPLICATE_NAME';
+      throw err;
+    }
+
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const buyerId = await this.generateBuyerId(coldStorageId);
+      const newId = randomUUID();
+      try {
+        await db.insert(buyerLedger).values({
+          id: newId,
+          coldStorageId,
+          buyerId,
+          buyerName: buyerData.buyerName.trim(),
+          address: buyerData.address?.trim() || null,
+          contactNumber: buyerData.contactNumber?.trim() || null,
+          isFlagged: 0,
+          isArchived: 0,
+        });
+        return { id: newId, buyerId };
+      } catch (error: any) {
+        if (error?.code === '23505' && (error?.constraint?.includes('buyer_id') || error?.constraint?.includes('cs_bid'))) {
+          continue;
+        }
+        throw error;
+      }
+    }
     throw new Error('Failed to generate unique buyer ID after multiple attempts');
   }
 

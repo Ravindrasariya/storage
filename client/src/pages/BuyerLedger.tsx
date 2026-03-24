@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, ShoppingCart } from "lucide-react";
+import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, ShoppingCart, UserPlus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -68,6 +68,11 @@ export default function BuyerLedger() {
     address: "",
     contactNumber: "",
   });
+  const [showAddBuyerDialog, setShowAddBuyerDialog] = useState(false);
+  const [newBuyerName, setNewBuyerName] = useState("");
+  const [newBuyerAddress, setNewBuyerAddress] = useState("");
+  const [newBuyerContact, setNewBuyerContact] = useState("");
+  const [addBuyerError, setAddBuyerError] = useState("");
   const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
   const [pendingMergeInfo, setPendingMergeInfo] = useState<{
     targetBuyer?: BuyerLedgerEntry;
@@ -97,6 +102,30 @@ export default function BuyerLedger() {
     },
     onError: () => {
       toast({ title: t("buyersSyncFailed"), variant: "destructive" });
+    },
+  });
+
+  const createBuyerMutation = useMutation({
+    mutationFn: async (data: { buyerName: string; address?: string; contactNumber?: string }) => {
+      const response = await apiRequest('POST', '/api/buyer-ledger/manual', data);
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to create buyer");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/buyer-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/buyers/lookup'] });
+      setShowAddBuyerDialog(false);
+      setNewBuyerName("");
+      setNewBuyerAddress("");
+      setNewBuyerContact("");
+      setAddBuyerError("");
+      toast({ title: t("addBuyer"), description: `${newBuyerName} ${t("added") || "added"}` });
+    },
+    onError: (error: Error) => {
+      setAddBuyerError(error.message);
     },
   });
 
@@ -548,6 +577,17 @@ export default function BuyerLedger() {
         <Button variant="outline" size="icon" onClick={handlePrint} data-testid="button-print">
           <Printer className="w-4 h-4" />
         </Button>
+        {canEdit && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setShowAddBuyerDialog(true); setAddBuyerError(""); }}
+            data-testid="button-add-buyer"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            {t("addBuyer")}
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col px-4">
@@ -760,6 +800,65 @@ export default function BuyerLedger() {
           </>
         )}
       </div>
+
+      <Dialog open={showAddBuyerDialog} onOpenChange={(open) => {
+        if (!open) { setShowAddBuyerDialog(false); setNewBuyerName(""); setNewBuyerAddress(""); setNewBuyerContact(""); setAddBuyerError(""); }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("addBuyer")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label htmlFor="newBuyerName">{t("buyerName")} *</Label>
+              <Input
+                id="newBuyerName"
+                autoFocus
+                value={newBuyerName}
+                onChange={(e) => { setNewBuyerName(e.target.value); setAddBuyerError(""); }}
+                placeholder={t("buyerName")}
+                data-testid="input-new-buyer-name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="newBuyerAddress">{t("address")}</Label>
+              <Input
+                id="newBuyerAddress"
+                value={newBuyerAddress}
+                onChange={(e) => setNewBuyerAddress(e.target.value)}
+                placeholder={t("address")}
+                data-testid="input-new-buyer-address"
+              />
+            </div>
+            <div>
+              <Label htmlFor="newBuyerContact">{t("contactNumber")}</Label>
+              <Input
+                id="newBuyerContact"
+                value={newBuyerContact}
+                onChange={(e) => setNewBuyerContact(e.target.value)}
+                placeholder={t("contactNumber")}
+                data-testid="input-new-buyer-contact"
+              />
+            </div>
+            {addBuyerError && (
+              <p className="text-sm text-destructive" data-testid="text-add-buyer-error">{addBuyerError}</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { setShowAddBuyerDialog(false); setNewBuyerName(""); setNewBuyerAddress(""); setNewBuyerContact(""); setAddBuyerError(""); }} data-testid="button-cancel-add-buyer">
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={() => createBuyerMutation.mutate({ buyerName: newBuyerName.trim(), address: newBuyerAddress.trim() || undefined, contactNumber: newBuyerContact.trim() || undefined })}
+              disabled={!newBuyerName.trim() || createBuyerMutation.isPending}
+              data-testid="button-save-add-buyer"
+            >
+              {createBuyerMutation.isPending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
+              {t("addBuyer")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editingBuyer} onOpenChange={(open) => !open && setEditingBuyer(null)}>
         <DialogContent className="max-w-md">
