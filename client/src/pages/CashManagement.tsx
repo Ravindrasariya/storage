@@ -1205,6 +1205,28 @@ export default function CashManagement() {
       return;
     }
 
+    if (payerType === "kata") {
+      if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
+        toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+        return;
+      }
+      if (receiptType === "account" && !accountId) {
+        toast({ title: t("error"), description: t("selectBankAccount"), variant: "destructive" });
+        return;
+      }
+      createReceiptMutation.mutate({
+        payerType: "kata",
+        buyerName: undefined,
+        farmerReceivableId: undefined,
+        receiptType,
+        accountId: receiptType === "account" ? accountId : undefined,
+        amount: parseFloat(inwardAmount),
+        receivedAt: new Date(receivedDate).toISOString(),
+        notes: inwardRemarks || undefined,
+      });
+      return;
+    }
+
     // Determine buyer name based on payer type
     let finalBuyerName: string | undefined;
     let farmerReceivableId: string | undefined;
@@ -1227,7 +1249,6 @@ export default function CashManagement() {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
-    // kata: no buyer or farmer needed — just amount/date/remarks
     
     if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
