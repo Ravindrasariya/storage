@@ -7555,6 +7555,13 @@ export class DatabaseStorage implements IStorage {
         eq(discounts.isReversed, 0)
       ));
 
+    const allAdjSales = await db.select().from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`(COALESCE(is_self_sale, 0) != 1)`,
+        sql`COALESCE(adj_receivable_self_due_amount, 0) > 0`,
+      ));
+
     const farmerReceivables = allReceivables.filter(r => matchesFarmer(r));
     const farmerAdvFreight = allAdvFreight.filter(af => af.farmerLedgerId === farmer.id);
     const farmerSelfSales = allSelfSales.filter(s => {
@@ -7582,6 +7589,8 @@ export class DatabaseStorage implements IStorage {
       return getSelfAllocAmount(d) > 0;
     });
 
+    const farmerAdjSales = allAdjSales.filter(s => matchesFarmer(s));
+
     let openingBalance = 0;
 
     const priorReceivables = farmerReceivables.filter(r => r.createdAt < fyStart);
@@ -7600,6 +7609,9 @@ export class DatabaseStorage implements IStorage {
     for (const d of priorDiscounts) {
       openingBalance -= getSelfAllocAmount(d);
     }
+
+    const priorAdjSales = farmerAdjSales.filter(s => s.soldAt < fyStart);
+    openingBalance -= priorAdjSales.reduce((sum, s) => sum + (s.adjReceivableSelfDueAmount || 0), 0);
 
     type TxnEntry = { type: string; date: string; debit: number; credit: number; refId?: string; meta?: Record<string, string>; sortDate: Date; sortOrder: number };
     const transactions: TxnEntry[] = [];
@@ -7674,6 +7686,20 @@ export class DatabaseStorage implements IStorage {
         refId: d.id,
         sortDate: d.discountDate,
         sortOrder: 5,
+      });
+    }
+
+    const fyAdjSales = farmerAdjSales.filter(s => s.soldAt >= fyStart && s.soldAt <= fyEnd);
+    for (const s of fyAdjSales) {
+      transactions.push({
+        type: 'sale_adj',
+        date: s.soldAt.toISOString().slice(0, 10),
+        meta: { lotNo: String(s.lotNo), buyerName: s.buyerName || '' },
+        debit: 0,
+        credit: roundAmount(s.adjReceivableSelfDueAmount || 0),
+        refId: s.id,
+        sortDate: s.soldAt,
+        sortOrder: 4,
       });
     }
 

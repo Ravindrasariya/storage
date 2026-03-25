@@ -826,6 +826,7 @@ const translations: Translations = {
   selectFY: { en: "Select FY", hi: "वि.व. चुनें" },
   selfSaleEntry: { en: "Self Sale", hi: "स्वयं बिक्री" },
   freightGiven: { en: "Freight Given", hi: "भाड़ा दिया गया" },
+  saleAdjustment: { en: "Sale Adjustment", hi: "बिक्री समायोजन" },
 };
 
 interface I18nContextType {

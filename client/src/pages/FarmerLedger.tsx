@@ -92,6 +92,7 @@ function FarmerDetailedLedger({ farmerId, farmerName }: { farmerId: string; farm
       case 'self_sale': return `${t("selfSaleEntry")} - ${t("lotHash")}${m.lotNo}, ${m.buyerName}, ${m.bags} ${t("bagsLabel")}`;
       case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
       case 'discount': return `${t("discountEntry")} - ${m.transactionId}`;
+      case 'sale_adj': return `${t("saleAdjustment")} - ${t("lotHash")}${m.lotNo}, ${m.buyerName}`;
       default: return txn.type;
     }
   }, [t]);
