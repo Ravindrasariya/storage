@@ -7230,14 +7230,13 @@ export class DatabaseStorage implements IStorage {
     );
 
     const saleDebitAmount = (s: typeof allSales[0]) => {
-      return (s.coldStorageCharge || 0) + (s.extraDueToMerchantOriginal || 0) + (s.adjReceivableSelfDueAmount || 0);
+      return (s.coldStorageCharge || 0) + (s.extraDueToMerchantOriginal || 0);
     };
 
     let openingBalance = 0;
 
     const priorReceivables = buyerReceivables.filter(r => {
-      const recYear = r.year;
-      return recYear < fyStartYear;
+      return r.createdAt < fyStart;
     });
     openingBalance += priorReceivables.reduce((sum, r) => sum + (r.finalAmount ?? r.dueAmount), 0);
 
@@ -7285,7 +7284,7 @@ export class DatabaseStorage implements IStorage {
     type TxnEntry = { type: string; date: string; debit: number; credit: number; refId?: string; meta?: Record<string, string>; sortDate: Date; sortOrder: number };
     const transactions: TxnEntry[] = [];
 
-    const fyReceivables = buyerReceivables.filter(r => r.year === fyStartYear);
+    const fyReceivables = buyerReceivables.filter(r => r.createdAt >= fyStart && r.createdAt <= fyEnd);
     for (const r of fyReceivables) {
       const amt = (r.finalAmount ?? r.dueAmount);
       transactions.push({
