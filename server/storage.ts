@@ -662,14 +662,13 @@ export class DatabaseStorage implements IStorage {
     
     for (const insertLot of insertLots) {
       const id = await generateSequentialId('lot');
-      const createdAt = entryDate ? new Date(entryDate + "T00:00:00") : new Date();
       const lotData = {
         ...insertLot,
         id,
         coldStorageId,
         lotNo: String(entrySequence),
         entrySequence,
-        createdAt,
+        ...(entryDate ? { createdAt: new Date(entryDate + "T00:00:00") } : {}),
         remainingSize: insertLot.remainingSize ?? insertLot.size,
         assayerImage: insertLot.assayerImage ?? null,
         reducingSugar: insertLot.reducingSugar ?? null,
