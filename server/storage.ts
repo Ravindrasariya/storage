@@ -7110,12 +7110,12 @@ export class DatabaseStorage implements IStorage {
         .filter(s => matchesBuyer(s) && s.isSelfSale === 0)
         .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
-      const dueTransferIn = buyerTransferIn;
-      const dueTransferOut = buyerTransferOut;
+      const dueTransferIn = buyerTransferIn - buyerTransferOut;
+      const dueTransferOut = 0;
       
-      // Net Due = PY Receivables + Advance Due + Sales Due + Buyer Extras + Transfer In - Transfer Out
-      // salesDue includes transferred sales; transferOut offsets them
-      const netDue = roundAmount(pyReceivables + advanceDue + salesDue + buyerExtras + buyerTransferIn - buyerTransferOut);
+      // Net Due = Receivables + Sales Due + Transfer (net)
+      // salesDue includes transferred sales; net transfer offsets sender's transferred amount
+      const netDue = roundAmount(pyReceivables + advanceDue + salesDue + buyerExtras + dueTransferIn);
       
       return {
         ...buyer,
