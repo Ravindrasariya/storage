@@ -1317,55 +1317,57 @@ export default function FarmerLedger() {
                 )}
               </div>
             </div>
-            <div className="relative">
-              <Label>{t("village")}</Label>
-              <Input
-                value={editFormData.village}
-                onChange={(e) => { setEditFormData(prev => ({ ...prev, village: capitalizeFirstLetter(e.target.value) })); setShowEditVillageSuggestions(true); }}
-                onFocus={() => { setShowEditVillageSuggestions(true); editVillageNav.resetActive(); }}
-                onBlur={() => setTimeout(() => { setShowEditVillageSuggestions(false); editVillageNav.resetActive(); }, 200)}
-                onKeyDown={(e) => editVillageNav.handleKeyDown(e, editVillageSuggestions.length, (i) => { setEditFormData(prev => ({ ...prev, village: editVillageSuggestions[i] })); setShowEditVillageSuggestions(false); }, () => setShowEditVillageSuggestions(false))}
-                autoComplete="off"
-                data-testid="input-edit-village"
-              />
-              {showEditVillageSuggestions && editVillageSuggestions.length > 0 && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                  {editVillageSuggestions.map((village, idx) => (
-                    <button key={idx} type="button"
-                      className={`w-full px-3 py-2 text-left text-sm hover:bg-accent ${editVillageNav.activeIndex === idx ? "bg-accent" : ""}`}
-                      onMouseDown={(e) => { e.preventDefault(); setEditFormData(prev => ({ ...prev, village })); setShowEditVillageSuggestions(false); }}
-                      data-testid={`suggestion-edit-village-${idx}`}
-                    >
-                      <span className="font-medium">{village}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="relative">
-              <Label>{t("tehsil")}</Label>
-              <Input
-                value={editFormData.tehsil}
-                onChange={(e) => { setEditFormData(prev => ({ ...prev, tehsil: capitalizeFirstLetter(e.target.value) })); setShowEditTehsilSuggestions(true); }}
-                onFocus={() => { setShowEditTehsilSuggestions(true); editTehsilNav.resetActive(); }}
-                onBlur={() => setTimeout(() => { setShowEditTehsilSuggestions(false); editTehsilNav.resetActive(); }, 200)}
-                onKeyDown={(e) => editTehsilNav.handleKeyDown(e, editTehsilSuggestions.length, (i) => { setEditFormData(prev => ({ ...prev, tehsil: editTehsilSuggestions[i] })); setShowEditTehsilSuggestions(false); }, () => setShowEditTehsilSuggestions(false))}
-                autoComplete="off"
-                data-testid="input-edit-tehsil"
-              />
-              {showEditTehsilSuggestions && editTehsilSuggestions.length > 0 && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                  {editTehsilSuggestions.map((tehsil, idx) => (
-                    <button key={idx} type="button"
-                      className={`w-full px-3 py-2 text-left text-sm hover:bg-accent ${editTehsilNav.activeIndex === idx ? "bg-accent" : ""}`}
-                      onMouseDown={(e) => { e.preventDefault(); setEditFormData(prev => ({ ...prev, tehsil })); setShowEditTehsilSuggestions(false); }}
-                      data-testid={`suggestion-edit-tehsil-${idx}`}
-                    >
-                      <span className="font-medium">{tehsil}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <Label>{t("village")}</Label>
+                <Input
+                  value={editFormData.village}
+                  onChange={(e) => { setEditFormData(prev => ({ ...prev, village: capitalizeFirstLetter(e.target.value) })); setShowEditVillageSuggestions(true); }}
+                  onFocus={() => { setShowEditVillageSuggestions(true); editVillageNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowEditVillageSuggestions(false); editVillageNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => editVillageNav.handleKeyDown(e, editVillageSuggestions.length, (i) => { setEditFormData(prev => ({ ...prev, village: editVillageSuggestions[i] })); setShowEditVillageSuggestions(false); }, () => setShowEditVillageSuggestions(false))}
+                  autoComplete="off"
+                  data-testid="input-edit-village"
+                />
+                {showEditVillageSuggestions && editVillageSuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {editVillageSuggestions.map((village, idx) => (
+                      <button key={idx} type="button"
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-accent ${editVillageNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onMouseDown={(e) => { e.preventDefault(); setEditFormData(prev => ({ ...prev, village })); setShowEditVillageSuggestions(false); }}
+                        data-testid={`suggestion-edit-village-${idx}`}
+                      >
+                        <span className="font-medium">{village}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Label>{t("tehsil")}</Label>
+                <Input
+                  value={editFormData.tehsil}
+                  onChange={(e) => { setEditFormData(prev => ({ ...prev, tehsil: capitalizeFirstLetter(e.target.value) })); setShowEditTehsilSuggestions(true); }}
+                  onFocus={() => { setShowEditTehsilSuggestions(true); editTehsilNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowEditTehsilSuggestions(false); editTehsilNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => editTehsilNav.handleKeyDown(e, editTehsilSuggestions.length, (i) => { setEditFormData(prev => ({ ...prev, tehsil: editTehsilSuggestions[i] })); setShowEditTehsilSuggestions(false); }, () => setShowEditTehsilSuggestions(false))}
+                  autoComplete="off"
+                  data-testid="input-edit-tehsil"
+                />
+                {showEditTehsilSuggestions && editTehsilSuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {editTehsilSuggestions.map((tehsil, idx) => (
+                      <button key={idx} type="button"
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-accent ${editTehsilNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onMouseDown={(e) => { e.preventDefault(); setEditFormData(prev => ({ ...prev, tehsil })); setShowEditTehsilSuggestions(false); }}
+                        data-testid={`suggestion-edit-tehsil-${idx}`}
+                      >
+                        <span className="font-medium">{tehsil}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
