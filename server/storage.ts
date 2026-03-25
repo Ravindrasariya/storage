@@ -176,7 +176,7 @@ export interface IStorage {
   deleteFloorsByChamber(chamberId: string): Promise<void>;
   updateChamberFill(id: string, fill: number): Promise<void>;
   createLot(lot: InsertLot): Promise<Lot>;
-  createBatchLots(lots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed"): Promise<{ lots: Lot[]; entrySequence: number }>;
+  createBatchLots(lots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number, entryDate?: string): Promise<{ lots: Lot[]; entrySequence: number }>;
   getNextEntrySequence(coldStorageId: string): Promise<number>;
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
@@ -618,12 +618,10 @@ export class DatabaseStorage implements IStorage {
     return result?.entrySequence ?? 1;
   }
 
-  async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number): Promise<{ lots: Lot[]; entrySequence: number }> {
-    // Lot numbers reset to 1 at the start of each calendar year
-    // Separate counters: Wafer has its own sequence, Ration/Seed share another
+  async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number, entryDate?: string): Promise<{ lots: Lot[]; entrySequence: number }> {
     const isWaferCategory = bagTypeCategory === "wafer";
-    const currentYear = new Date().getFullYear();
-    const yearStart = new Date(currentYear, 0, 1); // Jan 1 of current year
+    const currentYear = entryDate ? new Date(entryDate + "T00:00:00").getFullYear() : new Date().getFullYear();
+    const yearStart = new Date(currentYear, 0, 1);
     
     // Find max lot number from lots created in the current year for this bag type category
     const allLots = await this.getAllLots(coldStorageId);
@@ -664,12 +662,14 @@ export class DatabaseStorage implements IStorage {
     
     for (const insertLot of insertLots) {
       const id = await generateSequentialId('lot');
+      const createdAt = entryDate ? new Date(entryDate + "T00:00:00") : new Date();
       const lotData = {
         ...insertLot,
         id,
         coldStorageId,
-        lotNo: String(entrySequence), // Set lotNo to the entry sequence
-        entrySequence, // Set the unified entry sequence
+        lotNo: String(entrySequence),
+        entrySequence,
+        createdAt,
         remainingSize: insertLot.remainingSize ?? insertLot.size,
         assayerImage: insertLot.assayerImage ?? null,
         reducingSugar: insertLot.reducingSugar ?? null,

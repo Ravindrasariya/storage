@@ -30,7 +30,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck } from "lucide-react";
+import { ArrowLeft, Upload, User, Package, Plus, Trash2, Layers, ClipboardCheck, CalendarDays } from "lucide-react";
 import type { Chamber } from "@shared/schema";
 import { capitalizeFirstLetter, cn } from "@/lib/utils";
 
@@ -103,8 +103,13 @@ const defaultLotData: LotData = {
 
 const STORAGE_KEY = "lotEntryFormData";
 const STORAGE_VERSION_KEY = "lotEntryFormVersion";
-const CURRENT_STORAGE_VERSION = "2";
+const CURRENT_STORAGE_VERSION = "3";
 const BAG_TYPE_PREFERENCE_KEY = "lotEntryBagTypePreference";
+
+function getTodayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export default function LotEntry() {
   const { t } = useI18n();
@@ -129,6 +134,7 @@ export default function LotEntry() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [manualLotNo, setManualLotNo] = useState<number | null>(null);
+  const [entryDate, setEntryDate] = useState(getTodayStr());
   const [lotNoError, setLotNoError] = useState<string | null>(null);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
@@ -215,18 +221,26 @@ export default function LotEntry() {
       }
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const { farmer, lots: savedLots, imagePreviews: savedPreviews, bagTypeCategory: savedCategory } = JSON.parse(saved);
-        if (farmer) {
-          form.reset(farmer);
-        }
-        if (savedLots && savedLots.length > 0) {
-          setLots(savedLots);
-        }
-        if (savedPreviews) {
-          setImagePreviews(savedPreviews);
-        }
-        if (savedCategory) {
-          setBagTypeCategory(savedCategory);
+        const parsed = JSON.parse(saved);
+        if (parsed.savedDate && parsed.savedDate !== getTodayStr()) {
+          localStorage.removeItem(STORAGE_KEY);
+        } else {
+          const { farmer, lots: savedLots, imagePreviews: savedPreviews, bagTypeCategory: savedCategory, entryDate: savedEntryDate } = parsed;
+          if (farmer) {
+            form.reset(farmer);
+          }
+          if (savedLots && savedLots.length > 0) {
+            setLots(savedLots);
+          }
+          if (savedPreviews) {
+            setImagePreviews(savedPreviews);
+          }
+          if (savedCategory) {
+            setBagTypeCategory(savedCategory);
+          }
+          if (savedEntryDate) {
+            setEntryDate(savedEntryDate);
+          }
         }
       }
     } catch (e) {
@@ -240,11 +254,11 @@ export default function LotEntry() {
     if (!isInitialized) return;
     try {
       const farmer = form.getValues();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ farmer, lots, imagePreviews, bagTypeCategory }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ farmer, lots, imagePreviews, bagTypeCategory, entryDate, savedDate: getTodayStr() }));
     } catch (e) {
       console.error("Failed to save form data", e);
     }
-  }, [lots, imagePreviews, isInitialized, bagTypeCategory, form.watch()]);
+  }, [lots, imagePreviews, isInitialized, bagTypeCategory, entryDate, form.watch()]);
 
   // Update all lots when bag type category changes
   useEffect(() => {
@@ -512,6 +526,7 @@ export default function LotEntry() {
         farmer: farmerData,
         lots,
         bagTypeCategory,
+        entryDate,
         ...(manualLotNo !== null ? { manualLotNo } : {}),
       });
       
@@ -535,6 +550,7 @@ export default function LotEntry() {
       setLots([{ ...defaultLotData }]);
       setImagePreviews({});
       setManualLotNo(null);
+      setEntryDate(getTodayStr());
       
       // Scroll to top of page
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -612,9 +628,23 @@ export default function LotEntry() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <Card className="p-4 sm:p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <User className="h-5 w-5 text-chart-1" />
-              <h2 className="text-lg font-semibold">{t("farmerDetails")}</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2">
+                <User className="h-5 w-5 text-chart-1" />
+                <h2 className="text-lg font-semibold">{t("farmerDetails")}</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                <label className="text-sm font-medium text-muted-foreground">{t("entryDate")}:</label>
+                <Input
+                  type="date"
+                  value={entryDate}
+                  onChange={(e) => setEntryDate(e.target.value || getTodayStr())}
+                  required
+                  className="w-40 h-8 text-sm"
+                  data-testid="input-entry-date"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
               <FormField
@@ -1202,7 +1232,6 @@ export default function LotEntry() {
               variant="outline"
               onClick={() => {
                 clearSavedData();
-                // Reset form state
                 form.reset({
                   farmerName: "",
                   village: "",
@@ -1213,7 +1242,7 @@ export default function LotEntry() {
                 });
                 setLots([{ ...defaultLotData }]);
                 setImagePreviews({});
-                // Scroll to top of page
+                setEntryDate(getTodayStr());
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               data-testid="button-cancel"

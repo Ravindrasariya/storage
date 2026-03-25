@@ -412,14 +412,15 @@ export async function registerRoutes(
         amount: z.number().min(0),
       })).optional().default([]),
     })).min(1),
-    bagTypeCategory: z.enum(["wafer", "rationSeed"]).optional(), // Category for lot number counter
-    manualLotNo: z.number().int().positive().optional(), // User-supplied lot# override
+    bagTypeCategory: z.enum(["wafer", "rationSeed"]).optional(),
+    manualLotNo: z.number().int().positive().optional(),
+    entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   });
 
   app.post("/api/lots/batch", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { farmer, lots: lotDataArray, bagTypeCategory, manualLotNo } = batchLotSchema.parse(req.body);
+      const { farmer, lots: lotDataArray, bagTypeCategory, manualLotNo, entryDate } = batchLotSchema.parse(req.body);
 
       // Ensure farmer ledger entry exists and get both IDs
       const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
@@ -447,7 +448,7 @@ export async function registerRoutes(
         };
       });
       
-      const result = await storage.createBatchLots(lotsToCreate, coldStorageId, bagTypeCategory, manualLotNo);
+      const result = await storage.createBatchLots(lotsToCreate, coldStorageId, bagTypeCategory, manualLotNo, entryDate);
       
       res.status(201).json({
         lots: result.lots,
