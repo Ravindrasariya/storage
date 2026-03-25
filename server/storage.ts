@@ -7165,7 +7165,7 @@ export class DatabaseStorage implements IStorage {
     const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59, 999);
 
     const buyer = await db.select().from(buyerLedger)
-      .where(eq(buyerLedger.id, buyerLedgerId))
+      .where(and(eq(buyerLedger.id, buyerLedgerId), eq(buyerLedger.coldStorageId, coldStorageId)))
       .then(rows => rows[0]);
     if (!buyer) return { openingBalance: 0, transactions: [] };
     const buyerNameLower = buyer.buyerName.trim().toLowerCase();
@@ -7377,6 +7377,7 @@ export class DatabaseStorage implements IStorage {
       transactions.push({
         type: 'advance',
         date: ma.effectiveDate.toISOString().slice(0, 10),
+        meta: { amount: String(roundAmount(ma.finalAmount || ma.amount)) },
         debit: roundAmount(ma.finalAmount || ma.amount),
         credit: 0,
         refId: ma.id,

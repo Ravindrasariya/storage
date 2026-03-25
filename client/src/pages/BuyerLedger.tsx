@@ -94,7 +94,7 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
       case 'cm_advance_payment': return `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
       case 'transfer_in': return `${t("transferFrom")} ${m.fromBuyer} - ${m.transactionId}`;
       case 'transfer_out': return `${t("transferTo")} ${m.toBuyer} - ${m.transactionId}`;
-      case 'advance': return t("advanceGiven");
+      case 'advance': return `${t("advanceGiven")} - ${formatCurrency(Number(m.amount || 0))}`;
       case 'discount': return `${t("discountEntry")} - ${m.transactionId}, ${m.farmerName}`;
       default: return txn.type;
     }
