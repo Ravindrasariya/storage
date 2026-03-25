@@ -90,8 +90,8 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
     switch (txn.type) {
       case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}`;
       case 'sale': return `${t("saleCharges")} - ${t("lotHash")}${m.lotNo}, ${m.farmerName}, ${m.bags} ${t("bagsLabel")}`;
-      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? 'Cash' : 'Account'})`;
-      case 'cm_advance_payment': return `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? 'Cash' : 'Account'})`;
+      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : t("account")})`;
+      case 'cm_advance_payment': return `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : t("account")})`;
       case 'transfer_in': return `${t("transferFrom")} ${m.fromBuyer} - ${m.transactionId}`;
       case 'transfer_out': return `${t("transferTo")} ${m.toBuyer} - ${m.transactionId}`;
       case 'advance': return t("advanceGiven");
@@ -131,10 +131,6 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
         <div className="flex items-center justify-center py-4">
           <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
         </div>
-      ) : !data || (data.transactions.length === 0 && data.openingBalance === 0) ? (
-        <div className="text-center py-4 text-muted-foreground text-xs" data-testid={`text-no-transactions-${buyerId}`}>
-          {t("noTransactionsForPeriod")}
-        </div>
       ) : (
         <div className="border rounded overflow-auto max-h-[400px]">
           <table className="w-full text-xs">
@@ -153,9 +149,9 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
                 <td className="p-1.5 text-center">-</td>
                 <td className="p-1.5">{formatDate(`${selectedFY}-04-01`)}</td>
                 <td className="p-1.5">{t("openingBalance")}</td>
-                <td className="p-1.5 text-right">{data!.openingBalance > 0 ? formatCurrency(data!.openingBalance) : '-'}</td>
-                <td className="p-1.5 text-right">{data!.openingBalance < 0 ? formatCurrency(Math.abs(data!.openingBalance)) : '-'}</td>
-                <td className="p-1.5 text-right">{formatCurrency(data!.openingBalance)}</td>
+                <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) >= 0 ? formatCurrency(data?.openingBalance ?? 0) : formatCurrency(0)}</td>
+                <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) < 0 ? formatCurrency(Math.abs(data?.openingBalance ?? 0)) : formatCurrency(0)}</td>
+                <td className="p-1.5 text-right">{formatCurrency(data?.openingBalance ?? 0)}</td>
               </tr>
               {rows.map((row) => (
                 <tr key={`${row.type}-${row.sr}`} className="border-b hover:bg-muted/20" data-testid={`row-txn-${buyerId}-${row.sr}`}>
@@ -171,8 +167,8 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
                 <td className="p-1.5 text-center">-</td>
                 <td className="p-1.5">{formatDate(`${selectedFY + 1}-03-31`)}</td>
                 <td className="p-1.5">{t("closingBalance")}</td>
-                <td className="p-1.5 text-right">{closingBalance > 0 ? formatCurrency(closingBalance) : '-'}</td>
-                <td className="p-1.5 text-right">{closingBalance < 0 ? formatCurrency(Math.abs(closingBalance)) : '-'}</td>
+                <td className="p-1.5 text-right">{closingBalance >= 0 ? formatCurrency(closingBalance) : formatCurrency(0)}</td>
+                <td className="p-1.5 text-right">{closingBalance < 0 ? formatCurrency(Math.abs(closingBalance)) : formatCurrency(0)}</td>
                 <td className="p-1.5 text-right">{formatCurrency(closingBalance)}</td>
               </tr>
             </tbody>
