@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { BuyerLedgerEntry, BuyerLedgerEditHistoryEntry } from "@shared/schema";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 interface BuyerWithDues extends BuyerLedgerEntry {
   pyReceivables: number;
@@ -1008,7 +1009,7 @@ export default function BuyerLedger() {
                 id="newBuyerName"
                 autoFocus
                 value={newBuyerName}
-                onChange={(e) => { setNewBuyerName(e.target.value); setAddBuyerError(""); }}
+                onChange={(e) => { setNewBuyerName(capitalizeFirstLetter(e.target.value)); setAddBuyerError(""); }}
                 placeholder={t("buyerName")}
                 data-testid="input-new-buyer-name"
               />
@@ -1018,7 +1019,7 @@ export default function BuyerLedger() {
               <Input
                 id="newBuyerAddress"
                 value={newBuyerAddress}
-                onChange={(e) => setNewBuyerAddress(e.target.value)}
+                onChange={(e) => setNewBuyerAddress(capitalizeFirstLetter(e.target.value))}
                 placeholder={t("address")}
                 data-testid="input-new-buyer-address"
               />
@@ -1067,7 +1068,7 @@ export default function BuyerLedger() {
               <Input
                 id="buyerName"
                 value={editFormData.buyerName}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, buyerName: e.target.value }))}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, buyerName: capitalizeFirstLetter(e.target.value) }))}
                 data-testid="input-edit-buyer-name"
               />
             </div>
@@ -1076,7 +1077,7 @@ export default function BuyerLedger() {
               <Input
                 id="address"
                 value={editFormData.address}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, address: e.target.value }))}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, address: capitalizeFirstLetter(e.target.value) }))}
                 data-testid="input-edit-address"
               />
             </div>

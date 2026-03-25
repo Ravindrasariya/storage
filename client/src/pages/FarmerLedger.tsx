@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { FarmerLedgerEntry, FarmerLedgerEditHistoryEntry } from "@shared/schema";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 interface FarmerWithDues extends FarmerLedgerEntry {
   pyReceivables: number;
@@ -1177,7 +1178,7 @@ export default function FarmerLedger() {
               <Label>{t("farmerName")}</Label>
               <Input
                 value={editFormData.name}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, name: capitalizeFirstLetter(e.target.value) }))}
                 data-testid="input-edit-name"
               />
             </div>
@@ -1193,7 +1194,7 @@ export default function FarmerLedger() {
               <Label>{t("village")}</Label>
               <Input
                 value={editFormData.village}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, village: e.target.value }))}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, village: capitalizeFirstLetter(e.target.value) }))}
                 data-testid="input-edit-village"
               />
             </div>
@@ -1202,7 +1203,7 @@ export default function FarmerLedger() {
                 <Label>{t("tehsil")}</Label>
                 <Input
                   value={editFormData.tehsil}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, tehsil: e.target.value }))}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, tehsil: capitalizeFirstLetter(e.target.value) }))}
                   data-testid="input-edit-tehsil"
                 />
               </div>
@@ -1210,7 +1211,7 @@ export default function FarmerLedger() {
                 <Label>{t("district")}</Label>
                 <Input
                   value={editFormData.district}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, district: e.target.value }))}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, district: capitalizeFirstLetter(e.target.value) }))}
                   data-testid="input-edit-district"
                 />
               </div>
@@ -1219,7 +1220,7 @@ export default function FarmerLedger() {
               <Label>{t("state")}</Label>
               <Input
                 value={editFormData.state}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, state: e.target.value }))}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, state: capitalizeFirstLetter(e.target.value) }))}
                 data-testid="input-edit-state"
               />
             </div>
