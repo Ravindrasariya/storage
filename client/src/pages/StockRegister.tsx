@@ -85,6 +85,7 @@ export default function StockRegister() {
   const [lotNoFrom, setLotNoFrom] = useState(savedState?.lotNoFrom || "");
   const [lotNoTo, setLotNoTo] = useState(savedState?.lotNoTo || "");
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
+  const [chamberFilter, setChamberFilter] = useState(savedState?.chamberFilter || "");
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
@@ -335,6 +336,7 @@ export default function StockRegister() {
       lotNoFrom,
       lotNoTo,
       sizeQuery,
+      chamberFilter,
       qualityFilter,
       potatoTypeFilter,
       paymentDueFilter,
@@ -343,7 +345,7 @@ export default function StockRegister() {
       selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, chamberFilter, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -508,22 +510,34 @@ export default function StockRegister() {
     };
   }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, coldStorage, allLotsSummary]);
 
+  // Helper: does a lot's chamber name match the typed chamber number?
+  const matchesChamberFilter = useCallback((lot: Lot) => {
+    if (!chamberFilter.trim()) return true;
+    const name = chamberMap?.[lot.chamberId] || "";
+    const num = name.match(/(\d+)$/)?.[1] || "";
+    return num === chamberFilter.trim();
+  }, [chamberFilter, chamberMap]);
+
   // Detect if any filter/search is active
   const isFilterActive = useMemo(() => {
     if (hasSearched) return true;
     if (bagTypeFilter !== "all") return true;
+    if (chamberFilter.trim()) return true;
     return false;
-  }, [hasSearched, bagTypeFilter]);
+  }, [hasSearched, bagTypeFilter, chamberFilter]);
 
   // Get the currently displayed lots for export
   const getDisplayedLots = useMemo(() => {
     const rawLots = hasSearched ? searchResults : (initialLots || []);
-    return bagTypeFilter === "all" 
+    const afterBagType = bagTypeFilter === "all" 
       ? rawLots 
       : bagTypeFilter === "ration_seed"
         ? rawLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
         : rawLots.filter(lot => lot.bagType === bagTypeFilter);
-  }, [hasSearched, searchResults, initialLots, bagTypeFilter]);
+    return chamberFilter.trim()
+      ? afterBagType.filter(matchesChamberFilter)
+      : afterBagType;
+  }, [hasSearched, searchResults, initialLots, bagTypeFilter, chamberFilter, matchesChamberFilter]);
 
   // Export filtered results to CSV
   const [isExporting, setIsExporting] = useState(false);
@@ -1292,7 +1306,7 @@ export default function StockRegister() {
                   value={lotNoFrom}
                   onChange={(e) => setLotNoFrom(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1 min-w-[80px]"
+                  className="w-16"
                   data-testid="input-search-lotno-from"
                 />
                 <span className="text-sm font-medium text-muted-foreground">–</span>
@@ -1301,7 +1315,7 @@ export default function StockRegister() {
                   value={lotNoTo}
                   onChange={(e) => setLotNoTo(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1 min-w-[80px]"
+                  className="w-16"
                   data-testid="input-search-lotno-to"
                 />
                 <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
@@ -1312,6 +1326,16 @@ export default function StockRegister() {
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   className="flex-1 min-w-[80px]"
                   data-testid="input-search-size"
+                />
+                <span className="text-sm font-medium text-muted-foreground">|</span>
+                <span className="text-sm text-muted-foreground whitespace-nowrap">Ch#</span>
+                <Input
+                  placeholder="1"
+                  value={chamberFilter}
+                  onChange={(e) => setChamberFilter(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                  className="w-12 text-center"
+                  maxLength={2}
+                  data-testid="input-search-chamber"
                 />
                 {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
               </div>
@@ -1494,11 +1518,16 @@ export default function StockRegister() {
           const rawLots = hasSearched ? searchResults : (initialLots || []);
           
           // Apply bag type filter
-          const baseLots = bagTypeFilter === "all" 
+          const afterBagType = bagTypeFilter === "all" 
             ? rawLots 
             : bagTypeFilter === "ration_seed"
               ? rawLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
               : rawLots.filter(lot => lot.bagType === bagTypeFilter);
+
+          // Apply chamber filter (client-side, no backend call needed)
+          const baseLots = chamberFilter.trim()
+            ? afterBagType.filter(matchesChamberFilter)
+            : afterBagType;
           
           // Pre-calculate charges for each lot for sorting and display
           const lotsWithCharges = baseLots.map((lot) => {
