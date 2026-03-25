@@ -387,6 +387,10 @@ export default function StockRegister() {
           setSelectedFarmerVillage("");
           setSelectedFarmerMobile("");
         }
+        // Clear chamber filter when lot search resets
+        if (searchType === "lotNoSize") {
+          setChamberFilter("");
+        }
       }
     }
   }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, paymentDueFilter, searchType, hasSearched]);
