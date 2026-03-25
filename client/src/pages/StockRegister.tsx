@@ -670,7 +670,8 @@ export default function StockRegister() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `stock_register_${new Date().toISOString().split('T')[0]}.csv`;
+      const now = new Date();
+      link.download = `stock_register_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

@@ -4533,7 +4533,7 @@ export async function registerRoutes(
 
       const result = {
         financialYear: fy,
-        asOf: fyEnd.toISOString().split('T')[0],
+        asOf: `${fyEnd.getFullYear()}-${String(fyEnd.getMonth() + 1).padStart(2, '0')}-${String(fyEnd.getDate()).padStart(2, '0')}`,
         assets: {
           fixedAssets: {
             byCategory: fixedAssetsByCategory,
@@ -4683,7 +4683,7 @@ export async function registerRoutes(
 
       const result = {
         financialYear: fy,
-        period: { from: fyStart.toISOString().split('T')[0], to: fyEnd.toISOString().split('T')[0] },
+        period: { from: `${fyStart.getFullYear()}-${String(fyStart.getMonth() + 1).padStart(2, '0')}-${String(fyStart.getDate()).padStart(2, '0')}`, to: `${fyEnd.getFullYear()}-${String(fyEnd.getMonth() + 1).padStart(2, '0')}-${String(fyEnd.getDate()).padStart(2, '0')}` },
         income: {
           coldStorageCharges: coldStorageIncome,
           receivableAdjustments: displayReceivableAdjustments,
