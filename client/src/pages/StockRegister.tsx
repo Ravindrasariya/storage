@@ -1327,7 +1327,7 @@ export default function StockRegister() {
                   value={sizeQuery}
                   onChange={(e) => setSizeQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="w-20"
+                  className="w-36"
                   data-testid="input-search-size"
                 />
                 <span className="text-sm font-medium text-muted-foreground">|</span>
