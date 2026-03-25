@@ -1323,7 +1323,7 @@ export default function StockRegister() {
                 />
                 <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
                 <Input
-                  placeholder={`${t("size")} (${t("optional")})`}
+                  placeholder={`${t("size")}`}
                   value={sizeQuery}
                   onChange={(e) => setSizeQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
