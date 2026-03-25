@@ -1990,7 +1990,7 @@ export async function registerRoutes(
         clearanceType: 'transfer',
         transferToBuyerName: validatedData.toBuyerName,
         transferGroupId: transferGroupId,
-        transferDate: validatedData.transferDate,
+        transferDate: new Date(),
         transferRemarks: validatedData.remarks || null,
         transferTransactionId: transferTransactionId,
         transferAmount: validatedData.amount, // Store original transfer amount for display
