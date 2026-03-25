@@ -7043,7 +7043,7 @@ export class DatabaseStorage implements IStorage {
         eq(merchantAdvance.isReversed, 0)
       ));
     
-    // Get sales history to calculate sales dues (non-self-sales without active transfers)
+    // Get sales history to calculate sales dues (non-self-sales, including transferred)
     const allSales = await db.select()
       .from(salesHistory)
       .where(and(
