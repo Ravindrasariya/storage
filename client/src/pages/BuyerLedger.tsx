@@ -111,6 +111,11 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
 
   const closingBalance = rows.length > 0 ? rows[rows.length - 1].balance : (data?.openingBalance || 0);
   const formatDate = (d: string) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
+  const formatBalanceDrCr = (val: number) => {
+    if (val > 0) return <span className="text-red-600 dark:text-red-400">{formatCurrency(val)} Dr</span>;
+    if (val < 0) return <span className="text-green-600 dark:text-green-400">{formatCurrency(Math.abs(val))} Cr</span>;
+    return <span>{formatCurrency(0)}</span>;
+  };
 
   return (
     <div className="p-3 bg-muted/20" data-testid={`detailed-ledger-${buyerId}`}>
@@ -152,7 +157,7 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
                   <td className="p-1.5">{t("openingBalance")}</td>
                   <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) >= 0 ? formatCurrency(data?.openingBalance ?? 0) : formatCurrency(0)}</td>
                   <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) < 0 ? formatCurrency(Math.abs(data?.openingBalance ?? 0)) : formatCurrency(0)}</td>
-                  <td className="p-1.5 text-right">{formatCurrency(data?.openingBalance ?? 0)}</td>
+                  <td className="p-1.5 text-right">{formatBalanceDrCr(data?.openingBalance ?? 0)}</td>
                 </tr>
                 {rows.map((row) => (
                   <tr key={`${row.type}-${row.sr}`} className="border-b hover:bg-muted/20" data-testid={`row-txn-${buyerId}-${row.sr}`}>
@@ -161,7 +166,7 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
                     <td className="p-1.5">{row.particular}</td>
                     <td className="p-1.5 text-right text-red-600 dark:text-red-400">{row.debit > 0 ? formatCurrency(row.debit) : '-'}</td>
                     <td className="p-1.5 text-right text-green-600 dark:text-green-400">{row.credit > 0 ? formatCurrency(row.credit) : '-'}</td>
-                    <td className="p-1.5 text-right font-medium">{formatCurrency(row.balance)}</td>
+                    <td className="p-1.5 text-right font-medium">{formatBalanceDrCr(row.balance)}</td>
                   </tr>
                 ))}
                 <tr className="bg-amber-50/50 dark:bg-amber-950/30 font-bold">
@@ -170,7 +175,7 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
                   <td className="p-1.5">{t("closingBalance")}</td>
                   <td className="p-1.5 text-right">{closingBalance >= 0 ? formatCurrency(closingBalance) : formatCurrency(0)}</td>
                   <td className="p-1.5 text-right">{closingBalance < 0 ? formatCurrency(Math.abs(closingBalance)) : formatCurrency(0)}</td>
-                  <td className="p-1.5 text-right">{formatCurrency(closingBalance)}</td>
+                  <td className="p-1.5 text-right">{formatBalanceDrCr(closingBalance)}</td>
                 </tr>
               </tbody>
             </table>
@@ -182,7 +187,7 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
                 <span className="text-xs text-muted-foreground">{formatDate(`${selectedFY}-04-01`)}</span>
               </div>
               <div className="flex justify-between mt-1 text-xs">
-                <span>{t("balance")}: <span className="font-bold">{formatCurrency(data?.openingBalance ?? 0)}</span></span>
+                <span>{t("balance")}: <span className="font-bold">{formatBalanceDrCr(data?.openingBalance ?? 0)}</span></span>
               </div>
             </div>
             {rows.map((row) => (
@@ -195,7 +200,7 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
                 <div className="flex justify-between mt-1.5 text-xs">
                   {row.debit > 0 && <span className="text-red-600 dark:text-red-400">{t("debit")}: {formatCurrency(row.debit)}</span>}
                   {row.credit > 0 && <span className="text-green-600 dark:text-green-400">{t("credit")}: {formatCurrency(row.credit)}</span>}
-                  <span className="font-bold ml-auto">{t("balance")}: {formatCurrency(row.balance)}</span>
+                  <span className="font-bold ml-auto">{t("balance")}: {formatBalanceDrCr(row.balance)}</span>
                 </div>
               </div>
             ))}
@@ -205,7 +210,7 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
                 <span className="text-xs text-muted-foreground">{formatDate(`${selectedFY + 1}-03-31`)}</span>
               </div>
               <div className="flex justify-between mt-1 text-xs">
-                <span>{t("balance")}: <span className="font-bold">{formatCurrency(closingBalance)}</span></span>
+                <span>{t("balance")}: <span className="font-bold">{formatBalanceDrCr(closingBalance)}</span></span>
               </div>
             </div>
           </div>
