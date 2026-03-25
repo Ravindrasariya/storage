@@ -517,16 +517,18 @@ export default function StockRegister() {
 
   const matchesChamberFilter = useCallback((lot: Lot) => {
     if (chamberFilter === "all") return true;
+    if (chamberFilter === "blank") return !lot.chamberId;
     return lot.chamberId === chamberFilter;
   }, [chamberFilter]);
 
   const matchesFloorFilter = useCallback((lot: Lot) => {
     if (floorFilter === "all") return true;
+    if (floorFilter === "blank") return !lot.floor;
     return lot.floor === Number(floorFilter);
   }, [floorFilter]);
 
   const floorOptions = useMemo(() => {
-    if (chamberFilter === "all" || !chamberFloors) return [];
+    if (chamberFilter === "all" || chamberFilter === "blank" || !chamberFloors) return [];
     const floors = chamberFloors[chamberFilter] || [];
     return floors
       .map(f => f.floorNumber)
@@ -1353,18 +1355,20 @@ export default function StockRegister() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all" data-testid="select-chamber-all">{t("allChambers") || "All Chambers"}</SelectItem>
+                    <SelectItem value="blank" data-testid="select-chamber-blank">{t("blank") || "Blank"}</SelectItem>
                     {chambers?.map(ch => (
                       <SelectItem key={ch.id} value={ch.id} data-testid={`select-chamber-${ch.id}`}>{ch.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {chamberFilter !== "all" && floorOptions.length > 0 && (
+                {chamberFilter !== "all" && (
                   <Select value={floorFilter} onValueChange={setFloorFilter}>
                     <SelectTrigger className="w-[110px] h-9" data-testid="select-floor-filter">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all" data-testid="select-floor-all">{t("allFloors") || "All Floors"}</SelectItem>
+                      <SelectItem value="blank" data-testid="select-floor-blank">{t("blank") || "Blank"}</SelectItem>
                       {floorOptions.map(fn => (
                         <SelectItem key={fn} value={fn.toString()} data-testid={`select-floor-${fn}`}>{t("floor") || "Floor"} {fn}</SelectItem>
                       ))}
