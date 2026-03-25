@@ -23,6 +23,15 @@ import autoTable from "jspdf-autotable";
 import type { FarmerLedgerEntry, FarmerLedgerEditHistoryEntry } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 
+interface FarmerRecord {
+  farmerName: string;
+  village: string;
+  tehsil: string;
+  district: string;
+  state: string;
+  contactNumber: string;
+}
+
 interface FarmerWithDues extends FarmerLedgerEntry {
   pyReceivables: number;
   selfDue: number;
@@ -241,6 +250,16 @@ export default function FarmerLedger() {
     district: "",
     state: "",
   });
+
+  // Edit dialog autocomplete state
+  const [showEditNameSuggestions, setShowEditNameSuggestions] = useState(false);
+  const [showEditMobileSuggestions, setShowEditMobileSuggestions] = useState(false);
+  const [showEditVillageSuggestions, setShowEditVillageSuggestions] = useState(false);
+  const [showEditTehsilSuggestions, setShowEditTehsilSuggestions] = useState(false);
+  const editNameNav = useDropdownNavigation();
+  const editMobileNav = useDropdownNavigation();
+  const editVillageNav = useDropdownNavigation();
+  const editTehsilNav = useDropdownNavigation();
   const [expandedFarmerId, setExpandedFarmerId] = useState<string | null>(null);
   const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
   const [pendingMergeInfo, setPendingMergeInfo] = useState<{
@@ -262,6 +281,75 @@ export default function FarmerLedger() {
     queryFn: () => authFetch(`/api/farmer-ledger/${editingFarmer?.id}/history`).then(res => res.json()),
     enabled: !!editingFarmer?.id,
   });
+
+  const { data: farmerRecords } = useQuery<FarmerRecord[]>({
+    queryKey: ["/api/farmers/lookup"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: locationData } = useQuery<{ villages: string[]; tehsils: string[] }>({
+    queryKey: ["/api/locations/lookup"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Computed suggestions for edit dialog
+  const editNameSuggestions = useMemo(() => {
+    if (!farmerRecords || !farmerRecords.length) return [];
+    const nameVal = editFormData.name.toLowerCase().trim();
+    const mobileVal = editFormData.contactNumber.trim();
+    const filtered = farmerRecords.filter(f => {
+      let m = true;
+      if (nameVal) m = m && f.farmerName.toLowerCase().includes(nameVal);
+      if (mobileVal) m = m && f.contactNumber.includes(mobileVal);
+      return m;
+    });
+    const seen = new Map<string, FarmerRecord>();
+    filtered.forEach(f => { const k = f.farmerName.toLowerCase(); if (!seen.has(k)) seen.set(k, f); });
+    return Array.from(seen.values());
+  }, [farmerRecords, editFormData.name, editFormData.contactNumber]);
+
+  const editMobileSuggestions = useMemo(() => {
+    if (!farmerRecords || !farmerRecords.length) return [];
+    const nameVal = editFormData.name.toLowerCase().trim();
+    const mobileVal = editFormData.contactNumber.trim();
+    const filtered = farmerRecords.filter(f => {
+      let m = true;
+      if (mobileVal) m = m && f.contactNumber.includes(mobileVal);
+      if (nameVal) m = m && f.farmerName.toLowerCase().includes(nameVal);
+      return m;
+    });
+    const seen = new Map<string, FarmerRecord>();
+    filtered.forEach(f => { const k = f.contactNumber + '|' + f.farmerName.toLowerCase(); if (!seen.has(k)) seen.set(k, f); });
+    return Array.from(seen.values()).sort((a, b) => a.contactNumber.localeCompare(b.contactNumber));
+  }, [farmerRecords, editFormData.name, editFormData.contactNumber]);
+
+  const editVillageSuggestions = useMemo(() => {
+    if (!locationData?.villages) return [];
+    const val = editFormData.village.toLowerCase().trim();
+    if (!val) return locationData.villages.slice(0, 10);
+    return locationData.villages.filter(v => v.toLowerCase().includes(val)).slice(0, 10);
+  }, [locationData, editFormData.village]);
+
+  const editTehsilSuggestions = useMemo(() => {
+    if (!locationData?.tehsils) return [];
+    const val = editFormData.tehsil.toLowerCase().trim();
+    if (!val) return locationData.tehsils.slice(0, 10);
+    return locationData.tehsils.filter(t => t.toLowerCase().includes(val)).slice(0, 10);
+  }, [locationData, editFormData.tehsil]);
+
+  const selectEditFarmerRecord = (farmer: FarmerRecord) => {
+    setEditFormData(prev => ({
+      ...prev,
+      name: farmer.farmerName,
+      contactNumber: farmer.contactNumber,
+      village: farmer.village,
+      tehsil: farmer.tehsil,
+      district: farmer.district,
+      state: farmer.state,
+    }));
+    setShowEditNameSuggestions(false);
+    setShowEditMobileSuggestions(false);
+  };
 
   const syncMutation = useMutation({
     mutationFn: () => apiRequest('POST', '/api/farmer-ledger/sync'),
@@ -1174,55 +1262,142 @@ export default function FarmerLedger() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>{t("farmerName")}</Label>
-              <Input
-                value={editFormData.name}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, name: capitalizeFirstLetter(e.target.value) }))}
-                data-testid="input-edit-name"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <Label>{t("farmerName")}</Label>
+                <Input
+                  value={editFormData.name}
+                  onChange={(e) => { setEditFormData(prev => ({ ...prev, name: capitalizeFirstLetter(e.target.value) })); setShowEditNameSuggestions(true); }}
+                  onFocus={() => { setShowEditNameSuggestions(true); editNameNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowEditNameSuggestions(false); editNameNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => editNameNav.handleKeyDown(e, Math.min(editNameSuggestions.length, 8), (i) => selectEditFarmerRecord(editNameSuggestions.slice(0, 8)[i]), () => setShowEditNameSuggestions(false))}
+                  autoComplete="off"
+                  data-testid="input-edit-name"
+                />
+                {showEditNameSuggestions && editNameSuggestions.length > 0 && editFormData.name && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {editNameSuggestions.slice(0, 8).map((farmer, idx) => (
+                      <button key={idx} type="button"
+                        className={`w-full px-3 py-2 text-left text-sm flex flex-col hover:bg-accent ${editNameNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onMouseDown={(e) => { e.preventDefault(); selectEditFarmerRecord(farmer); }}
+                        data-testid={`suggestion-edit-name-${idx}`}
+                      >
+                        <span className="font-medium">{farmer.farmerName}</span>
+                        <span className="text-xs text-muted-foreground">{farmer.village} • {farmer.contactNumber}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Label>{t("contactNumber")}</Label>
+                <Input
+                  value={editFormData.contactNumber}
+                  onChange={(e) => { const val = e.target.value.replace(/\D/g, ""); setEditFormData(prev => ({ ...prev, contactNumber: val })); setShowEditMobileSuggestions(true); }}
+                  onFocus={() => { setShowEditMobileSuggestions(true); editMobileNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowEditMobileSuggestions(false); editMobileNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => editMobileNav.handleKeyDown(e, Math.min(editMobileSuggestions.length, 8), (i) => selectEditFarmerRecord(editMobileSuggestions.slice(0, 8)[i]), () => setShowEditMobileSuggestions(false))}
+                  maxLength={10}
+                  autoComplete="off"
+                  data-testid="input-edit-contact"
+                />
+                {showEditMobileSuggestions && editMobileSuggestions.length > 0 && editFormData.contactNumber && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {editMobileSuggestions.slice(0, 8).map((farmer, idx) => (
+                      <button key={idx} type="button"
+                        className={`w-full px-3 py-2 text-left text-sm flex flex-col hover:bg-accent ${editMobileNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onMouseDown={(e) => { e.preventDefault(); selectEditFarmerRecord(farmer); }}
+                        data-testid={`suggestion-edit-mobile-${idx}`}
+                      >
+                        <span className="font-medium">{farmer.contactNumber}</span>
+                        <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <Label>{t("contactNumber")}</Label>
-              <Input
-                value={editFormData.contactNumber}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, contactNumber: e.target.value }))}
-                data-testid="input-edit-contact"
-              />
-            </div>
-            <div>
+            <div className="relative">
               <Label>{t("village")}</Label>
               <Input
                 value={editFormData.village}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, village: capitalizeFirstLetter(e.target.value) }))}
+                onChange={(e) => { setEditFormData(prev => ({ ...prev, village: capitalizeFirstLetter(e.target.value) })); setShowEditVillageSuggestions(true); }}
+                onFocus={() => { setShowEditVillageSuggestions(true); editVillageNav.resetActive(); }}
+                onBlur={() => setTimeout(() => { setShowEditVillageSuggestions(false); editVillageNav.resetActive(); }, 200)}
+                onKeyDown={(e) => editVillageNav.handleKeyDown(e, editVillageSuggestions.length, (i) => { setEditFormData(prev => ({ ...prev, village: editVillageSuggestions[i] })); setShowEditVillageSuggestions(false); }, () => setShowEditVillageSuggestions(false))}
+                autoComplete="off"
                 data-testid="input-edit-village"
               />
+              {showEditVillageSuggestions && editVillageSuggestions.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                  {editVillageSuggestions.map((village, idx) => (
+                    <button key={idx} type="button"
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-accent ${editVillageNav.activeIndex === idx ? "bg-accent" : ""}`}
+                      onMouseDown={(e) => { e.preventDefault(); setEditFormData(prev => ({ ...prev, village })); setShowEditVillageSuggestions(false); }}
+                      data-testid={`suggestion-edit-village-${idx}`}
+                    >
+                      <span className="font-medium">{village}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <Label>{t("tehsil")}</Label>
+              <Input
+                value={editFormData.tehsil}
+                onChange={(e) => { setEditFormData(prev => ({ ...prev, tehsil: capitalizeFirstLetter(e.target.value) })); setShowEditTehsilSuggestions(true); }}
+                onFocus={() => { setShowEditTehsilSuggestions(true); editTehsilNav.resetActive(); }}
+                onBlur={() => setTimeout(() => { setShowEditTehsilSuggestions(false); editTehsilNav.resetActive(); }, 200)}
+                onKeyDown={(e) => editTehsilNav.handleKeyDown(e, editTehsilSuggestions.length, (i) => { setEditFormData(prev => ({ ...prev, tehsil: editTehsilSuggestions[i] })); setShowEditTehsilSuggestions(false); }, () => setShowEditTehsilSuggestions(false))}
+                autoComplete="off"
+                data-testid="input-edit-tehsil"
+              />
+              {showEditTehsilSuggestions && editTehsilSuggestions.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                  {editTehsilSuggestions.map((tehsil, idx) => (
+                    <button key={idx} type="button"
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-accent ${editTehsilNav.activeIndex === idx ? "bg-accent" : ""}`}
+                      onMouseDown={(e) => { e.preventDefault(); setEditFormData(prev => ({ ...prev, tehsil })); setShowEditTehsilSuggestions(false); }}
+                      data-testid={`suggestion-edit-tehsil-${idx}`}
+                    >
+                      <span className="font-medium">{tehsil}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>{t("tehsil")}</Label>
-                <Input
-                  value={editFormData.tehsil}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, tehsil: capitalizeFirstLetter(e.target.value) }))}
-                  data-testid="input-edit-tehsil"
-                />
+                <Label>{t("district")}</Label>
+                <Select value={editFormData.district} onValueChange={(val) => setEditFormData(prev => ({ ...prev, district: val }))}>
+                  <SelectTrigger data-testid="select-edit-district">
+                    <SelectValue placeholder="Select district" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Ujjain">Ujjain</SelectItem>
+                    <SelectItem value="Agar Malwa">Agar Malwa</SelectItem>
+                    <SelectItem value="Dewas">Dewas</SelectItem>
+                    <SelectItem value="Indore">Indore</SelectItem>
+                    <SelectItem value="Shajapur">Shajapur</SelectItem>
+                    <SelectItem value="Rajgarh">Rajgarh</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
-                <Label>{t("district")}</Label>
-                <Input
-                  value={editFormData.district}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, district: capitalizeFirstLetter(e.target.value) }))}
-                  data-testid="input-edit-district"
-                />
+                <Label>{t("state")}</Label>
+                <Select value={editFormData.state} onValueChange={(val) => setEditFormData(prev => ({ ...prev, state: val }))}>
+                  <SelectTrigger data-testid="select-edit-state">
+                    <SelectValue placeholder="Select state" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Madhya Pradesh">Madhya Pradesh</SelectItem>
+                    <SelectItem value="Gujarat">Gujarat</SelectItem>
+                    <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-            <div>
-              <Label>{t("state")}</Label>
-              <Input
-                value={editFormData.state}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, state: capitalizeFirstLetter(e.target.value) }))}
-                data-testid="input-edit-state"
-              />
             </div>
 
             {editHistory && editHistory.length > 0 && (
