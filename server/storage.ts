@@ -7307,7 +7307,7 @@ export class DatabaseStorage implements IStorage {
         credit: 0,
         refId: s.id,
         sortDate: s.soldAt,
-        sortOrder: 5,
+        sortOrder: 3,
       });
     }
 
@@ -7342,7 +7342,7 @@ export class DatabaseStorage implements IStorage {
         credit: 0,
         refId: s.id,
         sortDate: tDate,
-        sortOrder: 5,
+        sortOrder: 4,
       });
     }
 
@@ -7361,7 +7361,7 @@ export class DatabaseStorage implements IStorage {
         credit: roundAmount(amt),
         refId: s.id,
         sortDate: tDate,
-        sortOrder: 5,
+        sortOrder: 4,
       });
     }
 
