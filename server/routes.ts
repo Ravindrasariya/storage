@@ -3238,6 +3238,22 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/buyer-ledger/:id/transactions", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const fy = parseInt(req.query.fy as string, 10);
+      if (isNaN(fy)) {
+        return res.status(400).json({ error: "fy query parameter required (start year)" });
+      }
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.getBuyerTransactions(id, coldStorageId, fy);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching buyer transactions:", error);
+      res.status(500).json({ error: "Failed to fetch buyer transactions" });
+    }
+  });
+
   // ==================== USER AUTH ROUTES ====================
   
   // Generate a simple random token

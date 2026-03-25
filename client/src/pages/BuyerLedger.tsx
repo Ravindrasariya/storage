@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, ShoppingCart, UserPlus } from "lucide-react";
+import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, ShoppingCart, UserPlus, ChevronDown, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -49,6 +49,140 @@ interface BuyerLedgerData {
 type SortField = 'buyerId' | 'buyerName' | 'address' | 'pyReceivables' | 'salesDue' | 'buyerExtras' | 'dueTransferIn' | 'netDue';
 type SortDirection = 'asc' | 'desc';
 
+interface BuyerTransaction {
+  type: string;
+  date: string;
+  debit: number;
+  credit: number;
+  refId?: string;
+  meta?: Record<string, string>;
+}
+
+interface BuyerTransactionData {
+  openingBalance: number;
+  transactions: BuyerTransaction[];
+}
+
+function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerName: string }) {
+  const { t } = useI18n();
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const defaultFY = currentMonth >= 3 ? currentYear : currentYear - 1;
+  const [selectedFY, setSelectedFY] = useState<number>(defaultFY);
+
+  const fyOptions = useMemo(() => {
+    const options: { label: string; value: number }[] = [];
+    for (let y = defaultFY; y >= defaultFY - 4; y--) {
+      const endYY = String((y + 1) % 100).padStart(2, '0');
+      options.push({ label: `${y}-${endYY}`, value: y });
+    }
+    return options;
+  }, [defaultFY]);
+
+  const { data, isLoading } = useQuery<BuyerTransactionData>({
+    queryKey: ['/api/buyer-ledger', buyerId, 'transactions', selectedFY],
+    queryFn: () => authFetch(`/api/buyer-ledger/${buyerId}/transactions?fy=${selectedFY}`).then(res => res.json()),
+    enabled: !!buyerId,
+  });
+
+  const getParticular = useCallback((txn: BuyerTransaction): string => {
+    const m = txn.meta || {};
+    switch (txn.type) {
+      case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}`;
+      case 'sale': return `${t("saleCharges")} - ${t("lotHash")}${m.lotNo}, ${m.farmerName}, ${m.bags} ${t("bagsLabel")}`;
+      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? 'Cash' : 'Account'})`;
+      case 'cm_advance_payment': return `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? 'Cash' : 'Account'})`;
+      case 'transfer_in': return `${t("transferFrom")} ${m.fromBuyer} - ${m.transactionId}`;
+      case 'transfer_out': return `${t("transferTo")} ${m.toBuyer} - ${m.transactionId}`;
+      case 'advance': return t("advanceGiven");
+      case 'discount': return `${t("discountEntry")} - ${m.transactionId}, ${m.farmerName}`;
+      default: return txn.type;
+    }
+  }, [t]);
+
+  const rows = useMemo(() => {
+    if (!data) return [];
+    let runningBalance = data.openingBalance;
+    return data.transactions.map((txn, idx) => {
+      runningBalance = runningBalance + txn.debit - txn.credit;
+      return { ...txn, sr: idx + 1, balance: runningBalance, particular: getParticular(txn) };
+    });
+  }, [data, getParticular]);
+
+  const closingBalance = rows.length > 0 ? rows[rows.length - 1].balance : (data?.openingBalance || 0);
+  const formatDate = (d: string) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
+
+  return (
+    <div className="p-3 bg-muted/20" data-testid={`detailed-ledger-${buyerId}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold">{t("detailedLedger")} — {buyerName}</span>
+        <Select value={String(selectedFY)} onValueChange={(v) => setSelectedFY(Number(v))}>
+          <SelectTrigger className="w-[120px] h-7 text-xs" data-testid={`select-fy-${buyerId}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {fyOptions.map(opt => (
+              <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-4">
+          <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : !data || (data.transactions.length === 0 && data.openingBalance === 0) ? (
+        <div className="text-center py-4 text-muted-foreground text-xs" data-testid={`text-no-transactions-${buyerId}`}>
+          {t("noTransactionsForPeriod")}
+        </div>
+      ) : (
+        <div className="border rounded overflow-auto max-h-[400px]">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/50 sticky top-0 z-10">
+              <tr className="border-b">
+                <th className="p-1.5 text-center w-10">{t("srNo")}</th>
+                <th className="p-1.5 text-left w-20">{t("date")}</th>
+                <th className="p-1.5 text-left">{t("particular")}</th>
+                <th className="p-1.5 text-right w-24">{t("debit")}</th>
+                <th className="p-1.5 text-right w-24">{t("credit")}</th>
+                <th className="p-1.5 text-right w-28">{t("balance")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b bg-blue-50/50 dark:bg-blue-950/30 font-semibold">
+                <td className="p-1.5 text-center">-</td>
+                <td className="p-1.5">{formatDate(`${selectedFY}-04-01`)}</td>
+                <td className="p-1.5">{t("openingBalance")}</td>
+                <td className="p-1.5 text-right">{data!.openingBalance > 0 ? formatCurrency(data!.openingBalance) : '-'}</td>
+                <td className="p-1.5 text-right">{data!.openingBalance < 0 ? formatCurrency(Math.abs(data!.openingBalance)) : '-'}</td>
+                <td className="p-1.5 text-right">{formatCurrency(data!.openingBalance)}</td>
+              </tr>
+              {rows.map((row) => (
+                <tr key={`${row.type}-${row.sr}`} className="border-b hover:bg-muted/20" data-testid={`row-txn-${buyerId}-${row.sr}`}>
+                  <td className="p-1.5 text-center text-muted-foreground">{row.sr}</td>
+                  <td className="p-1.5">{formatDate(row.date)}</td>
+                  <td className="p-1.5">{row.particular}</td>
+                  <td className="p-1.5 text-right text-red-600 dark:text-red-400">{row.debit > 0 ? formatCurrency(row.debit) : '-'}</td>
+                  <td className="p-1.5 text-right text-green-600 dark:text-green-400">{row.credit > 0 ? formatCurrency(row.credit) : '-'}</td>
+                  <td className="p-1.5 text-right font-medium">{formatCurrency(row.balance)}</td>
+                </tr>
+              ))}
+              <tr className="bg-amber-50/50 dark:bg-amber-950/30 font-bold">
+                <td className="p-1.5 text-center">-</td>
+                <td className="p-1.5">{formatDate(`${selectedFY + 1}-03-31`)}</td>
+                <td className="p-1.5">{t("closingBalance")}</td>
+                <td className="p-1.5 text-right">{closingBalance > 0 ? formatCurrency(closingBalance) : '-'}</td>
+                <td className="p-1.5 text-right">{closingBalance < 0 ? formatCurrency(Math.abs(closingBalance)) : '-'}</td>
+                <td className="p-1.5 text-right">{formatCurrency(closingBalance)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BuyerLedger() {
   const { t } = useI18n();
   const { toast } = useToast();
@@ -73,6 +207,7 @@ export default function BuyerLedger() {
   const [newBuyerAddress, setNewBuyerAddress] = useState("");
   const [newBuyerContact, setNewBuyerContact] = useState("");
   const [addBuyerError, setAddBuyerError] = useState("");
+  const [expandedBuyerId, setExpandedBuyerId] = useState<string | null>(null);
   const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
   const [pendingMergeInfo, setPendingMergeInfo] = useState<{
     targetBuyer?: BuyerLedgerEntry;
@@ -607,6 +742,10 @@ export default function BuyerLedger() {
               <div className="pb-4 space-y-3">
               {filteredBuyers.active.map(buyer => (
                 <Card key={buyer.id} className="p-3" data-testid={`card-buyer-${buyer.id}`}>
+                  <div className="flex items-center gap-1 mb-1 cursor-pointer" onClick={() => setExpandedBuyerId(expandedBuyerId === buyer.id ? null : buyer.id)} data-testid={`toggle-expand-mobile-${buyer.id}`}>
+                    {expandedBuyerId === buyer.id ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                    <span className="text-xs text-muted-foreground">{t("detailedLedger")}</span>
+                  </div>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-xs text-muted-foreground">{buyer.buyerId}</span>
@@ -654,6 +793,9 @@ export default function BuyerLedger() {
                       <div className="text-red-600 dark:text-red-500 font-bold">{formatDueValue(buyer.netDue)}</div>
                     </div>
                   </div>
+                  {expandedBuyerId === buyer.id && (
+                    <BuyerDetailedLedger buyerId={buyer.id} buyerName={buyer.buyerName} />
+                  )}
                 </Card>
               ))}
               {showArchived && filteredBuyers.archived.length > 0 && (
@@ -701,12 +843,15 @@ export default function BuyerLedger() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredBuyers.active.map(buyer => (
-                      <tr key={buyer.id} className="border-b hover:bg-muted/30" data-testid={`row-buyer-${buyer.id}`}>
+                    {filteredBuyers.active.map(buyer => (<Fragment key={buyer.id}>
+                      <tr className={`border-b hover:bg-muted/30 cursor-pointer ${expandedBuyerId === buyer.id ? 'bg-muted/40' : ''}`} data-testid={`row-buyer-${buyer.id}`} onClick={() => setExpandedBuyerId(expandedBuyerId === buyer.id ? null : buyer.id)}>
                         <td className="p-2">
-                          <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => handleEditClick(buyer)} data-testid={`button-edit-${buyer.id}`}>
-                            <Pencil className="w-3 h-3" />
-                          </Button>
+                          <div className="flex items-center gap-0.5">
+                            {expandedBuyerId === buyer.id ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                            <Button size="icon" variant="ghost" className="w-6 h-6" onClick={(e) => { e.stopPropagation(); handleEditClick(buyer); }} data-testid={`button-edit-${buyer.id}`}>
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </td>
                         <td className="p-2">
                           <div className="flex items-center gap-1">
@@ -753,21 +898,30 @@ export default function BuyerLedger() {
                         <td className="p-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(buyer.netDue)}</td>
                         <td className="p-2">
                           <div className="flex items-center justify-center gap-1">
-                            <Switch
-                              checked={buyer.isFlagged === 1}
-                              onCheckedChange={() => flagMutation.mutate(buyer.id)}
-                              className="scale-75"
-                              data-testid={`switch-flag-${buyer.id}`}
-                            />
+                            <span onClick={(e) => e.stopPropagation()}>
+                              <Switch
+                                checked={buyer.isFlagged === 1}
+                                onCheckedChange={() => flagMutation.mutate(buyer.id)}
+                                className="scale-75"
+                                data-testid={`switch-flag-${buyer.id}`}
+                              />
+                            </span>
                             {canEdit && (
-                              <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => archiveMutation.mutate(buyer.id)} data-testid={`button-archive-${buyer.id}`}>
+                              <Button size="icon" variant="ghost" className="w-6 h-6" onClick={(e) => { e.stopPropagation(); archiveMutation.mutate(buyer.id); }} data-testid={`button-archive-${buyer.id}`}>
                                 <Archive className="w-3 h-3" />
                               </Button>
                             )}
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      {expandedBuyerId === buyer.id && (
+                        <tr key={`${buyer.id}-detail`}>
+                          <td colSpan={11} className="p-0 border-b">
+                            <BuyerDetailedLedger buyerId={buyer.id} buyerName={buyer.buyerName} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>))}
 
                     {showArchived && filteredBuyers.archived.length > 0 && (
                       <>

@@ -802,6 +802,28 @@ const translations: Translations = {
   interestComponent: { en: "Interest", hi: "ब्याज" },
   paymentHistory: { en: "Payment History", hi: "भुगतान इतिहास" },
   noPayments: { en: "No payments recorded", hi: "कोई भुगतान दर्ज नहीं" },
+
+  // Buyer Detailed Ledger
+  detailedLedger: { en: "Detailed Ledger", hi: "विस्तृत खाता" },
+  openingBalance: { en: "Opening Balance", hi: "प्रारंभिक शेष" },
+  closingBalance: { en: "Closing Balance", hi: "समापन शेष" },
+  particular: { en: "Particular", hi: "विवरण" },
+  debit: { en: "DR", hi: "नामे" },
+  credit: { en: "CR", hi: "जमा" },
+  balance: { en: "Balance", hi: "शेष" },
+  srNo: { en: "SR#", hi: "क्र." },
+  pyReceivableEntry: { en: "PY Receivable", hi: "पूर्व वर्ष प्राप्य" },
+  saleCharges: { en: "Sale", hi: "बिक्री" },
+  paymentReceived: { en: "Payment Received", hi: "भुगतान प्राप्त" },
+  advancePayment: { en: "Advance Payment", hi: "अग्रिम भुगतान" },
+  advanceGiven: { en: "Advance Given", hi: "अग्रिम दिया गया" },
+  transferFrom: { en: "Transfer from", hi: "से ट्रांसफर" },
+  transferTo: { en: "Transfer to", hi: "को ट्रांसफर" },
+  discountEntry: { en: "Discount", hi: "छूट" },
+  lotHash: { en: "Lot #", hi: "लॉट #" },
+  bagsLabel: { en: "bags", hi: "बोरी" },
+  noTransactionsForPeriod: { en: "No transactions found for this period", hi: "इस अवधि के लिए कोई लेनदेन नहीं मिला" },
+  selectFY: { en: "Select FY", hi: "वि.व. चुनें" },
 };
 
 interface I18nContextType {

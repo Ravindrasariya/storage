@@ -403,6 +403,17 @@ export interface IStorage {
       netDue: number;
     };
   }>;
+  getBuyerTransactions(buyerLedgerId: string, coldStorageId: string, fyStartYear: number): Promise<{
+    openingBalance: number;
+    transactions: {
+      type: string;
+      date: string;
+      debit: number;
+      credit: number;
+      refId?: string;
+      meta?: Record<string, string>;
+    }[];
+  }>;
   syncBuyersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }>;
   generateBuyerId(coldStorageId: string): Promise<string>;
   checkBuyerPotentialMerge(id: string, updates: Partial<BuyerLedgerEntry>): Promise<{
@@ -7137,6 +7148,276 @@ export class DatabaseStorage implements IStorage {
     };
     
     return { buyers: buyersWithDues, summary };
+  }
+
+  async getBuyerTransactions(buyerLedgerId: string, coldStorageId: string, fyStartYear: number): Promise<{
+    openingBalance: number;
+    transactions: {
+      type: string;
+      date: string;
+      debit: number;
+      credit: number;
+      refId?: string;
+      meta?: Record<string, string>;
+    }[];
+  }> {
+    const fyStart = new Date(fyStartYear, 3, 1);
+    const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59, 999);
+
+    const buyer = await db.select().from(buyerLedger)
+      .where(eq(buyerLedger.id, buyerLedgerId))
+      .then(rows => rows[0]);
+    if (!buyer) return { openingBalance: 0, transactions: [] };
+    const buyerNameLower = buyer.buyerName.trim().toLowerCase();
+
+    const matchesBuyer = (record: { buyerLedgerId?: string | null; buyerName?: string | null }) => {
+      if (record.buyerLedgerId && buyer.id) return record.buyerLedgerId === buyer.id;
+      return record.buyerName?.trim().toLowerCase() === buyerNameLower;
+    };
+
+    const allSales = await db.select().from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.isSelfSale, 0)
+      ));
+
+    const allReceipts = await db.select().from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.isReversed, 0)
+      ));
+
+    const allReceivables = await db.select().from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, 'cold_merchant')
+      ));
+
+    const allAdvances = await db.select().from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.isReversed, 0)
+      ));
+
+    const allDiscounts = await db.select().from(discounts)
+      .where(and(
+        eq(discounts.coldStorageId, coldStorageId),
+        eq(discounts.isReversed, 0)
+      ));
+
+    const allTransferredSales = await db.select().from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`${salesHistory.transferToBuyerName} IS NOT NULL AND TRIM(${salesHistory.transferToBuyerName}) != ''`,
+        sql`(${salesHistory.isTransferReversed} IS NULL OR ${salesHistory.isTransferReversed} = 0)`
+      ));
+
+    const buyerSales = allSales.filter(s => matchesBuyer(s));
+    const buyerReceipts = allReceipts.filter(r =>
+      (r.payerType === 'cold_merchant' || r.payerType === 'cold_merchant_advance') && matchesBuyer(r)
+    );
+    const buyerReceivables = allReceivables.filter(r => matchesBuyer(r));
+    const buyerAdvances = allAdvances.filter(ma => ma.buyerLedgerId === buyer.id);
+    const transfersIn = allTransferredSales.filter(s =>
+      s.transferToBuyerName?.trim().toLowerCase() === buyerNameLower
+    );
+    const transfersOut = allTransferredSales.filter(s =>
+      matchesBuyer(s) && s.isSelfSale === 0
+    );
+
+    const saleDebitAmount = (s: typeof allSales[0]) => {
+      return (s.coldStorageCharge || 0) + (s.extraDueToMerchantOriginal || 0) + (s.adjReceivableSelfDueAmount || 0);
+    };
+
+    let openingBalance = 0;
+
+    const priorReceivables = buyerReceivables.filter(r => {
+      const recYear = r.year;
+      return recYear < fyStartYear;
+    });
+    openingBalance += priorReceivables.reduce((sum, r) => sum + (r.finalAmount ?? r.dueAmount), 0);
+
+    const priorSales = buyerSales.filter(s => {
+      const hasActiveTransfer = s.transferToBuyerName && s.transferToBuyerName.trim() && (s.isTransferReversed === 0 || s.isTransferReversed === null);
+      return !hasActiveTransfer && s.soldAt < fyStart;
+    });
+    openingBalance += priorSales.reduce((sum, s) => sum + saleDebitAmount(s), 0);
+
+    const priorReceipts = buyerReceipts.filter(r => r.receivedAt < fyStart);
+    openingBalance -= priorReceipts.reduce((sum, r) => sum + r.amount, 0);
+
+    const priorTransfersIn = transfersIn.filter(s => {
+      const tDate = s.transferDate || s.soldAt;
+      return tDate < fyStart;
+    });
+    openingBalance += priorTransfersIn.reduce((sum, s) => sum + (s.transferAmount || s.dueAmount || 0), 0);
+
+    const priorTransfersOut = transfersOut.filter(s => {
+      const tDate = s.transferDate || s.soldAt;
+      return tDate < fyStart;
+    });
+    openingBalance -= priorTransfersOut.reduce((sum, s) => sum + (s.transferAmount || s.dueAmount || 0), 0);
+
+    const priorAdvances = buyerAdvances.filter(ma => ma.effectiveDate < fyStart);
+    openingBalance += priorAdvances.reduce((sum, ma) => sum + (ma.finalAmount || ma.amount), 0);
+
+    const priorDiscounts = allDiscounts.filter(d => {
+      if (d.discountDate >= fyStart) return false;
+      try {
+        const allocations = JSON.parse(d.buyerAllocations || '[]');
+        return allocations.some((a: { buyerName?: string }) =>
+          a.buyerName?.trim().toLowerCase() === buyerNameLower
+        );
+      } catch { return false; }
+    });
+    for (const d of priorDiscounts) {
+      const allocations = JSON.parse(d.buyerAllocations || '[]');
+      const buyerAlloc = allocations.find((a: { buyerName?: string }) =>
+        a.buyerName?.trim().toLowerCase() === buyerNameLower
+      );
+      if (buyerAlloc) openingBalance -= buyerAlloc.amount || 0;
+    }
+
+    type TxnEntry = { type: string; date: string; debit: number; credit: number; refId?: string; meta?: Record<string, string>; sortDate: Date; sortOrder: number };
+    const transactions: TxnEntry[] = [];
+
+    const fyReceivables = buyerReceivables.filter(r => r.year === fyStartYear);
+    for (const r of fyReceivables) {
+      const amt = (r.finalAmount ?? r.dueAmount);
+      transactions.push({
+        type: 'py_receivable',
+        date: `${fyStartYear}-04-01`,
+        meta: r.remarks ? { remarks: r.remarks } : undefined,
+        debit: roundAmount(amt),
+        credit: 0,
+        refId: r.id,
+        sortDate: fyStart,
+        sortOrder: 1,
+      });
+    }
+
+    const fySales = buyerSales.filter(s => {
+      const hasActiveTransfer = s.transferToBuyerName && s.transferToBuyerName.trim() && (s.isTransferReversed === 0 || s.isTransferReversed === null);
+      return !hasActiveTransfer && s.soldAt >= fyStart && s.soldAt <= fyEnd;
+    });
+    for (const s of fySales) {
+      const amt = saleDebitAmount(s);
+      transactions.push({
+        type: 'sale',
+        date: s.soldAt.toISOString().slice(0, 10),
+        meta: { lotNo: String(s.lotNo), farmerName: s.farmerName, bags: String(s.quantitySold) },
+        debit: roundAmount(amt),
+        credit: 0,
+        refId: s.id,
+        sortDate: s.soldAt,
+        sortOrder: 5,
+      });
+    }
+
+    const fyReceipts = buyerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
+    for (const r of fyReceipts) {
+      const isCmAdvance = r.payerType === 'cold_merchant_advance';
+      transactions.push({
+        type: isCmAdvance ? 'cm_advance_payment' : 'payment',
+        date: r.receivedAt.toISOString().slice(0, 10),
+        meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash' },
+        debit: 0,
+        credit: roundAmount(r.amount),
+        refId: r.id,
+        sortDate: r.receivedAt,
+        sortOrder: 5,
+      });
+    }
+
+    const fyTransfersIn = transfersIn.filter(s => {
+      const tDate = s.transferDate || s.soldAt;
+      return tDate >= fyStart && tDate <= fyEnd;
+    });
+    for (const s of fyTransfersIn) {
+      const tDate = s.transferDate || s.soldAt;
+      const amt = s.transferAmount || s.dueAmount || 0;
+      transactions.push({
+        type: 'transfer_in',
+        date: tDate.toISOString().slice(0, 10),
+        meta: { fromBuyer: s.buyerName || '?', transactionId: s.transferTransactionId || '' },
+        debit: roundAmount(amt),
+        credit: 0,
+        refId: s.id,
+        sortDate: tDate,
+        sortOrder: 5,
+      });
+    }
+
+    const fyTransfersOut = transfersOut.filter(s => {
+      const tDate = s.transferDate || s.soldAt;
+      return tDate >= fyStart && tDate <= fyEnd;
+    });
+    for (const s of fyTransfersOut) {
+      const tDate = s.transferDate || s.soldAt;
+      const amt = s.transferAmount || s.dueAmount || 0;
+      transactions.push({
+        type: 'transfer_out',
+        date: tDate.toISOString().slice(0, 10),
+        meta: { toBuyer: s.transferToBuyerName || '?', transactionId: s.transferTransactionId || '' },
+        debit: 0,
+        credit: roundAmount(amt),
+        refId: s.id,
+        sortDate: tDate,
+        sortOrder: 5,
+      });
+    }
+
+    const fyAdvances = buyerAdvances.filter(ma => ma.effectiveDate >= fyStart && ma.effectiveDate <= fyEnd);
+    for (const ma of fyAdvances) {
+      transactions.push({
+        type: 'advance',
+        date: ma.effectiveDate.toISOString().slice(0, 10),
+        debit: roundAmount(ma.finalAmount || ma.amount),
+        credit: 0,
+        refId: ma.id,
+        sortDate: ma.effectiveDate,
+        sortOrder: 5,
+      });
+    }
+
+    const fyDiscounts = allDiscounts.filter(d => {
+      if (d.discountDate < fyStart || d.discountDate > fyEnd) return false;
+      try {
+        const allocations = JSON.parse(d.buyerAllocations || '[]');
+        return allocations.some((a: { buyerName?: string }) =>
+          a.buyerName?.trim().toLowerCase() === buyerNameLower
+        );
+      } catch { return false; }
+    });
+    for (const d of fyDiscounts) {
+      const allocations = JSON.parse(d.buyerAllocations || '[]');
+      const buyerAlloc = allocations.find((a: { buyerName?: string }) =>
+        a.buyerName?.trim().toLowerCase() === buyerNameLower
+      );
+      if (buyerAlloc) {
+        transactions.push({
+          type: 'discount',
+          date: d.discountDate.toISOString().slice(0, 10),
+          meta: { transactionId: d.transactionId || '', farmerName: d.farmerName },
+          debit: 0,
+          credit: roundAmount(buyerAlloc.amount || 0),
+          refId: d.id,
+          sortDate: d.discountDate,
+          sortOrder: 5,
+        });
+      }
+    }
+
+    transactions.sort((a, b) => {
+      const dateCompare = a.sortDate.getTime() - b.sortDate.getTime();
+      if (dateCompare !== 0) return dateCompare;
+      return a.sortOrder - b.sortOrder;
+    });
+
+    return {
+      openingBalance: roundAmount(openingBalance),
+      transactions: transactions.map(({ sortDate, sortOrder, ...rest }) => rest),
+    };
   }
 
   // Sync buyers from touchpoints (sales history, opening receivables)
