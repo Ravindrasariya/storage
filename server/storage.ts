@@ -7240,10 +7240,7 @@ export class DatabaseStorage implements IStorage {
     });
     openingBalance += priorReceivables.reduce((sum, r) => sum + (r.finalAmount ?? r.dueAmount), 0);
 
-    const priorSales = buyerSales.filter(s => {
-      const hasActiveTransfer = s.transferToBuyerName && s.transferToBuyerName.trim() && (s.isTransferReversed === 0 || s.isTransferReversed === null);
-      return !hasActiveTransfer && s.soldAt < fyStart;
-    });
+    const priorSales = buyerSales.filter(s => s.soldAt < fyStart);
     openingBalance += priorSales.reduce((sum, s) => sum + saleDebitAmount(s), 0);
 
     const priorReceipts = buyerReceipts.filter(r => r.receivedAt < fyStart);
@@ -7299,10 +7296,7 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const fySales = buyerSales.filter(s => {
-      const hasActiveTransfer = s.transferToBuyerName && s.transferToBuyerName.trim() && (s.isTransferReversed === 0 || s.isTransferReversed === null);
-      return !hasActiveTransfer && s.soldAt >= fyStart && s.soldAt <= fyEnd;
-    });
+    const fySales = buyerSales.filter(s => s.soldAt >= fyStart && s.soldAt <= fyEnd);
     for (const s of fySales) {
       const amt = saleDebitAmount(s);
       transactions.push({
