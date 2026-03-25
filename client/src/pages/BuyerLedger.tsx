@@ -90,8 +90,8 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
     switch (txn.type) {
       case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}`;
       case 'sale': return `${t("saleCharges")} - ${t("lotHash")}${m.lotNo}, ${m.farmerName}, ${m.bags} ${t("bagsLabel")}`;
-      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : t("account")})`;
-      case 'cm_advance_payment': return `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : t("account")})`;
+      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
+      case 'cm_advance_payment': return `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
       case 'transfer_in': return `${t("transferFrom")} ${m.fromBuyer} - ${m.transactionId}`;
       case 'transfer_out': return `${t("transferTo")} ${m.toBuyer} - ${m.transactionId}`;
       case 'advance': return t("advanceGiven");
@@ -132,48 +132,84 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
           <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="border rounded overflow-auto max-h-[400px]">
-          <table className="w-full text-xs">
-            <thead className="bg-muted/50 sticky top-0 z-10">
-              <tr className="border-b">
-                <th className="p-1.5 text-center w-10">{t("srNo")}</th>
-                <th className="p-1.5 text-left w-20">{t("date")}</th>
-                <th className="p-1.5 text-left">{t("particular")}</th>
-                <th className="p-1.5 text-right w-24">{t("debit")}</th>
-                <th className="p-1.5 text-right w-24">{t("credit")}</th>
-                <th className="p-1.5 text-right w-28">{t("balance")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b bg-blue-50/50 dark:bg-blue-950/30 font-semibold">
-                <td className="p-1.5 text-center">-</td>
-                <td className="p-1.5">{formatDate(`${selectedFY}-04-01`)}</td>
-                <td className="p-1.5">{t("openingBalance")}</td>
-                <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) >= 0 ? formatCurrency(data?.openingBalance ?? 0) : formatCurrency(0)}</td>
-                <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) < 0 ? formatCurrency(Math.abs(data?.openingBalance ?? 0)) : formatCurrency(0)}</td>
-                <td className="p-1.5 text-right">{formatCurrency(data?.openingBalance ?? 0)}</td>
-              </tr>
-              {rows.map((row) => (
-                <tr key={`${row.type}-${row.sr}`} className="border-b hover:bg-muted/20" data-testid={`row-txn-${buyerId}-${row.sr}`}>
-                  <td className="p-1.5 text-center text-muted-foreground">{row.sr}</td>
-                  <td className="p-1.5">{formatDate(row.date)}</td>
-                  <td className="p-1.5">{row.particular}</td>
-                  <td className="p-1.5 text-right text-red-600 dark:text-red-400">{row.debit > 0 ? formatCurrency(row.debit) : '-'}</td>
-                  <td className="p-1.5 text-right text-green-600 dark:text-green-400">{row.credit > 0 ? formatCurrency(row.credit) : '-'}</td>
-                  <td className="p-1.5 text-right font-medium">{formatCurrency(row.balance)}</td>
+        <>
+          <div className="hidden md:block border rounded overflow-auto max-h-[400px]">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/50 sticky top-0 z-10">
+                <tr className="border-b">
+                  <th className="p-1.5 text-center w-10">{t("srNo")}</th>
+                  <th className="p-1.5 text-left w-20">{t("date")}</th>
+                  <th className="p-1.5 text-left">{t("particular")}</th>
+                  <th className="p-1.5 text-right w-24">{t("debit")}</th>
+                  <th className="p-1.5 text-right w-24">{t("credit")}</th>
+                  <th className="p-1.5 text-right w-28">{t("balance")}</th>
                 </tr>
-              ))}
-              <tr className="bg-amber-50/50 dark:bg-amber-950/30 font-bold">
-                <td className="p-1.5 text-center">-</td>
-                <td className="p-1.5">{formatDate(`${selectedFY + 1}-03-31`)}</td>
-                <td className="p-1.5">{t("closingBalance")}</td>
-                <td className="p-1.5 text-right">{closingBalance >= 0 ? formatCurrency(closingBalance) : formatCurrency(0)}</td>
-                <td className="p-1.5 text-right">{closingBalance < 0 ? formatCurrency(Math.abs(closingBalance)) : formatCurrency(0)}</td>
-                <td className="p-1.5 text-right">{formatCurrency(closingBalance)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                <tr className="border-b bg-blue-50/50 dark:bg-blue-950/30 font-semibold">
+                  <td className="p-1.5 text-center">-</td>
+                  <td className="p-1.5">{formatDate(`${selectedFY}-04-01`)}</td>
+                  <td className="p-1.5">{t("openingBalance")}</td>
+                  <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) >= 0 ? formatCurrency(data?.openingBalance ?? 0) : formatCurrency(0)}</td>
+                  <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) < 0 ? formatCurrency(Math.abs(data?.openingBalance ?? 0)) : formatCurrency(0)}</td>
+                  <td className="p-1.5 text-right">{formatCurrency(data?.openingBalance ?? 0)}</td>
+                </tr>
+                {rows.map((row) => (
+                  <tr key={`${row.type}-${row.sr}`} className="border-b hover:bg-muted/20" data-testid={`row-txn-${buyerId}-${row.sr}`}>
+                    <td className="p-1.5 text-center text-muted-foreground">{row.sr}</td>
+                    <td className="p-1.5">{formatDate(row.date)}</td>
+                    <td className="p-1.5">{row.particular}</td>
+                    <td className="p-1.5 text-right text-red-600 dark:text-red-400">{row.debit > 0 ? formatCurrency(row.debit) : '-'}</td>
+                    <td className="p-1.5 text-right text-green-600 dark:text-green-400">{row.credit > 0 ? formatCurrency(row.credit) : '-'}</td>
+                    <td className="p-1.5 text-right font-medium">{formatCurrency(row.balance)}</td>
+                  </tr>
+                ))}
+                <tr className="bg-amber-50/50 dark:bg-amber-950/30 font-bold">
+                  <td className="p-1.5 text-center">-</td>
+                  <td className="p-1.5">{formatDate(`${selectedFY + 1}-03-31`)}</td>
+                  <td className="p-1.5">{t("closingBalance")}</td>
+                  <td className="p-1.5 text-right">{closingBalance >= 0 ? formatCurrency(closingBalance) : formatCurrency(0)}</td>
+                  <td className="p-1.5 text-right">{closingBalance < 0 ? formatCurrency(Math.abs(closingBalance)) : formatCurrency(0)}</td>
+                  <td className="p-1.5 text-right">{formatCurrency(closingBalance)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="md:hidden space-y-2 max-h-[400px] overflow-auto">
+            <div className="rounded border bg-blue-50/50 dark:bg-blue-950/30 p-2" data-testid={`card-opening-${buyerId}`}>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-semibold">{t("openingBalance")}</span>
+                <span className="text-xs text-muted-foreground">{formatDate(`${selectedFY}-04-01`)}</span>
+              </div>
+              <div className="flex justify-between mt-1 text-xs">
+                <span>{t("balance")}: <span className="font-bold">{formatCurrency(data?.openingBalance ?? 0)}</span></span>
+              </div>
+            </div>
+            {rows.map((row) => (
+              <div key={`${row.type}-${row.sr}`} className="rounded border p-2" data-testid={`card-txn-${buyerId}-${row.sr}`}>
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-xs text-muted-foreground">#{row.sr}</span>
+                  <span className="text-xs text-muted-foreground">{formatDate(row.date)}</span>
+                </div>
+                <div className="text-xs mt-1 font-medium">{row.particular}</div>
+                <div className="flex justify-between mt-1.5 text-xs">
+                  {row.debit > 0 && <span className="text-red-600 dark:text-red-400">{t("debit")}: {formatCurrency(row.debit)}</span>}
+                  {row.credit > 0 && <span className="text-green-600 dark:text-green-400">{t("credit")}: {formatCurrency(row.credit)}</span>}
+                  <span className="font-bold ml-auto">{t("balance")}: {formatCurrency(row.balance)}</span>
+                </div>
+              </div>
+            ))}
+            <div className="rounded border bg-amber-50/50 dark:bg-amber-950/30 p-2" data-testid={`card-closing-${buyerId}`}>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold">{t("closingBalance")}</span>
+                <span className="text-xs text-muted-foreground">{formatDate(`${selectedFY + 1}-03-31`)}</span>
+              </div>
+              <div className="flex justify-between mt-1 text-xs">
+                <span>{t("balance")}: <span className="font-bold">{formatCurrency(closingBalance)}</span></span>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

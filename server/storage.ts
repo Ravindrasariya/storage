@@ -7187,6 +7187,10 @@ export class DatabaseStorage implements IStorage {
         eq(cashReceipts.isReversed, 0)
       ));
 
+    const allBankAccounts = await db.select().from(bankAccounts)
+      .where(eq(bankAccounts.coldStorageId, coldStorageId));
+    const accountMap = new Map(allBankAccounts.map(a => [a.id, a.accountName]));
+
     const allReceivables = await db.select().from(openingReceivables)
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
@@ -7317,10 +7321,11 @@ export class DatabaseStorage implements IStorage {
     const fyReceipts = buyerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
     for (const r of fyReceipts) {
       const isCmAdvance = r.payerType === 'cold_merchant_advance';
+      const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
       transactions.push({
         type: isCmAdvance ? 'cm_advance_payment' : 'payment',
         date: r.receivedAt.toISOString().slice(0, 10),
-        meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash' },
+        meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName },
         debit: 0,
         credit: roundAmount(r.amount),
         refId: r.id,
