@@ -7086,14 +7086,10 @@ export class DatabaseStorage implements IStorage {
         .filter(ma => ma.buyerLedgerId === buyer.id)
         .reduce((sum, ma) => sum + ((ma.finalAmount || 0) - (ma.paidAmount || 0)), 0);
       
-      // Sales Due: Sum of unpaid NON-TRANSFERRED sales to this buyer
-      // Transferred sales are tracked separately in Transfer In
+      // Sales Due: Sum of unpaid sales to this buyer (including transferred sales)
+      // Transfer Out offsets these in netDue calculation
       const buyerSales = allSales
-        .filter(s => {
-          const hasActiveTransfer = s.transferToBuyerName && s.transferToBuyerName.trim() && (s.isTransferReversed === 0 || s.isTransferReversed === null);
-          // Only include if this matches the buyer AND no active transfer
-          return matchesBuyer(s) && !hasActiveTransfer;
-        });
+        .filter(s => matchesBuyer(s));
       
       // dueAmount already represents the remaining unpaid amount (updated when payments are made)
       // adjReceivableSelfDueAmount: farmer dues adjusted through this sale, also owed by buyer
@@ -7114,14 +7110,12 @@ export class DatabaseStorage implements IStorage {
         .filter(s => matchesBuyer(s) && s.isSelfSale === 0)
         .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
       
-      const dueTransferIn = buyerTransferIn - buyerTransferOut;
+      const dueTransferIn = buyerTransferIn;
+      const dueTransferOut = buyerTransferOut;
       
-      const dueTransferOut = 0;
-      
-      // Net Due = PY Receivables + Advance Due + Sales Due + Buyer Extras + Farmer Transfers + Buyer Transfers Received
-      // Source buyer's transfer-out does NOT add to their liability (they don't owe it)
-      // Destination buyer's transfer-in IS their liability
-      const netDue = roundAmount(pyReceivables + advanceDue + salesDue + buyerExtras + buyerTransferIn);
+      // Net Due = PY Receivables + Advance Due + Sales Due + Buyer Extras + Transfer In - Transfer Out
+      // salesDue includes transferred sales; transferOut offsets them
+      const netDue = roundAmount(pyReceivables + advanceDue + salesDue + buyerExtras + buyerTransferIn - buyerTransferOut);
       
       return {
         ...buyer,
