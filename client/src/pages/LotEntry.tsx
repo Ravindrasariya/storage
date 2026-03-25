@@ -748,25 +748,24 @@ export default function LotEntry() {
                         }}
                         onFocus={() => { setShowVillageSuggestions(true); villageNav.resetActive(); }}
                         onBlur={() => setTimeout(() => { setShowVillageSuggestions(false); villageNav.resetActive(); }, 200)}
-                        onKeyDown={(e) => villageNav.handleKeyDown(e, Math.min(getVillageSuggestions.length, 5), (i) => { selectFarmerRecord(getVillageSuggestions.slice(0, 5)[i]); setShowVillageSuggestions(false); }, () => setShowVillageSuggestions(false))}
+                        onKeyDown={(e) => villageNav.handleKeyDown(e, getLocationVillageSuggestions.length, (i) => { field.onChange(getLocationVillageSuggestions[i]); setShowVillageSuggestions(false); }, () => setShowVillageSuggestions(false))}
                         placeholder="Enter village"
                         autoComplete="off"
                         className={autoFilledFields.has("village") ? "ring-2 ring-green-500 bg-green-50 dark:bg-green-950/30 transition-all duration-300" : ""}
                         data-testid="input-village"
                       />
                     </FormControl>
-                    {showVillageSuggestions && getVillageSuggestions.length > 0 && (
+                    {showVillageSuggestions && getLocationVillageSuggestions.length > 0 && (
                       <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                        {getVillageSuggestions.slice(0, 5).map((farmer, idx) => (
+                        {getLocationVillageSuggestions.map((village, idx) => (
                           <button
                             key={idx}
                             type="button"
-                            className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${villageNav.activeIndex === idx ? "bg-accent" : ""}`}
-                            onClick={() => selectFarmerRecord(farmer)}
-                            data-testid={`suggestion-village-farmer-${idx}`}
+                            className={`w-full px-3 py-2 text-left hover-elevate text-sm ${villageNav.activeIndex === idx ? "bg-accent" : ""}`}
+                            onClick={() => { field.onChange(village); setShowVillageSuggestions(false); }}
+                            data-testid={`suggestion-village-${idx}`}
                           >
-                            <span className="font-medium">{farmer.village}</span>
-                            <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.contactNumber}</span>
+                            <span className="font-medium">{village}</span>
                           </button>
                         ))}
                       </div>
