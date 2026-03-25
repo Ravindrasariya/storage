@@ -85,7 +85,7 @@ export default function StockRegister() {
   const [lotNoFrom, setLotNoFrom] = useState(savedState?.lotNoFrom || "");
   const [lotNoTo, setLotNoTo] = useState(savedState?.lotNoTo || "");
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
-  const [chamberFilter, setChamberFilter] = useState(savedState?.chamberFilter || "");
+  const [chamberFilter, setChamberFilter] = useState("");
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
@@ -336,7 +336,6 @@ export default function StockRegister() {
       lotNoFrom,
       lotNoTo,
       sizeQuery,
-      chamberFilter,
       qualityFilter,
       potatoTypeFilter,
       paymentDueFilter,
@@ -345,7 +344,7 @@ export default function StockRegister() {
       selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, chamberFilter, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -1333,14 +1332,25 @@ export default function StockRegister() {
                 />
                 <span className="text-sm font-medium text-muted-foreground">|</span>
                 <span className="text-sm text-muted-foreground whitespace-nowrap">Ch#</span>
-                <Input
-                  placeholder="1"
-                  value={chamberFilter}
-                  onChange={(e) => setChamberFilter(e.target.value.replace(/\D/g, "").slice(0, 2))}
-                  className="w-12 text-center"
-                  maxLength={2}
-                  data-testid="input-search-chamber"
-                />
+                <div className="relative flex items-center">
+                  <Input
+                    placeholder="1"
+                    value={chamberFilter}
+                    onChange={(e) => setChamberFilter(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                    className="w-12 text-center"
+                    maxLength={2}
+                    data-testid="input-search-chamber"
+                  />
+                  {chamberFilter && (
+                    <button
+                      onClick={() => setChamberFilter("")}
+                      className="absolute right-1 text-muted-foreground hover:text-foreground"
+                      data-testid="btn-clear-chamber"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
                 {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
               </div>
               <div className="flex items-center gap-2 sm:border-l sm:pl-2">
