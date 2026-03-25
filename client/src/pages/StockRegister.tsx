@@ -85,7 +85,8 @@ export default function StockRegister() {
   const [lotNoFrom, setLotNoFrom] = useState(savedState?.lotNoFrom || "");
   const [lotNoTo, setLotNoTo] = useState(savedState?.lotNoTo || "");
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
-  const [chamberFilter, setChamberFilter] = useState("");
+  const [chamberFilter, setChamberFilter] = useState("all");
+  const [floorFilter, setFloorFilter] = useState("all");
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
@@ -386,9 +387,10 @@ export default function StockRegister() {
           setSelectedFarmerVillage("");
           setSelectedFarmerMobile("");
         }
-        // Clear chamber filter when lot search resets
+        // Clear chamber and floor filters when lot search resets
         if (searchType === "lotNoSize") {
-          setChamberFilter("");
+          setChamberFilter("all");
+          setFloorFilter("all");
         }
       }
     }
@@ -513,21 +515,32 @@ export default function StockRegister() {
     };
   }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, coldStorage, allLotsSummary]);
 
-  // Helper: does a lot's chamber name match the typed chamber number?
   const matchesChamberFilter = useCallback((lot: Lot) => {
-    if (!chamberFilter.trim()) return true;
-    const name = chamberMap?.[lot.chamberId] || "";
-    const num = name.match(/(\d+)$/)?.[1] || "";
-    return num === chamberFilter.trim();
-  }, [chamberFilter, chamberMap]);
+    if (chamberFilter === "all") return true;
+    return lot.chamberId === chamberFilter;
+  }, [chamberFilter]);
+
+  const matchesFloorFilter = useCallback((lot: Lot) => {
+    if (floorFilter === "all") return true;
+    return lot.floor === Number(floorFilter);
+  }, [floorFilter]);
+
+  const floorOptions = useMemo(() => {
+    if (chamberFilter === "all" || !chamberFloors) return [];
+    const floors = chamberFloors[chamberFilter] || [];
+    return floors
+      .map(f => f.floorNumber)
+      .sort((a, b) => a - b);
+  }, [chamberFilter, chamberFloors]);
 
   // Detect if any filter/search is active
   const isFilterActive = useMemo(() => {
     if (hasSearched) return true;
     if (bagTypeFilter !== "all") return true;
-    if (chamberFilter.trim()) return true;
+    if (chamberFilter !== "all") return true;
+    if (floorFilter !== "all") return true;
     return false;
-  }, [hasSearched, bagTypeFilter, chamberFilter]);
+  }, [hasSearched, bagTypeFilter, chamberFilter, floorFilter]);
 
   // Get the currently displayed lots for export
   const getDisplayedLots = useMemo(() => {
@@ -537,10 +550,13 @@ export default function StockRegister() {
       : bagTypeFilter === "ration_seed"
         ? rawLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
         : rawLots.filter(lot => lot.bagType === bagTypeFilter);
-    return chamberFilter.trim()
+    const afterChamber = chamberFilter !== "all"
       ? afterBagType.filter(matchesChamberFilter)
       : afterBagType;
-  }, [hasSearched, searchResults, initialLots, bagTypeFilter, chamberFilter, matchesChamberFilter]);
+    return floorFilter !== "all"
+      ? afterChamber.filter(matchesFloorFilter)
+      : afterChamber;
+  }, [hasSearched, searchResults, initialLots, bagTypeFilter, chamberFilter, matchesChamberFilter, floorFilter, matchesFloorFilter]);
 
   // Export filtered results to CSV
   const [isExporting, setIsExporting] = useState(false);
@@ -550,7 +566,7 @@ export default function StockRegister() {
     try {
       // When no filter is applied, fetch ALL lots for export (not just displayed ones)
       let lots: Lot[];
-      if (!hasSearched && bagTypeFilter === "all" && !chamberFilter.trim()) {
+      if (!hasSearched && bagTypeFilter === "all" && chamberFilter === "all" && floorFilter === "all") {
         // Fetch all lots without limit for export
         const response = await authFetch("/api/lots?sort=lotNo");
         if (!response.ok) throw new Error("Failed to fetch lots for export");
@@ -1331,26 +1347,30 @@ export default function StockRegister() {
                   data-testid="input-search-size"
                 />
                 <span className="text-sm font-medium text-muted-foreground">|</span>
-                <span className="text-sm text-muted-foreground whitespace-nowrap">Ch#</span>
-                <div className="relative flex items-center">
-                  <Input
-                    placeholder="1"
-                    value={chamberFilter}
-                    onChange={(e) => setChamberFilter(e.target.value.replace(/\D/g, "").slice(0, 2))}
-                    className="w-20 text-center"
-                    maxLength={2}
-                    data-testid="input-search-chamber"
-                  />
-                  {chamberFilter && (
-                    <button
-                      onClick={() => setChamberFilter("")}
-                      className="absolute right-1 text-muted-foreground hover:text-foreground"
-                      data-testid="btn-clear-chamber"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
+                <Select value={chamberFilter} onValueChange={(val) => { setChamberFilter(val); setFloorFilter("all"); }}>
+                  <SelectTrigger className="w-[130px] h-9" data-testid="select-chamber-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" data-testid="select-chamber-all">{t("allChambers") || "All Chambers"}</SelectItem>
+                    {chambers?.map(ch => (
+                      <SelectItem key={ch.id} value={ch.id} data-testid={`select-chamber-${ch.id}`}>{ch.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {chamberFilter !== "all" && floorOptions.length > 0 && (
+                  <Select value={floorFilter} onValueChange={setFloorFilter}>
+                    <SelectTrigger className="w-[110px] h-9" data-testid="select-floor-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all" data-testid="select-floor-all">{t("allFloors") || "All Floors"}</SelectItem>
+                      {floorOptions.map(fn => (
+                        <SelectItem key={fn} value={fn.toString()} data-testid={`select-floor-${fn}`}>{t("floor") || "Floor"} {fn}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
               </div>
               <div className="flex items-center gap-2 sm:border-l sm:pl-2">
@@ -1538,10 +1558,13 @@ export default function StockRegister() {
               ? rawLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
               : rawLots.filter(lot => lot.bagType === bagTypeFilter);
 
-          // Apply chamber filter (client-side, no backend call needed)
-          const baseLots = chamberFilter.trim()
+          // Apply chamber and floor filters (client-side, no backend call needed)
+          const afterChamber = chamberFilter !== "all"
             ? afterBagType.filter(matchesChamberFilter)
             : afterBagType;
+          const baseLots = floorFilter !== "all"
+            ? afterChamber.filter(matchesFloorFilter)
+            : afterChamber;
           
           // Pre-calculate charges for each lot for sorting and display
           const lotsWithCharges = baseLots.map((lot) => {

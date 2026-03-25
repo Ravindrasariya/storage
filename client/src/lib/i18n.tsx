@@ -75,6 +75,8 @@ const translations: Translations = {
   storageLocation: { en: "Storage Location", hi: "भंडारण स्थान" },
   chamber: { en: "Chamber", hi: "कक्ष" },
   floor: { en: "Floor", hi: "मंजिल" },
+  allChambers: { en: "All Chambers", hi: "सभी चैम्बर" },
+  allFloors: { en: "All Floors", hi: "सभी मंजिलें" },
   position: { en: "Position", hi: "स्थिति" },
   qualityAssessment: { en: "Quality Assessment", hi: "गुणवत्ता मूल्यांकन" },
   type: { en: "Potato Variety", hi: "आलू की किस्म" },
