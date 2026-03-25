@@ -1,0 +1,73 @@
+1. Expandable Row Pattern (Master-Detail)
+
+The core idea is a master table of buyers where clicking a row expands an inline detail section underneath it.
+
+How it works:
+
+    A single state variable tracks which row is expanded: expandedBuyerId (stores the ID of the currently expanded buyer, or null if none)
+    Each row is wrapped in a <Fragment> so you can render two <tr> elements per buyer — the summary row and the expanded detail row
+    Clicking the summary row toggles: setExpandedBuyerId(prev => prev === buyer.id ? null : buyer.id)
+    The detail row uses <td colSpan={12}> to span the full table width, and renders a separate component (BuyerLedgerSection) inside it
+    A chevron icon (ChevronRight / ChevronDown) shows the expand state
+
+Key code pattern:
+
+{sortedBuyers.map((buyer) => (
+  <Fragment key={buyer.id}>
+    {/* Summary row — clickable */}
+    <tr onClick={() => toggle(buyer.id)}>
+      ...columns...
+      <td><ChevronRight or ChevronDown icon /></td>
+    </tr>
+    {/* Detail row — only rendered when expanded */}
+    {expandedBuyerId === buyer.id && (
+      <tr>
+        <td colSpan={12}>
+          <BuyerLedgerSection buyer={buyer} />
+        </td>
+      </tr>
+    )}
+  </Fragment>
+))}
+
+2. The Ledger Detail Component (BuyerLedgerSection)
+
+This is a standalone component that:
+
+    Takes the buyer as a prop
+    Fetches ledger data via TanStack Query (useQuery with key /api/buyers/{id}/ledger)
+    The API returns: openingBalance, fyStart, fyEnd, and an array of entries (each with date, particulars, refCode, dr, cr)
+    A useMemo transforms entries into rows with a running balance — starting from the opening balance and accumulating dr/cr
+    Includes a PDF download button using jsPDF
+
+3. Running Balance Computation
+
+let balance = openingBalance;
+for (const entry of entries) {
+  balance = balance + entry.dr - entry.cr;
+  rows.push({ ...entry, balance });
+}
+
+The first row is always the "Opening Balance" row (styled differently with green background). Each subsequent row shows the running balance.
+4. Styling Approach
+
+    Summary row: hover:bg-muted/30 transition-colors cursor-pointer — subtle hover effect, pointer cursor signals clickability
+    Expanded detail: bg-muted/10 border-t px-4 py-3 — slightly different background to visually separate it from the main table
+    Opening balance row: bg-green-50 dark:bg-green-900/10 font-semibold — distinct green tint
+    Table inside detail: text-xs border-collapse — smaller text for the detailed ledger
+    Dr/Cr headers: Red for Dr (text-red-700), Green for Cr (text-green-700)
+    Balance suffix: Shows "Dr" or "Cr" after the amount to indicate debit/credit balance
+    Alternating rows: Even rows get a light background in the PDF
+    Interactive elements (edit, share buttons) use e.stopPropagation() so clicking them doesn't toggle the expand
+
+5. Sortable Column Headers
+
+    A SortField union type defines which columns are sortable
+    toggleSort(field) toggles asc/desc if same field, or switches to new field with a sensible default direction
+    SortIcon component shows ArrowUpDown (inactive), ArrowUp (ascending), or ArrowDown (descending)
+    Column headers get cursor-pointer select-none styling
+
+6. Summary Cards (Top)
+
+A useMemo computes aggregate stats (total buyers, with dues, total due amounts, total advance) and displays them in a responsive grid of cards above the table.
+
