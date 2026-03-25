@@ -2962,6 +2962,31 @@ export async function registerRoutes(
     }
   });
 
+  // Manually create a new farmer (rejects if same name+contactNumber+village already exists)
+  app.post("/api/farmer-ledger/manual", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const schema = z.object({
+        name: z.string().min(1),
+        contactNumber: z.string().min(1),
+        village: z.string().min(1),
+        tehsil: z.string().optional(),
+        district: z.string().optional(),
+        state: z.string().optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
+      const result = await storage.createManualFarmer(coldStorageId, parsed.data);
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error?.code === 'DUPLICATE_FARMER') {
+        return res.status(409).json({ error: "A farmer with this name, contact number, and village already exists" });
+      }
+      console.error("Error creating farmer manually:", error);
+      res.status(500).json({ error: "Failed to create farmer" });
+    }
+  });
+
   // Check if farmer update would cause a merge
   app.post("/api/farmer-ledger/:id/check-merge", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {

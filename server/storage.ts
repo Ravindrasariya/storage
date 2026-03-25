@@ -381,6 +381,14 @@ export interface IStorage {
     district?: string;
     state?: string;
   }): Promise<{ id: string; farmerId: string }>;
+  createManualFarmer(coldStorageId: string, farmerData: {
+    name: string;
+    contactNumber: string;
+    village: string;
+    tehsil?: string;
+    district?: string;
+    state?: string;
+  }): Promise<{ id: string; farmerId: string }>;
   // Buyer Ledger
   getBuyerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
     buyers: (BuyerLedgerEntry & {
@@ -6250,6 +6258,59 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
+    throw new Error('Failed to generate unique farmer ID after multiple attempts');
+  }
+
+  // Create farmer manually — rejects if same name+contactNumber+village already exists
+  async createManualFarmer(coldStorageId: string, farmerData: {
+    name: string;
+    contactNumber: string;
+    village: string;
+    tehsil?: string;
+    district?: string;
+    state?: string;
+  }): Promise<{ id: string; farmerId: string }> {
+    const [existing] = await db.select({ id: farmerLedger.id })
+      .from(farmerLedger)
+      .where(and(
+        eq(farmerLedger.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${farmerLedger.name})) = ${farmerData.name.trim().toLowerCase()}`,
+        sql`TRIM(${farmerLedger.contactNumber}) = ${farmerData.contactNumber.trim()}`,
+        sql`LOWER(TRIM(${farmerLedger.village})) = ${farmerData.village.trim().toLowerCase()}`
+      ));
+
+    if (existing) {
+      const err = new Error('A farmer with this name, contact number, and village already exists') as any;
+      err.code = 'DUPLICATE_FARMER';
+      throw err;
+    }
+
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const farmerId = await this.generateFarmerId(coldStorageId);
+      const newId = randomUUID();
+      try {
+        await db.insert(farmerLedger).values({
+          id: newId,
+          coldStorageId,
+          farmerId,
+          name: farmerData.name.trim(),
+          contactNumber: farmerData.contactNumber.trim(),
+          village: farmerData.village.trim(),
+          tehsil: farmerData.tehsil?.trim() || null,
+          district: farmerData.district?.trim() || null,
+          state: farmerData.state?.trim() || null,
+          isFlagged: 0,
+          isArchived: 0,
+        });
+        return { id: newId, farmerId };
+      } catch (error: any) {
+        if (error?.code === '23505' && (error?.constraint?.includes('farmer_id') || error?.constraint?.includes('cs_fid'))) {
+          continue;
+        }
+        throw error;
+      }
+    }
     throw new Error('Failed to generate unique farmer ID after multiple attempts');
   }
 

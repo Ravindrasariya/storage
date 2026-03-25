@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, X, ChevronDown, ChevronRight, UserPlus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -262,6 +262,26 @@ export default function FarmerLedger() {
   const editTehsilNav = useDropdownNavigation();
   const [expandedFarmerId, setExpandedFarmerId] = useState<string | null>(null);
   const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
+
+  // Add Farmer dialog state
+  const [showAddFarmerDialog, setShowAddFarmerDialog] = useState(false);
+  const [addFormData, setAddFormData] = useState({
+    name: "",
+    contactNumber: "",
+    village: "",
+    tehsil: "",
+    district: "",
+    state: "",
+  });
+  const [addFarmerError, setAddFarmerError] = useState("");
+  const [showAddNameSuggestions, setShowAddNameSuggestions] = useState(false);
+  const [showAddMobileSuggestions, setShowAddMobileSuggestions] = useState(false);
+  const [showAddVillageSuggestions, setShowAddVillageSuggestions] = useState(false);
+  const [showAddTehsilSuggestions, setShowAddTehsilSuggestions] = useState(false);
+  const addNameNav = useDropdownNavigation();
+  const addMobileNav = useDropdownNavigation();
+  const addVillageNav = useDropdownNavigation();
+  const addTehsilNav = useDropdownNavigation();
   const [pendingMergeInfo, setPendingMergeInfo] = useState<{
     targetFarmer?: FarmerLedgerEntry;
     lotsCount: number;
@@ -351,6 +371,65 @@ export default function FarmerLedger() {
     setShowEditMobileSuggestions(false);
   };
 
+  // Add dialog computed suggestions
+  const addNameSuggestions = useMemo(() => {
+    if (!farmerRecords || !farmerRecords.length) return [];
+    const nameVal = addFormData.name.toLowerCase().trim();
+    const mobileVal = addFormData.contactNumber.trim();
+    const filtered = farmerRecords.filter(f => {
+      let m = true;
+      if (nameVal) m = m && f.farmerName.toLowerCase().includes(nameVal);
+      if (mobileVal) m = m && f.contactNumber.includes(mobileVal);
+      return m;
+    });
+    const seen = new Map<string, FarmerRecord>();
+    filtered.forEach(f => { const k = f.farmerName.toLowerCase(); if (!seen.has(k)) seen.set(k, f); });
+    return Array.from(seen.values());
+  }, [farmerRecords, addFormData.name, addFormData.contactNumber]);
+
+  const addMobileSuggestions = useMemo(() => {
+    if (!farmerRecords || !farmerRecords.length) return [];
+    const nameVal = addFormData.name.toLowerCase().trim();
+    const mobileVal = addFormData.contactNumber.trim();
+    const filtered = farmerRecords.filter(f => {
+      let m = true;
+      if (mobileVal) m = m && f.contactNumber.includes(mobileVal);
+      if (nameVal) m = m && f.farmerName.toLowerCase().includes(nameVal);
+      return m;
+    });
+    const seen = new Map<string, FarmerRecord>();
+    filtered.forEach(f => { const k = f.contactNumber + '|' + f.farmerName.toLowerCase(); if (!seen.has(k)) seen.set(k, f); });
+    return Array.from(seen.values()).sort((a, b) => a.contactNumber.localeCompare(b.contactNumber));
+  }, [farmerRecords, addFormData.name, addFormData.contactNumber]);
+
+  const addVillageSuggestions = useMemo(() => {
+    if (!locationData?.villages) return [];
+    const val = addFormData.village.toLowerCase().trim();
+    if (!val) return locationData.villages.slice(0, 10);
+    return locationData.villages.filter(v => v.toLowerCase().includes(val)).slice(0, 10);
+  }, [locationData, addFormData.village]);
+
+  const addTehsilSuggestions = useMemo(() => {
+    if (!locationData?.tehsils) return [];
+    const val = addFormData.tehsil.toLowerCase().trim();
+    if (!val) return locationData.tehsils.slice(0, 10);
+    return locationData.tehsils.filter(t => t.toLowerCase().includes(val)).slice(0, 10);
+  }, [locationData, addFormData.tehsil]);
+
+  const selectAddFarmerRecord = (farmer: FarmerRecord) => {
+    setAddFormData(prev => ({
+      ...prev,
+      name: farmer.farmerName,
+      contactNumber: farmer.contactNumber,
+      village: farmer.village,
+      tehsil: farmer.tehsil,
+      district: farmer.district,
+      state: farmer.state,
+    }));
+    setShowAddNameSuggestions(false);
+    setShowAddMobileSuggestions(false);
+  };
+
   const syncMutation = useMutation({
     mutationFn: () => apiRequest('POST', '/api/farmer-ledger/sync'),
     onSuccess: () => {
@@ -360,6 +439,30 @@ export default function FarmerLedger() {
     },
     onError: () => {
       toast({ title: t("farmersSyncFailed"), variant: "destructive" });
+    },
+  });
+
+  const createFarmerMutation = useMutation({
+    mutationFn: async (data: typeof addFormData) => {
+      const response = await apiRequest('POST', '/api/farmer-ledger/manual', data);
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to create farmer");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/farmer-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/farmers/lookup'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/lots'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cash-receipts'] });
+      setShowAddFarmerDialog(false);
+      setAddFormData({ name: "", contactNumber: "", village: "", tehsil: "", district: "", state: "" });
+      setAddFarmerError("");
+      toast({ title: t("farmerAdded") || "Farmer added", description: addFormData.name });
+    },
+    onError: (error: Error) => {
+      setAddFarmerError(error.message);
     },
   });
 
@@ -843,6 +946,17 @@ export default function FarmerLedger() {
           />
           <Label htmlFor="archived-filter" className="text-sm cursor-pointer">{t("showArchived")}</Label>
         </div>
+        {canEdit && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setAddFormData({ name: "", contactNumber: "", village: "", tehsil: "", district: "", state: "" }); setAddFarmerError(""); setShowAddFarmerDialog(true); }}
+            data-testid="button-add-farmer"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            {t("addFarmer") || "Add Farmer"}
+          </Button>
+        )}
         {canEdit && (
           <Button
             variant="outline"
@@ -1563,6 +1677,172 @@ export default function FarmerLedger() {
                 data-testid="button-confirm-merge"
               >
                 {updateMutation.isPending ? t("saving") : t("yes")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Farmer Dialog */}
+      <Dialog open={showAddFarmerDialog} onOpenChange={(open) => { if (!open) { setShowAddFarmerDialog(false); setAddFarmerError(""); } }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("addFarmer") || "Add Farmer"}</DialogTitle>
+            <DialogDescription>{t("addFarmerDescription") || "Add a new farmer to the ledger"}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <Label>{t("farmerName")}</Label>
+                <Input
+                  value={addFormData.name}
+                  onChange={(e) => { setAddFormData(prev => ({ ...prev, name: capitalizeFirstLetter(e.target.value) })); setShowAddNameSuggestions(true); setAddFarmerError(""); }}
+                  onFocus={() => { setShowAddNameSuggestions(true); addNameNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowAddNameSuggestions(false); addNameNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => addNameNav.handleKeyDown(e, Math.min(addNameSuggestions.length, 8), (i) => selectAddFarmerRecord(addNameSuggestions.slice(0, 8)[i]), () => setShowAddNameSuggestions(false))}
+                  autoComplete="off"
+                  data-testid="input-add-name"
+                />
+                {showAddNameSuggestions && addNameSuggestions.length > 0 && addFormData.name && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {addNameSuggestions.slice(0, 8).map((farmer, idx) => (
+                      <button key={idx} type="button"
+                        className={`w-full px-3 py-2 text-left text-sm flex flex-col hover:bg-accent ${addNameNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onMouseDown={(e) => { e.preventDefault(); selectAddFarmerRecord(farmer); }}
+                        data-testid={`suggestion-add-name-${idx}`}
+                      >
+                        <span className="font-medium">{farmer.farmerName}</span>
+                        <span className="text-xs text-muted-foreground">{farmer.village} • {farmer.contactNumber}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Label>{t("contactNumber")}</Label>
+                <Input
+                  value={addFormData.contactNumber}
+                  onChange={(e) => { const val = e.target.value.replace(/\D/g, ""); setAddFormData(prev => ({ ...prev, contactNumber: val })); setShowAddMobileSuggestions(true); setAddFarmerError(""); }}
+                  onFocus={() => { setShowAddMobileSuggestions(true); addMobileNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowAddMobileSuggestions(false); addMobileNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => addMobileNav.handleKeyDown(e, Math.min(addMobileSuggestions.length, 8), (i) => selectAddFarmerRecord(addMobileSuggestions.slice(0, 8)[i]), () => setShowAddMobileSuggestions(false))}
+                  maxLength={10}
+                  autoComplete="off"
+                  data-testid="input-add-contact"
+                />
+                {showAddMobileSuggestions && addMobileSuggestions.length > 0 && addFormData.contactNumber && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {addMobileSuggestions.slice(0, 8).map((farmer, idx) => (
+                      <button key={idx} type="button"
+                        className={`w-full px-3 py-2 text-left text-sm flex flex-col hover:bg-accent ${addMobileNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onMouseDown={(e) => { e.preventDefault(); selectAddFarmerRecord(farmer); }}
+                        data-testid={`suggestion-add-mobile-${idx}`}
+                      >
+                        <span className="font-medium">{farmer.contactNumber}</span>
+                        <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <Label>{t("village")}</Label>
+                <Input
+                  value={addFormData.village}
+                  onChange={(e) => { setAddFormData(prev => ({ ...prev, village: capitalizeFirstLetter(e.target.value) })); setShowAddVillageSuggestions(true); setAddFarmerError(""); }}
+                  onFocus={() => { setShowAddVillageSuggestions(true); addVillageNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowAddVillageSuggestions(false); addVillageNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => addVillageNav.handleKeyDown(e, addVillageSuggestions.length, (i) => { setAddFormData(prev => ({ ...prev, village: addVillageSuggestions[i] })); setShowAddVillageSuggestions(false); }, () => setShowAddVillageSuggestions(false))}
+                  autoComplete="off"
+                  data-testid="input-add-village"
+                />
+                {showAddVillageSuggestions && addVillageSuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {addVillageSuggestions.map((village, idx) => (
+                      <button key={idx} type="button"
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-accent ${addVillageNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onMouseDown={(e) => { e.preventDefault(); setAddFormData(prev => ({ ...prev, village })); setShowAddVillageSuggestions(false); }}
+                        data-testid={`suggestion-add-village-${idx}`}
+                      >
+                        <span className="font-medium">{village}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Label>{t("tehsil")}</Label>
+                <Input
+                  value={addFormData.tehsil}
+                  onChange={(e) => { setAddFormData(prev => ({ ...prev, tehsil: capitalizeFirstLetter(e.target.value) })); setShowAddTehsilSuggestions(true); }}
+                  onFocus={() => { setShowAddTehsilSuggestions(true); addTehsilNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowAddTehsilSuggestions(false); addTehsilNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => addTehsilNav.handleKeyDown(e, addTehsilSuggestions.length, (i) => { setAddFormData(prev => ({ ...prev, tehsil: addTehsilSuggestions[i] })); setShowAddTehsilSuggestions(false); }, () => setShowAddTehsilSuggestions(false))}
+                  autoComplete="off"
+                  data-testid="input-add-tehsil"
+                />
+                {showAddTehsilSuggestions && addTehsilSuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {addTehsilSuggestions.map((tehsil, idx) => (
+                      <button key={idx} type="button"
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-accent ${addTehsilNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onMouseDown={(e) => { e.preventDefault(); setAddFormData(prev => ({ ...prev, tehsil })); setShowAddTehsilSuggestions(false); }}
+                        data-testid={`suggestion-add-tehsil-${idx}`}
+                      >
+                        <span className="font-medium">{tehsil}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>{t("district")}</Label>
+                <Select value={addFormData.district} onValueChange={(val) => setAddFormData(prev => ({ ...prev, district: val }))}>
+                  <SelectTrigger data-testid="select-add-district">
+                    <SelectValue placeholder="Select district" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Ujjain">Ujjain</SelectItem>
+                    <SelectItem value="Agar Malwa">Agar Malwa</SelectItem>
+                    <SelectItem value="Dewas">Dewas</SelectItem>
+                    <SelectItem value="Indore">Indore</SelectItem>
+                    <SelectItem value="Shajapur">Shajapur</SelectItem>
+                    <SelectItem value="Rajgarh">Rajgarh</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>{t("state")}</Label>
+                <Select value={addFormData.state} onValueChange={(val) => setAddFormData(prev => ({ ...prev, state: val }))}>
+                  <SelectTrigger data-testid="select-add-state">
+                    <SelectValue placeholder="Select state" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Madhya Pradesh">Madhya Pradesh</SelectItem>
+                    <SelectItem value="Gujarat">Gujarat</SelectItem>
+                    <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {addFarmerError && (
+              <p className="text-sm text-destructive" data-testid="text-add-farmer-error">{addFarmerError}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setShowAddFarmerDialog(false); setAddFarmerError(""); }} data-testid="button-cancel-add-farmer">
+                {t("cancel")}
+              </Button>
+              <Button
+                onClick={() => createFarmerMutation.mutate(addFormData)}
+                disabled={createFarmerMutation.isPending || !addFormData.name.trim() || !addFormData.contactNumber.trim() || !addFormData.village.trim()}
+                data-testid="button-save-add-farmer"
+              >
+                {createFarmerMutation.isPending ? (t("saving") || "Saving...") : (t("addFarmer") || "Add Farmer")}
               </Button>
             </div>
           </div>
