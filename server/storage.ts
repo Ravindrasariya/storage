@@ -7525,7 +7525,7 @@ export class DatabaseStorage implements IStorage {
     openingBalance += priorAdvFreight.reduce((sum, af) => sum + (af.finalAmount || af.amount), 0);
 
     const priorSelfSales = farmerSelfSales.filter(s => s.soldAt < fyStart);
-    openingBalance += priorSelfSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+    openingBalance += priorSelfSales.reduce((sum, s) => sum + (s.coldStorageCharge || 0), 0);
 
     const priorReceipts = farmerReceipts.filter(r => r.receivedAt < fyStart);
     openingBalance -= priorReceipts.reduce((sum, r) => sum + r.amount, 0);
@@ -7573,7 +7573,7 @@ export class DatabaseStorage implements IStorage {
         type: 'self_sale',
         date: s.soldAt.toISOString().slice(0, 10),
         meta: { lotNo: String(s.lotNo), buyerName: s.buyerName || '', bags: String(s.quantitySold) },
-        debit: roundAmount(s.dueAmount || 0),
+        debit: roundAmount(s.coldStorageCharge || 0),
         credit: 0,
         refId: s.id,
         sortDate: s.soldAt,
