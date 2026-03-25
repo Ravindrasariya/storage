@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, X } from "lucide-react";
+import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, X, ChevronDown, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -47,6 +47,175 @@ interface FarmerLedgerData {
 type SortField = 'farmerId' | 'name' | 'village' | 'contactNumber' | 'pyReceivables' | 'selfDue' | 'merchantDue' | 'totalDue';
 type SortDirection = 'asc' | 'desc';
 
+interface FarmerTransaction {
+  type: string;
+  date: string;
+  debit: number;
+  credit: number;
+  refId?: string;
+  meta?: Record<string, string>;
+}
+
+interface FarmerTransactionData {
+  openingBalance: number;
+  transactions: FarmerTransaction[];
+}
+
+function FarmerDetailedLedger({ farmerId, farmerName }: { farmerId: string; farmerName: string }) {
+  const { t } = useI18n();
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const defaultFY = currentMonth >= 3 ? currentYear : currentYear - 1;
+  const [selectedFY, setSelectedFY] = useState<number>(defaultFY);
+
+  const fyOptions = useMemo(() => {
+    const options: { label: string; value: number }[] = [];
+    for (let y = defaultFY; y >= defaultFY - 4; y--) {
+      const endYY = String((y + 1) % 100).padStart(2, '0');
+      options.push({ label: `${y}-${endYY}`, value: y });
+    }
+    return options;
+  }, [defaultFY]);
+
+  const { data, isLoading } = useQuery<FarmerTransactionData>({
+    queryKey: ['/api/farmer-ledger', farmerId, 'transactions', selectedFY],
+    queryFn: () => authFetch(`/api/farmer-ledger/${farmerId}/transactions?fy=${selectedFY}`).then(res => res.json()),
+    enabled: !!farmerId,
+  });
+
+  const getParticular = useCallback((txn: FarmerTransaction): string => {
+    const m = txn.meta || {};
+    switch (txn.type) {
+      case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}`;
+      case 'advance': return `${t("advanceGiven")} - ${formatCurrency(Number(m.amount || 0))}`;
+      case 'freight': return `${t("freightGiven")} - ${formatCurrency(Number(m.amount || 0))}`;
+      case 'self_sale': return `${t("selfSaleEntry")} - ${t("lotHash")}${m.lotNo}, ${m.buyerName}, ${m.bags} ${t("bagsLabel")}`;
+      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
+      case 'discount': return `${t("discountEntry")} - ${m.transactionId}`;
+      default: return txn.type;
+    }
+  }, [t]);
+
+  const rows = useMemo(() => {
+    if (!data) return [];
+    let runningBalance = data.openingBalance;
+    return data.transactions.map((txn, idx) => {
+      runningBalance = runningBalance + txn.debit - txn.credit;
+      return { ...txn, sr: idx + 1, balance: runningBalance, particular: getParticular(txn) };
+    });
+  }, [data, getParticular]);
+
+  const closingBalance = rows.length > 0 ? rows[rows.length - 1].balance : (data?.openingBalance || 0);
+  const formatDate = (d: string) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
+  const formatBalanceDrCr = (val: number) => {
+    if (val > 0) return <span className="text-red-600 dark:text-red-400">{formatCurrency(val)} Dr</span>;
+    if (val < 0) return <span className="text-green-600 dark:text-green-400">{formatCurrency(Math.abs(val))} Cr</span>;
+    return <span>{formatCurrency(0)}</span>;
+  };
+
+  return (
+    <div className="p-3 bg-muted/20" data-testid={`detailed-ledger-farmer-${farmerId}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold">{t("detailedLedger")} — {farmerName}</span>
+        <Select value={String(selectedFY)} onValueChange={(v) => setSelectedFY(Number(v))}>
+          <SelectTrigger className="w-[120px] h-7 text-xs" data-testid={`select-fy-farmer-${farmerId}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {fyOptions.map(opt => (
+              <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-4">
+          <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <>
+          <div className="hidden md:block border rounded overflow-auto max-h-[400px]">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/50 sticky top-0 z-10">
+                <tr className="border-b">
+                  <th className="p-1.5 text-center w-10">{t("srNo")}</th>
+                  <th className="p-1.5 text-left w-20">{t("date")}</th>
+                  <th className="p-1.5 text-left">{t("particular")}</th>
+                  <th className="p-1.5 text-right w-24">{t("debit")}</th>
+                  <th className="p-1.5 text-right w-24">{t("credit")}</th>
+                  <th className="p-1.5 text-right w-28">{t("balance")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b bg-blue-50/50 dark:bg-blue-950/30 font-semibold">
+                  <td className="p-1.5 text-center">-</td>
+                  <td className="p-1.5">{formatDate(`${selectedFY}-04-01`)}</td>
+                  <td className="p-1.5">{t("openingBalance")}</td>
+                  <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) >= 0 ? formatCurrency(data?.openingBalance ?? 0) : formatCurrency(0)}</td>
+                  <td className="p-1.5 text-right">{(data?.openingBalance ?? 0) < 0 ? formatCurrency(Math.abs(data?.openingBalance ?? 0)) : formatCurrency(0)}</td>
+                  <td className="p-1.5 text-right">{formatBalanceDrCr(data?.openingBalance ?? 0)}</td>
+                </tr>
+                {rows.map((row) => (
+                  <tr key={`${row.type}-${row.sr}`} className="border-b hover:bg-muted/20" data-testid={`row-farmer-txn-${farmerId}-${row.sr}`}>
+                    <td className="p-1.5 text-center text-muted-foreground">{row.sr}</td>
+                    <td className="p-1.5">{formatDate(row.date)}</td>
+                    <td className="p-1.5">{row.particular}</td>
+                    <td className="p-1.5 text-right text-red-600 dark:text-red-400">{row.debit > 0 ? formatCurrency(row.debit) : '-'}</td>
+                    <td className="p-1.5 text-right text-green-600 dark:text-green-400">{row.credit > 0 ? formatCurrency(row.credit) : '-'}</td>
+                    <td className="p-1.5 text-right font-medium">{formatBalanceDrCr(row.balance)}</td>
+                  </tr>
+                ))}
+                <tr className="bg-amber-50/50 dark:bg-amber-950/30 font-bold">
+                  <td className="p-1.5 text-center">-</td>
+                  <td className="p-1.5">{formatDate(`${selectedFY + 1}-03-31`)}</td>
+                  <td className="p-1.5">{t("closingBalance")}</td>
+                  <td className="p-1.5 text-right">{closingBalance >= 0 ? formatCurrency(closingBalance) : formatCurrency(0)}</td>
+                  <td className="p-1.5 text-right">{closingBalance < 0 ? formatCurrency(Math.abs(closingBalance)) : formatCurrency(0)}</td>
+                  <td className="p-1.5 text-right">{formatBalanceDrCr(closingBalance)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="md:hidden space-y-2 max-h-[400px] overflow-auto">
+            <div className="rounded border bg-blue-50/50 dark:bg-blue-950/30 p-2" data-testid={`card-farmer-opening-${farmerId}`}>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-semibold">{t("openingBalance")}</span>
+                <span className="text-xs text-muted-foreground">{formatDate(`${selectedFY}-04-01`)}</span>
+              </div>
+              <div className="flex justify-between mt-1 text-xs">
+                <span>{t("balance")}: <span className="font-bold">{formatBalanceDrCr(data?.openingBalance ?? 0)}</span></span>
+              </div>
+            </div>
+            {rows.map((row) => (
+              <div key={`${row.type}-${row.sr}`} className="rounded border p-2" data-testid={`card-farmer-txn-${farmerId}-${row.sr}`}>
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-xs text-muted-foreground">#{row.sr}</span>
+                  <span className="text-xs text-muted-foreground">{formatDate(row.date)}</span>
+                </div>
+                <div className="text-xs mt-1 font-medium">{row.particular}</div>
+                <div className="flex justify-between mt-1.5 text-xs">
+                  {row.debit > 0 && <span className="text-red-600 dark:text-red-400">{t("debit")}: {formatCurrency(row.debit)}</span>}
+                  {row.credit > 0 && <span className="text-green-600 dark:text-green-400">{t("credit")}: {formatCurrency(row.credit)}</span>}
+                  <span className="font-bold ml-auto">{t("balance")}: {formatBalanceDrCr(row.balance)}</span>
+                </div>
+              </div>
+            ))}
+            <div className="rounded border bg-amber-50/50 dark:bg-amber-950/30 p-2" data-testid={`card-farmer-closing-${farmerId}`}>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold">{t("closingBalance")}</span>
+                <span className="text-xs text-muted-foreground">{formatDate(`${selectedFY + 1}-03-31`)}</span>
+              </div>
+              <div className="flex justify-between mt-1 text-xs">
+                <span>{t("balance")}: <span className="font-bold">{formatBalanceDrCr(closingBalance)}</span></span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function FarmerLedger() {
   const { t } = useI18n();
   const { toast } = useToast();
@@ -70,6 +239,7 @@ export default function FarmerLedger() {
     district: "",
     state: "",
   });
+  const [expandedFarmerId, setExpandedFarmerId] = useState<string | null>(null);
   const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
   const [pendingMergeInfo, setPendingMergeInfo] = useState<{
     targetFarmer?: FarmerLedgerEntry;
@@ -616,6 +786,10 @@ export default function FarmerLedger() {
               <div className="pb-4 space-y-3">
               {filteredFarmers.active.map(farmer => (
                 <Card key={farmer.id} className="p-3" data-testid={`card-farmer-${farmer.id}`}>
+                  <div className="flex items-center gap-1 mb-1 cursor-pointer" onClick={() => setExpandedFarmerId(expandedFarmerId === farmer.id ? null : farmer.id)} data-testid={`toggle-expand-mobile-farmer-${farmer.id}`}>
+                    {expandedFarmerId === farmer.id ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                    <span className="text-xs text-muted-foreground">{t("detailedLedger")}</span>
+                  </div>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-xs text-muted-foreground">{farmer.farmerId}</span>
@@ -690,6 +864,9 @@ export default function FarmerLedger() {
                       <div className="text-red-600 dark:text-red-500 font-bold">{formatDueValue(farmer.totalDue)}</div>
                     </div>
                   </div>
+                  {expandedFarmerId === farmer.id && (
+                    <FarmerDetailedLedger farmerId={farmer.id} farmerName={farmer.name} />
+                  )}
                 </Card>
               ))}
               {showArchived && filteredFarmers.archived.map(farmer => (
@@ -799,18 +976,21 @@ export default function FarmerLedger() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredFarmers.active.map(farmer => (
-                    <tr key={farmer.id} className="hover:bg-muted/30" data-testid={`row-farmer-${farmer.id}`}>
+                  {filteredFarmers.active.map(farmer => (<Fragment key={farmer.id}>
+                    <tr className={`hover:bg-muted/30 cursor-pointer ${expandedFarmerId === farmer.id ? 'bg-muted/40' : ''}`} data-testid={`row-farmer-${farmer.id}`} onClick={() => setExpandedFarmerId(expandedFarmerId === farmer.id ? null : farmer.id)}>
                       <td className="px-2 py-2">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="w-6 h-6"
-                          onClick={() => handleEditClick(farmer)}
-                          data-testid={`button-edit-${farmer.id}`}
-                        >
-                          <Pencil className="w-3 h-3" />
-                        </Button>
+                        <div className="flex items-center gap-0.5">
+                          {expandedFarmerId === farmer.id ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="w-6 h-6"
+                            onClick={(e) => { e.stopPropagation(); handleEditClick(farmer); }}
+                            data-testid={`button-edit-${farmer.id}`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </td>
                       <td className="px-2 py-2" data-testid={`text-farmer-id-${farmer.id}`}>
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -823,7 +1003,7 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 font-medium truncate" data-testid={`text-farmer-name-${farmer.id}`}>{farmer.name}</td>
                       <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
-                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">
+                      <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400" onClick={(e) => e.stopPropagation()}>
                         {(farmer.advanceDue > 0 || farmer.freightDue > 0) ? (
                           <Popover>
                             <PopoverTrigger asChild>
@@ -862,7 +1042,7 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
                       <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <Switch
                             checked={farmer.isFlagged === 1}
@@ -883,7 +1063,14 @@ export default function FarmerLedger() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    {expandedFarmerId === farmer.id && (
+                      <tr key={`${farmer.id}-detail`}>
+                        <td colSpan={10} className="p-0 border-b">
+                          <FarmerDetailedLedger farmerId={farmer.id} farmerName={farmer.name} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>))}
                   {showArchived && filteredFarmers.archived.map(farmer => (
                     <tr key={farmer.id} className="hover:bg-muted/30 opacity-60 bg-muted/20" data-testid={`row-archived-farmer-${farmer.id}`}>
                       <td className="px-2 py-2">

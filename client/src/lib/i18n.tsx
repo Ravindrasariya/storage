@@ -824,6 +824,8 @@ const translations: Translations = {
   bagsLabel: { en: "bags", hi: "बोरी" },
   noTransactionsForPeriod: { en: "No transactions found for this period", hi: "इस अवधि के लिए कोई लेनदेन नहीं मिला" },
   selectFY: { en: "Select FY", hi: "वि.व. चुनें" },
+  selfSaleEntry: { en: "Self Sale", hi: "स्वयं बिक्री" },
+  freightGiven: { en: "Freight Given", hi: "भाड़ा दिया गया" },
 };
 
 interface I18nContextType {

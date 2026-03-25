@@ -414,6 +414,17 @@ export interface IStorage {
       meta?: Record<string, string>;
     }[];
   }>;
+  getFarmerTransactions(farmerLedgerId: string, coldStorageId: string, fyStartYear: number): Promise<{
+    openingBalance: number;
+    transactions: {
+      type: string;
+      date: string;
+      debit: number;
+      credit: number;
+      refId?: string;
+      meta?: Record<string, string>;
+    }[];
+  }>;
   syncBuyersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }>;
   generateBuyerId(coldStorageId: string): Promise<string>;
   checkBuyerPotentialMerge(id: string, updates: Partial<BuyerLedgerEntry>): Promise<{
@@ -7399,6 +7410,205 @@ export class DatabaseStorage implements IStorage {
           sortOrder: 5,
         });
       }
+    }
+
+    transactions.sort((a, b) => {
+      const dayA = a.date;
+      const dayB = b.date;
+      if (dayA < dayB) return -1;
+      if (dayA > dayB) return 1;
+      return a.sortOrder - b.sortOrder;
+    });
+
+    return {
+      openingBalance: roundAmount(openingBalance),
+      transactions: transactions.map(({ sortDate, sortOrder, ...rest }) => rest),
+    };
+  }
+
+  async getFarmerTransactions(farmerLedgerId: string, coldStorageId: string, fyStartYear: number): Promise<{
+    openingBalance: number;
+    transactions: {
+      type: string;
+      date: string;
+      debit: number;
+      credit: number;
+      refId?: string;
+      meta?: Record<string, string>;
+    }[];
+  }> {
+    const fyStart = new Date(fyStartYear, 3, 1);
+    const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59, 999);
+
+    const farmer = await db.select().from(farmerLedger)
+      .where(and(eq(farmerLedger.id, farmerLedgerId), eq(farmerLedger.coldStorageId, coldStorageId)))
+      .then(rows => rows[0]);
+    if (!farmer) return { openingBalance: 0, transactions: [] };
+
+    const matchesFarmer = (record: { farmerLedgerId?: string | null; farmerName?: string | null; contactNumber?: string | null; village?: string | null }) => {
+      if (record.farmerLedgerId) return record.farmerLedgerId === farmer.id;
+      return (
+        record.farmerName?.trim().toLowerCase() === farmer.name.trim().toLowerCase() &&
+        record.contactNumber?.trim() === farmer.contactNumber.trim() &&
+        record.village?.trim().toLowerCase() === farmer.village.trim().toLowerCase()
+      );
+    };
+
+    const farmerSelfBuyerName = `${farmer.name.trim()} - ${farmer.contactNumber.trim()} - ${farmer.village.trim()}`;
+
+    const allReceivables = await db.select().from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, 'farmer')
+      ));
+
+    const allAdvFreight = await db.select().from(farmerAdvanceFreight)
+      .where(and(
+        eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
+        eq(farmerAdvanceFreight.isReversed, 0)
+      ));
+
+    const allSelfSales = await db.select().from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.isSelfSale, 1)
+      ));
+
+    const allReceipts = await db.select().from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.payerType, 'farmer'),
+        eq(cashReceipts.isReversed, 0)
+      ));
+
+    const allBankAccounts = await db.select().from(bankAccounts)
+      .where(eq(bankAccounts.coldStorageId, coldStorageId));
+    const accountMap = new Map(allBankAccounts.map(a => [a.id, a.accountName]));
+
+    const allDiscounts = await db.select().from(discounts)
+      .where(and(
+        eq(discounts.coldStorageId, coldStorageId),
+        eq(discounts.isReversed, 0)
+      ));
+
+    const farmerReceivables = allReceivables.filter(r => matchesFarmer(r));
+    const farmerAdvFreight = allAdvFreight.filter(af => af.farmerLedgerId === farmer.id);
+    const farmerSelfSales = allSelfSales.filter(s => {
+      if (!matchesFarmer(s)) return false;
+      if (s.transferToBuyerName && s.transferToBuyerName.trim() !== '' && (s.isTransferReversed === null || s.isTransferReversed === 0)) return false;
+      return true;
+    });
+    const farmerReceipts = allReceipts.filter(r => matchesFarmer(r));
+
+    const getSelfAllocAmount = (d: typeof allDiscounts[0]): number => {
+      try {
+        const allocations = JSON.parse(d.buyerAllocations || '[]');
+        const selfAlloc = allocations.find((a: { buyerName?: string; isFarmerSelf?: boolean }) => {
+          if (a.isFarmerSelf) return true;
+          return a.buyerName?.trim().toLowerCase() === farmerSelfBuyerName.toLowerCase();
+        });
+        return selfAlloc ? (selfAlloc.amount || 0) : 0;
+      } catch { return 0; }
+    };
+
+    const farmerDiscounts = allDiscounts.filter(d => {
+      if (!matchesFarmer(d)) return false;
+      return getSelfAllocAmount(d) > 0;
+    });
+
+    let openingBalance = 0;
+
+    const priorReceivables = farmerReceivables.filter(r => r.createdAt < fyStart);
+    openingBalance += priorReceivables.reduce((sum, r) => sum + (r.finalAmount ?? r.dueAmount), 0);
+
+    const priorAdvFreight = farmerAdvFreight.filter(af => af.effectiveDate < fyStart);
+    openingBalance += priorAdvFreight.reduce((sum, af) => sum + (af.finalAmount || af.amount), 0);
+
+    const priorSelfSales = farmerSelfSales.filter(s => s.soldAt < fyStart);
+    openingBalance += priorSelfSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+
+    const priorReceipts = farmerReceipts.filter(r => r.receivedAt < fyStart);
+    openingBalance -= priorReceipts.reduce((sum, r) => sum + r.amount, 0);
+
+    const priorDiscounts = farmerDiscounts.filter(d => d.discountDate < fyStart);
+    for (const d of priorDiscounts) {
+      openingBalance -= getSelfAllocAmount(d);
+    }
+
+    type TxnEntry = { type: string; date: string; debit: number; credit: number; refId?: string; meta?: Record<string, string>; sortDate: Date; sortOrder: number };
+    const transactions: TxnEntry[] = [];
+
+    const fyReceivables = farmerReceivables.filter(r => r.createdAt >= fyStart && r.createdAt <= fyEnd);
+    for (const r of fyReceivables) {
+      const amt = r.finalAmount ?? r.dueAmount;
+      transactions.push({
+        type: 'py_receivable',
+        date: `${fyStartYear}-04-01`,
+        meta: r.remarks ? { remarks: r.remarks } : undefined,
+        debit: roundAmount(amt),
+        credit: 0,
+        refId: r.id,
+        sortDate: fyStart,
+        sortOrder: 1,
+      });
+    }
+
+    const fyAdvFreight = farmerAdvFreight.filter(af => af.effectiveDate >= fyStart && af.effectiveDate <= fyEnd);
+    for (const af of fyAdvFreight) {
+      transactions.push({
+        type: af.type === 'freight' ? 'freight' : 'advance',
+        date: af.effectiveDate.toISOString().slice(0, 10),
+        meta: { amount: String(roundAmount(af.finalAmount || af.amount)) },
+        debit: roundAmount(af.finalAmount || af.amount),
+        credit: 0,
+        refId: af.id,
+        sortDate: af.effectiveDate,
+        sortOrder: 3,
+      });
+    }
+
+    const fySelfSales = farmerSelfSales.filter(s => s.soldAt >= fyStart && s.soldAt <= fyEnd);
+    for (const s of fySelfSales) {
+      transactions.push({
+        type: 'self_sale',
+        date: s.soldAt.toISOString().slice(0, 10),
+        meta: { lotNo: String(s.lotNo), buyerName: s.buyerName || '', bags: String(s.quantitySold) },
+        debit: roundAmount(s.dueAmount || 0),
+        credit: 0,
+        refId: s.id,
+        sortDate: s.soldAt,
+        sortOrder: 3,
+      });
+    }
+
+    const fyReceipts = farmerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
+    for (const r of fyReceipts) {
+      const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
+      transactions.push({
+        type: 'payment',
+        date: r.receivedAt.toISOString().slice(0, 10),
+        meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName },
+        debit: 0,
+        credit: roundAmount(r.amount),
+        refId: r.id,
+        sortDate: r.receivedAt,
+        sortOrder: 5,
+      });
+    }
+
+    const fyDiscounts = farmerDiscounts.filter(d => d.discountDate >= fyStart && d.discountDate <= fyEnd);
+    for (const d of fyDiscounts) {
+      const selfAmt = getSelfAllocAmount(d);
+      transactions.push({
+        type: 'discount',
+        date: d.discountDate.toISOString().slice(0, 10),
+        meta: { transactionId: d.transactionId || '' },
+        debit: 0,
+        credit: roundAmount(selfAmt),
+        refId: d.id,
+        sortDate: d.discountDate,
+        sortOrder: 5,
+      });
     }
 
     transactions.sort((a, b) => {
