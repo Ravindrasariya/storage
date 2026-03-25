@@ -6752,6 +6752,38 @@ export class DatabaseStorage implements IStorage {
             })
             .where(eq(farmerAdvanceFreight.farmerLedgerId, mergedId));
         }
+
+        // Transfer discounts from merged farmer to survivor
+        const mergedDiscounts = await db.select()
+          .from(discounts)
+          .where(eq(discounts.farmerLedgerId, mergedId));
+        if (mergedDiscounts.length > 0) {
+          const newSelfName = `${survivorFarmerEntry.name.trim()} - ${survivorFarmerEntry.contactNumber.trim()} - ${survivorFarmerEntry.village.trim()}`;
+          for (const d of mergedDiscounts) {
+            const oldSelfName = `${d.farmerName.trim()} - ${d.contactNumber.trim()} - ${d.village.trim()}`;
+            let updatedAllocations = d.buyerAllocations;
+            try {
+              const allocations = JSON.parse(d.buyerAllocations || '[]');
+              const updated = allocations.map((a: { buyerName?: string; isFarmerSelf?: boolean; amount?: number }) => {
+                if (a.isFarmerSelf || (a.buyerName || '').trim().toLowerCase() === oldSelfName.toLowerCase()) {
+                  return { ...a, buyerName: newSelfName };
+                }
+                return a;
+              });
+              updatedAllocations = JSON.stringify(updated);
+            } catch {}
+            await db.update(discounts)
+              .set({
+                farmerLedgerId: survivorId,
+                farmerId: survivorFarmerId,
+                farmerName: survivorFarmerEntry.name,
+                contactNumber: survivorFarmerEntry.contactNumber,
+                village: survivorFarmerEntry.village,
+                buyerAllocations: updatedAllocations,
+              })
+              .where(eq(discounts.id, d.id));
+          }
+        }
         
         // Archive the merged farmer
         await db.update(farmerLedger)
@@ -6774,7 +6806,7 @@ export class DatabaseStorage implements IStorage {
         }
         
         // Record the merge in edit history with detailed info
-        const totalRecordsTransferred = mergedLots.length + mergedReceivables.length + mergedSales.length;
+        const totalRecordsTransferred = mergedLots.length + mergedReceivables.length + mergedSales.length + mergedDiscounts.length;
         await db.insert(farmerLedgerEditHistory).values({
           id: randomUUID(),
           farmerLedgerId: survivorId,
@@ -6882,6 +6914,34 @@ export class DatabaseStorage implements IStorage {
     await db.update(cashReceipts)
       .set({ buyerName: farmerDisplayName })
       .where(eq(cashReceipts.farmerLedgerId, farmerLedgerId));
+
+    // Update discounts — top-level fields + self-allocation buyerName in JSON
+    const farmerDiscountRecords = await db.select()
+      .from(discounts)
+      .where(eq(discounts.farmerLedgerId, farmerLedgerId));
+    const newSelfBuyerName = `${farmer.name.trim()} - ${farmer.contactNumber.trim()} - ${farmer.village.trim()}`;
+    for (const d of farmerDiscountRecords) {
+      const oldSelfBuyerName = `${d.farmerName.trim()} - ${d.contactNumber.trim()} - ${d.village.trim()}`;
+      let updatedAllocations = d.buyerAllocations;
+      try {
+        const allocations = JSON.parse(d.buyerAllocations || '[]');
+        const updated = allocations.map((a: { buyerName?: string; isFarmerSelf?: boolean; amount?: number }) => {
+          if (a.isFarmerSelf || (a.buyerName || '').trim().toLowerCase() === oldSelfBuyerName.toLowerCase()) {
+            return { ...a, buyerName: newSelfBuyerName };
+          }
+          return a;
+        });
+        updatedAllocations = JSON.stringify(updated);
+      } catch {}
+      await db.update(discounts)
+        .set({
+          farmerName: farmer.name,
+          contactNumber: farmer.contactNumber,
+          village: farmer.village,
+          buyerAllocations: updatedAllocations,
+        })
+        .where(eq(discounts.id, d.id));
+    }
   }
 
   // Archive a farmer
@@ -7503,9 +7563,11 @@ export class DatabaseStorage implements IStorage {
     const getSelfAllocAmount = (d: typeof allDiscounts[0]): number => {
       try {
         const allocations = JSON.parse(d.buyerAllocations || '[]');
+        const discountSelfName = `${d.farmerName.trim()} - ${d.contactNumber.trim()} - ${d.village.trim()}`.toLowerCase();
         const selfAlloc = allocations.find((a: { buyerName?: string; isFarmerSelf?: boolean }) => {
           if (a.isFarmerSelf) return true;
-          return a.buyerName?.trim().toLowerCase() === farmerSelfBuyerName.toLowerCase();
+          const allocName = (a.buyerName || '').trim().toLowerCase();
+          return allocName === farmerSelfBuyerName.toLowerCase() || allocName === discountSelfName;
         });
         return selfAlloc ? (selfAlloc.amount || 0) : 0;
       } catch { return 0; }
