@@ -7408,8 +7408,10 @@ export class DatabaseStorage implements IStorage {
     }
 
     transactions.sort((a, b) => {
-      const dateCompare = a.sortDate.getTime() - b.sortDate.getTime();
-      if (dateCompare !== 0) return dateCompare;
+      const dayA = a.date;
+      const dayB = b.date;
+      if (dayA < dayB) return -1;
+      if (dayA > dayB) return 1;
       return a.sortOrder - b.sortOrder;
     });
 
