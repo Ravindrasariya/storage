@@ -30,6 +30,8 @@ interface PnLData {
 }
 
 const EXPENSE_TYPE_LABELS: Record<string, { en: string; hi: string }> = {
+  bank_charges: { en: "Bank Charges", hi: "बैंक शुल्क" },
+  bank_penalty_charges: { en: "Bank Penalty Charges", hi: "बैंक जुर्माना शुल्क" },
   general_expenses: { en: "General Expenses", hi: "सामान्य व्यय" },
   salary: { en: "Salary", hi: "वेतन" },
   hammali: { en: "Hammali", hi: "हम्माली" },

@@ -227,6 +227,8 @@ const translations: Translations = {
   interestOnLoan: { en: "Interest on Loan/Credit Line", hi: "ऋण/क्रेडिट लाइन पर ब्याज" },
   electricityCharges: { en: "Electricity/Power Charges", hi: "बिजली शुल्क" },
   chemicalSprayCharges: { en: "Chemical Spray Charges", hi: "रासायनिक स्प्रे शुल्क" },
+  bankCharges: { en: "Bank Charges", hi: "बैंक शुल्क" },
+  bankPenaltyCharges: { en: "Bank Penalty Charges", hi: "बैंक जुर्माना शुल्क" },
   farmerAdvance: { en: "Farmer - Advance", hi: "किसान - अग्रिम" },
   farmerFreight: { en: "Farmer - Freight", hi: "किसान - भाड़ा" },
   merchantAdvance: { en: "Cold Merchant - Advance", hi: "व्यापारी - अग्रिम" },

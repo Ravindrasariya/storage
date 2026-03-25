@@ -1494,6 +1494,8 @@ export default function CashManagement() {
       case "interest_on_loan": return t("interestOnLoan");
       case "electricity_charges": return t("electricityCharges");
       case "chemical_spray_charges": return t("chemicalSprayCharges");
+      case "bank_charges": return t("bankCharges");
+      case "bank_penalty_charges": return t("bankPenaltyCharges");
       case "farmer_advance": return t("farmerAdvance");
       case "farmer_freight": return t("farmerFreight");
       case "merchant_advance": return t("merchantAdvance");
@@ -2807,11 +2809,13 @@ export default function CashManagement() {
                   <SelectContent>
                     <SelectItem value="all">{t("allExpenseTypes")}</SelectItem>
                     <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
+                    <SelectItem value="bank_charges">{t("bankCharges")}</SelectItem>
+                    <SelectItem value="bank_penalty_charges">{t("bankPenaltyCharges")}</SelectItem>
+                    <SelectItem value="chemical_spray_charges">{t("chemicalSprayCharges")}</SelectItem>
                     <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
+                    <SelectItem value="electricity_charges">{t("electricityCharges")}</SelectItem>
                     <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                     <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
-                    <SelectItem value="chemical_spray_charges">{t("chemicalSprayCharges")}</SelectItem>
-                    <SelectItem value="electricity_charges">{t("electricityCharges")}</SelectItem>
                     <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                     <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
                     <SelectItem value="hammali">{t("hammali")}</SelectItem>
@@ -3706,6 +3710,8 @@ export default function CashManagement() {
                       <SelectValue placeholder={t("selectExpenseType")} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="bank_charges">{t("bankCharges")}</SelectItem>
+                      <SelectItem value="bank_penalty_charges">{t("bankPenaltyCharges")}</SelectItem>
                       <SelectItem value="chemical_spray_charges">{t("chemicalSprayCharges")}</SelectItem>
                       <SelectItem value="cost_of_goods_sold">{t("costOfGoodsSold")}</SelectItem>
                       <SelectItem value="electricity_charges">{t("electricityCharges")}</SelectItem>
