@@ -2808,7 +2808,6 @@ export default function CashManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t("allExpenseTypes")}</SelectItem>
-                    <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                     <SelectItem value="bank_charges">{t("bankCharges")}</SelectItem>
                     <SelectItem value="bank_penalty_charges">{t("bankPenaltyCharges")}</SelectItem>
                     <SelectItem value="chemical_spray_charges">{t("chemicalSprayCharges")}</SelectItem>
@@ -2820,6 +2819,7 @@ export default function CashManagement() {
                     <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
                     <SelectItem value="hammali">{t("hammali")}</SelectItem>
                     <SelectItem value="interest_on_loan">{t("interestOnLoan")}</SelectItem>
+                    <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                     <SelectItem value="salary">{t("salary")}</SelectItem>
                     <SelectItem value="tds">{t("tds")}</SelectItem>
                   </SelectContent>
