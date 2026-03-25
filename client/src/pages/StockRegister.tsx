@@ -1309,7 +1309,7 @@ export default function StockRegister() {
                   value={lotNoFrom}
                   onChange={(e) => setLotNoFrom(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="w-16"
+                  className="w-20"
                   data-testid="input-search-lotno-from"
                 />
                 <span className="text-sm font-medium text-muted-foreground">–</span>
@@ -1318,7 +1318,7 @@ export default function StockRegister() {
                   value={lotNoTo}
                   onChange={(e) => setLotNoTo(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="w-16"
+                  className="w-20"
                   data-testid="input-search-lotno-to"
                 />
                 <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
@@ -1327,7 +1327,7 @@ export default function StockRegister() {
                   value={sizeQuery}
                   onChange={(e) => setSizeQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1 min-w-[80px]"
+                  className="w-20"
                   data-testid="input-search-size"
                 />
                 <span className="text-sm font-medium text-muted-foreground">|</span>
@@ -1337,7 +1337,7 @@ export default function StockRegister() {
                     placeholder="1"
                     value={chamberFilter}
                     onChange={(e) => setChamberFilter(e.target.value.replace(/\D/g, "").slice(0, 2))}
-                    className="w-12 text-center"
+                    className="w-20 text-center"
                     maxLength={2}
                     data-testid="input-search-chamber"
                   />
