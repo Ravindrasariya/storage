@@ -6771,7 +6771,9 @@ export class DatabaseStorage implements IStorage {
                 return a;
               });
               updatedAllocations = JSON.stringify(updated);
-            } catch {}
+            } catch (e) {
+              console.warn(`[farmerMerge] Failed to parse buyerAllocations for discount ${d.id}:`, e);
+            }
             await db.update(discounts)
               .set({
                 farmerLedgerId: survivorId,
@@ -6932,7 +6934,9 @@ export class DatabaseStorage implements IStorage {
           return a;
         });
         updatedAllocations = JSON.stringify(updated);
-      } catch {}
+      } catch (e) {
+        console.warn(`[propagateFarmerDetails] Failed to parse buyerAllocations for discount ${d.id}:`, e);
+      }
       await db.update(discounts)
         .set({
           farmerName: farmer.name,
