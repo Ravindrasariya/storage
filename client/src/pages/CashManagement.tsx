@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount } from "@shared/schema";
 import { formatCurrency } from "@/components/Currency";
+import { capitalizeFirstLetter } from "@/lib/utils";
 
 const CASH_MGMT_STATE_KEY_PREFIX = "cashManagementFormState";
 const STATE_EXPIRY_MS = 30000; // 30 seconds
@@ -3224,7 +3225,7 @@ export default function CashManagement() {
                     {buyerName === "__other__" && (
                       <Input
                         value={customBuyerName}
-                        onChange={(e) => setCustomBuyerName(e.target.value)}
+                        onChange={(e) => setCustomBuyerName(capitalizeFirstLetter(e.target.value))}
                         placeholder={t("enterBuyerName") || "Enter buyer name"}
                         data-testid="input-custom-buyer-name"
                       />
