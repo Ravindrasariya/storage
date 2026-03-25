@@ -551,7 +551,7 @@ export default function StockRegister() {
     try {
       // When no filter is applied, fetch ALL lots for export (not just displayed ones)
       let lots: Lot[];
-      if (!hasSearched && bagTypeFilter === "all") {
+      if (!hasSearched && bagTypeFilter === "all" && !chamberFilter.trim()) {
         // Fetch all lots without limit for export
         const response = await authFetch("/api/lots?sort=lotNo");
         if (!response.ok) throw new Error("Failed to fetch lots for export");
