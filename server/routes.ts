@@ -832,8 +832,7 @@ export async function registerRoutes(
 
       // Block farmer reassignment if the lot has any sales recorded
       if (validated.farmerLedgerId && validated.farmerLedgerId !== lot.farmerLedgerId) {
-        const lotHasSales = await storage.hasLotSales(req.params.id);
-        if (lotHasSales) {
+        if (lot.remainingSize < lot.size) {
           return res.status(400).json({ error: "Cannot change farmer after sales are recorded" });
         }
       }
