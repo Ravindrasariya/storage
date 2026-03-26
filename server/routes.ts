@@ -823,8 +823,8 @@ export async function registerRoutes(
 
       // Validate farmerLedgerId belongs to this cold storage if provided
       if (validated.farmerLedgerId) {
-        const farmerLedgerData = await storage.getFarmerLedger(coldStorageId, false);
-        const matchingFarmer = farmerLedgerData.find((f: any) => f.id === validated.farmerLedgerId);
+        const { farmers } = await storage.getFarmerLedger(coldStorageId, false);
+        const matchingFarmer = farmers.find(f => f.id === validated.farmerLedgerId);
         if (!matchingFarmer) {
           return res.status(400).json({ error: "Invalid farmer ledger ID" });
         }
