@@ -753,6 +753,8 @@ export async function registerRoutes(
     district: z.string().optional(),
     state: z.string().optional(),
     contactNumber: z.string().optional(),
+    farmerLedgerId: z.string().optional(),
+    farmerId: z.string().optional(),
   });
 
   app.patch("/api/lots/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -815,7 +817,18 @@ export async function registerRoutes(
         district: lot.district,
         state: lot.state,
         contactNumber: lot.contactNumber,
+        farmerLedgerId: lot.farmerLedgerId,
+        farmerId: lot.farmerId,
       };
+
+      // Validate farmerLedgerId belongs to this cold storage if provided
+      if (validated.farmerLedgerId) {
+        const farmerLedgerData = await storage.getFarmerLedger(coldStorageId, false);
+        const matchingFarmer = farmerLedgerData.find((f: any) => f.id === validated.farmerLedgerId);
+        if (!matchingFarmer) {
+          return res.status(400).json({ error: "Invalid farmer ledger ID" });
+        }
+      }
 
       // Update the lot (including lotNo and entrySequence if changed)
       const updateData: Partial<typeof validated & { entrySequence?: number; remainingSize?: number }> = { ...validated };

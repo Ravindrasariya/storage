@@ -289,7 +289,7 @@ export interface IStorage {
   getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date, filters?: { year?: string; farmerName?: string; village?: string; contactNumber?: string; buyerName?: string; paymentStatus?: string }): Promise<SalesHistory[]>;
   getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[]; transfers: CashTransfer[] }>;
   // Farmer lookup for auto-complete
-  getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]>;
+  getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string; farmerLedgerId: string; farmerId: string }[]>;
   // Buyer lookup for auto-complete (last 2 years)
   getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string; isSelfSale: boolean }[]>;
   // Bag type label lookup for auto-complete
@@ -3997,9 +3997,11 @@ export class DatabaseStorage implements IStorage {
     return { receipts: receiptsData, expenses: expensesData, transfers: transfersData };
   }
 
-  async getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string }[]> {
+  async getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string; farmerLedgerId: string; farmerId: string }[]> {
     // Fetch all non-archived farmers from Farmer Ledger (single source of truth)
     const farmers = await db.select({
+      farmerLedgerId: farmerLedger.id,
+      farmerId: farmerLedger.farmerId,
       farmerName: farmerLedger.name,
       village: farmerLedger.village,
       tehsil: farmerLedger.tehsil,
@@ -4017,6 +4019,8 @@ export class DatabaseStorage implements IStorage {
       .orderBy(farmerLedger.name);
 
     return farmers.map(f => ({
+      farmerLedgerId: f.farmerLedgerId || "",
+      farmerId: f.farmerId || "",
       farmerName: f.farmerName || "",
       village: f.village || "",
       tehsil: f.tehsil || "",

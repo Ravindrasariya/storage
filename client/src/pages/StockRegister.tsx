@@ -32,7 +32,7 @@ import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer, CalendarDays } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer, CalendarDays, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
@@ -117,8 +117,15 @@ export default function StockRegister() {
     district: string;
     state: string;
     contactNumber: string;
+    farmerLedgerId: string;
+    farmerId: string;
   } | null>(null);
   const [lotNoError, setLotNoError] = useState<string | null>(null);
+  const [farmerEditMode, setFarmerEditMode] = useState(false);
+  const [editFarmerQuery, setEditFarmerQuery] = useState("");
+  const [showEditFarmerSuggestions, setShowEditFarmerSuggestions] = useState(false);
+  const editFarmerNav = useDropdownNavigation();
+  const editFarmerInputRef = useRef<HTMLInputElement>(null);
 
   // Autocomplete state for search fields
   const [showPhoneSuggestions, setShowPhoneSuggestions] = useState(false);
@@ -134,6 +141,8 @@ export default function StockRegister() {
     district: string;
     state: string;
     contactNumber: string;
+    farmerLedgerId: string;
+    farmerId: string;
   };
 
   const { data: farmerRecords } = useQuery<FarmerRecord[]>({
@@ -442,6 +451,58 @@ export default function StockRegister() {
     setSelectedFarmerMobile(farmer.contactNumber);
     setShowFarmerNameSuggestions(false);
   };
+
+  const editFarmerSuggestions = useMemo(() => {
+    if (!farmerRecords || farmerRecords.length === 0 || !editFarmerQuery.trim()) return [];
+    const q = editFarmerQuery.toLowerCase().trim();
+    return farmerRecords
+      .filter(f => f.farmerName.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [farmerRecords, editFarmerQuery]);
+
+  const handleEditFarmerSelect = (farmer: FarmerRecord) => {
+    if (!editForm) return;
+    setEditForm({
+      ...editForm,
+      farmerName: farmer.farmerName,
+      contactNumber: farmer.contactNumber,
+      village: farmer.village,
+      tehsil: farmer.tehsil || "",
+      district: farmer.district || "",
+      state: farmer.state || "",
+      farmerLedgerId: farmer.farmerLedgerId,
+      farmerId: farmer.farmerId,
+    });
+    setEditFarmerQuery(farmer.farmerName);
+    setShowEditFarmerSuggestions(false);
+  };
+
+  const handleToggleFarmerEditMode = () => {
+    if (farmerEditMode) {
+      if (selectedLot && editForm) {
+        setEditForm({
+          ...editForm,
+          farmerName: selectedLot.farmerName,
+          contactNumber: selectedLot.contactNumber || "",
+          village: selectedLot.village || "",
+          tehsil: selectedLot.tehsil || "",
+          district: selectedLot.district || "",
+          state: selectedLot.state || "",
+          farmerLedgerId: selectedLot.farmerLedgerId || "",
+          farmerId: selectedLot.farmerId || "",
+        });
+      }
+      setFarmerEditMode(false);
+      setEditFarmerQuery("");
+      setShowEditFarmerSuggestions(false);
+    } else {
+      setFarmerEditMode(true);
+      setEditFarmerQuery(editForm?.farmerName || "");
+      setTimeout(() => editFarmerInputRef.current?.focus(), 50);
+    }
+  };
+
+  const isFarmerUnresolved = farmerEditMode && editForm && !editForm.farmerLedgerId;
 
   // Helper to get rate for a lot based on bag type (Ration uses seed rates)
   const getRateForLot = (lot: Lot) => {
@@ -960,8 +1021,13 @@ export default function StockRegister() {
       district: lot.district || "",
       state: lot.state || "",
       contactNumber: lot.contactNumber || "",
+      farmerLedgerId: lot.farmerLedgerId || "",
+      farmerId: lot.farmerId || "",
     });
     setLotNoError(null);
+    setFarmerEditMode(false);
+    setEditFarmerQuery("");
+    setShowEditFarmerSuggestions(false);
 
     try {
       const response = await authFetch(`/api/lots/${lot.id}/history`);
@@ -998,6 +1064,9 @@ export default function StockRegister() {
         // Update the selected lot with new values to reflect changes in the dialog
         if (selectedLot && editForm) {
           setSelectedLot({ ...selectedLot, ...editForm });
+          setFarmerEditMode(false);
+          setEditFarmerQuery("");
+          setShowEditFarmerSuggestions(false);
           // Refresh edit history
           try {
             const response = await authFetch(`/api/lots/${selectedLot.id}/history`);
@@ -1679,33 +1748,108 @@ export default function StockRegister() {
             </DialogDescription>
           </DialogHeader>
 
-          {/* Farmer Details (Read-only - edit via Farmer Ledger) */}
+          {/* Farmer Details - pencil-gated editable farmer name */}
           <div className="space-y-4">
             <h4 className="font-semibold text-sm text-muted-foreground">{t("farmerDetails")}</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
+            <div className="p-3 bg-muted/50 rounded-lg space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">{t("farmerName")}</Label>
-                <p className="font-medium text-sm" data-testid="text-farmer-name">{selectedLot?.farmerName}</p>
+                {farmerEditMode && editForm ? (
+                  <div className="relative">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        ref={editFarmerInputRef}
+                        value={editFarmerQuery}
+                        onChange={(e) => {
+                          const val = capitalizeFirstLetter(e.target.value);
+                          setEditFarmerQuery(val);
+                          setEditForm({ ...editForm, farmerLedgerId: "", farmerId: "", farmerName: val });
+                          setShowEditFarmerSuggestions(true);
+                          editFarmerNav.resetIndex();
+                        }}
+                        onFocus={() => { if (editFarmerQuery.trim()) setShowEditFarmerSuggestions(true); }}
+                        onBlur={() => { setTimeout(() => setShowEditFarmerSuggestions(false), 200); }}
+                        onKeyDown={(e) => {
+                          if (showEditFarmerSuggestions && editFarmerSuggestions.length > 0) {
+                            const result = editFarmerNav.handleKeyDown(e, editFarmerSuggestions.length);
+                            if (result !== undefined) {
+                              handleEditFarmerSelect(editFarmerSuggestions[result]);
+                            }
+                          }
+                        }}
+                        placeholder={t("farmerName")}
+                        className={`h-8 text-sm ${isFarmerUnresolved ? "border-amber-500" : ""}`}
+                        data-testid="input-edit-farmer-name"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={handleToggleFarmerEditMode}
+                        data-testid="button-cancel-farmer-edit"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {isFarmerUnresolved && (
+                      <p className="text-xs text-amber-600 mt-1">{t("selectFarmerFromList") || "Please select a farmer from the list"}</p>
+                    )}
+                    {showEditFarmerSuggestions && editFarmerSuggestions.length > 0 && (
+                      <div className="absolute z-50 top-full left-0 right-8 mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        {editFarmerSuggestions.map((farmer, idx) => (
+                          <div
+                            key={`${farmer.farmerLedgerId}-${idx}`}
+                            className={`px-3 py-2 cursor-pointer hover:bg-accent ${editFarmerNav.activeIndex === idx ? "bg-accent" : ""}`}
+                            onMouseDown={(e) => { e.preventDefault(); handleEditFarmerSelect(farmer); }}
+                            data-testid={`edit-farmer-suggestion-${idx}`}
+                          >
+                            <p className="text-sm font-medium">{farmer.farmerName}</p>
+                            <p className="text-xs text-muted-foreground">{farmer.contactNumber} • {farmer.village}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-sm" data-testid="text-farmer-name">{editForm?.farmerName || selectedLot?.farmerName}</p>
+                    {canEdit && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0"
+                        onClick={handleToggleFarmerEditMode}
+                        data-testid="button-edit-farmer"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{t("contactNumber")}</Label>
-                <p className="font-medium text-sm" data-testid="text-contact-number">{selectedLot?.contactNumber}</p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{t("village")}</Label>
-                <p className="font-medium text-sm" data-testid="text-village">{selectedLot?.village}</p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{t("tehsil")}</Label>
-                <p className="font-medium text-sm" data-testid="text-tehsil">{selectedLot?.tehsil}</p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{t("district")}</Label>
-                <p className="font-medium text-sm" data-testid="text-district">{selectedLot?.district}</p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{t("state")}</Label>
-                <p className="font-medium text-sm" data-testid="text-state">{selectedLot?.state}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">{t("contactNumber")}</Label>
+                  <p className="font-medium text-sm" data-testid="text-contact-number">{editForm?.contactNumber || selectedLot?.contactNumber}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">{t("village")}</Label>
+                  <p className="font-medium text-sm" data-testid="text-village">{editForm?.village || selectedLot?.village}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">{t("tehsil")}</Label>
+                  <p className="font-medium text-sm" data-testid="text-tehsil">{editForm?.tehsil || selectedLot?.tehsil}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">{t("district")}</Label>
+                  <p className="font-medium text-sm" data-testid="text-district">{editForm?.district || selectedLot?.district}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">{t("state")}</Label>
+                  <p className="font-medium text-sm" data-testid="text-state">{editForm?.state || selectedLot?.state}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -1913,7 +2057,7 @@ export default function StockRegister() {
             {canEdit && (
               <Button
                 onClick={handleEditSubmit}
-                disabled={updateLotMutation.isPending || !editForm}
+                disabled={updateLotMutation.isPending || !editForm || !!isFarmerUnresolved}
                 data-testid="button-save-edit"
               >
                 {updateLotMutation.isPending ? t("loading") : t("save")}
@@ -1953,8 +2097,13 @@ export default function StockRegister() {
                         district: updatedLot.district || "",
                         state: updatedLot.state || "",
                         contactNumber: updatedLot.contactNumber || "",
+                        farmerLedgerId: updatedLot.farmerLedgerId || "",
+                        farmerId: updatedLot.farmerId || "",
                       });
                       setLotNoError(null);
+                      setFarmerEditMode(false);
+                      setEditFarmerQuery("");
+                      setShowEditFarmerSuggestions(false);
                     }
                     const historyResponse = await authFetch(`/api/lots/${selectedLot.id}/history`);
                     if (historyResponse.ok) {
