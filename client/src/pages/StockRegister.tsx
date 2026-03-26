@@ -1082,7 +1082,7 @@ export default function StockRegister() {
       handleSearch();
     },
     onError: (error: Error) => {
-      const msg = error.message?.includes("Cannot change farmer after sales")
+      const msg = error.message === "Cannot change farmer after sales are recorded"
         ? t("cannotChangeFarmerAfterSales")
         : error.message;
       toast({
