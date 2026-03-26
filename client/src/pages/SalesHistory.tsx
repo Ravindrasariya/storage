@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
-import { useQuery } from "@tanstack/react-query";
-import { authFetch } from "@/lib/queryClient";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { authFetch, apiRequest, queryClient } from "@/lib/queryClient";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, Printer, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { EditSaleDialog } from "@/components/EditSaleDialog";
@@ -73,6 +73,7 @@ export default function SalesHistoryPage() {
     localStorage.setItem(SALES_FILTERS_KEY, JSON.stringify(filters));
   }, [yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter]);
 
+  const [showTracker, setShowTracker] = useState(false);
   const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [printingSale, setPrintingSale] = useState<SalesHistory | null>(null);
@@ -301,9 +302,24 @@ export default function SalesHistoryPage() {
   return (
     <div className="p-4 md:p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">{t("salesHistory")}</h1>
+        <h1 className="text-2xl font-bold" data-testid="text-page-title">
+          {showTracker ? t("farmerPaymentTracker") : t("salesHistory")}
+        </h1>
+        <Button
+          variant={showTracker ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowTracker(!showTracker)}
+          data-testid="button-toggle-tracker"
+        >
+          <HandCoins className="h-4 w-4 mr-2" />
+          {showTracker ? t("salesHistory") : t("farmerPaymentTracker")}
+        </Button>
       </div>
 
+      {showTracker ? (
+        <FarmerPaymentTracker />
+      ) : (
+      <>
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between gap-2">
@@ -768,6 +784,310 @@ export default function SalesHistoryPage() {
         open={exitDialogOpen}
         onOpenChange={setExitDialogOpen}
       />
+      </>
+      )}
+    </div>
+  );
+}
+
+type FarmerLookupRecord = {
+  farmerName: string;
+  village: string;
+  contactNumber: string;
+  farmerLedgerId: string;
+};
+
+function calculateNetPayableToFarmer(sale: SalesHistory): number {
+  const totalIncome = (sale.netWeight || 0) * (sale.pricePerKg || 0);
+  const netColdBill = Math.max(0, (sale.coldStorageCharge || 0) - (sale.discountAllocated || 0));
+  return totalIncome - netColdBill;
+}
+
+function FarmerPaymentTracker() {
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const trackerFarmerNav = useDropdownNavigation();
+
+  const [trackerYearFilter, setTrackerYearFilter] = useState<string>(new Date().getFullYear().toString());
+  const [trackerFarmerFilter, setTrackerFarmerFilter] = useState("");
+  const [trackerFarmerLedgerId, setTrackerFarmerLedgerId] = useState("");
+  const [showTrackerFarmerSuggestions, setShowTrackerFarmerSuggestions] = useState(false);
+
+  const { data: years = [] } = useQuery<number[]>({
+    queryKey: ["/api/sales-history/years"],
+  });
+
+  const { data: farmerRecords } = useQuery<FarmerLookupRecord[]>({
+    queryKey: ["/api/farmers/lookup"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const buildTrackerQuery = () => {
+    const params = new URLSearchParams();
+    if (trackerYearFilter && trackerYearFilter !== "all") params.append("year", trackerYearFilter);
+    return params.toString();
+  };
+
+  const { data: allSalesHistory = [], isLoading } = useQuery<SalesHistory[]>({
+    queryKey: ["/api/sales-history", trackerYearFilter],
+    queryFn: async () => {
+      const queryString = buildTrackerQuery();
+      const response = await authFetch(`/api/sales-history${queryString ? `?${queryString}` : ""}`);
+      if (!response.ok) throw new Error("Failed to fetch sales history");
+      return response.json();
+    },
+  });
+
+  const facilitatedSales = useMemo(() => {
+    let filtered = allSalesHistory.filter(
+      (s) => Number(s.isSelfSale) === 0 && (s.pricePerKg || 0) > 0 && (s.netWeight || 0) > 0
+    );
+    if (trackerFarmerLedgerId) {
+      filtered = filtered.filter((s) => s.farmerLedgerId === trackerFarmerLedgerId);
+    }
+    return filtered.sort((a, b) => new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime());
+  }, [allSalesHistory, trackerFarmerLedgerId]);
+
+  const trackerFarmerSuggestions = useMemo(() => {
+    if (!farmerRecords || !trackerFarmerFilter.trim()) return [];
+    const query = trackerFarmerFilter.toLowerCase().trim();
+    return farmerRecords
+      .filter((f) => f.farmerName.toLowerCase().includes(query) || f.contactNumber.includes(query) || f.village.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [farmerRecords, trackerFarmerFilter]);
+
+  const selectTrackerFarmer = (farmer: FarmerLookupRecord) => {
+    setTrackerFarmerFilter(farmer.farmerName);
+    setTrackerFarmerLedgerId(farmer.farmerLedgerId);
+    setShowTrackerFarmerSuggestions(false);
+  };
+
+  const farmerPaymentMutation = useMutation({
+    mutationFn: async ({ saleId, status, paidAt }: { saleId: string; status: string; paidAt: string | null }) => {
+      await apiRequest("PATCH", `/api/sales-history/${saleId}/farmer-payment`, {
+        farmerPaymentStatus: status,
+        farmerPaidAt: paidAt,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: t("error"), description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleTogglePaid = (sale: SalesHistory) => {
+    const newStatus = sale.farmerPaymentStatus === "paid" ? "unpaid" : "paid";
+    const paidAt = newStatus === "paid" ? format(new Date(), "yyyy-MM-dd") : null;
+    farmerPaymentMutation.mutate({ saleId: sale.id, status: newStatus, paidAt });
+  };
+
+  const handleDateChange = (sale: SalesHistory, date: string) => {
+    farmerPaymentMutation.mutate({ saleId: sale.id, status: "paid", paidAt: date });
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            {t("filters")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm text-muted-foreground">{t("filterByYear")}</label>
+              <Select value={trackerYearFilter} onValueChange={setTrackerYearFilter}>
+                <SelectTrigger data-testid="select-tracker-year">
+                  <SelectValue placeholder={t("allYears")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allYears")}</SelectItem>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-muted-foreground">{t("filterByFarmer")}</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                <Input
+                  value={trackerFarmerFilter}
+                  onChange={(e) => {
+                    setTrackerFarmerFilter(capitalizeFirstLetter(e.target.value));
+                    setTrackerFarmerLedgerId("");
+                    setShowTrackerFarmerSuggestions(true);
+                  }}
+                  onFocus={() => { setShowTrackerFarmerSuggestions(true); trackerFarmerNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowTrackerFarmerSuggestions(false); trackerFarmerNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => trackerFarmerNav.handleKeyDown(e, trackerFarmerSuggestions.length, (i) => { selectTrackerFarmer(trackerFarmerSuggestions[i]); setShowTrackerFarmerSuggestions(false); }, () => setShowTrackerFarmerSuggestions(false))}
+                  placeholder={t("farmerName")}
+                  className="pl-10"
+                  autoComplete="off"
+                  data-testid="input-tracker-farmer-filter"
+                />
+                {showTrackerFarmerSuggestions && trackerFarmerSuggestions.length > 0 && trackerFarmerFilter && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {trackerFarmerSuggestions.map((farmer, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${trackerFarmerNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onClick={() => selectTrackerFarmer(farmer)}
+                        data-testid={`suggestion-tracker-farmer-${idx}`}
+                      >
+                        <span className="font-medium">{farmer.farmerName}</span>
+                        <span className="text-xs text-muted-foreground">{farmer.contactNumber} • {farmer.village}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {trackerFarmerLedgerId && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Badge variant="secondary" className="text-xs">{trackerFarmerFilter}</Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setTrackerFarmerFilter("");
+                        setTrackerFarmerLedgerId("");
+                      }}
+                      data-testid="button-clear-tracker-farmer"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-end">
+              {(trackerYearFilter || trackerFarmerLedgerId) && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setTrackerYearFilter(new Date().getFullYear().toString());
+                    setTrackerFarmerFilter("");
+                    setTrackerFarmerLedgerId("");
+                  }}
+                  className="w-full"
+                  data-testid="button-clear-tracker-filters"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  {t("clearFilters")}
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : facilitatedSales.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground" data-testid="text-no-tracker-results">
+              {t("noFacilitatedSales")}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("saleDate")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("farmerName")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("village")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("originalBags")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("quantitySold")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("buyerName")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("pricePerKg")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("weight")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("totalDueToFarmer")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("paymentStatus")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("paymentDate")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {facilitatedSales.map((sale) => {
+                    const netPayable = calculateNetPayableToFarmer(sale);
+                    const isPaid = sale.farmerPaymentStatus === "paid";
+                    return (
+                      <TableRow key={sale.id} data-testid={`row-tracker-${sale.id}`}>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {format(new Date(sale.soldAt), "dd MMM yyyy")}
+                        </TableCell>
+                        <TableCell className="text-xs font-medium min-w-[120px]">{sale.farmerName}</TableCell>
+                        <TableCell className="text-xs">{sale.village}</TableCell>
+                        <TableCell className="text-xs">{sale.lotNo}</TableCell>
+                        <TableCell className="text-right text-xs">{sale.originalLotSize}</TableCell>
+                        <TableCell className="text-right text-xs">{sale.quantitySold}</TableCell>
+                        <TableCell className="text-xs">{sale.buyerName || "-"}</TableCell>
+                        <TableCell className="text-right text-xs">
+                          <Currency amount={sale.pricePerKg || 0} />
+                        </TableCell>
+                        <TableCell className="text-right text-xs">
+                          {(sale.netWeight || 0).toLocaleString()} kg
+                        </TableCell>
+                        <TableCell className="text-right text-xs font-medium">
+                          <Currency amount={netPayable} />
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={`cursor-pointer select-none ${isPaid ? "bg-green-600 hover:bg-green-700" : "bg-red-500 hover:bg-red-600"}`}
+                            onClick={() => handleTogglePaid(sale)}
+                            data-testid={`badge-farmer-payment-${sale.id}`}
+                          >
+                            {isPaid ? t("farmerPaid") : t("farmerUnpaid")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs min-w-[140px]">
+                          {isPaid && (
+                            <Input
+                              type="date"
+                              value={sale.farmerPaidAt || ""}
+                              onChange={(e) => handleDateChange(sale, e.target.value)}
+                              className="h-7 text-xs"
+                              data-testid={`input-farmer-paid-date-${sale.id}`}
+                            />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {facilitatedSales.length > 0 && (
+        <div className="flex justify-between items-center text-sm text-muted-foreground">
+          <span>
+            {facilitatedSales.length} {facilitatedSales.length === 1 ? "sale" : "sales"}
+          </span>
+          <div className="flex gap-4">
+            <span className="text-green-600">
+              {t("farmerPaid")}: {facilitatedSales.filter((s) => s.farmerPaymentStatus === "paid").length}
+            </span>
+            <span className="text-red-600">
+              {t("farmerUnpaid")}: {facilitatedSales.filter((s) => s.farmerPaymentStatus !== "paid").length}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

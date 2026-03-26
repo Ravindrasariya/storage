@@ -66,6 +66,19 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    name: "2026-03-27_add_farmer_payment_tracking",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ADD COLUMN IF NOT EXISTS farmer_payment_status TEXT DEFAULT 'unpaid'
+      `);
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ADD COLUMN IF NOT EXISTS farmer_paid_at TEXT
+      `);
+    },
+  },
+  {
     name: "2026-03-18_unique_asset_depreciation_log_per_fy",
     up: async () => {
       // Remove any duplicate (assetId, financialYear) rows that may exist,

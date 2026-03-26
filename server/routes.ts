@@ -1450,6 +1450,38 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/sales-history/:id/farmer-payment", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const currentSales = await storage.getSalesHistory(coldStorageId, {});
+      const sale = currentSales.find(s => s.id === req.params.id);
+      if (!sale) {
+        return res.status(404).json({ error: "Sale not found" });
+      }
+      const { farmerPaymentStatus, farmerPaidAt } = req.body;
+      if (!farmerPaymentStatus || !["paid", "unpaid"].includes(farmerPaymentStatus)) {
+        return res.status(400).json({ error: "Invalid farmer payment status" });
+      }
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      let resolvedDate: string | null = null;
+      if (farmerPaymentStatus === "paid") {
+        if (farmerPaidAt && dateRegex.test(farmerPaidAt)) {
+          resolvedDate = farmerPaidAt;
+        } else {
+          resolvedDate = new Date().toISOString().split("T")[0];
+        }
+      }
+      const updated = await storage.updateFarmerPaymentStatus(
+        req.params.id,
+        farmerPaymentStatus,
+        resolvedDate
+      );
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update farmer payment" });
+    }
+  });
+
   const updateSalesHistorySchema = z.object({
     buyerName: z.string().optional(),
     pricePerKg: z.number().optional(),

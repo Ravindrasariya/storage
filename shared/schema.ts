@@ -213,6 +213,9 @@ export const salesHistory = pgTable("sales_history", {
   // Buyer ledger reference (for linking to buyer ledger)
   buyerLedgerId: varchar("buyer_ledger_id"), // Reference to buyer_ledger table (nullable for backward compatibility)
   buyerId: text("buyer_id"), // User-friendly buyer ID (BYYYYYMMDD format)
+  // Farmer payment tracking (has buyer paid the farmer?)
+  farmerPaymentStatus: text("farmer_payment_status").default("unpaid"),
+  farmerPaidAt: text("farmer_paid_at"),
 });
 
 // Edit history for tracking changes

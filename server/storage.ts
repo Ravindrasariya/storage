@@ -314,6 +314,7 @@ export interface IStorage {
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
   getDiscountForFarmerBuyer(coldStorageId: string, farmerName: string, village: string, contactNumber: string, buyerName: string): Promise<number>;
+  updateFarmerPaymentStatus(saleId: string, status: string, paidAt: string | null): Promise<SalesHistory | undefined>;
   // Update farmer details in all salesHistory entries for a given lotId
   // Also updates buyerName if it matches the "self" pattern (farmer as buyer)
   updateSalesHistoryFarmerDetails(
@@ -5546,6 +5547,14 @@ export class DatabaseStorage implements IStorage {
     }
     
     return totalDiscountForBuyer;
+  }
+
+  async updateFarmerPaymentStatus(saleId: string, status: string, paidAt: string | null): Promise<SalesHistory | undefined> {
+    const [updated] = await db.update(salesHistory)
+      .set({ farmerPaymentStatus: status, farmerPaidAt: paidAt })
+      .where(eq(salesHistory.id, saleId))
+      .returning();
+    return updated;
   }
 
   async updateSalesHistoryFarmerDetails(
