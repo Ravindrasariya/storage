@@ -59,7 +59,12 @@ export async function shareReceiptAsPdf(element: HTMLElement, filename: string):
     const blob = pdf.output("blob");
     const file = new File([blob], filename, { type: "application/pdf" });
 
-    if (navigator.share && navigator.canShare({ files: [file] })) {
+    const canShareFiles =
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function" &&
+      navigator.canShare({ files: [file] });
+
+    if (canShareFiles) {
       await navigator.share({ files: [file], title: filename });
     } else {
       const url = URL.createObjectURL(blob);
