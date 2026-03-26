@@ -950,17 +950,6 @@ export default function FarmerLedger() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { setAddFormData({ name: "", contactNumber: "", village: "", tehsil: "", district: "", state: "" }); setAddFarmerError(""); setShowAddFarmerDialog(true); }}
-            data-testid="button-add-farmer"
-          >
-            <UserPlus className="w-4 h-4 mr-2" />
-            {t("addFarmer") || "Add Farmer"}
-          </Button>
-        )}
-        {canEdit && (
-          <Button
-            variant="outline"
-            size="sm"
             onClick={() => syncMutation.mutate()}
             disabled={syncMutation.isPending}
             data-testid="button-sync-farmers"
@@ -972,6 +961,17 @@ export default function FarmerLedger() {
         <Button variant="outline" size="icon" onClick={handlePrint} data-testid="button-print">
           <Printer className="w-4 h-4" />
         </Button>
+        {canEdit && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setAddFormData({ name: "", contactNumber: "", village: "", tehsil: "", district: "", state: "" }); setAddFarmerError(""); setShowAddFarmerDialog(true); }}
+            data-testid="button-add-farmer"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            {t("addFarmer")}
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col px-4">

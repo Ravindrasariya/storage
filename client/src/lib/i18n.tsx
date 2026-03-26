@@ -430,6 +430,7 @@ const translations: Translations = {
   farmer: { en: "Farmer", hi: "किसान" },
   buyer: { en: "Buyer", hi: "खरीदार" },
   addBuyer: { en: "Add Buyer", hi: "खरीदार जोड़ें" },
+  addFarmer: { en: "Add Farmer", hi: "किसान जोड़ें" },
   selectFarmer: { en: "Select Farmer", hi: "किसान चुनें" },
   selectBankAccount: { en: "Please select a bank account", hi: "कृपया बैंक खाता चुनें" },
   searchByNamePhoneVillage: { en: "Search by name, phone, village...", hi: "नाम, फ़ोन, गाँव से खोजें..." },
