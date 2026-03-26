@@ -1,18 +1,37 @@
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 
-export async function shareReceiptAsPdf(element: HTMLElement, filename: string): Promise<void> {
+export async function shareReceiptAsPdf(
+  element: HTMLElement,
+  filename: string,
+  css?: string
+): Promise<void> {
+  // Build a render container that mirrors the print environment
+  const container = document.createElement("div");
+  container.style.position = "fixed";
+  container.style.left = "-9999px";
+  container.style.top = "0";
+  container.style.width = "794px"; // ~A4 at 96dpi
+  container.style.backgroundColor = "#ffffff";
+  container.style.fontFamily = "Arial, sans-serif";
+  container.style.fontSize = "14px";
+  container.style.lineHeight = "1.4";
+  container.style.padding = "20px";
+  container.style.boxSizing = "border-box";
+
+  if (css) {
+    const styleTag = document.createElement("style");
+    // Strip @page rules — they only apply to print, not screen rendering
+    styleTag.textContent = css.replace(/@page\s*\{[^}]*\}/g, "");
+    container.appendChild(styleTag);
+  }
+
   const clone = element.cloneNode(true) as HTMLElement;
-  clone.style.position = "fixed";
-  clone.style.left = "-9999px";
-  clone.style.top = "0";
-  clone.style.width = "794px";
-  clone.style.backgroundColor = "#ffffff";
-  clone.style.padding = "20px";
-  document.body.appendChild(clone);
+  container.appendChild(clone);
+  document.body.appendChild(container);
 
   try {
-    const canvas = await html2canvas(clone, {
+    const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
       logging: false,
@@ -77,6 +96,6 @@ export async function shareReceiptAsPdf(element: HTMLElement, filename: string):
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
   } finally {
-    document.body.removeChild(clone);
+    document.body.removeChild(container);
   }
 }
