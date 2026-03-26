@@ -1816,7 +1816,7 @@ export default function StockRegister() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-sm" data-testid="text-farmer-name">{editForm?.farmerName || selectedLot?.farmerName}</p>
-                    {canEdit && (
+                    {canEdit && selectedLot && selectedLot.remainingSize === selectedLot.size && (
                       <Button
                         type="button"
                         variant="ghost"
