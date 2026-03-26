@@ -1082,9 +1082,12 @@ export default function StockRegister() {
       handleSearch();
     },
     onError: (error: Error) => {
+      const msg = error.message?.includes("Cannot change farmer after sales")
+        ? t("cannotChangeFarmerAfterSales")
+        : error.message;
       toast({
         title: t("error"),
-        description: error.message,
+        description: msg,
         variant: "destructive",
       });
     },
