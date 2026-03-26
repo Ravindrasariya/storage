@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { LogOut, Printer, Save } from "lucide-react";
@@ -26,8 +25,8 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
   
   const [bagsToExit, setBagsToExit] = useState("");
-  const [showPrintReceipt, setShowPrintReceipt] = useState(false);
   const [lastExit, setLastExit] = useState<ExitHistory | null>(null);
+  const [pendingPrint, setPendingPrint] = useState(false);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
@@ -53,6 +52,17 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     }
   }, [sale, open, remainingToExit]);
 
+  // Auto-print when lastExit is set and print is pending
+  useEffect(() => {
+    if (pendingPrint && lastExit) {
+      const timer = setTimeout(() => {
+        handlePrint();
+        setPendingPrint(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingPrint, lastExit]);
+
   const createExitMutation = useMutation({
     mutationFn: async (bagsExited: number) => {
       const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/exits`, { bagsExited });
@@ -61,6 +71,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     onSuccess: (data: ExitHistory) => {
       toast({ title: t("success"), description: t("exitCreated"), variant: "success" });
       setLastExit(data);
+      setPendingPrint(true);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "exits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/years"] });
@@ -82,6 +93,11 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       return;
     }
     createExitMutation.mutate(bags);
+  };
+
+  const handleReprintExit = (exit: ExitHistory) => {
+    setLastExit(exit);
+    setPendingPrint(true);
   };
 
   const handlePrint = () => {
@@ -155,7 +171,6 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       </html>
     `;
 
-    // Try window.open first (works on desktop)
     const printWindow = window.open("", "_blank", "width=595,height=842");
     if (printWindow) {
       printWindow.document.write(htmlContent);
@@ -166,7 +181,6 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
         printWindow.close();
       }, 250);
     } else {
-      // Fallback for mobile: use hidden iframe
       const iframe = document.createElement('iframe');
       iframe.style.position = 'absolute';
       iframe.style.width = '0';
@@ -200,7 +214,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
 
   return (
     <>
-      <Dialog open={open && !showPrintReceipt} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -284,10 +298,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6"
-                            onClick={() => {
-                              setLastExit(exit);
-                              setShowPrintReceipt(true);
-                            }}
+                            onClick={() => handleReprintExit(exit)}
                             data-testid={`button-print-exit-${exit.id}`}
                           >
                             <Printer className="h-3 w-3" />
@@ -325,103 +336,92 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showPrintReceipt} onOpenChange={setShowPrintReceipt}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("exitReceipt")}</DialogTitle>
-          </DialogHeader>
+      {/* Hidden print content — rendered off-screen for printRef capture */}
+      <div style={{ position: "absolute", left: "-9999px", top: 0, pointerEvents: "none" }}>
+        <div ref={printRef}>
+          {sale && lastExit && (
+            <>
+              <div className="header">
+                <h1>{coldStorage?.name || "Cold Storage"}</h1>
+                <h2>निकासी रसीद / Exit Receipt</h2>
+                <h3 style={{ marginTop: "5px", fontSize: "12px" }}>बिल नंबर / Bill No: <strong>{lastExit.billNumber || "-"}</strong></h3>
+              </div>
 
-          <div ref={printRef} className="p-4 bg-white text-black">
-            <div className="header">
-              <h1>{coldStorage?.name || "Cold Storage"}</h1>
-              <h2>निकासी रसीद / Exit Receipt</h2>
-              <h3 style={{ marginTop: "5px", fontSize: "12px" }}>बिल नंबर / Bill No: <strong>{lastExit?.billNumber || "-"}</strong></h3>
-            </div>
+              <div className="details">
+                <div className="details-row-double">
+                  <div>
+                    <span className="details-label">बिक्री तिथि / Sale:</span>
+                    <span className="details-value">{formatDate(sale.soldAt)}</span>
+                  </div>
+                  <div>
+                    <span className="details-label">निकासी तिथि / Exit:</span>
+                    <span className="details-value">{formatDate(lastExit.exitDate)}</span>
+                  </div>
+                </div>
+                <div className="details-row-double">
+                  <div>
+                    <span className="details-label">लॉट नंबर / Lot:</span>
+                    <span className="details-value">{sale.lotNo}</span>
+                  </div>
+                  <div>
+                    <span className="details-label">आलू / Potato:</span>
+                    <span className="details-value">{sale.potatoType}</span>
+                  </div>
+                </div>
+                <div className="details-row">
+                  <span className="details-label">किसान / Farmer:</span>
+                  <span className="details-value">{sale.farmerName}</span>
+                </div>
+                <div className="details-row">
+                  <span className="details-label">खरीदार / Buyer:</span>
+                  <span className="details-value">{sale.isSelfSale === 1 ? (language === "hi" ? "स्वयं" : "Self") : (sale.buyerName || "-")}</span>
+                </div>
+                <div className="separator"></div>
+                <div className="details-row-double">
+                  <div>
+                    <span className="details-label">कुल बेचे / Sold:</span>
+                    <span className="details-value">{sale.quantitySold} bags</span>
+                  </div>
+                  <div>
+                    <span className="details-label">निकासी / Exited:</span>
+                    <span className="details-value"><strong>{lastExit.bagsExited} bags</strong></span>
+                  </div>
+                </div>
+                <div className="details-row-double">
+                  <div>
+                    <span className="details-label">बैग / Bag:</span>
+                    <span className="details-value">{sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
+                  </div>
+                  <div>
+                    <span className="details-label">कक्ष / Chamber:</span>
+                    <span className="details-value">{sale.chamberName}</span>
+                  </div>
+                </div>
+                <div className="details-row-double">
+                  <div>
+                    <span className="details-label">मंजिल / Floor:</span>
+                    <span className="details-value">{sale.floor}</span>
+                  </div>
+                  <div>
+                    <span className="details-label">स्थिति / Position:</span>
+                    <span className="details-value">{sale.position}</span>
+                  </div>
+                </div>
+              </div>
 
-            <div className="details">
-              <div className="details-row-double">
-                <div>
-                  <span className="details-label">बिक्री तिथि / Sale:</span>
-                  <span className="details-value">{formatDate(sale.soldAt)}</span>
-                </div>
-                <div>
-                  <span className="details-label">निकासी तिथि / Exit:</span>
-                  <span className="details-value">{lastExit ? formatDate(lastExit.exitDate) : formatDate(new Date())}</span>
+              <div className="signature">
+                <div className="signature-line">
+                  प्रबंधक हस्ताक्षर / Manager Sign
                 </div>
               </div>
-              <div className="details-row-double">
-                <div>
-                  <span className="details-label">लॉट नंबर / Lot:</span>
-                  <span className="details-value">{sale.lotNo}</span>
-                </div>
-                <div>
-                  <span className="details-label">आलू / Potato:</span>
-                  <span className="details-value">{sale.potatoType}</span>
-                </div>
-              </div>
-              <div className="details-row">
-                <span className="details-label">किसान / Farmer:</span>
-                <span className="details-value">{sale.farmerName}</span>
-              </div>
-              <div className="details-row">
-                <span className="details-label">खरीदार / Buyer:</span>
-                <span className="details-value">{sale.isSelfSale === 1 ? (language === "hi" ? "स्वयं" : "Self") : (sale.buyerName || "-")}</span>
-              </div>
-              <div className="separator"></div>
-              <div className="details-row-double">
-                <div>
-                  <span className="details-label">कुल बेचे / Sold:</span>
-                  <span className="details-value">{sale.quantitySold} bags</span>
-                </div>
-                <div>
-                  <span className="details-label">निकासी / Exited:</span>
-                  <span className="details-value"><strong>{lastExit?.bagsExited || bagsToExit} bags</strong></span>
-                </div>
-              </div>
-              <div className="details-row-double">
-                <div>
-                  <span className="details-label">बैग / Bag:</span>
-                  <span className="details-value">{sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
-                </div>
-                <div>
-                  <span className="details-label">कक्ष / Chamber:</span>
-                  <span className="details-value">{sale.chamberName}</span>
-                </div>
-              </div>
-              <div className="details-row-double">
-                <div>
-                  <span className="details-label">मंजिल / Floor:</span>
-                  <span className="details-value">{sale.floor}</span>
-                </div>
-                <div>
-                  <span className="details-label">स्थिति / Position:</span>
-                  <span className="details-value">{sale.position}</span>
-                </div>
-              </div>
-            </div>
 
-            <div className="signature">
-              <div className="signature-line">
-                प्रबंधक हस्ताक्षर / Manager Sign
+              <div className="footer">
+                कंप्यूटर जनित रसीद / Computer generated receipt
               </div>
-            </div>
-
-            <div className="footer">
-              कंप्यूटर जनित रसीद / Computer generated receipt
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowPrintReceipt(false)} data-testid="button-close-exit-receipt">
-              {t("close")}
-            </Button>
-            <Button onClick={handlePrint} data-testid="button-print-exit-receipt">
-              <Printer className="h-4 w-4 mr-1" />
-              {t("print")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </>
+          )}
+        </div>
+      </div>
     </>
   );
 }

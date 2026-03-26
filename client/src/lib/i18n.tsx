@@ -175,6 +175,7 @@ const translations: Translations = {
   
   // Common
   loading: { en: "Loading...", hi: "लोड हो रहा है..." },
+  preparingPrint: { en: "Preparing print", hi: "प्रिंट तैयार हो रही है" },
   error: { en: "Error", hi: "त्रुटि" },
   success: { en: "Success", hi: "सफलता" },
   required: { en: "Required", hi: "आवश्यक" },

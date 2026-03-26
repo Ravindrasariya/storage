@@ -79,6 +79,18 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     }
   }, [open]);
 
+  // Auto-print once bill type is selected and bill number is ready
+  useEffect(() => {
+    if (billType && billNumber !== null) {
+      // Small delay to allow React to render the hidden printRef content
+      const timer = setTimeout(() => {
+        handlePrint();
+        onOpenChange(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [billType, billNumber]);
+
   const handlePrint = () => {
     if (!printRef.current) return;
     
@@ -324,7 +336,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const netPayable = totalIncome - netColdBill;
 
   const renderDeductionBill = () => (
-    <div ref={printRef}>
+    <div>
       <div className="bill-header">
         <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
         <h2>शीत भण्डार कटौती बिल</h2>
@@ -503,7 +515,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   );
 
   const renderSalesBill = () => (
-    <div ref={printRef}>
+    <div>
       <div className="bill-header">
         <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
         <h2>विक्रय बिल</h2>
@@ -708,6 +720,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     <Dialog open={open} onOpenChange={(isOpen) => {
       if (!isOpen) {
         setBillType(null);
+        setBillNumber(null);
       }
       onOpenChange(isOpen);
     }}>
@@ -748,25 +761,18 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="border rounded-lg p-4 bg-muted/50 max-h-[400px] overflow-y-auto text-sm">
-              {billType === "deduction" ? renderDeductionBill() : renderSalesBill()}
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => { setBillType(null); setBillNumber(null); }} data-testid="button-back">
-                {t("back")}
-              </Button>
-              <Button 
-                onClick={handlePrint} 
-                disabled={assignBillNumberMutation.isPending || !billNumber}
-                data-testid="button-print"
-              >
-                <Printer className="h-4 w-4 mr-2" />
-                {assignBillNumberMutation.isPending ? "Loading..." : t("print")}
-              </Button>
-            </div>
+          <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+            <Printer className="h-5 w-5 mr-2 animate-pulse" />
+            {assignBillNumberMutation.isPending ? t("loading") + "..." : t("preparingPrint") + "..."}
           </div>
         )}
+
+        {/* Hidden print content — rendered off-screen so printRef.current.innerHTML is available */}
+        <div style={{ position: "absolute", left: "-9999px", top: 0, pointerEvents: "none" }}>
+          <div ref={printRef}>
+            {billType === "deduction" ? renderDeductionBill() : billType === "sales" ? renderSalesBill() : null}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
