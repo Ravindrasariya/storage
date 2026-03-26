@@ -318,7 +318,7 @@ export interface IStorage {
   // Also updates buyerName if it matches the "self" pattern (farmer as buyer)
   updateSalesHistoryFarmerDetails(
     lotId: string, 
-    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string },
+    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string; farmerLedgerId?: string; farmerId?: string },
     oldFarmerDetails: { farmerName: string; village: string; contactNumber: string }
   ): Promise<number>;
   // Bank Accounts
@@ -5550,7 +5550,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateSalesHistoryFarmerDetails(
     lotId: string,
-    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string },
+    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string; farmerLedgerId?: string; farmerId?: string },
     oldFarmerDetails: { farmerName: string; village: string; contactNumber: string }
   ): Promise<number> {
     // Filter out undefined values for farmer detail fields
@@ -5561,6 +5561,8 @@ export class DatabaseStorage implements IStorage {
     if (updates.district !== undefined) filteredUpdates.district = updates.district;
     if (updates.state !== undefined) filteredUpdates.state = updates.state;
     if (updates.contactNumber !== undefined) filteredUpdates.contactNumber = updates.contactNumber;
+    if (updates.farmerLedgerId !== undefined) filteredUpdates.farmerLedgerId = updates.farmerLedgerId;
+    if (updates.farmerId !== undefined) filteredUpdates.farmerId = updates.farmerId;
 
     if (Object.keys(filteredUpdates).length === 0) {
       return 0;

@@ -850,7 +850,9 @@ export async function registerRoutes(
                                    validated.tehsil !== undefined ||
                                    validated.district !== undefined ||
                                    validated.state !== undefined ||
-                                   validated.contactNumber !== undefined;
+                                   validated.contactNumber !== undefined ||
+                                   validated.farmerLedgerId !== undefined ||
+                                   validated.farmerId !== undefined;
       
       if (farmerFieldsChanged) {
         // Pass old farmer details to also update buyerName for "self" sales
@@ -863,6 +865,8 @@ export async function registerRoutes(
             district: validated.district,
             state: validated.state,
             contactNumber: validated.contactNumber,
+            farmerLedgerId: validated.farmerLedgerId,
+            farmerId: validated.farmerId,
           },
           {
             farmerName: lot.farmerName,
