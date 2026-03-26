@@ -1765,16 +1765,18 @@ export default function StockRegister() {
                           setEditFarmerQuery(val);
                           setEditForm({ ...editForm, farmerLedgerId: "", farmerId: "", farmerName: val });
                           setShowEditFarmerSuggestions(true);
-                          editFarmerNav.resetIndex();
+                          editFarmerNav.resetActive();
                         }}
                         onFocus={() => { if (editFarmerQuery.trim()) setShowEditFarmerSuggestions(true); }}
                         onBlur={() => { setTimeout(() => setShowEditFarmerSuggestions(false), 200); }}
                         onKeyDown={(e) => {
                           if (showEditFarmerSuggestions && editFarmerSuggestions.length > 0) {
-                            const result = editFarmerNav.handleKeyDown(e, editFarmerSuggestions.length);
-                            if (result !== undefined) {
-                              handleEditFarmerSelect(editFarmerSuggestions[result]);
-                            }
+                            editFarmerNav.handleKeyDown(
+                              e,
+                              editFarmerSuggestions.length,
+                              (idx) => handleEditFarmerSelect(editFarmerSuggestions[idx]),
+                              () => setShowEditFarmerSuggestions(false)
+                            );
                           }
                         }}
                         placeholder={t("farmerName")}
