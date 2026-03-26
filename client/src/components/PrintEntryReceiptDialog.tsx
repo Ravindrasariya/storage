@@ -1,12 +1,14 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Printer } from "lucide-react";
+import { Printer, Share2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import type { Lot, ColdStorage } from "@shared/schema";
 import { authFetch } from "@/lib/queryClient";
+import { useI18n } from "@/lib/i18n";
+import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 
 interface PrintEntryReceiptDialogProps {
   lot: Lot;
@@ -20,7 +22,9 @@ const sameCategory = (a: string, b: string) =>
   (isWafer(a) && isWafer(b)) || (isSeedRation(a) && isSeedRation(b));
 
 export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryReceiptDialogProps) {
+  const { t } = useI18n();
   const printRef = useRef<HTMLDivElement>(null);
+  const [isSharing, setIsSharing] = useState(false);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
@@ -200,6 +204,19 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
     }
   };
 
+  const handleShare = async () => {
+    if (!printRef.current || !lotsInBatch?.length) return;
+    const filename = `lot-entry-receipt-${lot.entrySequence}.pdf`;
+    setIsSharing(true);
+    try {
+      await shareReceiptAsPdf(printRef.current, filename);
+    } catch (err) {
+      console.error("Share failed:", err);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   const firstLot = lotsInBatch?.[0] || lot;
   const totalExpected = lotsInBatch?.reduce((sum, l) => sum + getExpectedCharges(l), 0) || 0;
   const remarksLots = lotsInBatch?.filter(l => l.remarks && l.remarks.trim()) || [];
@@ -341,6 +358,19 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-close-receipt">
                 बंद करें
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleShare}
+                disabled={isSharing}
+                data-testid="button-share-receipt"
+              >
+                {isSharing ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Share2 className="h-4 w-4 mr-2" />
+                )}
+                {isSharing ? t("sharingReceipt") + "..." : t("share")}
               </Button>
               <Button onClick={handlePrint} data-testid="button-print-receipt">
                 <Printer className="h-4 w-4 mr-2" />

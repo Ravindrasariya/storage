@@ -4,9 +4,10 @@ import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { Printer, FileText, Receipt } from "lucide-react";
+import { Printer, FileText, Receipt, Share2, Loader2 } from "lucide-react";
 import type { SalesHistory, ColdStorage } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 
 // Format amount: round to 1 decimal if fractional, show integer if whole (e.g., 72.54 → "72.5", 72 → "72")
 const formatAmount = (value: number): string => {
@@ -31,6 +32,8 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const { t } = useI18n();
   const [billType, setBillType] = useState<"deduction" | "sales" | null>(null);
   const [billNumber, setBillNumber] = useState<number | null>(null);
+  const [action, setAction] = useState<"print" | "share" | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
@@ -55,7 +58,8 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     },
   });
 
-  const handleBillTypeSelect = async (type: "deduction" | "sales") => {
+  const handleBillTypeSelect = async (type: "deduction" | "sales", selectedAction: "print" | "share") => {
+    setAction(selectedAction);
     setBillType(type);
     // Check if bill number already exists in sale data
     const existingBillNumber = type === "deduction" 
@@ -76,20 +80,38 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     if (!open) {
       setBillType(null);
       setBillNumber(null);
+      setAction(null);
+      setIsSharing(false);
     }
   }, [open]);
 
-  // Auto-print once bill type is selected and bill number is ready
+  // Auto-print or auto-share once bill type is selected and bill number is ready
   useEffect(() => {
-    if (billType && billNumber !== null) {
+    if (billType && billNumber !== null && action) {
       // Small delay to allow React to render the hidden printRef content
-      const timer = setTimeout(() => {
-        handlePrint();
-        onOpenChange(false);
+      const timer = setTimeout(async () => {
+        if (action === "share") {
+          if (!printRef.current) { onOpenChange(false); return; }
+          const filename = billType === "deduction"
+            ? `cold-storage-deduction-bill-${billNumber}.pdf`
+            : `sales-bill-${billNumber}.pdf`;
+          setIsSharing(true);
+          try {
+            await shareReceiptAsPdf(printRef.current, filename);
+          } catch (err) {
+            console.error("Share failed:", err);
+          } finally {
+            setIsSharing(false);
+            onOpenChange(false);
+          }
+        } else {
+          handlePrint();
+          onOpenChange(false);
+        }
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [billType, billNumber]);
+  }, [billType, billNumber, action]);
 
   const handlePrint = () => {
     if (!printRef.current) return;
@@ -738,32 +760,83 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               {t("selectBillType")}
             </p>
             <div className="grid gap-3">
-              <Button
-                variant="outline"
-                className="h-auto py-4 flex flex-col items-center gap-2"
-                onClick={() => handleBillTypeSelect("deduction")}
-                data-testid="button-deduction-bill"
-              >
-                <Receipt className="h-6 w-6" />
-                <span className="font-medium">{t("coldStorageDeductionBill")}</span>
-                <span className="text-xs text-muted-foreground">{t("chargesBreakdown")}</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-auto py-4 flex flex-col items-center gap-2"
-                onClick={() => handleBillTypeSelect("sales")}
-                data-testid="button-sales-bill"
-              >
-                <FileText className="h-6 w-6" />
-                <span className="font-medium">{t("salesBill")}</span>
-                <span className="text-xs text-muted-foreground">{t("incomeAndDeductions")}</span>
-              </Button>
+              {/* Cold Storage Deduction Bill */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-3 bg-muted/30">
+                  <Receipt className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">{t("coldStorageDeductionBill")}</div>
+                    <div className="text-xs text-muted-foreground">{t("chargesBreakdown")}</div>
+                  </div>
+                </div>
+                <div className="flex border-t">
+                  <Button
+                    variant="ghost"
+                    className="flex-1 rounded-none h-10 gap-2 text-sm"
+                    onClick={() => handleBillTypeSelect("deduction", "print")}
+                    data-testid="button-deduction-bill-print"
+                  >
+                    <Printer className="h-4 w-4" />
+                    {t("print")}
+                  </Button>
+                  <div className="border-l" />
+                  <Button
+                    variant="ghost"
+                    className="flex-1 rounded-none h-10 gap-2 text-sm text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                    onClick={() => handleBillTypeSelect("deduction", "share")}
+                    data-testid="button-deduction-bill-share"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    {t("share")}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Sales Bill */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-3 bg-muted/30">
+                  <FileText className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">{t("salesBill")}</div>
+                    <div className="text-xs text-muted-foreground">{t("incomeAndDeductions")}</div>
+                  </div>
+                </div>
+                <div className="flex border-t">
+                  <Button
+                    variant="ghost"
+                    className="flex-1 rounded-none h-10 gap-2 text-sm"
+                    onClick={() => handleBillTypeSelect("sales", "print")}
+                    data-testid="button-sales-bill-print"
+                  >
+                    <Printer className="h-4 w-4" />
+                    {t("print")}
+                  </Button>
+                  <div className="border-l" />
+                  <Button
+                    variant="ghost"
+                    className="flex-1 rounded-none h-10 gap-2 text-sm text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                    onClick={() => handleBillTypeSelect("sales", "share")}
+                    data-testid="button-sales-bill-share"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    {t("share")}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         ) : (
           <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-            <Printer className="h-5 w-5 mr-2 animate-pulse" />
-            {assignBillNumberMutation.isPending ? t("loading") + "..." : t("preparingPrint") + "..."}
+            {action === "share" ? (
+              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+            ) : (
+              <Printer className="h-5 w-5 mr-2 animate-pulse" />
+            )}
+            {assignBillNumberMutation.isPending
+              ? t("loading") + "..."
+              : action === "share"
+                ? t("sharingReceipt") + "..."
+                : t("preparingPrint") + "..."}
           </div>
         )}
 
