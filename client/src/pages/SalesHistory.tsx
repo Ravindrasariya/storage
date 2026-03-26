@@ -799,7 +799,45 @@ type FarmerLookupRecord = {
 
 function calculateNetPayableToFarmer(sale: SalesHistory): number {
   const totalIncome = (sale.netWeight || 0) * (sale.pricePerKg || 0);
-  const netColdBill = Math.max(0, (sale.coldStorageCharge || 0) - (sale.discountAllocated || 0));
+
+  const chargeBasis = sale.chargeBasis || "actual";
+  const bagsToUse = chargeBasis === "totalRemaining"
+    ? (sale.remainingSizeAtSale || sale.quantitySold)
+    : sale.quantitySold;
+
+  const chargeUnit = sale.chargeUnitAtSale || "bag";
+  const isQuintalBased = chargeUnit === "quintal";
+  const quintalValueNum = isQuintalBased && sale.initialNetWeightKg && sale.originalLotSize && sale.originalLotSize > 0
+    ? (sale.initialNetWeightKg * bagsToUse) / (sale.originalLotSize * 100)
+    : 0;
+
+  const hasSeparateCharges = sale.coldCharge != null && sale.hammali != null;
+  let coldChargeAmount = 0;
+  let hammaliAmount = 0;
+
+  if (sale.baseChargeAmountAtSale === 0) {
+    coldChargeAmount = 0;
+    hammaliAmount = 0;
+  } else if (hasSeparateCharges && sale.coldCharge != null && sale.hammali != null) {
+    if (isQuintalBased) {
+      coldChargeAmount = (sale.coldCharge || 0) * quintalValueNum;
+      hammaliAmount = (sale.hammali || 0) * bagsToUse;
+    } else {
+      coldChargeAmount = (sale.coldCharge || 0) * bagsToUse;
+      hammaliAmount = (sale.hammali || 0) * bagsToUse;
+    }
+  } else {
+    const extrasInner = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+    coldChargeAmount = (sale.coldStorageCharge || 0) - extrasInner - (sale.adjReceivableSelfDueAmount || 0);
+    hammaliAmount = 0;
+  }
+
+  const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+  const adjAmount = sale.adjReceivableSelfDueAmount || 0;
+  const discountAllocated = sale.discountAllocated || 0;
+  const totalCharges = coldChargeAmount + hammaliAmount + extras + adjAmount;
+  const netColdBill = Math.max(0, totalCharges - discountAllocated);
+
   return totalIncome - netColdBill;
 }
 
