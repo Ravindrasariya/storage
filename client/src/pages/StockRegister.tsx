@@ -32,7 +32,14 @@ import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer, CalendarDays, Pencil } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer, CalendarDays, Pencil, Share2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
@@ -754,24 +761,44 @@ export default function StockRegister() {
     }
   };
 
-  const handlePrintFiltered = () => {
-    const lots = getDisplayedLots;
-    if (lots.length === 0 || !summaryTotals) {
-      toast({
-        title: t("noResults"),
-        variant: "destructive",
-      });
-      return;
+  const STOCK_REPORT_CSS = `
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+    .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+    .main-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+    .sub-title { font-size: 16px; color: #666; }
+    .print-date { font-size: 12px; color: #999; margin-top: 5px; }
+    .summary-card { background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+    .summary-title { font-weight: bold; margin-bottom: 10px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; text-align: center; }
+    .summary-item { display: flex; flex-direction: column; }
+    .summary-label { font-size: 12px; color: #666; }
+    .summary-value { font-size: 16px; font-weight: bold; }
+    .blue { color: #2563eb; }
+    .green { color: #16a34a; }
+    .red { color: #dc2626; }
+    .lot-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; page-break-inside: avoid; }
+    .lot-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+    .farmer-name { font-size: 16px; font-weight: bold; }
+    .lot-badges { display: flex; gap: 5px; }
+    .badge { background: #e5e7eb; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: capitalize; }
+    .quality-good { background: #dcfce7; color: #166534; }
+    .quality-medium { background: #fef3c7; color: #92400e; }
+    .quality-poor { background: #fee2e2; color: #991b1b; }
+    .lot-details { font-size: 13px; }
+    .detail-row { display: grid; grid-template-columns: 100px 1fr 100px 1fr; gap: 5px; margin-bottom: 5px; }
+    .label { color: #666; }
+    .value { font-weight: 500; }
+    .charges-row { display: flex; gap: 20px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; font-size: 13px; }
+    @media print {
+      body { padding: 10px; }
+      .lot-card { break-inside: avoid; }
     }
+  `;
 
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      toast({
-        title: "Unable to open print window",
-        variant: "destructive",
-      });
-      return;
-    }
+  const buildStockReportHtml = () => {
+    const lots = getDisplayedLots;
+    if (lots.length === 0 || !summaryTotals) return null;
 
     const coldStoreName = coldStorage?.name || "Cold Storage";
     const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -856,94 +883,88 @@ export default function StockRegister() {
       `;
     }).join("");
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${coldStoreName} - Farmer Lot Details</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
-          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-          .main-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-          .sub-title { font-size: 16px; color: #666; }
-          .print-date { font-size: 12px; color: #999; margin-top: 5px; }
-          .summary-card { background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
-          .summary-title { font-weight: bold; margin-bottom: 10px; }
-          .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; text-align: center; }
-          .summary-item { display: flex; flex-direction: column; }
-          .summary-label { font-size: 12px; color: #666; }
-          .summary-value { font-size: 16px; font-weight: bold; }
-          .blue { color: #2563eb; }
-          .green { color: #16a34a; }
-          .red { color: #dc2626; }
-          .lot-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; page-break-inside: avoid; }
-          .lot-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
-          .farmer-name { font-size: 16px; font-weight: bold; }
-          .lot-badges { display: flex; gap: 5px; }
-          .badge { background: #e5e7eb; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: capitalize; }
-          .quality-good { background: #dcfce7; color: #166534; }
-          .quality-medium { background: #fef3c7; color: #92400e; }
-          .quality-poor { background: #fee2e2; color: #991b1b; }
-          .lot-details { font-size: 13px; }
-          .detail-row { display: grid; grid-template-columns: 100px 1fr 100px 1fr; gap: 5px; margin-bottom: 5px; }
-          .label { color: #666; }
-          .value { font-weight: 500; }
-          .charges-row { display: flex; gap: 20px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; font-size: 13px; }
-          @media print {
-            body { padding: 10px; }
-            .lot-card { break-inside: avoid; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="main-title">${coldStoreName}</div>
-          <div class="sub-title">Farmer Lot Details</div>
-          <div class="print-date">Printed On: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}</div>
-        </div>
-        
-        <div class="summary-card">
-          <div class="summary-title">Search Summary:</div>
-          <div class="summary-grid">
-            <div class="summary-item">
-              <span class="summary-label">Total Bags</span>
-              <span class="summary-value">${summaryTotals.totalBags.toLocaleString('en-IN')}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Remaining Bags</span>
-              <span class="summary-value">${summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Total Expected Billed Charges</span>
-              <span class="summary-value blue">${formatCurrency(summaryTotals.expectedColdCharges)}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Charges Paid</span>
-              <span class="summary-value green">${formatCurrency(summaryTotals.chargesPaid)}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">Charges Due</span>
-              <span class="summary-value red">${formatCurrency(summaryTotals.chargesDue)}</span>
-            </div>
+    const bodyHtml = `
+      <div class="header">
+        <div class="main-title">${coldStoreName}</div>
+        <div class="sub-title">Farmer Lot Details</div>
+        <div class="print-date">Printed On: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-title">Search Summary:</div>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="summary-label">Total Bags</span>
+            <span class="summary-value">${summaryTotals.totalBags.toLocaleString('en-IN')}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Remaining Bags</span>
+            <span class="summary-value">${summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Total Expected Billed Charges</span>
+            <span class="summary-value blue">${formatCurrency(summaryTotals.expectedColdCharges)}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Charges Paid</span>
+            <span class="summary-value green">${formatCurrency(summaryTotals.chargesPaid)}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Charges Due</span>
+            <span class="summary-value red">${formatCurrency(summaryTotals.chargesDue)}</span>
           </div>
         </div>
-
-        <div class="lots-container">
-          ${lotCards}
-        </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-          }
-        </script>
-      </body>
-      </html>
+      </div>
+      <div class="lots-container">
+        ${lotCards}
+      </div>
     `;
 
+    return { bodyHtml, coldStoreName };
+  };
+
+  const handlePrintFiltered = () => {
+    const result = buildStockReportHtml();
+    if (!result) {
+      toast({ title: t("noResults"), variant: "destructive" });
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast({ title: "Unable to open print window", variant: "destructive" });
+      return;
+    }
+
+    const htmlContent = `<!DOCTYPE html><html><head><title>${result.coldStoreName} - Farmer Lot Details</title><style>${STOCK_REPORT_CSS}</style></head><body>${result.bodyHtml}<script>window.onload=function(){window.print()}<\/script></body></html>`;
     printWindow.document.write(htmlContent);
     printWindow.document.close();
+  };
+
+  const [isSharingReport, setIsSharingReport] = useState(false);
+
+  const handleShareFiltered = async () => {
+    const result = buildStockReportHtml();
+    if (!result) {
+      toast({ title: t("noResults"), variant: "destructive" });
+      return;
+    }
+
+    setIsSharingReport(true);
+    try {
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = result.bodyHtml;
+
+      await shareReceiptAsPdf(
+        tempDiv,
+        `${result.coldStoreName}_Stock_Report.pdf`,
+        STOCK_REPORT_CSS
+      );
+    } catch (err) {
+      console.error("Share failed:", err);
+      toast({ title: "Share failed", variant: "destructive" });
+    } finally {
+      setIsSharingReport(false);
+    }
   };
 
   const handleSearch = async () => {
@@ -1285,15 +1306,29 @@ export default function StockRegister() {
                   <Download className="h-4 w-4" />
                 </Button>
                 {isFilterActive && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handlePrintFiltered}
-                    title={t("print") || "Print"}
-                    data-testid="button-print-filtered"
-                  >
-                    <Printer className="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title={t("print") || "Print"}
+                        data-testid="button-print-filtered"
+                        disabled={isSharingReport}
+                      >
+                        {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
+                        <Printer className="h-4 w-4 mr-2" />
+                        {t("print")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
+                        <Share2 className="h-4 w-4 mr-2 text-green-600" />
+                        {t("share")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
             </div>
@@ -1380,15 +1415,29 @@ export default function StockRegister() {
                   <Download className="h-4 w-4" />
                 </Button>
                 {isFilterActive && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handlePrintFiltered}
-                    title={t("print") || "Print"}
-                    data-testid="button-print-filtered"
-                  >
-                    <Printer className="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title={t("print") || "Print"}
+                        data-testid="button-print-filtered"
+                        disabled={isSharingReport}
+                      >
+                        {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
+                        <Printer className="h-4 w-4 mr-2" />
+                        {t("print")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
+                        <Share2 className="h-4 w-4 mr-2 text-green-600" />
+                        {t("share")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
             </div>
@@ -1473,15 +1522,29 @@ export default function StockRegister() {
                   <Download className="h-4 w-4" />
                 </Button>
                 {isFilterActive && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handlePrintFiltered}
-                    title={t("print") || "Print"}
-                    data-testid="button-print-filtered"
-                  >
-                    <Printer className="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title={t("print") || "Print"}
+                        data-testid="button-print-filtered"
+                        disabled={isSharingReport}
+                      >
+                        {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
+                        <Printer className="h-4 w-4 mr-2" />
+                        {t("print")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
+                        <Share2 className="h-4 w-4 mr-2 text-green-600" />
+                        {t("share")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
             </div>
@@ -1571,15 +1634,29 @@ export default function StockRegister() {
                   <Download className="h-4 w-4" />
                 </Button>
                 {isFilterActive && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handlePrintFiltered}
-                    title={t("print") || "Print"}
-                    data-testid="button-print-filtered"
-                  >
-                    <Printer className="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title={t("print") || "Print"}
+                        data-testid="button-print-filtered"
+                        disabled={isSharingReport}
+                      >
+                        {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
+                        <Printer className="h-4 w-4 mr-2" />
+                        {t("print")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
+                        <Share2 className="h-4 w-4 mr-2 text-green-600" />
+                        {t("share")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
             </div>
