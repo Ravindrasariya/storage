@@ -1,0 +1,53 @@
+
+
+The approach uses 3 layers: HTML templating → image/PDF conversion → native sharing. No WhatsApp API or business account is needed.
+Step 1: Build the receipt as HTML
+
+The receipt content (farmer name, bags, weights, charges, totals) is assembled into a full HTML string with inline CSS — no external stylesheets. This is important because the HTML gets rendered in an off-screen container, so everything must be self-contained.
+
+For example, functions like generateFarmerReceiptHtml and applyFarmerTemplate in receiptGenerators.ts produce a complete HTML document with inline styles, Devanagari font support for Hindi, tables, and layout.
+Step 2: Convert HTML to a PDF image
+
+This is the core technical piece, handled in receiptUtils.ts:
+
+    A hidden div is created and injected into the page DOM with the receipt HTML inside it
+    html2canvas (a JavaScript library) takes a "screenshot" of that hidden div — essentially rasterizing the HTML into a canvas element at 2x resolution for sharpness
+    The canvas is then converted to a PDF using jsPDF — it creates an A4-sized document, and if the receipt is taller than one page, it automatically splits across multiple pages
+    The hidden div is removed from the DOM
+
+The key libraries are:
+
+    html2canvas — renders HTML to a canvas bitmap
+    jspdf — converts the canvas to a proper PDF file (as a Blob)
+
+Step 3: Share via the Web Share API
+
+This is the part that triggers WhatsApp:
+
+// Simplified version of the logic:
+const pdfBlob = await canvasToPdfBlob(canvas);
+const pdfFile = new File([pdfBlob], "receipt.pdf", { type: "application/pdf" });
+
+if (navigator.share && navigator.canShare({ files: [pdfFile] })) {
+    await navigator.share({
+        files: [pdfFile],
+        title: "Receipt",
+    });
+} else {
+    // Fallback: auto-download the PDF
+    downloadBlob(pdfBlob, "receipt.pdf");
+}
+
+The browser's navigator.share() opens the device's native share sheet (on Android/iOS), where the user picks WhatsApp. The PDF file is sent as an attachment in the chat. No WhatsApp API key or integration is required — it's entirely browser-native.
+
+Fallback: On desktop browsers that don't support the Web Share API, the PDF is automatically downloaded instead.
+Summary for reuse in your other app
+
+To replicate this in another project, you need:
+
+    html2canvas — to screenshot your HTML content
+    jspdf — to convert the screenshot into a shareable PDF
+    navigator.share() — the browser's built-in share API (works on mobile browsers, especially Chrome and Safari)
+    Your receipt/content as a self-contained HTML string with inline styles
+
+The flow is: HTML string → hidden DOM element → html2canvas screenshot → jsPDF conversion → navigator.share() with the PDF file.
