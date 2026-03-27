@@ -115,6 +115,17 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-03-27_reclassify_capital_expenses",
+    up: async () => {
+      await db.execute(sql`
+        UPDATE expenses
+        SET expense_class = 'capital'
+        WHERE expense_type IN ('loan_principal', 'asset_purchase')
+          AND expense_class != 'capital'
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {
