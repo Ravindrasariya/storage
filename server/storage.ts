@@ -3155,6 +3155,19 @@ export class DatabaseStorage implements IStorage {
         .where(eq(merchantAdvance.expenseId, expenseId));
     }
 
+    // If this is a loan_principal expense, also reverse the linked liability payment
+    if (expense.expenseType === "loan_principal") {
+      const [linkedPayment] = await db.select()
+        .from(liabilityPayments)
+        .where(and(
+          eq(liabilityPayments.linkedExpenseId, expenseId),
+          eq(liabilityPayments.isReversed, 0),
+        ));
+      if (linkedPayment) {
+        await this.reverseLiabilityPayment(linkedPayment.id);
+      }
+    }
+
     return { success: true, message: "Expense reversed" };
   }
 
