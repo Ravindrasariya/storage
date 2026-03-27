@@ -3676,14 +3676,10 @@ export default function CashManagement() {
                       <Label>{t("expenseType")} *</Label>
                       <Select value={expenseType} onValueChange={(v) => {
                         setExpenseType(v);
-                        if (v === "loan_principal") {
-                          setAssetName("");
-                          setAssetCategory("");
-                          setDepreciationRate("");
-                        }
-                        if (v === "asset_purchase") {
-                          setExpenseLiabilityId("");
-                        }
+                        setExpenseLiabilityId("");
+                        setAssetName("");
+                        setAssetCategory("");
+                        setDepreciationRate("");
                       }}>
                         <SelectTrigger data-testid="select-capital-expense-type">
                           <SelectValue placeholder={t("selectExpenseType")} />
