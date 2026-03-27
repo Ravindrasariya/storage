@@ -1336,8 +1336,10 @@ export default function CashManagement() {
           remarks: expenseRemarks || undefined,
         });
 
+        const expenseData = await expenseRes.json();
+        let partialFailure = false;
+
         if (expenseType === "asset_purchase") {
-          const expenseData = await expenseRes.json();
           await apiRequest("POST", "/api/assets", {
             assetName,
             assetCategory,
@@ -1363,17 +1365,21 @@ export default function CashManagement() {
               accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
               paidAt: new Date(expenseDate).toISOString(),
               remarks: expenseRemarks || null,
+              linkedExpenseId: expenseData.id,
             });
             queryClient.invalidateQueries({ queryKey: ["/api/liabilities"] });
             queryClient.invalidateQueries({ queryKey: ["/api/liabilities", expenseLiabilityId, "payments"] });
           } catch {
+            partialFailure = true;
             toast({ title: t("error"), description: "Expense recorded but loan balance update failed. Please check liability register.", variant: "destructive" });
           }
         }
 
         queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-        toast({ title: t("success"), description: t("capitalExpenseRecorded") || "Capital expense recorded" });
+        if (!partialFailure) {
+          toast({ title: t("success"), description: t("capitalExpenseRecorded") || "Capital expense recorded" });
+        }
         setAssetName("");
         setAssetCategory("");
         setDepreciationRate("");
@@ -3636,7 +3642,7 @@ export default function CashManagement() {
                       size="sm"
                       className="flex-1"
                       data-testid="btn-revenue-expense"
-                      onClick={() => { setExpenseClass("revenue"); setExpenseType(""); setAssetName(""); setAssetCategory(""); setDepreciationRate(""); }}
+                      onClick={() => { setExpenseClass("revenue"); setExpenseType(""); setAssetName(""); setAssetCategory(""); setDepreciationRate(""); setExpenseLiabilityId(""); }}
                     >
                       {t("revenueExpense") || "Revenue Expense"}
                     </Button>
@@ -3657,7 +3663,7 @@ export default function CashManagement() {
                       size="sm"
                       className="flex-1"
                       data-testid="btn-advance-expense"
-                      onClick={() => { setExpenseClass("advance"); setExpenseType(""); setAssetName(""); setAssetCategory(""); setDepreciationRate(""); }}
+                      onClick={() => { setExpenseClass("advance"); setExpenseType(""); setAssetName(""); setAssetCategory(""); setDepreciationRate(""); setExpenseLiabilityId(""); }}
                     >
                       {t("advanceExpense") || "Advance"}
                     </Button>
