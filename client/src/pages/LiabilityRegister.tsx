@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -30,6 +30,130 @@ const LIABILITY_TYPES = [
 function getLiabilityTypeLabel(type: string, t: (key: string) => string): string {
   const found = LIABILITY_TYPES.find(lt => lt.value === type);
   return found ? t(found.labelKey) : type;
+}
+
+type LiabilityFormData = {
+  liabilityName: string;
+  liabilityType: string;
+  partyName: string;
+  originalAmount: string;
+  outstandingAmount: string;
+  interestRate: string;
+  startDate: string;
+  dueDate: string;
+  emiAmount: string;
+  isOpening: number;
+  remarks: string;
+};
+
+function LiabilityFormFields({ formData, setFormData, t }: {
+  formData: LiabilityFormData;
+  setFormData: React.Dispatch<React.SetStateAction<LiabilityFormData>>;
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label>{t("liabilityName")}</Label>
+        <Input
+          value={formData.liabilityName}
+          onChange={e => setFormData(prev => ({ ...prev, liabilityName: e.target.value }))}
+          data-testid="input-liability-name"
+        />
+      </div>
+      <div>
+        <Label>{t("liabilityType")}</Label>
+        <Select value={formData.liabilityType} onValueChange={v => setFormData(prev => ({ ...prev, liabilityType: v }))}>
+          <SelectTrigger data-testid="select-liability-type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LIABILITY_TYPES.map(lt => (
+              <SelectItem key={lt.value} value={lt.value}>{t(lt.labelKey)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>{t("partyName")}</Label>
+        <Input
+          value={formData.partyName}
+          onChange={e => setFormData(prev => ({ ...prev, partyName: e.target.value }))}
+          data-testid="input-party-name"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>{t("originalAmount")}</Label>
+          <Input
+            type="number"
+            value={formData.originalAmount}
+            onChange={e => setFormData(prev => ({ ...prev, originalAmount: e.target.value }))}
+            data-testid="input-original-amount"
+          />
+        </div>
+        <div>
+          <Label>{t("outstandingAmount")}</Label>
+          <Input
+            type="number"
+            value={formData.outstandingAmount}
+            onChange={e => setFormData(prev => ({ ...prev, outstandingAmount: e.target.value }))}
+            data-testid="input-outstanding-amount"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>{t("rateOfInterest")}</Label>
+          <Input
+            type="number"
+            value={formData.interestRate}
+            onChange={e => setFormData(prev => ({ ...prev, interestRate: e.target.value }))}
+            data-testid="input-interest-rate"
+          />
+        </div>
+        <div>
+          <Label>{t("emiAmount")}</Label>
+          <Input
+            type="number"
+            value={formData.emiAmount}
+            onChange={e => setFormData(prev => ({ ...prev, emiAmount: e.target.value }))}
+            placeholder={t("optional")}
+            data-testid="input-emi-amount"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>{t("startDate")}</Label>
+          <Input
+            type="date"
+            value={formData.startDate}
+            onChange={e => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
+            data-testid="input-start-date"
+          />
+        </div>
+        <div>
+          <Label>{t("dueDate")}</Label>
+          <Input
+            type="date"
+            value={formData.dueDate}
+            onChange={e => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+            placeholder={t("optional")}
+            data-testid="input-due-date"
+          />
+        </div>
+      </div>
+      <div>
+        <Label>{t("remarks")}</Label>
+        <Input
+          value={formData.remarks}
+          onChange={e => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
+          data-testid="input-liability-remarks"
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function LiabilityRegister() {
@@ -269,118 +393,6 @@ export default function LiabilityRegister() {
     );
   }
 
-  const LiabilityFormFields = () => (
-    <div className="space-y-3">
-      <div>
-        <Label>{t("liabilityName")}</Label>
-        <Input
-          value={formData.liabilityName}
-          onChange={e => setFormData(prev => ({ ...prev, liabilityName: e.target.value }))}
-          data-testid="input-liability-name"
-        />
-      </div>
-      <div>
-        <Label>{t("liabilityType")}</Label>
-        <Select value={formData.liabilityType} onValueChange={v => setFormData(prev => ({ ...prev, liabilityType: v }))}>
-          <SelectTrigger data-testid="select-liability-type">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LIABILITY_TYPES.map(lt => (
-              <SelectItem key={lt.value} value={lt.value}>{t(lt.labelKey)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label>{t("partyName")}</Label>
-        <Input
-          value={formData.partyName}
-          onChange={e => setFormData(prev => ({ ...prev, partyName: e.target.value }))}
-          data-testid="input-party-name"
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label>{t("originalAmount")}</Label>
-          <Input
-            type="number"
-            value={formData.originalAmount}
-            onChange={e => setFormData(prev => ({ ...prev, originalAmount: e.target.value }))}
-            data-testid="input-original-amount"
-          />
-        </div>
-        <div>
-          <Label>{t("outstandingAmount")}</Label>
-          <Input
-            type="number"
-            value={formData.outstandingAmount}
-            onChange={e => setFormData(prev => ({ ...prev, outstandingAmount: e.target.value }))}
-            data-testid="input-outstanding-amount"
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label>{t("rateOfInterest")}</Label>
-          <Input
-            type="number"
-            value={formData.interestRate}
-            onChange={e => setFormData(prev => ({ ...prev, interestRate: e.target.value }))}
-            data-testid="input-interest-rate"
-          />
-        </div>
-        <div>
-          <Label>{t("emiAmount")}</Label>
-          <Input
-            type="number"
-            value={formData.emiAmount}
-            onChange={e => setFormData(prev => ({ ...prev, emiAmount: e.target.value }))}
-            placeholder={t("optional")}
-            data-testid="input-emi-amount"
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label>{t("startDate")}</Label>
-          <Input
-            type="date"
-            value={formData.startDate}
-            onChange={e => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
-            data-testid="input-start-date"
-          />
-        </div>
-        <div>
-          <Label>{t("dueDate")}</Label>
-          <Input
-            type="date"
-            value={formData.dueDate}
-            onChange={e => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
-            placeholder={t("optional")}
-            data-testid="input-due-date"
-          />
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Switch
-          checked={formData.isOpening === 1}
-          onCheckedChange={checked => setFormData(prev => ({ ...prev, isOpening: checked ? 1 : 0 }))}
-          data-testid="switch-is-opening"
-        />
-        <Label>{t("isOpeningLiability")}</Label>
-      </div>
-      <div>
-        <Label>{t("remarks")}</Label>
-        <Input
-          value={formData.remarks}
-          onChange={e => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
-          data-testid="input-liability-remarks"
-        />
-      </div>
-    </div>
-  );
-
   return (
     <div className="flex flex-col h-full overflow-x-hidden">
       <div className="p-4 border-b">
@@ -501,7 +513,7 @@ export default function LiabilityRegister() {
             <DialogTitle>{t("addLiability")}</DialogTitle>
             <DialogDescription>{t("addLiabilityDesc")}</DialogDescription>
           </DialogHeader>
-          <LiabilityFormFields />
+          <LiabilityFormFields formData={formData} setFormData={setFormData} t={t} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)} data-testid="button-cancel-add">
               {t("cancel")}
@@ -519,7 +531,7 @@ export default function LiabilityRegister() {
             <DialogTitle>{t("editLiability")}</DialogTitle>
             <DialogDescription>{t("editLiabilityDesc")}</DialogDescription>
           </DialogHeader>
-          <LiabilityFormFields />
+          <LiabilityFormFields formData={formData} setFormData={setFormData} t={t} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)} data-testid="button-cancel-edit">
               {t("cancel")}
