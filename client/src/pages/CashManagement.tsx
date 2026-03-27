@@ -864,6 +864,8 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
+      queryClient.invalidateQueries({ queryKey: ["/api/liabilities"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/liabilities/") });
     },
     onError: () => {
       toast({ title: t("error"), description: t("reversalFailed"), variant: "destructive" });
