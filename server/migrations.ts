@@ -98,6 +98,23 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-03-27_liability_amounts_to_double_precision",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE liabilities
+          ALTER COLUMN original_amount TYPE double precision,
+          ALTER COLUMN outstanding_amount TYPE double precision,
+          ALTER COLUMN emi_amount TYPE double precision
+      `);
+      await db.execute(sql`
+        ALTER TABLE liability_payments
+          ALTER COLUMN amount TYPE double precision,
+          ALTER COLUMN principal_component TYPE double precision,
+          ALTER COLUMN interest_component TYPE double precision
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

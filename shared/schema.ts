@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, integer, real, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -599,12 +599,12 @@ export const liabilities = pgTable("liabilities", {
   liabilityName: text("liability_name").notNull(),
   liabilityType: text("liability_type").notNull(), // 'bank_loan', 'equipment_loan', 'credit_line', 'outstanding_payable', 'other'
   partyName: text("party_name").notNull(),
-  originalAmount: real("original_amount").notNull(),
-  outstandingAmount: real("outstanding_amount").notNull(),
+  originalAmount: doublePrecision("original_amount").notNull(),
+  outstandingAmount: doublePrecision("outstanding_amount").notNull(),
   interestRate: real("interest_rate").notNull().default(0), // Annual rate in %
   startDate: timestamp("start_date").notNull(),
   dueDate: timestamp("due_date"),
-  emiAmount: real("emi_amount"),
+  emiAmount: doublePrecision("emi_amount"),
   isOpening: integer("is_opening").notNull().default(0), // 1 = existing liability, 0 = new
   isSettled: integer("is_settled").notNull().default(0), // 0 = active, 1 = settled
   settledAt: timestamp("settled_at"),
@@ -617,9 +617,9 @@ export const liabilityPayments = pgTable("liability_payments", {
   id: varchar("id").primaryKey(),
   liabilityId: varchar("liability_id").notNull(),
   coldStorageId: varchar("cold_storage_id").notNull(),
-  amount: real("amount").notNull(),
-  principalComponent: real("principal_component").notNull(),
-  interestComponent: real("interest_component").notNull(),
+  amount: doublePrecision("amount").notNull(),
+  principalComponent: doublePrecision("principal_component").notNull(),
+  interestComponent: doublePrecision("interest_component").notNull(),
   paidAt: timestamp("paid_at").notNull(),
   paymentMode: text("payment_mode").notNull(), // 'cash' or 'account'
   accountId: varchar("account_id"),

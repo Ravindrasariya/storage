@@ -2245,7 +2245,8 @@ export async function registerRoutes(
   });
 
   const createExpenseSchema = z.object({
-    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "interest_on_loan", "electricity_charges", "chemical_spray_charges", "farmer_advance", "farmer_freight", "merchant_advance", "asset_purchase", "bank_charges", "bank_penalty_charges"]),
+    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "interest_on_loan", "electricity_charges", "chemical_spray_charges", "farmer_advance", "farmer_freight", "merchant_advance", "asset_purchase", "bank_charges", "bank_penalty_charges", "insurance", "loan_principal"]),
+    expenseClass: z.enum(["revenue", "capital", "advance"]).optional(),
     receiverName: z.string().optional(),
     paymentMode: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
@@ -2281,7 +2282,10 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const validatedData = createExpenseSchema.parse(req.body);
       const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance'];
-      const expenseClass = advanceTypes.includes(validatedData.expenseType) ? 'advance' : (validatedData.expenseClass || 'revenue');
+      const capitalTypes = ['asset_purchase', 'loan_principal'];
+      const expenseClass = advanceTypes.includes(validatedData.expenseType) ? 'advance' 
+        : capitalTypes.includes(validatedData.expenseType) ? 'capital'
+        : (validatedData.expenseClass || 'revenue');
       const expense = await storage.createExpense({
         coldStorageId: coldStorageId,
         expenseType: validatedData.expenseType,
