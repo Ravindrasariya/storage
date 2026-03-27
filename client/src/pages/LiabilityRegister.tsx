@@ -15,7 +15,7 @@ import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { formatCurrency } from "@/components/Currency";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Landmark, Plus, Pencil, CreditCard, CheckCircle2, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { Landmark, Plus, Pencil, CheckCircle2, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import type { Liability, LiabilityPayment } from "@shared/schema";
 
@@ -41,7 +41,6 @@ export default function LiabilityRegister() {
   const [statusFilter, setStatusFilter] = useState("active");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [settleDialogOpen, setSettleDialogOpen] = useState(false);
   const [selectedLiability, setSelectedLiability] = useState<Liability | null>(null);
   const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
@@ -57,15 +56,6 @@ export default function LiabilityRegister() {
     dueDate: "",
     emiAmount: "",
     isOpening: 0,
-    remarks: "",
-  });
-
-  const [paymentData, setPaymentData] = useState({
-    amount: "",
-    principalComponent: "",
-    interestComponent: "",
-    paymentMode: "cash",
-    paidAt: format(new Date(), "yyyy-MM-dd"),
     remarks: "",
   });
 
@@ -121,26 +111,6 @@ export default function LiabilityRegister() {
     },
   });
 
-  const paymentMutation = useMutation({
-    mutationFn: async ({ liabilityId, data }: { liabilityId: string; data: Record<string, unknown> }) => {
-      const res = await apiRequest("POST", `/api/liabilities/${liabilityId}/payments`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/liabilities"] });
-      expandedPayments.forEach(id => {
-        queryClient.invalidateQueries({ queryKey: ["/api/liabilities", id, "payments"] });
-      });
-      toast({ title: t("paymentRecorded") });
-      setPaymentDialogOpen(false);
-      setSelectedLiability(null);
-      resetPaymentForm();
-    },
-    onError: () => {
-      toast({ title: t("saveFailed"), variant: "destructive" });
-    },
-  });
-
   const reversePaymentMutation = useMutation({
     mutationFn: async (paymentId: string) => {
       const res = await apiRequest("POST", `/api/liability-payments/${paymentId}/reverse`);
@@ -174,17 +144,6 @@ export default function LiabilityRegister() {
     });
   };
 
-  const resetPaymentForm = () => {
-    setPaymentData({
-      amount: "",
-      principalComponent: "",
-      interestComponent: "",
-      paymentMode: "cash",
-      paidAt: format(new Date(), "yyyy-MM-dd"),
-      remarks: "",
-    });
-  };
-
   const handleAdd = () => {
     resetForm();
     setAddDialogOpen(true);
@@ -206,12 +165,6 @@ export default function LiabilityRegister() {
       remarks: liability.remarks || "",
     });
     setEditDialogOpen(true);
-  };
-
-  const handlePayment = (liability: Liability) => {
-    setSelectedLiability(liability);
-    resetPaymentForm();
-    setPaymentDialogOpen(true);
   };
 
   const handleSettle = (liability: Liability) => {
@@ -273,32 +226,6 @@ export default function LiabilityRegister() {
         dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
         emiAmount: formData.emiAmount ? parseFloat(formData.emiAmount) : null,
         remarks: formData.remarks || null,
-      },
-    });
-  };
-
-  const handleSubmitPayment = () => {
-    if (!selectedLiability) return;
-    const totalAmount = parseFloat(paymentData.amount);
-    const principal = parseFloat(paymentData.principalComponent);
-    const interest = parseFloat(paymentData.interestComponent);
-    if (isNaN(totalAmount) || totalAmount <= 0) {
-      toast({ title: t("amountRequired"), variant: "destructive" });
-      return;
-    }
-    if (isNaN(principal) || isNaN(interest)) {
-      toast({ title: t("required"), variant: "destructive" });
-      return;
-    }
-    paymentMutation.mutate({
-      liabilityId: selectedLiability.id,
-      data: {
-        amount: totalAmount,
-        principalComponent: principal,
-        interestComponent: interest,
-        paymentMode: paymentData.paymentMode,
-        paidAt: new Date(paymentData.paidAt).toISOString(),
-        remarks: paymentData.remarks || null,
       },
     });
   };
@@ -560,7 +487,6 @@ export default function LiabilityRegister() {
                 isExpanded={expandedPayments.has(liability.id)}
                 onToggleExpand={() => togglePaymentHistory(liability.id)}
                 onEdit={() => handleEdit(liability)}
-                onPayment={() => handlePayment(liability)}
                 onSettle={() => handleSettle(liability)}
                 onReversePayment={(paymentId) => reversePaymentMutation.mutate(paymentId)}
               />
@@ -605,93 +531,6 @@ export default function LiabilityRegister() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("recordPayment")}</DialogTitle>
-            <DialogDescription>
-              {selectedLiability && `${selectedLiability.liabilityName} - ${t("outstandingAmount")}: ${formatCurrency(selectedLiability.outstandingAmount)}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>{t("amount")}</Label>
-              <Input
-                type="number"
-                value={paymentData.amount}
-                onChange={e => {
-                  const total = e.target.value;
-                  setPaymentData(prev => ({
-                    ...prev,
-                    amount: total,
-                    principalComponent: total,
-                    interestComponent: "0",
-                  }));
-                }}
-                data-testid="input-payment-amount"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>{t("principalComponent")}</Label>
-                <Input
-                  type="number"
-                  value={paymentData.principalComponent}
-                  onChange={e => setPaymentData(prev => ({ ...prev, principalComponent: e.target.value }))}
-                  data-testid="input-principal-component"
-                />
-              </div>
-              <div>
-                <Label>{t("interestComponent")}</Label>
-                <Input
-                  type="number"
-                  value={paymentData.interestComponent}
-                  onChange={e => setPaymentData(prev => ({ ...prev, interestComponent: e.target.value }))}
-                  data-testid="input-interest-component"
-                />
-              </div>
-            </div>
-            <div>
-              <Label>{t("paymentMode")}</Label>
-              <Select value={paymentData.paymentMode} onValueChange={v => setPaymentData(prev => ({ ...prev, paymentMode: v }))}>
-                <SelectTrigger data-testid="select-payment-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">{t("cash")}</SelectItem>
-                  <SelectItem value="account">{t("account")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>{t("date")}</Label>
-              <Input
-                type="date"
-                value={paymentData.paidAt}
-                onChange={e => setPaymentData(prev => ({ ...prev, paidAt: e.target.value }))}
-                data-testid="input-payment-date"
-              />
-            </div>
-            <div>
-              <Label>{t("remarks")}</Label>
-              <Input
-                value={paymentData.remarks}
-                onChange={e => setPaymentData(prev => ({ ...prev, remarks: e.target.value }))}
-                data-testid="input-payment-remarks"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)} data-testid="button-cancel-payment">
-              {t("cancel")}
-            </Button>
-            <Button onClick={handleSubmitPayment} disabled={paymentMutation.isPending} data-testid="button-submit-payment">
-              {paymentMutation.isPending ? t("loading") : t("recordPayment")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={settleDialogOpen} onOpenChange={setSettleDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -721,7 +560,6 @@ function LiabilityRow({
   isExpanded,
   onToggleExpand,
   onEdit,
-  onPayment,
   onSettle,
   onReversePayment,
 }: {
@@ -731,7 +569,6 @@ function LiabilityRow({
   isExpanded: boolean;
   onToggleExpand: () => void;
   onEdit: () => void;
-  onPayment: () => void;
   onSettle: () => void;
   onReversePayment: (id: string) => void;
 }) {
@@ -803,10 +640,6 @@ function LiabilityRow({
                 <Button variant="ghost" size="sm" onClick={onEdit} data-testid={`button-edit-${liability.id}`}>
                   <Pencil className="w-3 h-3 mr-1" />
                   {t("edit")}
-                </Button>
-                <Button variant="ghost" size="sm" onClick={onPayment} data-testid={`button-payment-${liability.id}`}>
-                  <CreditCard className="w-3 h-3 mr-1" />
-                  {t("recordPayment")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={onSettle} data-testid={`button-settle-${liability.id}`}>
                   <CheckCircle2 className="w-3 h-3 mr-1" />

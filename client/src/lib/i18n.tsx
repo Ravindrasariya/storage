@@ -229,6 +229,8 @@ const translations: Translations = {
   tds: { en: "TDS", hi: "टीडीएस" },
   insurance: { en: "Insurance", hi: "बीमा" },
   loanPrincipal: { en: "Loan Principal", hi: "ऋण मूलधन" },
+  selectLoan: { en: "Select Loan", hi: "ऋण चुनें" },
+  loanRequired: { en: "Please select a loan", hi: "कृपया ऋण चुनें" },
   interestOnLoan: { en: "Interest on Loan/Credit Line", hi: "ऋण/क्रेडिट लाइन पर ब्याज" },
   electricityCharges: { en: "Electricity/Power Charges", hi: "बिजली शुल्क" },
   chemicalSprayCharges: { en: "Chemical Spray Charges", hi: "रासायनिक स्प्रे शुल्क" },

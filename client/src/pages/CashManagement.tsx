@@ -20,7 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount } from "@shared/schema";
+import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
 import { formatCurrency } from "@/components/Currency";
 import { capitalizeFirstLetter } from "@/lib/utils";
 
@@ -167,6 +167,7 @@ export default function CashManagement() {
   const [expenseFarmerId, setExpenseFarmerId] = useState("");
   const [expenseFarmerName, setExpenseFarmerName] = useState("");
   const [expenseRateOfInterest, setExpenseRateOfInterest] = useState("");
+  const [expenseLiabilityId, setExpenseLiabilityId] = useState("");
   const [expenseEffectiveDate, setExpenseEffectiveDate] = useState(todayDate);
   const [showExpenseFarmerSearch, setShowExpenseFarmerSearch] = useState(false);
   const [expenseFarmerSearchQuery, setExpenseFarmerSearchQuery] = useState("");
@@ -443,6 +444,11 @@ export default function CashManagement() {
     queryKey: ["/api/farmers/lookup"],
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: allLiabilities = [] } = useQuery<Liability[]>({
+    queryKey: ["/api/liabilities"],
+  });
+  const activeLiabilities = useMemo(() => allLiabilities.filter(l => l.isSettled !== 1), [allLiabilities]);
 
   // Bank accounts - always fetch for current year (used in dropdowns)
   const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
@@ -1308,16 +1314,21 @@ export default function CashManagement() {
         toast({ title: t("error"), description: "Please fill asset name and category", variant: "destructive" });
         return;
       }
+      if (expenseType === "loan_principal" && !expenseLiabilityId) {
+        toast({ title: t("error"), description: t("loanRequired"), variant: "destructive" });
+        return;
+      }
       if (expensePaymentMode === "account" && !expenseAccountId) {
         toast({ title: t("error"), description: t("selectBankAccount") || "Please select a bank account", variant: "destructive" });
         return;
       }
 
       try {
+        const selectedLiability = expenseType === "loan_principal" ? activeLiabilities.find(l => l.id === expenseLiabilityId) : null;
         const expenseRes = await apiRequest("POST", "/api/expenses", {
           expenseType,
           expenseClass: "capital",
-          receiverName: expenseType === "asset_purchase" ? assetName : (expenseReceiverName || undefined),
+          receiverName: expenseType === "asset_purchase" ? assetName : (selectedLiability ? selectedLiability.liabilityName : (expenseReceiverName || undefined)),
           paymentMode: expensePaymentMode === "discount" ? "cash" : expensePaymentMode,
           accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
           amount: parseFloat(expenseAmount),
@@ -1341,6 +1352,25 @@ export default function CashManagement() {
           queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
         }
 
+        if (expenseType === "loan_principal" && expenseLiabilityId) {
+          const amt = parseFloat(expenseAmount);
+          try {
+            await apiRequest("POST", `/api/liabilities/${expenseLiabilityId}/payments`, {
+              amount: amt,
+              principalComponent: amt,
+              interestComponent: 0,
+              paymentMode: expensePaymentMode === "discount" ? "cash" : expensePaymentMode,
+              accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
+              paidAt: new Date(expenseDate).toISOString(),
+              remarks: expenseRemarks || null,
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/liabilities"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/liabilities", expenseLiabilityId, "payments"] });
+          } catch {
+            toast({ title: t("error"), description: "Expense recorded but loan balance update failed. Please check liability register.", variant: "destructive" });
+          }
+        }
+
         queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
         toast({ title: t("success"), description: t("capitalExpenseRecorded") || "Capital expense recorded" });
@@ -1351,6 +1381,7 @@ export default function CashManagement() {
         setExpenseRemarks("");
         setExpenseType("");
         setExpenseReceiverName("");
+        setExpenseLiabilityId("");
         setExpenseClass("revenue");
       } catch (error) {
         toast({ title: t("error"), description: "Failed to record capital expense", variant: "destructive" });
@@ -3644,6 +3675,9 @@ export default function CashManagement() {
                           setAssetCategory("");
                           setDepreciationRate("");
                         }
+                        if (v === "asset_purchase") {
+                          setExpenseLiabilityId("");
+                        }
                       }}>
                         <SelectTrigger data-testid="select-capital-expense-type">
                           <SelectValue placeholder={t("selectExpenseType")} />
@@ -3656,13 +3690,19 @@ export default function CashManagement() {
                     </div>
                     {expenseType === "loan_principal" && (
                       <div className="space-y-2">
-                        <Label>{t("receiverName")}</Label>
-                        <Input
-                          value={expenseReceiverName}
-                          onChange={(e) => setExpenseReceiverName(e.target.value)}
-                          placeholder={t("enterReceiverName") || "Enter receiver name"}
-                          data-testid="input-capital-receiver"
-                        />
+                        <Label>{t("selectLoan")} *</Label>
+                        <Select value={expenseLiabilityId} onValueChange={setExpenseLiabilityId}>
+                          <SelectTrigger data-testid="select-loan-liability">
+                            <SelectValue placeholder={t("selectLoan")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeLiabilities.map(l => (
+                              <SelectItem key={l.id} value={l.id}>
+                                {l.liabilityName} - {l.partyName} ({formatCurrency(l.outstandingAmount ?? 0)})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     )}
                     {expenseType === "asset_purchase" && (
