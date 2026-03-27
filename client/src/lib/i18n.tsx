@@ -227,6 +227,8 @@ const translations: Translations = {
   generalExpenses: { en: "General Expense", hi: "सामान्य खर्च" },
   costOfGoodsSold: { en: "Cost of Goods Sold", hi: "सामान की लागत" },
   tds: { en: "TDS", hi: "टीडीएस" },
+  insurance: { en: "Insurance", hi: "बीमा" },
+  loanPrincipal: { en: "Loan Principal", hi: "ऋण मूलधन" },
   interestOnLoan: { en: "Interest on Loan/Credit Line", hi: "ऋण/क्रेडिट लाइन पर ब्याज" },
   electricityCharges: { en: "Electricity/Power Charges", hi: "बिजली शुल्क" },
   chemicalSprayCharges: { en: "Chemical Spray Charges", hi: "रासायनिक स्प्रे शुल्क" },

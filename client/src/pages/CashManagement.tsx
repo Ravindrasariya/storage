@@ -1300,8 +1300,12 @@ export default function CashManagement() {
 
   const handleExpenseSubmit = async () => {
     if (expenseClass === "capital") {
-      if (!assetName || !assetCategory || !expenseAmount || parseFloat(expenseAmount) <= 0) {
-        toast({ title: t("error"), description: "Please fill asset name, category, and amount", variant: "destructive" });
+      if (!expenseType || !expenseAmount || parseFloat(expenseAmount) <= 0) {
+        toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+        return;
+      }
+      if (expenseType === "asset_purchase" && (!assetName || !assetCategory)) {
+        toast({ title: t("error"), description: "Please fill asset name and category", variant: "destructive" });
         return;
       }
       if (expensePaymentMode === "account" && !expenseAccountId) {
@@ -1311,38 +1315,42 @@ export default function CashManagement() {
 
       try {
         const expenseRes = await apiRequest("POST", "/api/expenses", {
-          expenseType: "asset_purchase",
+          expenseType,
           expenseClass: "capital",
-          receiverName: assetName,
+          receiverName: expenseType === "asset_purchase" ? assetName : (expenseReceiverName || undefined),
           paymentMode: expensePaymentMode === "discount" ? "cash" : expensePaymentMode,
           accountId: expensePaymentMode === "account" ? expenseAccountId : undefined,
           amount: parseFloat(expenseAmount),
           paidAt: new Date(expenseDate).toISOString(),
           remarks: expenseRemarks || undefined,
         });
-        const expenseData = await expenseRes.json();
 
-        await apiRequest("POST", "/api/assets", {
-          assetName,
-          assetCategory,
-          purchaseDate: new Date(expenseDate).toISOString(),
-          originalCost: parseFloat(expenseAmount),
-          currentBookValue: parseFloat(expenseAmount),
-          depreciationRate: parseFloat(depreciationRate) || DEPRECIATION_RATES[assetCategory] || 10,
-          depreciationMethod: "wdv",
-          isOpening: 0,
-          linkedExpenseId: expenseData.id,
-        });
+        if (expenseType === "asset_purchase") {
+          const expenseData = await expenseRes.json();
+          await apiRequest("POST", "/api/assets", {
+            assetName,
+            assetCategory,
+            purchaseDate: new Date(expenseDate).toISOString(),
+            originalCost: parseFloat(expenseAmount),
+            currentBookValue: parseFloat(expenseAmount),
+            depreciationRate: parseFloat(depreciationRate) || DEPRECIATION_RATES[assetCategory] || 10,
+            depreciationMethod: "wdv",
+            isOpening: 0,
+            linkedExpenseId: expenseData.id,
+          });
+          queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+        }
 
         queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-        toast({ title: t("success"), description: t("capitalExpenseRecorded") || "Capital expense & asset recorded" });
+        toast({ title: t("success"), description: t("capitalExpenseRecorded") || "Capital expense recorded" });
         setAssetName("");
         setAssetCategory("");
         setDepreciationRate("");
         setExpenseAmount("");
         setExpenseRemarks("");
+        setExpenseType("");
+        setExpenseReceiverName("");
         setExpenseClass("revenue");
       } catch (error) {
         toast({ title: t("error"), description: "Failed to record capital expense", variant: "destructive" });
@@ -1500,6 +1508,8 @@ export default function CashManagement() {
       case "farmer_advance": return t("farmerAdvance");
       case "farmer_freight": return t("farmerFreight");
       case "merchant_advance": return t("merchantAdvance");
+      case "insurance": return t("insurance");
+      case "loan_principal": return t("loanPrincipal");
       case "asset_purchase": return t("assetPurchase") || "Asset Purchase";
       default: return type;
     }
@@ -2819,7 +2829,9 @@ export default function CashManagement() {
                     <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                     <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
                     <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                    <SelectItem value="insurance">{t("insurance")}</SelectItem>
                     <SelectItem value="interest_on_loan">{t("interestOnLoan")}</SelectItem>
+                    <SelectItem value="loan_principal">{t("loanPrincipal")}</SelectItem>
                     <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                     <SelectItem value="salary">{t("salary")}</SelectItem>
                     <SelectItem value="tds">{t("tds")}</SelectItem>
@@ -3624,44 +3636,78 @@ export default function CashManagement() {
                 {expenseClass === "capital" ? (
                   <>
                     <div className="space-y-2">
-                      <Label>{t("assetName") || "Asset Name"} *</Label>
-                      <Input
-                        value={assetName}
-                        onChange={(e) => setAssetName(e.target.value)}
-                        placeholder={t("enterAssetName") || "Enter asset name"}
-                        data-testid="input-asset-name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{t("assetCategory") || "Asset Category"} *</Label>
-                      <Select value={assetCategory} onValueChange={(v) => {
-                        setAssetCategory(v);
-                        setDepreciationRate(String(DEPRECIATION_RATES[v] || 10));
+                      <Label>{t("expenseType")} *</Label>
+                      <Select value={expenseType} onValueChange={(v) => {
+                        setExpenseType(v);
+                        if (v === "loan_principal") {
+                          setAssetName("");
+                          setAssetCategory("");
+                          setDepreciationRate("");
+                        }
                       }}>
-                        <SelectTrigger data-testid="select-asset-category">
-                          <SelectValue placeholder={t("selectCategory") || "Select category"} />
+                        <SelectTrigger data-testid="select-capital-expense-type">
+                          <SelectValue placeholder={t("selectExpenseType")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="building">{t("building") || "Building"}</SelectItem>
-                          <SelectItem value="plant_machinery">{t("plantMachinery") || "Plant & Machinery"}</SelectItem>
-                          <SelectItem value="furniture">{t("furniture") || "Furniture"}</SelectItem>
-                          <SelectItem value="vehicles">{t("vehicles") || "Vehicles"}</SelectItem>
-                          <SelectItem value="computers">{t("computers") || "Computers"}</SelectItem>
-                          <SelectItem value="electrical_fittings">{t("electricalFittings") || "Electrical Fittings"}</SelectItem>
-                          <SelectItem value="other">{t("other") || "Other"}</SelectItem>
+                          <SelectItem value="asset_purchase">{t("assetPurchase") || "Asset Purchase"}</SelectItem>
+                          <SelectItem value="loan_principal">{t("loanPrincipal")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label>{t("depreciationRate") || "Depreciation Rate (%)"}</Label>
-                      <Input
-                        type="number"
-                        value={depreciationRate}
-                        onChange={(e) => setDepreciationRate(e.target.value)}
-                        placeholder="10"
-                        data-testid="input-depreciation-rate"
-                      />
-                    </div>
+                    {expenseType === "loan_principal" && (
+                      <div className="space-y-2">
+                        <Label>{t("receiverName")}</Label>
+                        <Input
+                          value={expenseReceiverName}
+                          onChange={(e) => setExpenseReceiverName(e.target.value)}
+                          placeholder={t("enterReceiverName") || "Enter receiver name"}
+                          data-testid="input-capital-receiver"
+                        />
+                      </div>
+                    )}
+                    {expenseType === "asset_purchase" && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>{t("assetName") || "Asset Name"} *</Label>
+                          <Input
+                            value={assetName}
+                            onChange={(e) => setAssetName(e.target.value)}
+                            placeholder={t("enterAssetName") || "Enter asset name"}
+                            data-testid="input-asset-name"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{t("assetCategory") || "Asset Category"} *</Label>
+                          <Select value={assetCategory} onValueChange={(v) => {
+                            setAssetCategory(v);
+                            setDepreciationRate(String(DEPRECIATION_RATES[v] || 10));
+                          }}>
+                            <SelectTrigger data-testid="select-asset-category">
+                              <SelectValue placeholder={t("selectCategory") || "Select category"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="building">{t("building") || "Building"}</SelectItem>
+                              <SelectItem value="plant_machinery">{t("plantMachinery") || "Plant & Machinery"}</SelectItem>
+                              <SelectItem value="furniture">{t("furniture") || "Furniture"}</SelectItem>
+                              <SelectItem value="vehicles">{t("vehicles") || "Vehicles"}</SelectItem>
+                              <SelectItem value="computers">{t("computers") || "Computers"}</SelectItem>
+                              <SelectItem value="electrical_fittings">{t("electricalFittings") || "Electrical Fittings"}</SelectItem>
+                              <SelectItem value="other">{t("other") || "Other"}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{t("depreciationRate") || "Depreciation Rate (%)"}</Label>
+                          <Input
+                            type="number"
+                            value={depreciationRate}
+                            onChange={(e) => setDepreciationRate(e.target.value)}
+                            placeholder="10"
+                            data-testid="input-depreciation-rate"
+                          />
+                        </div>
+                      </>
+                    )}
                   </>
                 ) : expenseClass === "advance" ? (
                 <div className="space-y-2">
@@ -3723,6 +3769,7 @@ export default function CashManagement() {
                       <SelectItem value="hammali">
                         {t("hammali")} {paymentStats?.hammaliDue ? `(₹${paymentStats.hammaliDue.toLocaleString("en-IN")})` : ""}
                       </SelectItem>
+                      <SelectItem value="insurance">{t("insurance")}</SelectItem>
                       <SelectItem value="interest_on_loan">{t("interestOnLoan")}</SelectItem>
                       <SelectItem value="salary">{t("salary")}</SelectItem>
                       <SelectItem value="tds">{t("tds")}</SelectItem>
@@ -4008,7 +4055,7 @@ export default function CashManagement() {
 
                 <Button
                   onClick={handleExpenseSubmit}
-                  disabled={!canEdit || (expenseClass !== "capital" && !expenseType) || !expenseAmount || createExpenseMutation.isPending}
+                  disabled={!canEdit || !expenseType || !expenseAmount || createExpenseMutation.isPending}
                   className="w-full"
                   data-testid="button-record-expense"
                 >
