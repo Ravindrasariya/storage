@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { flushSync } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -74,33 +75,48 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   // Actual cash paid = paidAmount - discountAllocated
   const actualCashPaid = Math.max(0, (sale.paidAmount || 0) - discountAllocated);
 
-  // Mutation to assign bill number
-  const assignBillNumberMutation = useMutation({
-    mutationFn: async (type: "coldStorage" | "sales") => {
-      const response = await apiRequest("POST", `/api/sales-history/${sale.id}/assign-bill-number`, { billType: type });
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setBillNumber(data.billNumber);
-      // Invalidate sales history to update the cached bill numbers
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
-    },
-  });
+  const resolveBillNumber = async (type: "deduction" | "sales"): Promise<number> => {
+    const existing = type === "deduction" ? sale.coldStorageBillNumber : sale.salesBillNumber;
+    if (existing) return existing;
+    const apiType = type === "deduction" ? "coldStorage" : "sales";
+    const response = await apiRequest("POST", `/api/sales-history/${sale.id}/assign-bill-number`, { billType: apiType });
+    const data = await response.json();
+    queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+    return data.billNumber;
+  };
 
   const handleBillTypeSelect = async (type: "deduction" | "sales", selectedAction: "print" | "share") => {
     setAction(selectedAction);
     setBillType(type);
-    // Check if bill number already exists in sale data
-    const existingBillNumber = type === "deduction" 
-      ? sale.coldStorageBillNumber 
-      : sale.salesBillNumber;
-    
-    if (existingBillNumber) {
-      setBillNumber(existingBillNumber);
-    } else {
-      // Assign a new bill number
-      const apiType = type === "deduction" ? "coldStorage" : "sales";
-      assignBillNumberMutation.mutate(apiType);
+
+    let resolvedBillNumber: number;
+    try {
+      resolvedBillNumber = await resolveBillNumber(type);
+    } catch (err) {
+      console.error("Failed to resolve bill number:", err);
+      onOpenChange(false);
+      return;
+    }
+
+    flushSync(() => {
+      setBillType(type);
+      setBillNumber(resolvedBillNumber);
+    });
+
+    if (selectedAction === "share") {
+      if (!printRef.current) { onOpenChange(false); return; }
+      const filename = type === "deduction"
+        ? `cold-storage-deduction-bill-${resolvedBillNumber}.pdf`
+        : `sales-bill-${resolvedBillNumber}.pdf`;
+      setIsSharing(true);
+      try {
+        await shareReceiptAsPdf(printRef.current, filename, BILL_PRINT_STYLES);
+      } catch (err) {
+        console.error("Share failed:", err);
+      } finally {
+        setIsSharing(false);
+        onOpenChange(false);
+      }
     }
   };
 
@@ -114,29 +130,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     }
   }, [open]);
 
-  // Auto-print or auto-share once bill type is selected and bill number is ready
+  // Auto-print once bill type is selected and bill number is ready
   useEffect(() => {
-    if (billType && billNumber !== null && action) {
-      // Small delay to allow React to render the hidden printRef content
-      const timer = setTimeout(async () => {
-        if (action === "share") {
-          if (!printRef.current) { onOpenChange(false); return; }
-          const filename = billType === "deduction"
-            ? `cold-storage-deduction-bill-${billNumber}.pdf`
-            : `sales-bill-${billNumber}.pdf`;
-          setIsSharing(true);
-          try {
-            await shareReceiptAsPdf(printRef.current, filename, BILL_PRINT_STYLES);
-          } catch (err) {
-            console.error("Share failed:", err);
-          } finally {
-            setIsSharing(false);
-            onOpenChange(false);
-          }
-        } else {
-          handlePrint();
-          onOpenChange(false);
-        }
+    if (billType && billNumber !== null && action === "print") {
+      const timer = setTimeout(() => {
+        handlePrint();
+        onOpenChange(false);
       }, 100);
       return () => clearTimeout(timer);
     }
@@ -738,11 +737,9 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             ) : (
               <Printer className="h-5 w-5 mr-2 animate-pulse" />
             )}
-            {assignBillNumberMutation.isPending
-              ? t("loading") + "..."
-              : action === "share"
-                ? t("sharingReceipt") + "..."
-                : t("preparingPrint") + "..."}
+            {action === "share"
+              ? t("sharingReceipt") + "..."
+              : t("preparingPrint") + "..."}
           </div>
         )}
 
