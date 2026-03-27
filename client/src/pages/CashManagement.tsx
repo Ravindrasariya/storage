@@ -3986,7 +3986,7 @@ export default function CashManagement() {
                   </div>
                 )}
 
-                {expenseType && !isFarmerExpenseType && !isMerchantExpenseType && (() => {
+                {expenseType && !isFarmerExpenseType && !isMerchantExpenseType && expenseClass !== "capital" && (() => {
                   const filteredReceiverNames = receiverNames.filter(name =>
                     !expenseReceiverName || name.toLowerCase().includes(expenseReceiverName.toLowerCase())
                   );
