@@ -20,9 +20,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense as BaseExpense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
+import type { CashReceipt as BaseCashReceipt, Expense as BaseExpense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
 
 type Expense = BaseExpense & { advanceRateOfInterest?: number; advanceEffectiveDate?: string | null };
+type CashReceipt = BaseCashReceipt & { advanceRateOfInterest?: number; advanceEffectiveDate?: string | null };
 import { formatCurrency } from "@/components/Currency";
 import { capitalizeFirstLetter } from "@/lib/utils";
 
@@ -1727,8 +1728,8 @@ export default function CashManagement() {
           r.notes || "",
           isReversed ? t("reversed") : t("active"),
           "",
-          "",
-          "",
+          r.advanceRateOfInterest && r.advanceRateOfInterest > 0 ? r.advanceRateOfInterest.toString() : "",
+          r.advanceEffectiveDate && !isNaN(new Date(r.advanceEffectiveDate).getTime()) ? format(new Date(r.advanceEffectiveDate), "dd/MM/yyyy") : "",
         ];
       } else if (transaction.type === "outflow") {
         const e = transaction.data as Expense;
@@ -4799,6 +4800,18 @@ export default function CashManagement() {
                       <span className="text-muted-foreground">Date:</span>
                       <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
                     </div>
+                    {(selectedTransaction.data as CashReceipt).advanceRateOfInterest != null && (selectedTransaction.data as CashReceipt).advanceRateOfInterest! > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t("rateOfInterest")}:</span>
+                        <span className="font-medium text-blue-600">{(selectedTransaction.data as CashReceipt).advanceRateOfInterest}%</span>
+                      </div>
+                    )}
+                    {(selectedTransaction.data as CashReceipt).advanceEffectiveDate && !isNaN(new Date((selectedTransaction.data as CashReceipt).advanceEffectiveDate!).getTime()) && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t("effectiveDate")}:</span>
+                        <span className="font-medium">{format(new Date((selectedTransaction.data as CashReceipt).advanceEffectiveDate!), "dd/MM/yyyy")}</span>
+                      </div>
+                    )}
                     {/* Due After for cold_merchant receipts */}
                     {(selectedTransaction.data as CashReceipt).payerType === "cold_merchant" && (selectedTransaction.data as CashReceipt).dueBalanceAfter !== null && (selectedTransaction.data as CashReceipt).dueBalanceAfter !== undefined && (
                       <div className="flex justify-between bg-orange-50 dark:bg-orange-950/30 rounded px-2 py-1 -mx-2">
