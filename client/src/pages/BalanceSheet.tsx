@@ -48,7 +48,7 @@ const CURRENT_ASSET_LABELS: Record<string, { en: string; hi: string }> = {
   buyerPYReceivables: { en: "Buyer PY Receivables", hi: "व्यापारी पूर्व वर्ष प्राप्य" },
   farmerAdvance: { en: "Farmer Advance", hi: "किसान अग्रिम" },
   farmerFreight: { en: "Farmer Freight", hi: "किसान भाड़ा" },
-  merchantAdvance: { en: "Merchant Advance", hi: "व्यापारी अग्रिम" },
+  merchantAdvance: { en: "Merchant Advance/Loan", hi: "व्यापारी अग्रिम/ऋण" },
 };
 
 export default function BalanceSheet() {

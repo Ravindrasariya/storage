@@ -145,6 +145,7 @@ export default function CashManagement() {
   const [advanceBuyerName, setAdvanceBuyerName] = useState("");
   const [advanceBuyerComboboxOpen, setAdvanceBuyerComboboxOpen] = useState(false);
   const [advanceBuyerSearchQuery, setAdvanceBuyerSearchQuery] = useState("");
+  const [selectedAdvanceIds, setSelectedAdvanceIds] = useState<string[]>([]);
   const [receiptType, setReceiptType] = useState<"cash" | "account">((persistedState?.receiptType as "cash" | "account") || "cash");
   const [accountId, setAccountId] = useState<string>(persistedState?.accountId || "");
   const [inwardAmount, setInwardAmount] = useState(persistedState?.inwardAmount || "");
@@ -374,6 +375,15 @@ export default function CashManagement() {
   const { data: buyersWithAdvanceDues = [], isLoading: loadingAdvanceBuyers } = useQuery<{ buyerLedgerId: string; buyerId: string; buyerName: string; advanceDue: number }[]>({
     queryKey: ["/api/merchant-advances/buyers-with-dues"],
     enabled: payerType === "cold_merchant_advance",
+  });
+
+  const { data: outstandingAdvances = [] } = useQuery<{ id: string; effectiveDate: string; amount: number; rateOfInterest: number; finalAmount: number; paidAmount: number; remainingDue: number; expenseId: string | null; createdAt: string }[]>({
+    queryKey: ["/api/merchant-advances/outstanding", advanceBuyerLedgerId],
+    enabled: payerType === "cold_merchant_advance" && !!advanceBuyerLedgerId,
+  });
+
+  const { data: pyMerchantAdvances = [] } = useQuery<{ id: string; buyerLedgerId: string; buyerId: string; amount: number; rateOfInterest: number; effectiveDate: string; finalAmount: number; paidAmount: number; remarks: string | null; createdAt: string }[]>({
+    queryKey: ["/api/merchant-advances/py"],
   });
 
   // Farmer dues from Farmer Ledger (for Cash Inward "farmer" payer type)
@@ -729,7 +739,7 @@ export default function CashManagement() {
   });
 
   const payMerchantAdvanceMutation = useMutation({
-    mutationFn: async (data: { buyerLedgerId: string; buyerId: string; buyerName: string; amount: number; receivedAt: string; remarks?: string; receiptType: string; accountId?: string }) => {
+    mutationFn: async (data: { buyerLedgerId: string; buyerId: string; buyerName: string; amount: number; receivedAt: string; remarks?: string; receiptType: string; accountId?: string; selectedAdvanceIds: string[] }) => {
       const response = await apiRequest("POST", "/api/merchant-advances/pay", data);
       return response.json();
     },
@@ -741,8 +751,11 @@ export default function CashManagement() {
       setAdvanceBuyerLedgerId("");
       setAdvanceBuyerId("");
       setAdvanceBuyerName("");
+      setSelectedAdvanceIds([]);
       clearPersistedState(coldStorageId);
       queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]) === "/api/merchant-advances/outstanding" });
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/py"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
@@ -1141,6 +1154,67 @@ export default function CashManagement() {
     },
   });
 
+  const createPYAdvanceMutation = useMutation({
+    mutationFn: async (data: { buyerName: string; amount: number; rateOfInterest: number; effectiveDate: string; remarks?: string }) => {
+      const response = await apiRequest("POST", "/api/merchant-advances/py", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableAdded"), variant: "success" });
+      setNewReceivableBuyerName("");
+      setNewReceivableAmount("");
+      setNewReceivableRateOfInterest("");
+      setNewReceivableEffectiveDate(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      });
+      setNewReceivableRemarks("");
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/py"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const updatePYAdvanceMutation = useMutation({
+    mutationFn: async (data: { id: string; amount?: number; rateOfInterest?: number; effectiveDate?: string; remarks?: string | null }) => {
+      const { id, ...updates } = data;
+      const response = await apiRequest("PATCH", `/api/merchant-advances/py/${id}`, updates);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableUpdated"), variant: "success" });
+      setEditingReceivableId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/py"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const deletePYAdvanceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("DELETE", `/api/merchant-advances/py/${id}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableDeleted"), variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/py"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
+    },
+  });
+
   // Bank account mutations
   const createBankAccountMutation = useMutation({
     mutationFn: async (data: { accountName: string; accountType: string; openingBalance: number; year: number }) => {
@@ -1193,6 +1267,10 @@ export default function CashManagement() {
         toast({ title: t("error"), description: t("selectMerchant"), variant: "destructive" });
         return;
       }
+      if (selectedAdvanceIds.length === 0) {
+        toast({ title: t("error"), description: t("selectAdvancesToPay") || "Select at least one advance to pay", variant: "destructive" });
+        return;
+      }
       if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
         toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
         return;
@@ -1210,6 +1288,7 @@ export default function CashManagement() {
         remarks: inwardRemarks || undefined,
         receiptType,
         accountId: receiptType === "account" ? accountId : undefined,
+        selectedAdvanceIds,
       });
       return;
     }
@@ -3165,6 +3244,7 @@ export default function CashManagement() {
                                         setAdvanceBuyerName(buyer.buyerName);
                                         setAdvanceBuyerComboboxOpen(false);
                                         setAdvanceBuyerSearchQuery("");
+                                        setSelectedAdvanceIds([]);
                                       }}
                                     >
                                       <Check
@@ -3184,10 +3264,53 @@ export default function CashManagement() {
                         </PopoverContent>
                       </Popover>
                     )}
-                    {advanceBuyerLedgerId && (
-                      <p className="text-xs text-muted-foreground">
-                        {t("totalDue")}: ₹{formatCurrency(buyersWithAdvanceDues.find(b => b.buyerLedgerId === advanceBuyerLedgerId)?.advanceDue || 0)}
-                      </p>
+                    {advanceBuyerLedgerId && outstandingAdvances.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <Label className="text-xs font-medium">{t("selectAdvancesToPay") || "Select advances to pay"}</Label>
+                        <div className="border rounded-md max-h-40 overflow-auto">
+                          {outstandingAdvances.map((adv) => {
+                            const isSelected = selectedAdvanceIds.includes(adv.id);
+                            return (
+                              <div
+                                key={adv.id}
+                                className={`flex items-center justify-between px-3 py-2 cursor-pointer border-b last:border-b-0 transition-colors ${isSelected ? "bg-blue-50 dark:bg-blue-950" : "hover:bg-muted"}`}
+                                onClick={() => {
+                                  setSelectedAdvanceIds(prev =>
+                                    isSelected ? prev.filter(id => id !== adv.id) : [...prev, adv.id]
+                                  );
+                                }}
+                                data-testid={`advance-pick-${adv.id}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>
+                                    {isSelected && <Check className="h-3 w-3 text-white" />}
+                                  </div>
+                                  <div className="text-xs">
+                                    <span className="font-medium">{format(new Date(adv.effectiveDate), "dd/MM/yyyy")}</span>
+                                    <span className="text-muted-foreground ml-2">
+                                      {t("principal")}: ₹{formatCurrency(adv.amount)}
+                                      {adv.rateOfInterest > 0 && ` @ ${adv.rateOfInterest}%`}
+                                    </span>
+                                    {!adv.expenseId && <Badge variant="outline" className="ml-1 text-[10px] py-0">{t("py") || "PY"}</Badge>}
+                                  </div>
+                                </div>
+                                <span className="text-xs font-bold text-green-600">₹{formatCurrency(adv.remainingDue)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {t("totalDue")}: ₹{formatCurrency(buyersWithAdvanceDues.find(b => b.buyerLedgerId === advanceBuyerLedgerId)?.advanceDue || 0)}
+                          {selectedAdvanceIds.length > 0 && (
+                            <span className="ml-2 text-blue-600">
+                              ({t("selected") || "Selected"}: ₹{formatCurrency(outstandingAdvances.filter(a => selectedAdvanceIds.includes(a.id)).reduce((sum, a) => sum + a.remainingDue, 0))})
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    {advanceBuyerLedgerId && outstandingAdvances.length === 0 && (
+                      <p className="text-xs text-muted-foreground">{t("noAdvancesDue") || "No outstanding advances"}</p>
                     )}
                   </div>
                 )}
@@ -3332,7 +3455,7 @@ export default function CashManagement() {
                     createReceiptMutation.isPending ||
                     payMerchantAdvanceMutation.isPending ||
                     (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim()))) ||
-                    (payerType === "cold_merchant_advance" && !advanceBuyerLedgerId) ||
+                    (payerType === "cold_merchant_advance" && (!advanceBuyerLedgerId || selectedAdvanceIds.length === 0)) ||
                     (payerType === "farmer" && !selectedFarmerReceivableId)
                   }
                   className="w-full"
@@ -5166,6 +5289,7 @@ export default function CashManagement() {
                         <SelectContent>
                           <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                           <SelectItem value="farmer">{t("farmer")}</SelectItem>
+                          <SelectItem value="cold_merchant_advance">{t("coldMerchantAdvance")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -5422,7 +5546,21 @@ export default function CashManagement() {
                         toast({ title: t("error"), description: t("amountRequired"), variant: "destructive" });
                         return;
                       }
-                      // Validate farmer fields if payer type is farmer
+                      if (newReceivablePayerType === "cold_merchant_advance") {
+                        if (!newReceivableBuyerName.trim()) {
+                          toast({ title: t("error"), description: t("buyerNameRequired") || "Buyer name is required", variant: "destructive" });
+                          return;
+                        }
+                        const rateVal = parseFloat(newReceivableRateOfInterest) || 0;
+                        createPYAdvanceMutation.mutate({
+                          buyerName: newReceivableBuyerName,
+                          amount: parseFloat(newReceivableAmount),
+                          rateOfInterest: rateVal,
+                          effectiveDate: newReceivableEffectiveDate ? new Date(newReceivableEffectiveDate).toISOString() : new Date().toISOString(),
+                          remarks: newReceivableRemarks || undefined,
+                        });
+                        return;
+                      }
                       if (newReceivablePayerType === "farmer") {
                         if (!newReceivableFarmerName.trim()) {
                           toast({ title: t("error"), description: t("farmerNameRequired"), variant: "destructive" });
@@ -5462,7 +5600,7 @@ export default function CashManagement() {
                         state: newReceivablePayerType === "farmer" ? newReceivableState : undefined,
                       });
                     }}
-                    disabled={createReceivableMutation.isPending}
+                    disabled={createReceivableMutation.isPending || createPYAdvanceMutation.isPending}
                     className="w-full bg-blue-600 hover:bg-blue-700"
                     data-testid="button-add-receivable"
                   >
@@ -5526,10 +5664,168 @@ export default function CashManagement() {
 
               {/* List of receivables */}
               <ScrollArea className="h-64">
-                {openingReceivables.length === 0 ? (
+                {openingReceivables.length === 0 && pyMerchantAdvances.length === 0 ? (
                   <p className="text-center text-muted-foreground py-4">{t("noReceivables")}</p>
                 ) : (
                   <div className="space-y-2">
+                    {pyMerchantAdvances
+                      .filter((a: any) => {
+                        if (!receivableSearchQuery.trim()) return true;
+                        const q = receivableSearchQuery.toLowerCase().trim();
+                        return (a.buyerName || "").toLowerCase().includes(q) || (a.remarks || "").toLowerCase().includes(q);
+                      })
+                      .map((a: any) => {
+                        const capitalizeName = (name: string) =>
+                          name.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                        const isEditing = editingReceivableId === `py-${a.id}`;
+                        return (
+                          <div key={`py-${a.id}`} className="p-2 bg-muted rounded-md border-l-4 border-l-orange-400">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge variant="outline" className="text-xs bg-orange-50 dark:bg-orange-950 border-orange-300">{t("coldMerchantAdvance")}</Badge>
+                                  <Badge variant="outline" className="text-[10px] py-0 bg-yellow-50 dark:bg-yellow-950">{t("py") || "PY"}</Badge>
+                                  {a.buyerName && <span className="text-sm font-medium">{capitalizeName(a.buyerName)}</span>}
+                                </div>
+                                {!isEditing && a.remarks && <p className="text-xs text-muted-foreground">{a.remarks}</p>}
+                                <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+                                  <span>{t("effectiveDate")}: {format(new Date(a.effectiveDate), "dd/MM/yyyy")}</span>
+                                  {!isEditing && a.rateOfInterest > 0 && (
+                                    <span className="text-blue-600 font-medium">{t("rateOfInterest")}: {a.rateOfInterest}%</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {!isEditing && (
+                                  <div className="text-right mr-1">
+                                    <span className="font-bold text-green-600">₹{formatCurrency(a.remainingDue ?? a.amount)}</span>
+                                    {a.paidAmount > 0 && (
+                                      <p className="text-xs text-muted-foreground">({t("paid")}: ₹{formatCurrency(a.paidAmount)})</p>
+                                    )}
+                                    {a.rateOfInterest > 0 && (
+                                      <p className="text-xs text-muted-foreground">({t("principal")}: ₹{formatCurrency(a.amount)})</p>
+                                    )}
+                                  </div>
+                                )}
+                                {!isEditing && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    data-testid={`button-edit-py-advance-${a.id}`}
+                                    onClick={() => {
+                                      setEditingReceivableId(`py-${a.id}`);
+                                      setEditReceivableAmount(a.amount.toString());
+                                      setEditReceivableROI((a.rateOfInterest || 0).toString());
+                                      setEditReceivableEffectiveDate(format(new Date(a.effectiveDate), "yyyy-MM-dd"));
+                                      setEditReceivableRemarks(a.remarks || "");
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4 text-blue-500" />
+                                  </Button>
+                                )}
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      data-testid={`button-delete-py-advance-${a.id}`}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>{t("confirmDelete")}</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        {t("deleteReceivableWarning")}
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deletePYAdvanceMutation.mutate(a.id)}
+                                        className="bg-destructive text-destructive-foreground"
+                                      >
+                                        {t("delete")}
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </div>
+                            {isEditing && (
+                              <div className="mt-2 p-2 bg-background rounded border space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs">{t("amount")} (₹)</Label>
+                                    <Input
+                                      type="number"
+                                      value={editReceivableAmount}
+                                      onChange={(e) => setEditReceivableAmount(e.target.value)}
+                                      data-testid="input-edit-py-advance-amount"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">{t("rateOfInterest")} (%)</Label>
+                                    <Input
+                                      type="number"
+                                      step="0.1"
+                                      value={editReceivableROI}
+                                      onChange={(e) => setEditReceivableROI(e.target.value)}
+                                      data-testid="input-edit-py-advance-roi"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs">{t("effectiveDate")}</Label>
+                                    <Input
+                                      type="date"
+                                      value={editReceivableEffectiveDate}
+                                      onChange={(e) => setEditReceivableEffectiveDate(e.target.value)}
+                                      data-testid="input-edit-py-advance-effective-date"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">{t("remarks")}</Label>
+                                    <Input
+                                      value={editReceivableRemarks}
+                                      onChange={(e) => setEditReceivableRemarks(e.target.value)}
+                                      data-testid="input-edit-py-advance-remarks"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setEditingReceivableId(null)}
+                                    data-testid="button-cancel-edit-py-advance"
+                                  >
+                                    {t("cancel")}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      updatePYAdvanceMutation.mutate({
+                                        id: a.id,
+                                        amount: parseFloat(editReceivableAmount) || a.amount,
+                                        rateOfInterest: parseFloat(editReceivableROI) || 0,
+                                        effectiveDate: editReceivableEffectiveDate || undefined,
+                                        remarks: editReceivableRemarks || null,
+                                      });
+                                    }}
+                                    disabled={updatePYAdvanceMutation.isPending}
+                                    data-testid="button-save-edit-py-advance"
+                                  >
+                                    {updatePYAdvanceMutation.isPending ? "..." : t("save")}
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     {openingReceivables
                       .filter((r) => {
                         if (!receivableSearchQuery.trim()) return true;

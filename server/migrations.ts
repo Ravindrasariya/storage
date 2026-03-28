@@ -158,6 +158,15 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-03-28_add_remarks_to_merchant_advance",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE merchant_advance
+        ADD COLUMN IF NOT EXISTS remarks TEXT
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

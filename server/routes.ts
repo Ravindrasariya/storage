@@ -1904,7 +1904,7 @@ export async function registerRoutes(
     }
   });
 
-  // Merchant Advance - Pay advance dues
+  // Merchant Advance - Pay advance dues (pick-and-pay: user selects which advances to pay)
   app.post("/api/merchant-advances/pay", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -1917,12 +1917,17 @@ export async function registerRoutes(
         remarks: z.string().optional(),
         receiptType: z.enum(["cash", "account"]),
         accountId: z.string().optional(),
+        selectedAdvanceIds: z.array(z.string()).min(1),
       });
       const data = schema.parse(req.body);
 
       const transactionId = await generateSequentialId('cash_flow', coldStorageId);
 
-      const payResult = await storage.payMerchantAdvance(coldStorageId, data.buyerLedgerId, data.amount);
+      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, data.selectedAdvanceIds);
+
+      if (payResult.totalApplied <= 0) {
+        return res.status(400).json({ error: "No outstanding dues found for selected advances" });
+      }
 
       const receipt = await storage.createMerchantAdvanceReceipt({
         coldStorageId,
@@ -1936,6 +1941,8 @@ export async function registerRoutes(
         amount: data.amount,
         receivedAt: new Date(data.receivedAt),
         notes: data.remarks || null,
+        appliedAmount: payResult.totalApplied,
+        unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100,
       });
 
       res.json({ receipt, ...payResult });
@@ -1944,6 +1951,96 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid payment data", details: error.errors });
       }
       res.status(500).json({ error: "Failed to process merchant advance payment" });
+    }
+  });
+
+  // Merchant Advance - Get outstanding advances for a specific buyer (for pick-and-pay)
+  app.get("/api/merchant-advances/outstanding/:buyerLedgerId", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const advances = await storage.getOutstandingAdvancesForBuyer(coldStorageId, req.params.buyerLedgerId);
+      res.json(advances);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch outstanding advances" });
+    }
+  });
+
+  // PY Merchant Advance - CRUD (no expense linkage, no cash impact)
+  app.get("/api/merchant-advances/py", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const advances = await storage.getPYMerchantAdvances(coldStorageId);
+      res.json(advances);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch PY merchant advances" });
+    }
+  });
+
+  app.post("/api/merchant-advances/py", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const schema = z.object({
+        buyerName: z.string().min(1),
+        amount: z.number().positive(),
+        rateOfInterest: z.number().min(0).default(0),
+        effectiveDate: z.string(),
+        remarks: z.string().optional(),
+      });
+      const data = schema.parse(req.body);
+
+      const buyerEntry = await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName: data.buyerName });
+
+      const advance = await storage.createPYMerchantAdvance({
+        coldStorageId,
+        buyerLedgerId: buyerEntry.id,
+        buyerId: buyerEntry.buyerId,
+        amount: data.amount,
+        rateOfInterest: data.rateOfInterest,
+        effectiveDate: new Date(data.effectiveDate),
+        remarks: data.remarks || null,
+      });
+
+      res.status(201).json(advance);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create PY merchant advance" });
+    }
+  });
+
+  app.patch("/api/merchant-advances/py/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const { amount, rateOfInterest, effectiveDate, remarks } = req.body;
+
+      const updates: { amount?: number; rateOfInterest?: number; effectiveDate?: Date; remarks?: string | null } = {};
+      if (amount !== undefined) updates.amount = parseFloat(amount);
+      if (rateOfInterest !== undefined) updates.rateOfInterest = parseFloat(rateOfInterest);
+      if (effectiveDate !== undefined) updates.effectiveDate = new Date(effectiveDate);
+      if (remarks !== undefined) updates.remarks = remarks || null;
+
+      const coldStorageId = getColdStorageId(req);
+      const updated = await storage.updatePYMerchantAdvance(coldStorageId, id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "PY merchant advance not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update PY merchant advance" });
+    }
+  });
+
+  app.delete("/api/merchant-advances/py/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const success = await storage.deletePYMerchantAdvance(coldStorageId, req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "PY merchant advance not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete PY merchant advance" });
     }
   });
 

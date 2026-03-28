@@ -473,6 +473,7 @@ export const merchantAdvance = pgTable("merchant_advance", {
   lastAccrualDate: timestamp("last_accrual_date").notNull(),
   paidAmount: real("paid_amount").notNull().default(0),
   expenseId: varchar("expense_id"),
+  remarks: text("remarks"),
   isReversed: integer("is_reversed").notNull().default(0),
   reversedAt: timestamp("reversed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

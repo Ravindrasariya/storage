@@ -335,7 +335,13 @@ export interface IStorage {
   getMerchantAdvances(coldStorageId: string, buyerLedgerId?: string): Promise<MerchantAdvance[]>;
   getBuyersWithAdvanceDues(coldStorageId: string): Promise<{ buyerLedgerId: string; buyerId: string; buyerName: string; advanceDue: number }[]>;
   payMerchantAdvance(coldStorageId: string, buyerLedgerId: string, amount: number): Promise<{ totalApplied: number; recordsUpdated: number }>;
-  createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<CashReceipt>;
+  payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[]): Promise<{ totalApplied: number; recordsUpdated: number }>;
+  getOutstandingAdvancesForBuyer(coldStorageId: string, buyerLedgerId: string): Promise<{ id: string; effectiveDate: Date; amount: number; rateOfInterest: number; finalAmount: number; paidAmount: number; remainingDue: number; expenseId: string | null; createdAt: Date }[]>;
+  createPYMerchantAdvance(data: { coldStorageId: string; buyerLedgerId: string; buyerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; remarks?: string | null }): Promise<MerchantAdvance>;
+  updatePYMerchantAdvance(coldStorageId: string, id: string, updates: { amount?: number; rateOfInterest?: number; effectiveDate?: Date; remarks?: string | null }): Promise<MerchantAdvance | undefined>;
+  deletePYMerchantAdvance(coldStorageId: string, id: string): Promise<boolean>;
+  getPYMerchantAdvances(coldStorageId: string): Promise<MerchantAdvance[]>;
+  createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number }): Promise<CashReceipt>;
   accrueInterestForAll(coldStorageId: string): Promise<number>;
   computeYearlySimpleInterest(latestPrincipal: number, effectiveDate: Date, annualRate: number, today: Date): { finalAmount: number; latestPrincipal: number; effectiveDate: Date };
   calculateSimpleInterest(principal: number, annualRate: number, fromDate: Date, toDate: Date): number;
@@ -5855,7 +5861,7 @@ export class DatabaseStorage implements IStorage {
     return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated };
   }
 
-  async createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<CashReceipt> {
+  async createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number }): Promise<CashReceipt> {
     const [receipt] = await db.insert(cashReceipts)
       .values({
         id: randomUUID(),
@@ -5870,11 +5876,169 @@ export class DatabaseStorage implements IStorage {
         amount: data.amount,
         receivedAt: data.receivedAt,
         notes: data.notes,
-        appliedAmount: data.amount,
-        unappliedAmount: 0,
+        appliedAmount: data.appliedAmount ?? data.amount,
+        unappliedAmount: data.unappliedAmount ?? 0,
       })
       .returning();
     return receipt;
+  }
+
+  async payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[]): Promise<{ totalApplied: number; recordsUpdated: number }> {
+    const records = await db.select()
+      .from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.buyerLedgerId, buyerLedgerId),
+        eq(merchantAdvance.isReversed, 0),
+        inArray(merchantAdvance.id, selectedAdvanceIds)
+      ))
+      .orderBy(asc(merchantAdvance.effectiveDate));
+
+    let remaining = amount;
+    let totalApplied = 0;
+    let recordsUpdated = 0;
+
+    for (const record of records) {
+      if (remaining <= 0) break;
+      const due = (record.finalAmount || 0) - (record.paidAmount || 0);
+      if (due <= 0) continue;
+
+      const applyAmount = Math.min(remaining, due);
+      const newPaid = roundAmount((record.paidAmount || 0) + applyAmount);
+      const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+      await db.update(merchantAdvance)
+        .set({ paidAmount: newPaid, ...interestFields })
+        .where(eq(merchantAdvance.id, record.id));
+
+      totalApplied += applyAmount;
+      remaining -= applyAmount;
+      recordsUpdated++;
+    }
+
+    return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated };
+  }
+
+  async getOutstandingAdvancesForBuyer(coldStorageId: string, buyerLedgerId: string): Promise<{ id: string; effectiveDate: Date; amount: number; rateOfInterest: number; finalAmount: number; paidAmount: number; remainingDue: number; expenseId: string | null; createdAt: Date }[]> {
+    const records = await db.select()
+      .from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.buyerLedgerId, buyerLedgerId),
+        eq(merchantAdvance.isReversed, 0)
+      ))
+      .orderBy(asc(merchantAdvance.effectiveDate));
+
+    return records
+      .map(r => ({
+        id: r.id,
+        effectiveDate: r.effectiveDate,
+        amount: r.amount,
+        rateOfInterest: r.rateOfInterest,
+        finalAmount: r.finalAmount,
+        paidAmount: r.paidAmount,
+        remainingDue: roundAmount((r.finalAmount || 0) - (r.paidAmount || 0)),
+        expenseId: r.expenseId,
+        createdAt: r.createdAt,
+      }))
+      .filter(r => r.remainingDue > 0);
+  }
+
+  async createPYMerchantAdvance(data: { coldStorageId: string; buyerLedgerId: string; buyerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; remarks?: string | null }): Promise<MerchantAdvance> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let finalAmount = data.amount;
+    let latestPrincipal = data.amount;
+    let computedEffectiveDate = data.effectiveDate;
+
+    if (data.rateOfInterest > 0) {
+      const result = this.computeYearlySimpleInterest(data.amount, data.effectiveDate, data.rateOfInterest, today);
+      finalAmount = result.finalAmount;
+      latestPrincipal = result.latestPrincipal;
+      computedEffectiveDate = result.effectiveDate;
+    }
+
+    const [record] = await db.insert(merchantAdvance)
+      .values({
+        id: randomUUID(),
+        coldStorageId: data.coldStorageId,
+        buyerLedgerId: data.buyerLedgerId,
+        buyerId: data.buyerId,
+        amount: data.amount,
+        rateOfInterest: data.rateOfInterest,
+        effectiveDate: computedEffectiveDate,
+        finalAmount,
+        latestPrincipal,
+        lastAccrualDate: today,
+        paidAmount: 0,
+        expenseId: null,
+        remarks: data.remarks || null,
+      })
+      .returning();
+    return record;
+  }
+
+  async updatePYMerchantAdvance(coldStorageId: string, id: string, updates: { amount?: number; rateOfInterest?: number; effectiveDate?: Date; remarks?: string | null }): Promise<MerchantAdvance | undefined> {
+    const existing = await db.select().from(merchantAdvance).where(and(eq(merchantAdvance.id, id), eq(merchantAdvance.coldStorageId, coldStorageId)));
+    if (!existing.length || existing[0].expenseId !== null) return undefined;
+
+    const record = existing[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const newAmount = updates.amount ?? record.amount;
+    const newRate = updates.rateOfInterest ?? record.rateOfInterest;
+    const newEffDate = updates.effectiveDate ?? record.effectiveDate;
+
+    let finalAmount = newAmount;
+    let latestPrincipal = newAmount;
+    let computedEffectiveDate = newEffDate;
+
+    if (newRate > 0) {
+      const result = this.computeYearlySimpleInterest(newAmount, newEffDate, newRate, today);
+      finalAmount = result.finalAmount;
+      latestPrincipal = result.latestPrincipal;
+      computedEffectiveDate = result.effectiveDate;
+    }
+
+    const [updated] = await db.update(merchantAdvance)
+      .set({
+        amount: newAmount,
+        rateOfInterest: newRate,
+        effectiveDate: computedEffectiveDate,
+        finalAmount: roundAmount(finalAmount + (record.paidAmount || 0)),
+        latestPrincipal,
+        lastAccrualDate: today,
+        remarks: updates.remarks !== undefined ? updates.remarks : record.remarks,
+      })
+      .where(eq(merchantAdvance.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePYMerchantAdvance(coldStorageId: string, id: string): Promise<boolean> {
+    const existing = await db.select().from(merchantAdvance).where(and(eq(merchantAdvance.id, id), eq(merchantAdvance.coldStorageId, coldStorageId)));
+    if (!existing.length || existing[0].expenseId !== null) return false;
+
+    await db.update(merchantAdvance)
+      .set({ isReversed: 1, reversedAt: new Date() })
+      .where(eq(merchantAdvance.id, id));
+    return true;
+  }
+
+  async getPYMerchantAdvances(coldStorageId: string): Promise<(MerchantAdvance & { buyerName: string | null })[]> {
+    const rows = await db.select({
+      advance: merchantAdvance,
+      buyerName: buyerLedger.buyerName,
+    }).from(merchantAdvance)
+      .leftJoin(buyerLedger, eq(merchantAdvance.buyerLedgerId, buyerLedger.id))
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        isNull(merchantAdvance.expenseId),
+        eq(merchantAdvance.isReversed, 0)
+      ))
+      .orderBy(desc(merchantAdvance.createdAt));
+    return rows.map(r => ({ ...r.advance, buyerName: r.buyerName }));
   }
 
   async accrueInterestForAll(coldStorageId: string): Promise<number> {
