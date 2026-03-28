@@ -2012,13 +2012,19 @@ export async function registerRoutes(
   app.patch("/api/merchant-advances/py/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      const { amount, rateOfInterest, effectiveDate, remarks } = req.body;
+      const patchSchema = z.object({
+        amount: z.number().positive().optional(),
+        rateOfInterest: z.number().min(0).optional(),
+        effectiveDate: z.string().optional(),
+        remarks: z.string().nullable().optional(),
+      });
+      const parsed = patchSchema.parse(req.body);
 
       const updates: { amount?: number; rateOfInterest?: number; effectiveDate?: Date; remarks?: string | null } = {};
-      if (amount !== undefined) updates.amount = parseFloat(amount);
-      if (rateOfInterest !== undefined) updates.rateOfInterest = parseFloat(rateOfInterest);
-      if (effectiveDate !== undefined) updates.effectiveDate = new Date(effectiveDate);
-      if (remarks !== undefined) updates.remarks = remarks || null;
+      if (parsed.amount !== undefined) updates.amount = parsed.amount;
+      if (parsed.rateOfInterest !== undefined) updates.rateOfInterest = parsed.rateOfInterest;
+      if (parsed.effectiveDate !== undefined) updates.effectiveDate = new Date(parsed.effectiveDate);
+      if (parsed.remarks !== undefined) updates.remarks = parsed.remarks || null;
 
       const coldStorageId = getColdStorageId(req);
       const updated = await storage.updatePYMerchantAdvance(coldStorageId, id, updates);
