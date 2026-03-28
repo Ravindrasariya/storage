@@ -876,6 +876,8 @@ export default function CashManagement() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]) === "/api/merchant-advances/outstanding" });
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/py"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
     },
     onError: () => {
