@@ -1299,7 +1299,7 @@ export default function CashManagement() {
         return;
       }
       if (selectedAdvanceIds.length === 0) {
-        toast({ title: t("error"), description: t("selectAdvancesToPay") || "Select at least one advance to pay", variant: "destructive" });
+        toast({ title: t("error"), description: t("selectAdvancesToPay"), variant: "destructive" });
         return;
       }
       if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
@@ -3297,7 +3297,7 @@ export default function CashManagement() {
                     )}
                     {advanceBuyerLedgerId && outstandingAdvances.length > 0 && (
                       <div className="mt-2 space-y-1">
-                        <Label className="text-xs font-medium">{t("selectAdvancesToPay") || "Select advances to pay"}</Label>
+                        <Label className="text-xs font-medium">{t("selectAdvancesToPay")}</Label>
                         <div className="border rounded-md max-h-40 overflow-auto">
                           {outstandingAdvances.map((adv) => {
                             const isSelected = selectedAdvanceIds.includes(adv.id);
@@ -3322,7 +3322,7 @@ export default function CashManagement() {
                                       {t("principal")}: ₹{formatCurrency(adv.amount)}
                                       {adv.rateOfInterest > 0 && ` @ ${adv.rateOfInterest}%`}
                                     </span>
-                                    {!adv.expenseId && <Badge variant="outline" className="ml-1 text-[10px] py-0">{t("py") || "PY"}</Badge>}
+                                    {!adv.expenseId && <Badge variant="outline" className="ml-1 text-[10px] py-0">{t("py")}</Badge>}
                                   </div>
                                 </div>
                                 <span className="text-xs font-bold text-green-600">₹{formatCurrency(adv.remainingDue)}</span>
@@ -3334,14 +3334,14 @@ export default function CashManagement() {
                           {t("totalDue")}: ₹{formatCurrency(buyersWithAdvanceDues.find(b => b.buyerLedgerId === advanceBuyerLedgerId)?.advanceDue || 0)}
                           {selectedAdvanceIds.length > 0 && (
                             <span className="ml-2 text-blue-600">
-                              ({t("selected") || "Selected"}: ₹{formatCurrency(outstandingAdvances.filter(a => selectedAdvanceIds.includes(a.id)).reduce((sum, a) => sum + a.remainingDue, 0))})
+                              ({t("selected")}: ₹{formatCurrency(outstandingAdvances.filter(a => selectedAdvanceIds.includes(a.id)).reduce((sum, a) => sum + a.remainingDue, 0))})
                             </span>
                           )}
                         </p>
                       </div>
                     )}
                     {advanceBuyerLedgerId && outstandingAdvances.length === 0 && (
-                      <p className="text-xs text-muted-foreground">{t("noAdvancesDue") || "No outstanding advances"}</p>
+                      <p className="text-xs text-muted-foreground">{t("noAdvancesDue")}</p>
                     )}
                   </div>
                 )}
@@ -5579,7 +5579,7 @@ export default function CashManagement() {
                       }
                       if (newReceivablePayerType === "cold_merchant_advance") {
                         if (!newReceivableBuyerName.trim()) {
-                          toast({ title: t("error"), description: t("buyerNameRequired") || "Buyer name is required", variant: "destructive" });
+                          toast({ title: t("error"), description: t("buyerNameRequired"), variant: "destructive" });
                           return;
                         }
                         const rateVal = parseFloat(newReceivableRateOfInterest) || 0;
@@ -5715,7 +5715,7 @@ export default function CashManagement() {
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <Badge variant="outline" className="text-xs bg-orange-50 dark:bg-orange-950 border-orange-300">{t("coldMerchantAdvance")}</Badge>
-                                  <Badge variant="outline" className="text-[10px] py-0 bg-yellow-50 dark:bg-yellow-950">{t("py") || "PY"}</Badge>
+                                  <Badge variant="outline" className="text-[10px] py-0 bg-yellow-50 dark:bg-yellow-950">{t("py")}</Badge>
                                   {a.buyerName && <span className="text-sm font-medium">{capitalizeName(a.buyerName)}</span>}
                                 </div>
                                 {!isEditing && a.remarks && <p className="text-xs text-muted-foreground">{a.remarks}</p>}

@@ -6029,7 +6029,7 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getPYMerchantAdvances(coldStorageId: string): Promise<(MerchantAdvance & { buyerName: string | null })[]> {
+  async getPYMerchantAdvances(coldStorageId: string): Promise<(MerchantAdvance & { buyerName: string | null; remainingDue: number })[]> {
     const rows = await db.select({
       advance: merchantAdvance,
       buyerName: buyerLedger.buyerName,
@@ -6041,7 +6041,11 @@ export class DatabaseStorage implements IStorage {
         eq(merchantAdvance.isReversed, 0)
       ))
       .orderBy(desc(merchantAdvance.createdAt));
-    return rows.map(r => ({ ...r.advance, buyerName: r.buyerName }));
+    return rows.map(r => ({
+      ...r.advance,
+      buyerName: r.buyerName,
+      remainingDue: Math.max(0, (r.advance.finalAmount || r.advance.amount) - (r.advance.paidAmount || 0)),
+    }));
   }
 
   async accrueInterestForAll(coldStorageId: string): Promise<number> {
