@@ -6009,7 +6009,7 @@ export class DatabaseStorage implements IStorage {
         amount: newAmount,
         rateOfInterest: newRate,
         effectiveDate: computedEffectiveDate,
-        finalAmount: roundAmount(finalAmount + (record.paidAmount || 0)),
+        finalAmount: roundAmount(finalAmount),
         latestPrincipal,
         lastAccrualDate: today,
         remarks: updates.remarks !== undefined ? updates.remarks : record.remarks,
