@@ -2326,7 +2326,7 @@ export async function registerRoutes(
         if (rateOfInterest > 0) {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          const result = storage.computeYearlySimpleInterest(principal, principal, effectiveDate, rateOfInterest, today);
+          const result = storage.computeYearlySimpleInterest(principal, effectiveDate, rateOfInterest, today);
           finalAmount = result.finalAmount;
           latestPrincipal = result.latestPrincipal;
           computedEffectiveDate = result.effectiveDate;
@@ -2358,7 +2358,7 @@ export async function registerRoutes(
         if (rateOfInterest > 0) {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          const result = storage.computeYearlySimpleInterest(principal, principal, effectiveDate, rateOfInterest, today);
+          const result = storage.computeYearlySimpleInterest(principal, effectiveDate, rateOfInterest, today);
           finalAmount = result.finalAmount;
           latestPrincipal = result.latestPrincipal;
           computedEffectiveDate = result.effectiveDate;
