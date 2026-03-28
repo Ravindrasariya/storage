@@ -6004,12 +6004,17 @@ export class DatabaseStorage implements IStorage {
       computedEffectiveDate = result.effectiveDate;
     }
 
+    const computedFinalAmount = roundAmount(finalAmount);
+    if (computedFinalAmount < (record.paidAmount || 0)) {
+      return undefined;
+    }
+
     const [updated] = await db.update(merchantAdvance)
       .set({
         amount: newAmount,
         rateOfInterest: newRate,
         effectiveDate: computedEffectiveDate,
-        finalAmount: roundAmount(finalAmount),
+        finalAmount: computedFinalAmount,
         latestPrincipal,
         lastAccrualDate: today,
         remarks: updates.remarks !== undefined ? updates.remarks : record.remarks,
