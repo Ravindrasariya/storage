@@ -185,7 +185,6 @@ export default function StockRegister() {
   const [displayedLots, setDisplayedLots] = useState<Lot[]>([]);
   const [totalLotCount, setTotalLotCount] = useState<number>(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const loaderRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch initial lots sorted by lot number for display before any search
@@ -226,33 +225,15 @@ export default function StockRegister() {
     }
   }, [isLoadingMore, hasSearched, displayedLots.length, totalLotCount]);
 
-  // Intersection observer for infinite scroll
-  useEffect(() => {
-    if (hasSearched) return; // Don't use infinite scroll when search results are shown
-    
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && displayedLots.length < totalLotCount) {
-          loadMoreLots();
-        }
-      },
-      { 
-        threshold: 0.1,
-        root: scrollContainerRef.current // Use scroll container as root for proper detection
-      }
-    );
-
-    const currentLoader = loaderRef.current;
-    if (currentLoader) {
-      observer.observe(currentLoader);
+  // Scroll handler for infinite scroll — triggers load when near bottom of container
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || hasSearched || isLoadingMore || displayedLots.length >= totalLotCount) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    if (scrollHeight - scrollTop - clientHeight < 200) {
+      loadMoreLots();
     }
-
-    return () => {
-      if (currentLoader) {
-        observer.unobserve(currentLoader);
-      }
-    };
-  }, [hasSearched, displayedLots.length, totalLotCount, loadMoreLots]);
+  }, [hasSearched, isLoadingMore, displayedLots.length, totalLotCount, loadMoreLots]);
 
   // For backward compatibility - alias to keep existing code working
   const initialLots = displayedLots;
@@ -518,10 +499,22 @@ export default function StockRegister() {
     return useWaferRate ? coldStorage.waferRate : coldStorage.seedRate;
   };
 
+  const matchesChamberFilter = useCallback((lot: Lot) => {
+    if (chamberFilter === "all") return true;
+    if (chamberFilter === "blank") return !lot.chamberId;
+    return lot.chamberId === chamberFilter;
+  }, [chamberFilter]);
+
+  const matchesFloorFilter = useCallback((lot: Lot) => {
+    if (floorFilter === "all") return true;
+    if (floorFilter === "blank") return !lot.floor;
+    return lot.floor === Number(floorFilter);
+  }, [floorFilter]);
+
   // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
-    // When no search is active, use the API summary which covers ALL lots (with bag type/year filter applied server-side)
-    if (!hasSearched && allLotsSummary) {
+    // When no search/chamber/floor filter is active, use the API summary which covers ALL lots (with bag type/year filter applied server-side)
+    if (!hasSearched && allLotsSummary && chamberFilter === "all" && floorFilter === "all") {
       return allLotsSummary;
     }
     
@@ -530,11 +523,21 @@ export default function StockRegister() {
     if (baseLots.length === 0) return null;
     
     // Apply bag type filter for summary calculation
-    const filteredResults = bagTypeFilter === "all" 
+    let filteredResults = bagTypeFilter === "all" 
       ? baseLots 
       : bagTypeFilter === "ration_seed"
         ? baseLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
         : baseLots.filter(lot => lot.bagType === bagTypeFilter);
+
+    // Apply chamber filter
+    if (chamberFilter !== "all") {
+      filteredResults = filteredResults.filter(matchesChamberFilter);
+    }
+
+    // Apply floor filter
+    if (floorFilter !== "all") {
+      filteredResults = filteredResults.filter(matchesFloorFilter);
+    }
     
     if (filteredResults.length === 0) return null;
     
@@ -561,8 +564,6 @@ export default function StockRegister() {
       const hammaliRate = useWaferRate
         ? (coldStorage?.waferHammali || 0)
         : (coldStorage?.seedHammali || 0);
-      // For quintal mode: cold charge (per quintal) + hammali (per bag)
-      // For bag mode: (coldCharge + hammali) × lot.size
       let lotCharge: number;
       if (coldStorage?.chargeUnit === "quintal") {
         const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
@@ -581,19 +582,7 @@ export default function StockRegister() {
       chargesDue,
       expectedColdCharges,
     };
-  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, coldStorage, allLotsSummary]);
-
-  const matchesChamberFilter = useCallback((lot: Lot) => {
-    if (chamberFilter === "all") return true;
-    if (chamberFilter === "blank") return !lot.chamberId;
-    return lot.chamberId === chamberFilter;
-  }, [chamberFilter]);
-
-  const matchesFloorFilter = useCallback((lot: Lot) => {
-    if (floorFilter === "all") return true;
-    if (floorFilter === "blank") return !lot.floor;
-    return lot.floor === Number(floorFilter);
-  }, [floorFilter]);
+  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, chamberFilter, floorFilter, matchesChamberFilter, matchesFloorFilter, coldStorage, allLotsSummary]);
 
   const floorOptions = useMemo(() => {
     if (chamberFilter === "all" || chamberFilter === "blank" || !chamberFloors) return [];
@@ -1783,7 +1772,7 @@ export default function StockRegister() {
           }
           
           return (
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto" ref={scrollContainerRef}>
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto" ref={scrollContainerRef} onScroll={handleScroll}>
               {sortedLots.map(({ lot, lotPaidCharge, lotDueCharge, expectedColdCharge }) => (
                   <LotCard
                     key={lot.id}
@@ -1803,7 +1792,7 @@ export default function StockRegister() {
                 ))}
               {/* Infinite scroll loader */}
               {!hasSearched && displayedLots.length < totalLotCount && (
-                <div ref={loaderRef} className="flex items-center justify-center py-4">
+                <div className="flex items-center justify-center py-4">
                   {isLoadingMore ? (
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
