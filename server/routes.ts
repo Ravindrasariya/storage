@@ -1921,9 +1921,11 @@ export async function registerRoutes(
       });
       const data = schema.parse(req.body);
 
+      const uniqueAdvanceIds = [...new Set(data.selectedAdvanceIds)];
+
       const transactionId = await generateSequentialId('cash_flow', coldStorageId);
 
-      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, data.selectedAdvanceIds);
+      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, uniqueAdvanceIds);
 
       if (payResult.totalApplied <= 0) {
         return res.status(400).json({ error: "No outstanding dues found for selected advances" });
@@ -2033,6 +2035,9 @@ export async function registerRoutes(
       }
       res.json(updated);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid update data", details: error.errors });
+      }
       res.status(500).json({ error: "Failed to update PY merchant advance" });
     }
   });
