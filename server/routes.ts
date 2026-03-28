@@ -2031,7 +2031,7 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const updated = await storage.updatePYMerchantAdvance(coldStorageId, id, updates);
       if (!updated) {
-        return res.status(404).json({ error: "PY merchant advance not found" });
+        return res.status(400).json({ error: "PY merchant advance not found or update would result in amount below already paid" });
       }
       res.json(updated);
     } catch (error) {
