@@ -185,6 +185,7 @@ export default function StockRegister() {
   const [displayedLots, setDisplayedLots] = useState<Lot[]>([]);
   const [totalLotCount, setTotalLotCount] = useState<number>(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const isLoadingMoreRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch initial lots sorted by lot number for display before any search
@@ -208,8 +209,9 @@ export default function StockRegister() {
 
   // Load more lots for infinite scroll
   const loadMoreLots = useCallback(async () => {
-    if (isLoadingMore || hasSearched || displayedLots.length >= totalLotCount) return;
+    if (isLoadingMoreRef.current || hasSearched || displayedLots.length >= totalLotCount) return;
     
+    isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     try {
       const offset = displayedLots.length;
@@ -221,9 +223,10 @@ export default function StockRegister() {
     } catch (error) {
       console.error("Failed to load more lots:", error);
     } finally {
+      isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasSearched, displayedLots.length, totalLotCount]);
+  }, [hasSearched, displayedLots.length, totalLotCount]);
 
   // Scroll handler for infinite scroll — triggers load when near bottom of container
   const handleScroll = useCallback(() => {
