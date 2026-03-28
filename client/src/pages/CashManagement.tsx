@@ -1309,6 +1309,13 @@ export default function CashManagement() {
         toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
         return;
       }
+      const selectedDueTotal = outstandingAdvances
+        .filter(a => selectedAdvanceIds.includes(a.id))
+        .reduce((sum, a) => sum + a.remainingDue, 0);
+      if (parseFloat(inwardAmount) > selectedDueTotal) {
+        toast({ title: t("error"), description: `${t("amountExceedsDue")} (₹${formatCurrency(selectedDueTotal)})`, variant: "destructive" });
+        return;
+      }
       if (receiptType === "account" && !accountId) {
         toast({ title: t("error"), description: t("selectBankAccount"), variant: "destructive" });
         return;
@@ -1375,6 +1382,19 @@ export default function CashManagement() {
     if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
+    }
+
+    if (payerType === "cold_merchant" && selectedBuyerDue > 0 && parseFloat(inwardAmount) > selectedBuyerDue) {
+      toast({ title: t("error"), description: `${t("amountExceedsDue")} (₹${formatCurrency(selectedBuyerDue)})`, variant: "destructive" });
+      return;
+    }
+
+    if (payerType === "farmer" && farmerReceivableId) {
+      const farmerDue = farmerLedgerDues.find(f => f.id === farmerReceivableId)?.totalDue || 0;
+      if (farmerDue > 0 && parseFloat(inwardAmount) > farmerDue) {
+        toast({ title: t("error"), description: `${t("amountExceedsDue")} (₹${formatCurrency(farmerDue)})`, variant: "destructive" });
+        return;
+      }
     }
     
     // Validate bank account selection when payment mode is "account"
