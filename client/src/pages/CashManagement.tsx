@@ -98,6 +98,37 @@ interface BuyerWithDue {
   totalDue: number;
 }
 
+interface PYMerchantAdvanceRow {
+  id: string;
+  coldStorageId: string;
+  buyerLedgerId: string;
+  buyerName: string | null;
+  amount: number;
+  rateOfInterest: number;
+  effectiveDate: string;
+  finalAmount: number;
+  paidAmount: number;
+  latestPrincipal: number;
+  lastAccrualDate: string | null;
+  isReversed: number;
+  remarks: string | null;
+  expenseId: string | null;
+  remainingDue: number;
+  createdAt: string;
+}
+
+interface OutstandingAdvanceRow {
+  id: string;
+  effectiveDate: string;
+  amount: number;
+  rateOfInterest: number;
+  finalAmount: number;
+  paidAmount: number;
+  remainingDue: number;
+  expenseId: string | null;
+  createdAt: string;
+}
+
 type TransactionItem = 
   | { type: "inflow"; data: CashReceipt; timestamp: number }
   | { type: "outflow"; data: Expense; timestamp: number }
@@ -377,12 +408,12 @@ export default function CashManagement() {
     enabled: payerType === "cold_merchant_advance",
   });
 
-  const { data: outstandingAdvances = [] } = useQuery<{ id: string; effectiveDate: string; amount: number; rateOfInterest: number; finalAmount: number; paidAmount: number; remainingDue: number; expenseId: string | null; createdAt: string }[]>({
+  const { data: outstandingAdvances = [] } = useQuery<OutstandingAdvanceRow[]>({
     queryKey: ["/api/merchant-advances/outstanding", advanceBuyerLedgerId],
     enabled: payerType === "cold_merchant_advance" && !!advanceBuyerLedgerId,
   });
 
-  const { data: pyMerchantAdvances = [] } = useQuery<{ id: string; buyerLedgerId: string; buyerId: string; amount: number; rateOfInterest: number; effectiveDate: string; finalAmount: number; paidAmount: number; remarks: string | null; createdAt: string }[]>({
+  const { data: pyMerchantAdvances = [] } = useQuery<PYMerchantAdvanceRow[]>({
     queryKey: ["/api/merchant-advances/py"],
   });
 
@@ -5669,12 +5700,12 @@ export default function CashManagement() {
                 ) : (
                   <div className="space-y-2">
                     {pyMerchantAdvances
-                      .filter((a: any) => {
+                      .filter((a) => {
                         if (!receivableSearchQuery.trim()) return true;
                         const q = receivableSearchQuery.toLowerCase().trim();
                         return (a.buyerName || "").toLowerCase().includes(q) || (a.remarks || "").toLowerCase().includes(q);
                       })
-                      .map((a: any) => {
+                      .map((a) => {
                         const capitalizeName = (name: string) =>
                           name.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
                         const isEditing = editingReceivableId === `py-${a.id}`;

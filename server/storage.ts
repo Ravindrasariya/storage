@@ -5891,14 +5891,17 @@ export class DatabaseStorage implements IStorage {
         eq(merchantAdvance.buyerLedgerId, buyerLedgerId),
         eq(merchantAdvance.isReversed, 0),
         inArray(merchantAdvance.id, selectedAdvanceIds)
-      ))
-      .orderBy(asc(merchantAdvance.effectiveDate));
+      ));
+
+    const orderedRecords = selectedAdvanceIds
+      .map(id => records.find(r => r.id === id))
+      .filter((r): r is NonNullable<typeof r> => r != null);
 
     let remaining = amount;
     let totalApplied = 0;
     let recordsUpdated = 0;
 
-    for (const record of records) {
+    for (const record of orderedRecords) {
       if (remaining <= 0) break;
       const due = (record.finalAmount || 0) - (record.paidAmount || 0);
       if (due <= 0) continue;
