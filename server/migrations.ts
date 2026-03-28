@@ -167,6 +167,26 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-03-29_add_previous_effective_date_columns",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE opening_receivables
+          ADD COLUMN IF NOT EXISTS previous_effective_date TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS previous_latest_principal REAL
+      `);
+      await db.execute(sql`
+        ALTER TABLE farmer_advance_freight
+          ADD COLUMN IF NOT EXISTS previous_effective_date TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS previous_latest_principal REAL
+      `);
+      await db.execute(sql`
+        ALTER TABLE merchant_advance
+          ADD COLUMN IF NOT EXISTS previous_effective_date TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS previous_latest_principal REAL
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

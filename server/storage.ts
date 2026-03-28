@@ -2897,26 +2897,7 @@ export class DatabaseStorage implements IStorage {
 
     // Handle recomputation based on payer type
     if (receipt.payerType === "cold_merchant_advance" && receipt.coldStorageId && receipt.buyerLedgerId) {
-      // Undo merchant advance payment: reduce paidAmount on merchant advance records (reverse FIFO)
-      const records = await db.select().from(merchantAdvance)
-        .where(and(
-          eq(merchantAdvance.coldStorageId, receipt.coldStorageId),
-          eq(merchantAdvance.buyerLedgerId, receipt.buyerLedgerId),
-          eq(merchantAdvance.isReversed, 0)
-        ))
-        .orderBy(desc(merchantAdvance.effectiveDate));
-
-      let remaining = receipt.amount;
-      for (const record of records) {
-        if (remaining <= 0) break;
-        const paid = record.paidAmount || 0;
-        if (paid <= 0) continue;
-        const reduceBy = Math.min(remaining, paid);
-        await db.update(merchantAdvance)
-          .set({ paidAmount: Math.round((paid - reduceBy) * 100) / 100 })
-          .where(eq(merchantAdvance.id, record.id));
-        remaining -= reduceBy;
-      }
+      await this.recomputeMerchantAdvancePayments(receipt.coldStorageId, receipt.buyerLedgerId);
     } else if (receipt.payerType === "farmer" && receipt.coldStorageId && receipt.buyerName) {
       // For farmer payments, use recomputeFarmerPaymentsWithDiscounts to properly reset self-sales
       // Parse farmer identity from buyerDisplayName format: "FarmerName (Village)"
@@ -3046,27 +3027,56 @@ export class DatabaseStorage implements IStorage {
 
     const selfSalePattern = `${farmerName.trim()} - ${contactNumber.trim()} - ${village.trim()}`;
 
-    // Step 1: Reset all farmer receivables paidAmount to 0
-    await db.execute(sql`
-      UPDATE opening_receivables
-      SET paid_amount = 0
-      WHERE cold_storage_id = ${coldStorageId}
-        AND payer_type = 'farmer'
-        AND (
-          (farmer_ledger_id IS NOT NULL AND farmer_ledger_id = ${resolvedLedgerId})
-          OR (farmer_ledger_id IS NULL AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName})) AND TRIM(contact_number) = TRIM(${contactNumber}) AND LOWER(TRIM(village)) = LOWER(TRIM(${village})))
-        )
-    `);
+    // Step 1: Reset all farmer receivables paidAmount to 0, restore previous interest state
+    const fallbackReceivables = await db.select().from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, "farmer"),
+        resolvedLedgerId
+          ? or(eq(openingReceivables.farmerLedgerId, resolvedLedgerId), and(isNull(openingReceivables.farmerLedgerId), sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName})) AND TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber}) AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`))
+          : and(isNull(openingReceivables.farmerLedgerId), sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName})) AND TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber}) AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`)
+      ));
+    const todayFallback = new Date();
+    todayFallback.setHours(0, 0, 0, 0);
+    for (const recv of fallbackReceivables) {
+      const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
+      if (recv.previousEffectiveDate && recv.rateOfInterest > 0) {
+        const recomputed = this.computeYearlySimpleInterest(
+          recv.previousLatestPrincipal ?? recv.dueAmount,
+          recv.previousEffectiveDate,
+          recv.rateOfInterest,
+          todayFallback
+        );
+        resetFields.effectiveDate = recomputed.effectiveDate;
+        resetFields.latestPrincipal = recomputed.latestPrincipal;
+        resetFields.finalAmount = recomputed.finalAmount;
+      }
+      await db.update(openingReceivables).set(resetFields).where(eq(openingReceivables.id, recv.id));
+    }
 
-    // Step 1b: Reset farmer advance/freight paidAmount to 0
+    // Step 1b: Reset farmer advance/freight paidAmount to 0, restore previous interest state
     if (resolvedLedgerId) {
-      await db.update(farmerAdvanceFreight)
-        .set({ paidAmount: 0 })
+      const fallbackAdvances = await db.select().from(farmerAdvanceFreight)
         .where(and(
           eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
           eq(farmerAdvanceFreight.farmerLedgerId, resolvedLedgerId),
           eq(farmerAdvanceFreight.isReversed, 0)
         ));
+      for (const adv of fallbackAdvances) {
+        const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
+        if (adv.previousEffectiveDate && adv.rateOfInterest > 0) {
+          const recomputed = this.computeYearlySimpleInterest(
+            adv.previousLatestPrincipal ?? adv.amount,
+            adv.previousEffectiveDate,
+            adv.rateOfInterest,
+            todayFallback
+          );
+          resetFields.effectiveDate = recomputed.effectiveDate;
+          resetFields.latestPrincipal = recomputed.latestPrincipal;
+          resetFields.finalAmount = recomputed.finalAmount;
+        }
+        await db.update(farmerAdvanceFreight).set(resetFields).where(eq(farmerAdvanceFreight.id, adv.id));
+      }
     }
 
     // Step 2: Reset all self-sales for this farmer to original due amounts
@@ -3367,15 +3377,32 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Reset opening receivables paidAmount to 0 for this buyer (current year, cold_merchant type)
+    // Also restore previousEffectiveDate/previousLatestPrincipal if saved
     const currentYear = new Date().getFullYear();
-    await db.update(openingReceivables)
-      .set({ paidAmount: 0 })
+    const receivables = await db.select().from(openingReceivables)
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
         eq(openingReceivables.year, currentYear),
         eq(openingReceivables.payerType, "cold_merchant"),
         sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName}))`
       ));
+    for (const recv of receivables) {
+      const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
+      if (recv.previousEffectiveDate && recv.rateOfInterest > 0) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const recomputed = this.computeYearlySimpleInterest(
+          recv.previousLatestPrincipal ?? recv.dueAmount,
+          recv.previousEffectiveDate,
+          recv.rateOfInterest,
+          today
+        );
+        resetFields.effectiveDate = recomputed.effectiveDate;
+        resetFields.latestPrincipal = recomputed.latestPrincipal;
+        resetFields.finalAmount = recomputed.finalAmount;
+      }
+      await db.update(openingReceivables).set(resetFields).where(eq(openingReceivables.id, recv.id));
+    }
 
     // Step 2: Get all non-reversed receipts for this buyer, ordered by receivedAt (FIFO)
     const activeReceipts = await db.select()
@@ -5068,17 +5095,32 @@ export class DatabaseStorage implements IStorage {
     contactNumber: string, 
     village: string
   ): Promise<{ receivablesUpdated: number; selfSalesUpdated: number }> {
-    // Step 1: Reset all farmer receivables paidAmount to 0
-    await db.execute(sql`
-      UPDATE opening_receivables
-      SET paid_amount = 0
-      WHERE cold_storage_id = ${coldStorageId}
-        AND payer_type = 'farmer'
-        AND (
-          (farmer_ledger_id IS NOT NULL AND farmer_ledger_id = ${farmerLedgerId})
-          OR (farmer_ledger_id IS NULL AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName})) AND TRIM(contact_number) = TRIM(${contactNumber}) AND LOWER(TRIM(village)) = LOWER(TRIM(${village})))
-        )
-    `);
+    // Step 1: Reset all farmer receivables paidAmount to 0, restore previous interest state
+    const farmerReceivables = await db.select().from(openingReceivables)
+      .where(and(
+        eq(openingReceivables.coldStorageId, coldStorageId),
+        eq(openingReceivables.payerType, "farmer"),
+        farmerLedgerId
+          ? or(eq(openingReceivables.farmerLedgerId, farmerLedgerId), and(isNull(openingReceivables.farmerLedgerId), sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName})) AND TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber}) AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`))
+          : and(isNull(openingReceivables.farmerLedgerId), sql`LOWER(TRIM(${openingReceivables.farmerName})) = LOWER(TRIM(${farmerName})) AND TRIM(${openingReceivables.contactNumber}) = TRIM(${contactNumber}) AND LOWER(TRIM(${openingReceivables.village})) = LOWER(TRIM(${village}))`)
+      ));
+    for (const recv of farmerReceivables) {
+      const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
+      if (recv.previousEffectiveDate && recv.rateOfInterest > 0) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const recomputed = this.computeYearlySimpleInterest(
+          recv.previousLatestPrincipal ?? recv.dueAmount,
+          recv.previousEffectiveDate,
+          recv.rateOfInterest,
+          today
+        );
+        resetFields.effectiveDate = recomputed.effectiveDate;
+        resetFields.latestPrincipal = recomputed.latestPrincipal;
+        resetFields.finalAmount = recomputed.finalAmount;
+      }
+      await db.update(openingReceivables).set(resetFields).where(eq(openingReceivables.id, recv.id));
+    }
     
     // Step 1b: Reset all farmer advance/freight paidAmount to 0
     let farmerLedgerEntryForDiscount;
@@ -5102,13 +5144,29 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (farmerLedgerEntryForDiscount) {
-      await db.update(farmerAdvanceFreight)
-        .set({ paidAmount: 0 })
+      const farmerAdvances = await db.select().from(farmerAdvanceFreight)
         .where(and(
           eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
           eq(farmerAdvanceFreight.farmerLedgerId, farmerLedgerEntryForDiscount.id),
           eq(farmerAdvanceFreight.isReversed, 0)
         ));
+      for (const adv of farmerAdvances) {
+        const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
+        if (adv.previousEffectiveDate && adv.rateOfInterest > 0) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const recomputed = this.computeYearlySimpleInterest(
+            adv.previousLatestPrincipal ?? adv.amount,
+            adv.previousEffectiveDate,
+            adv.rateOfInterest,
+            today
+          );
+          resetFields.effectiveDate = recomputed.effectiveDate;
+          resetFields.latestPrincipal = recomputed.latestPrincipal;
+          resetFields.finalAmount = recomputed.finalAmount;
+        }
+        await db.update(farmerAdvanceFreight).set(resetFields).where(eq(farmerAdvanceFreight.id, adv.id));
+      }
     }
     
     // Step 2: Reset all self-sales for this farmer to original due amounts
@@ -6039,6 +6097,78 @@ export class DatabaseStorage implements IStorage {
     return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated };
   }
 
+  async recomputeMerchantAdvancePayments(coldStorageId: string, buyerLedgerId: string): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const advances = await db.select().from(merchantAdvance)
+      .where(and(
+        eq(merchantAdvance.coldStorageId, coldStorageId),
+        eq(merchantAdvance.buyerLedgerId, buyerLedgerId),
+        eq(merchantAdvance.isReversed, 0)
+      ))
+      .orderBy(asc(merchantAdvance.effectiveDate));
+
+    for (const adv of advances) {
+      const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
+      if (adv.previousEffectiveDate && adv.rateOfInterest > 0) {
+        const recomputed = this.computeYearlySimpleInterest(
+          adv.previousLatestPrincipal ?? adv.amount,
+          adv.previousEffectiveDate,
+          adv.rateOfInterest,
+          today
+        );
+        resetFields.effectiveDate = recomputed.effectiveDate;
+        resetFields.latestPrincipal = recomputed.latestPrincipal;
+        resetFields.finalAmount = recomputed.finalAmount;
+      } else if (adv.rateOfInterest > 0 && adv.effectiveDate) {
+        const recomputed = this.computeYearlySimpleInterest(
+          adv.latestPrincipal ?? adv.amount,
+          adv.effectiveDate,
+          adv.rateOfInterest,
+          today
+        );
+        resetFields.finalAmount = recomputed.finalAmount;
+        resetFields.latestPrincipal = recomputed.latestPrincipal;
+        resetFields.effectiveDate = recomputed.effectiveDate;
+      }
+      await db.update(merchantAdvance).set(resetFields).where(eq(merchantAdvance.id, adv.id));
+    }
+
+    const activeReceipts = await db.select().from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.buyerLedgerId, buyerLedgerId),
+        eq(cashReceipts.payerType, "cold_merchant_advance"),
+        eq(cashReceipts.isReversed, 0)
+      ))
+      .orderBy(cashReceipts.receivedAt);
+
+    for (const rcpt of activeReceipts) {
+      const freshAdvances = await db.select().from(merchantAdvance)
+        .where(and(
+          eq(merchantAdvance.coldStorageId, coldStorageId),
+          eq(merchantAdvance.buyerLedgerId, buyerLedgerId),
+          eq(merchantAdvance.isReversed, 0)
+        ))
+        .orderBy(asc(merchantAdvance.effectiveDate));
+
+      let remaining = rcpt.amount;
+      for (const record of freshAdvances) {
+        if (remaining <= 0) break;
+        const due = (record.finalAmount || record.amount) - (record.paidAmount || 0);
+        if (due <= 0) continue;
+        const applyAmount = Math.min(remaining, due);
+        const newPaid = roundAmount((record.paidAmount || 0) + applyAmount);
+        const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+        await db.update(merchantAdvance)
+          .set({ paidAmount: newPaid, ...interestFields })
+          .where(eq(merchantAdvance.id, record.id));
+        remaining -= applyAmount;
+      }
+    }
+  }
+
   async getOutstandingAdvancesForBuyer(coldStorageId: string, buyerLedgerId: string): Promise<{ id: string; effectiveDate: Date; amount: number; rateOfInterest: number; finalAmount: number; paidAmount: number; remainingDue: number; expenseId: string | null; createdAt: Date }[]> {
     const records = await db.select()
       .from(merchantAdvance)
@@ -6285,10 +6415,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   computeInterestAwarePaymentFields(
-    record: { latestPrincipal: number | null; effectiveDate: Date | string | null; rateOfInterest: number; finalAmount: number | null; paidAmount: number | null; dueAmount?: number | null },
+    record: { latestPrincipal: number | null; effectiveDate: Date | string | null; rateOfInterest: number; finalAmount: number | null; paidAmount: number | null; dueAmount?: number | null; previousEffectiveDate?: Date | string | null; previousLatestPrincipal?: number | null },
     newPaidAmount: number,
     defaultPrincipal: number
-  ): { latestPrincipal?: number; effectiveDate?: Date } | null {
+  ): { latestPrincipal?: number; effectiveDate?: Date; previousEffectiveDate?: Date | null; previousLatestPrincipal?: number | null } | null {
     if (record.rateOfInterest <= 0) return null;
     const prevPrincipal = record.latestPrincipal ?? defaultPrincipal;
     const grossFinal = record.finalAmount ?? record.dueAmount ?? defaultPrincipal;
@@ -6298,7 +6428,15 @@ export class DatabaseStorage implements IStorage {
     if (newPrincipal < prevPrincipal) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      return { latestPrincipal: roundAmount(newPrincipal), effectiveDate: today };
+      const result: { latestPrincipal: number; effectiveDate: Date; previousEffectiveDate?: Date | null; previousLatestPrincipal?: number | null } = {
+        latestPrincipal: roundAmount(newPrincipal),
+        effectiveDate: today,
+      };
+      if (!record.previousEffectiveDate) {
+        result.previousEffectiveDate = record.effectiveDate ? new Date(record.effectiveDate) : null;
+        result.previousLatestPrincipal = prevPrincipal;
+      }
+      return result;
     }
     return null;
   }

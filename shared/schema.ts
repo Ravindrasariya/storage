@@ -372,6 +372,8 @@ export const openingReceivables = pgTable("opening_receivables", {
   finalAmount: real("final_amount"), // Current amount with accrued interest (null = use dueAmount for backward compat)
   latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
   lastAccrualDate: timestamp("last_accrual_date"), // Last date interest was computed (null = never accrued)
+  previousEffectiveDate: timestamp("previous_effective_date"), // Saved before payment resets effectiveDate; restored on reversal
+  previousLatestPrincipal: real("previous_latest_principal"), // Saved before payment resets latestPrincipal; restored on reversal
   paidAmount: real("paid_amount").notNull().default(0), // Track FIFO payments against this receivable
   remarks: text("remarks"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -452,6 +454,8 @@ export const farmerAdvanceFreight = pgTable("farmer_advance_freight", {
   finalAmount: real("final_amount").notNull(), // Current amount with accrued interest (updated daily)
   latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
   lastAccrualDate: timestamp("last_accrual_date").notNull(), // Last date interest was computed
+  previousEffectiveDate: timestamp("previous_effective_date"), // Saved before payment resets effectiveDate; restored on reversal
+  previousLatestPrincipal: real("previous_latest_principal"), // Saved before payment resets latestPrincipal; restored on reversal
   paidAmount: real("paid_amount").notNull().default(0),
   expenseId: varchar("expense_id"), // Reference to the expense record
   isReversed: integer("is_reversed").notNull().default(0),
@@ -471,6 +475,8 @@ export const merchantAdvance = pgTable("merchant_advance", {
   finalAmount: real("final_amount").notNull(),
   latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
   lastAccrualDate: timestamp("last_accrual_date").notNull(),
+  previousEffectiveDate: timestamp("previous_effective_date"), // Saved before payment resets effectiveDate; restored on reversal
+  previousLatestPrincipal: real("previous_latest_principal"), // Saved before payment resets latestPrincipal; restored on reversal
   paidAmount: real("paid_amount").notNull().default(0),
   expenseId: varchar("expense_id"),
   remarks: text("remarks"),
