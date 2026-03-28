@@ -2321,8 +2321,15 @@ export async function registerRoutes(
         const principal = validatedData.amount;
 
         let finalAmount = principal;
+        let latestPrincipal = principal;
+        let computedEffectiveDate = effectiveDate;
         if (rateOfInterest > 0) {
-          finalAmount = storage.calculateSimpleInterest(principal, rateOfInterest, effectiveDate, new Date());
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const result = storage.computeYearlySimpleInterest(principal, principal, effectiveDate, rateOfInterest, today);
+          finalAmount = result.finalAmount;
+          latestPrincipal = result.latestPrincipal;
+          computedEffectiveDate = result.effectiveDate;
         }
 
         await storage.createFarmerAdvanceFreight({
@@ -2332,8 +2339,9 @@ export async function registerRoutes(
           type: validatedData.expenseType === "farmer_advance" ? "advance" : "freight",
           amount: principal,
           rateOfInterest,
-          effectiveDate,
+          effectiveDate: computedEffectiveDate,
           finalAmount,
+          latestPrincipal,
           lastAccrualDate: new Date(),
           expenseId: expense.id,
         });
@@ -2345,8 +2353,15 @@ export async function registerRoutes(
         const principal = validatedData.amount;
 
         let finalAmount = principal;
+        let latestPrincipal = principal;
+        let computedEffectiveDate = effectiveDate;
         if (rateOfInterest > 0) {
-          finalAmount = storage.calculateSimpleInterest(principal, rateOfInterest, effectiveDate, new Date());
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const result = storage.computeYearlySimpleInterest(principal, principal, effectiveDate, rateOfInterest, today);
+          finalAmount = result.finalAmount;
+          latestPrincipal = result.latestPrincipal;
+          computedEffectiveDate = result.effectiveDate;
         }
 
         await storage.createMerchantAdvance({
@@ -2355,8 +2370,9 @@ export async function registerRoutes(
           buyerId: validatedData.buyerId,
           amount: principal,
           rateOfInterest,
-          effectiveDate,
+          effectiveDate: computedEffectiveDate,
           finalAmount,
+          latestPrincipal,
           lastAccrualDate: new Date(),
           expenseId: expense.id,
         });

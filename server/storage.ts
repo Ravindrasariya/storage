@@ -337,6 +337,7 @@ export interface IStorage {
   payMerchantAdvance(coldStorageId: string, buyerLedgerId: string, amount: number): Promise<{ totalApplied: number; recordsUpdated: number }>;
   createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<CashReceipt>;
   accrueInterestForAll(coldStorageId: string): Promise<number>;
+  computeYearlySimpleInterest(latestPrincipal: number, finalAmount: number, effectiveDate: Date, annualRate: number, today: Date): { finalAmount: number; latestPrincipal: number; effectiveDate: Date };
   calculateSimpleInterest(principal: number, annualRate: number, fromDate: Date, toDate: Date): number;
   // Farmer Ledger
   getFarmerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
@@ -4204,17 +4205,23 @@ export class DatabaseStorage implements IStorage {
     }
     
     let computedFinalAmount: number = data.dueAmount;
+    let computedLatestPrincipal: number = data.dueAmount;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let computedLastAccrualDate: Date = today;
+    let computedEffectiveDate: Date | undefined;
     
     if (data.rateOfInterest && data.rateOfInterest > 0 && data.effectiveDate) {
-      computedFinalAmount = roundAmount(this.calculateSimpleInterest(
+      const result = this.computeYearlySimpleInterest(
         data.dueAmount,
-        data.rateOfInterest,
+        data.dueAmount,
         new Date(data.effectiveDate),
+        data.rateOfInterest,
         today
-      ));
+      );
+      computedFinalAmount = result.finalAmount;
+      computedLatestPrincipal = result.latestPrincipal;
+      computedEffectiveDate = result.effectiveDate;
     }
     
     const [receivable] = await db.insert(openingReceivables)
@@ -4224,7 +4231,9 @@ export class DatabaseStorage implements IStorage {
         buyerLedgerId,
         buyerId,
         finalAmount: computedFinalAmount,
+        latestPrincipal: computedLatestPrincipal,
         lastAccrualDate: computedLastAccrualDate,
+        ...(computedEffectiveDate ? { effectiveDate: computedEffectiveDate } : {}),
       })
       .returning();
     return receivable;
@@ -4243,26 +4252,33 @@ export class DatabaseStorage implements IStorage {
     const newRemarks = updates.remarks !== undefined ? updates.remarks : existing.remarks;
 
     let computedFinalAmount = newDueAmount;
+    let computedLatestPrincipal = newDueAmount;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let computedLastAccrualDate = today;
+    let computedEffectiveDate: Date | null = newEffectiveDate;
 
     if (newRateOfInterest > 0 && newEffectiveDate) {
-      computedFinalAmount = roundAmount(this.calculateSimpleInterest(
+      const result = this.computeYearlySimpleInterest(
         newDueAmount,
-        newRateOfInterest,
+        newDueAmount,
         new Date(newEffectiveDate),
+        newRateOfInterest,
         today
-      ));
+      );
+      computedFinalAmount = result.finalAmount;
+      computedLatestPrincipal = result.latestPrincipal;
+      computedEffectiveDate = result.effectiveDate;
     }
 
     const [updated] = await db.update(openingReceivables)
       .set({
         dueAmount: newDueAmount,
         rateOfInterest: newRateOfInterest,
-        effectiveDate: newEffectiveDate,
+        effectiveDate: computedEffectiveDate,
         remarks: newRemarks,
         finalAmount: computedFinalAmount,
+        latestPrincipal: computedLatestPrincipal,
         lastAccrualDate: computedLastAccrualDate,
       })
       .where(eq(openingReceivables.id, id))
@@ -5821,15 +5837,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async accrueInterestForAll(coldStorageId: string): Promise<number> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let updatedCount = 0;
+
     const records = await db.select().from(farmerAdvanceFreight)
       .where(and(
         eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
         eq(farmerAdvanceFreight.isReversed, 0)
       ));
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let updatedCount = 0;
 
     for (const record of records) {
       if (record.rateOfInterest <= 0) continue;
@@ -5839,29 +5855,26 @@ export class DatabaseStorage implements IStorage {
 
       const lastAccrual = new Date(record.lastAccrualDate);
       lastAccrual.setHours(0, 0, 0, 0);
-
       if (lastAccrual >= today) continue;
 
-      const interestOnRemaining = this.calculateSimpleInterest(
-        remainingDue,
-        record.rateOfInterest,
-        lastAccrual,
-        today
-      );
-      const interestAccrued = interestOnRemaining - remainingDue;
-      const newFinalAmount = roundAmount((record.finalAmount || 0) + interestAccrued);
+      let curPrincipal = record.latestPrincipal ?? record.amount;
+      let curFinal = record.finalAmount || record.amount;
+      let curEffective = new Date(record.effectiveDate);
+      curEffective.setHours(0, 0, 0, 0);
+
+      const result = this.computeYearlySimpleInterest(curPrincipal, curFinal, curEffective, record.rateOfInterest, today);
 
       await db.update(farmerAdvanceFreight)
         .set({
-          finalAmount: newFinalAmount,
+          finalAmount: result.finalAmount,
+          latestPrincipal: result.latestPrincipal,
+          effectiveDate: result.effectiveDate,
           lastAccrualDate: today,
         })
         .where(eq(farmerAdvanceFreight.id, record.id));
-
       updatedCount++;
     }
 
-    // ---- Accrue interest on opening receivables with rateOfInterest > 0 ----
     const orRecords = await db.select().from(openingReceivables)
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
@@ -5870,6 +5883,7 @@ export class DatabaseStorage implements IStorage {
 
     for (const orRecord of orRecords) {
       if (orRecord.rateOfInterest <= 0) continue;
+      if (!orRecord.effectiveDate) continue;
 
       const remainingDue = (orRecord.finalAmount ?? orRecord.dueAmount) - (orRecord.paidAmount || 0);
       if (remainingDue <= 0) continue;
@@ -5880,29 +5894,24 @@ export class DatabaseStorage implements IStorage {
         if (lastAccrual >= today) continue;
       }
 
-      const lastDate = orRecord.lastAccrualDate ? new Date(orRecord.lastAccrualDate) : (orRecord.effectiveDate ? new Date(orRecord.effectiveDate) : today);
-      lastDate.setHours(0, 0, 0, 0);
+      let curPrincipal = orRecord.latestPrincipal ?? orRecord.dueAmount;
+      let curFinal = orRecord.finalAmount ?? orRecord.dueAmount;
+      let curEffective = new Date(orRecord.effectiveDate);
+      curEffective.setHours(0, 0, 0, 0);
 
-      const interestOnRemaining = this.calculateSimpleInterest(
-        remainingDue,
-        orRecord.rateOfInterest,
-        lastDate,
-        today
-      );
-      const interestAccrued = interestOnRemaining - remainingDue;
-      const newFinalAmount = roundAmount((orRecord.finalAmount ?? orRecord.dueAmount) + interestAccrued);
+      const result = this.computeYearlySimpleInterest(curPrincipal, curFinal, curEffective, orRecord.rateOfInterest, today);
 
       await db.update(openingReceivables)
         .set({
-          finalAmount: newFinalAmount,
+          finalAmount: result.finalAmount,
+          latestPrincipal: result.latestPrincipal,
+          effectiveDate: result.effectiveDate,
           lastAccrualDate: today,
         })
         .where(eq(openingReceivables.id, orRecord.id));
-
       updatedCount++;
     }
 
-    // ---- Accrue interest on merchant advances with rateOfInterest > 0 ----
     const maRecords = await db.select().from(merchantAdvance)
       .where(and(
         eq(merchantAdvance.coldStorageId, coldStorageId),
@@ -5917,29 +5926,72 @@ export class DatabaseStorage implements IStorage {
 
       const lastAccrual = new Date(maRecord.lastAccrualDate);
       lastAccrual.setHours(0, 0, 0, 0);
-
       if (lastAccrual >= today) continue;
 
-      const interestOnRemaining = this.calculateSimpleInterest(
-        remainingDue,
-        maRecord.rateOfInterest,
-        lastAccrual,
-        today
-      );
-      const interestAccrued = interestOnRemaining - remainingDue;
-      const newFinalAmount = roundAmount((maRecord.finalAmount || 0) + interestAccrued);
+      let curPrincipal = maRecord.latestPrincipal ?? maRecord.amount;
+      let curFinal = maRecord.finalAmount || maRecord.amount;
+      let curEffective = new Date(maRecord.effectiveDate);
+      curEffective.setHours(0, 0, 0, 0);
+
+      const result = this.computeYearlySimpleInterest(curPrincipal, curFinal, curEffective, maRecord.rateOfInterest, today);
 
       await db.update(merchantAdvance)
         .set({
-          finalAmount: newFinalAmount,
+          finalAmount: result.finalAmount,
+          latestPrincipal: result.latestPrincipal,
+          effectiveDate: result.effectiveDate,
           lastAccrualDate: today,
         })
         .where(eq(merchantAdvance.id, maRecord.id));
-
       updatedCount++;
     }
 
     return updatedCount;
+  }
+
+  computeYearlySimpleInterest(
+    latestPrincipal: number,
+    finalAmount: number,
+    effectiveDate: Date,
+    annualRate: number,
+    today: Date
+  ): { finalAmount: number; latestPrincipal: number; effectiveDate: Date } {
+    let curPrincipal = latestPrincipal;
+    let curFinal = finalAmount;
+    let curEffective = new Date(effectiveDate);
+    curEffective.setHours(0, 0, 0, 0);
+    const rate = annualRate / 100;
+
+    let yearBoundary = new Date(curEffective);
+    yearBoundary.setFullYear(yearBoundary.getFullYear() + 1);
+
+    while (today >= yearBoundary) {
+      curPrincipal = Math.min(curPrincipal, curFinal);
+      const daysInSegment = (yearBoundary.getTime() - curEffective.getTime()) / (24 * 60 * 60 * 1000);
+      const segmentInterest = roundAmount(curPrincipal * rate * daysInSegment / 365);
+      curFinal = roundAmount(curPrincipal + segmentInterest);
+      curPrincipal = curFinal;
+      curEffective = new Date(yearBoundary);
+      curEffective.setHours(0, 0, 0, 0);
+      yearBoundary = new Date(curEffective);
+      yearBoundary.setFullYear(yearBoundary.getFullYear() + 1);
+    }
+
+    curPrincipal = Math.min(curPrincipal, curFinal);
+
+    const diffMs = today.getTime() - curEffective.getTime();
+    const days = Math.max(0, diffMs / (24 * 60 * 60 * 1000));
+
+    if (days > 0) {
+      const interest = roundAmount(curPrincipal * rate * days / 365);
+      curFinal = roundAmount(curPrincipal + interest);
+    }
+
+    return {
+      finalAmount: curFinal,
+      latestPrincipal: curPrincipal,
+      effectiveDate: curEffective,
+    };
   }
 
   calculateSimpleInterest(

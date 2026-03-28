@@ -370,6 +370,7 @@ export const openingReceivables = pgTable("opening_receivables", {
   rateOfInterest: real("rate_of_interest").notNull().default(0), // Annual rate in % (0 = no interest)
   effectiveDate: timestamp("effective_date"), // Date from which interest starts accruing (null = no interest)
   finalAmount: real("final_amount"), // Current amount with accrued interest (null = use dueAmount for backward compat)
+  latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
   lastAccrualDate: timestamp("last_accrual_date"), // Last date interest was computed (null = never accrued)
   paidAmount: real("paid_amount").notNull().default(0), // Track FIFO payments against this receivable
   remarks: text("remarks"),
@@ -449,6 +450,7 @@ export const farmerAdvanceFreight = pgTable("farmer_advance_freight", {
   rateOfInterest: real("rate_of_interest").notNull().default(0), // Annual rate in % (0 = no interest)
   effectiveDate: timestamp("effective_date").notNull(), // Date from which interest starts accruing
   finalAmount: real("final_amount").notNull(), // Current amount with accrued interest (updated daily)
+  latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
   lastAccrualDate: timestamp("last_accrual_date").notNull(), // Last date interest was computed
   paidAmount: real("paid_amount").notNull().default(0),
   expenseId: varchar("expense_id"), // Reference to the expense record
@@ -467,6 +469,7 @@ export const merchantAdvance = pgTable("merchant_advance", {
   rateOfInterest: real("rate_of_interest").notNull().default(0),
   effectiveDate: timestamp("effective_date").notNull(),
   finalAmount: real("final_amount").notNull(),
+  latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
   lastAccrualDate: timestamp("last_accrual_date").notNull(),
   paidAmount: real("paid_amount").notNull().default(0),
   expenseId: varchar("expense_id"),

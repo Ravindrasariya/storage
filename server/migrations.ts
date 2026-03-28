@@ -116,6 +116,38 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    name: "2026-03-28_add_latest_principal_columns",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE opening_receivables
+        ADD COLUMN IF NOT EXISTS latest_principal REAL
+      `);
+      await db.execute(sql`
+        ALTER TABLE farmer_advance_freight
+        ADD COLUMN IF NOT EXISTS latest_principal REAL
+      `);
+      await db.execute(sql`
+        ALTER TABLE merchant_advance
+        ADD COLUMN IF NOT EXISTS latest_principal REAL
+      `);
+      await db.execute(sql`
+        UPDATE opening_receivables
+        SET latest_principal = due_amount
+        WHERE latest_principal IS NULL AND rate_of_interest > 0
+      `);
+      await db.execute(sql`
+        UPDATE farmer_advance_freight
+        SET latest_principal = amount
+        WHERE latest_principal IS NULL AND rate_of_interest > 0
+      `);
+      await db.execute(sql`
+        UPDATE merchant_advance
+        SET latest_principal = amount
+        WHERE latest_principal IS NULL AND rate_of_interest > 0
+      `);
+    },
+  },
+  {
     name: "2026-03-27_reclassify_capital_expenses",
     up: async () => {
       await db.execute(sql`
