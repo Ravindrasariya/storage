@@ -20,7 +20,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import type { CashReceipt, Expense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
+import type { CashReceipt, Expense as BaseExpense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
+
+type Expense = BaseExpense & { advanceRateOfInterest?: number; advanceEffectiveDate?: string | null };
 import { formatCurrency } from "@/components/Currency";
 import { capitalizeFirstLetter } from "@/lib/utils";
 
@@ -1697,6 +1699,8 @@ export default function CashManagement() {
       "Remarks",
       "Status",
       "Expense Class",
+      "Rate of Interest (%)",
+      "Effective Date",
     ];
 
     const rows = transactions.map(transaction => {
@@ -1723,6 +1727,8 @@ export default function CashManagement() {
           r.notes || "",
           isReversed ? t("reversed") : t("active"),
           "",
+          "",
+          "",
         ];
       } else if (transaction.type === "outflow") {
         const e = transaction.data as Expense;
@@ -1739,6 +1745,8 @@ export default function CashManagement() {
           e.remarks || "",
           isReversed ? t("reversed") : t("active"),
           e.expenseClass === "capital" ? "Capital" : e.expenseClass === "advance" ? "Advance" : "Revenue",
+          e.advanceRateOfInterest && e.advanceRateOfInterest > 0 ? e.advanceRateOfInterest.toString() : "",
+          e.advanceEffectiveDate && !isNaN(new Date(e.advanceEffectiveDate).getTime()) ? format(new Date(e.advanceEffectiveDate), "dd/MM/yyyy") : "",
         ];
       } else if (transaction.type === "transfer") {
         const tr = transaction.data as CashTransfer;
@@ -1754,6 +1762,8 @@ export default function CashManagement() {
           "",
           tr.remarks || "",
           isReversed ? t("reversed") : t("active"),
+          "",
+          "",
           "",
         ];
       } else if (transaction.type === "discount") {
@@ -1781,6 +1791,8 @@ export default function CashManagement() {
           `${allocationsStr}${d.remarks ? ` | ${d.remarks}` : ""}`,
           discountIsReversed ? t("reversed") : t("active"),
           "",
+          "",
+          "",
         ];
       } else {
         const bt = transaction.data as SalesHistory;
@@ -1797,6 +1809,8 @@ export default function CashManagement() {
           "",
           bt.transferRemarks || "",
           btIsReversed ? t("reversed") : t("active"),
+          "",
+          "",
           "",
         ];
       }
@@ -4829,6 +4843,18 @@ export default function CashManagement() {
                       <span className="text-muted-foreground">Date:</span>
                       <span>{format(new Date(selectedTransaction.timestamp), "dd/MM/yyyy")}</span>
                     </div>
+                    {(selectedTransaction.data as Expense).advanceRateOfInterest != null && (selectedTransaction.data as Expense).advanceRateOfInterest! > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t("rateOfInterest")}:</span>
+                        <span className="font-medium text-blue-600">{(selectedTransaction.data as Expense).advanceRateOfInterest}%</span>
+                      </div>
+                    )}
+                    {(selectedTransaction.data as Expense).advanceEffectiveDate && !isNaN(new Date((selectedTransaction.data as Expense).advanceEffectiveDate!).getTime()) && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t("effectiveDate")}:</span>
+                        <span className="font-medium">{format(new Date((selectedTransaction.data as Expense).advanceEffectiveDate!), "dd/MM/yyyy")}</span>
+                      </div>
+                    )}
                     {(selectedTransaction.data as Expense).remarks && (
                       <div className="pt-2 border-t">
                         <span className="text-muted-foreground text-sm">{t("remarks")}:</span>

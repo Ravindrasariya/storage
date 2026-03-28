@@ -2686,10 +2686,46 @@ export class DatabaseStorage implements IStorage {
       .where(eq(lots.id, lotId));
   }
 
-  async getExpenses(coldStorageId: string): Promise<Expense[]> {
-    return db.select().from(expenses)
+  async getExpenses(coldStorageId: string): Promise<(Expense & { advanceRateOfInterest?: number; advanceEffectiveDate?: Date | null })[]> {
+    const expenseList = await db.select().from(expenses)
       .where(eq(expenses.coldStorageId, coldStorageId))
       .orderBy(desc(expenses.paidAt));
+
+    const advanceExpenseIds = expenseList
+      .filter(e => e.expenseType === "merchant_advance" || e.expenseType === "farmer_advance" || e.expenseType === "farmer_freight")
+      .map(e => e.id);
+
+    if (advanceExpenseIds.length === 0) {
+      return expenseList;
+    }
+
+    const farmerRows = await db.select({
+      expenseId: farmerAdvanceFreight.expenseId,
+      rateOfInterest: farmerAdvanceFreight.rateOfInterest,
+      effectiveDate: farmerAdvanceFreight.effectiveDate,
+    }).from(farmerAdvanceFreight)
+      .where(inArray(farmerAdvanceFreight.expenseId, advanceExpenseIds));
+
+    const merchantRows = await db.select({
+      expenseId: merchantAdvance.expenseId,
+      rateOfInterest: merchantAdvance.rateOfInterest,
+      effectiveDate: merchantAdvance.effectiveDate,
+    }).from(merchantAdvance)
+      .where(inArray(merchantAdvance.expenseId, advanceExpenseIds));
+
+    const advanceMetaMap = new Map<string, { roi: number; effDate: Date | null }>();
+    for (const r of farmerRows) {
+      if (r.expenseId) advanceMetaMap.set(r.expenseId, { roi: r.rateOfInterest, effDate: r.effectiveDate });
+    }
+    for (const r of merchantRows) {
+      if (r.expenseId && !advanceMetaMap.has(r.expenseId)) advanceMetaMap.set(r.expenseId, { roi: r.rateOfInterest, effDate: r.effectiveDate });
+    }
+
+    return expenseList.map(e => {
+      const meta = advanceMetaMap.get(e.id);
+      if (!meta) return e;
+      return { ...e, advanceRateOfInterest: meta.roi, advanceEffectiveDate: meta.effDate };
+    });
   }
 
   async createExpense(data: InsertExpense): Promise<Expense> {
