@@ -5729,11 +5729,14 @@ export default function CashManagement() {
                               <div className="flex items-center gap-1">
                                 {!isEditing && (
                                   <div className="text-right mr-1">
-                                    <span className="font-bold text-green-600">₹{formatCurrency(a.remainingDue ?? a.amount)}</span>
+                                    <span className="font-bold text-green-600">₹{formatCurrency(a.finalAmount || a.amount)}</span>
                                     {a.paidAmount > 0 && (
                                       <p className="text-xs text-muted-foreground">({t("paid")}: ₹{formatCurrency(a.paidAmount)})</p>
                                     )}
-                                    {a.rateOfInterest > 0 && (
+                                    {a.paidAmount > 0 && (
+                                      <p className="text-xs text-muted-foreground">({t("remaining")}: ₹{formatCurrency(a.remainingDue)})</p>
+                                    )}
+                                    {a.rateOfInterest > 0 && a.finalAmount !== a.amount && (
                                       <p className="text-xs text-muted-foreground">({t("principal")}: ₹{formatCurrency(a.amount)})</p>
                                     )}
                                   </div>
