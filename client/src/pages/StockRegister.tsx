@@ -254,11 +254,13 @@ export default function StockRegister() {
     chargesDue: number;
     expectedColdCharges: number;
   }>({
-    queryKey: ["/api/lots/summary", { bagType: bagTypeFilter, year: selectedYear }],
+    queryKey: ["/api/lots/summary", { bagType: bagTypeFilter, year: selectedYear, chamber: chamberFilter, floor: floorFilter }],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (bagTypeFilter !== "all") params.set("bagType", bagTypeFilter);
       if (selectedYear) params.set("year", String(selectedYear));
+      if (chamberFilter !== "all") params.set("chamber", chamberFilter);
+      if (floorFilter !== "all") params.set("floor", floorFilter);
       const url = `/api/lots/summary${params.toString() ? `?${params.toString()}` : ""}`;
       const response = await authFetch(url);
       if (!response.ok) throw new Error("Failed to fetch summary");
@@ -516,28 +518,24 @@ export default function StockRegister() {
 
   // Calculate summary totals from sales history for consistency with Analytics
   const summaryTotals = useMemo(() => {
-    // When no search/chamber/floor filter is active, use the API summary which covers ALL lots (with bag type/year filter applied server-side)
-    if (!hasSearched && allLotsSummary && chamberFilter === "all" && floorFilter === "all") {
+    // When no search is active, use the API summary which covers ALL lots (with all filters applied server-side)
+    if (!hasSearched && allLotsSummary) {
       return allLotsSummary;
     }
     
-    // Use search results when searched
+    // Use search results when searched — apply all filters client-side
     const baseLots = hasSearched ? searchResults : (initialLots || []);
     if (baseLots.length === 0) return null;
     
-    // Apply bag type filter for summary calculation
     let filteredResults = bagTypeFilter === "all" 
       ? baseLots 
       : bagTypeFilter === "ration_seed"
         ? baseLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
         : baseLots.filter(lot => lot.bagType === bagTypeFilter);
 
-    // Apply chamber filter
     if (chamberFilter !== "all") {
       filteredResults = filteredResults.filter(matchesChamberFilter);
     }
-
-    // Apply floor filter
     if (floorFilter !== "all") {
       filteredResults = filteredResults.filter(matchesFloorFilter);
     }
@@ -549,7 +547,6 @@ export default function StockRegister() {
     let chargesPaid = 0;
     let chargesDue = 0;
     
-    // Calculate from sales history using persisted values (same as API summary endpoint)
     if (allSalesHistory) {
       for (const sale of allSalesHistory) {
         if (!lotIds.has(sale.lotId)) continue;
@@ -558,7 +555,6 @@ export default function StockRegister() {
       }
     }
     
-    // Calculate expected cold charges based on charge unit mode
     const expectedColdCharges = filteredResults.reduce((sum, lot) => {
       const useWaferRate = lot.bagType === "wafer";
       const coldChargeRate = useWaferRate 

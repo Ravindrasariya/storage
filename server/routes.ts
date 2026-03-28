@@ -275,7 +275,7 @@ export async function registerRoutes(
       let allLots = await storage.getAllLots(coldStorageId);
       const allSalesHistory = await storage.getSalesHistory(coldStorageId);
 
-      const { bagType, year } = req.query;
+      const { bagType, year, chamber, floor } = req.query;
 
       if (bagType && typeof bagType === "string" && bagType !== "all") {
         if (bagType === "ration_seed") {
@@ -292,6 +292,22 @@ export async function registerRoutes(
             if (!lot.createdAt) return false;
             return new Date(lot.createdAt).getFullYear() === filterYear;
           });
+        }
+      }
+
+      if (chamber && typeof chamber === "string" && chamber !== "all") {
+        if (chamber === "blank") {
+          allLots = allLots.filter(lot => !lot.chamberId);
+        } else {
+          allLots = allLots.filter(lot => lot.chamberId === chamber);
+        }
+      }
+
+      if (floor && typeof floor === "string" && floor !== "all") {
+        if (floor === "blank") {
+          allLots = allLots.filter(lot => !lot.floor);
+        } else {
+          allLots = allLots.filter(lot => lot.floor === Number(floor));
         }
       }
       
