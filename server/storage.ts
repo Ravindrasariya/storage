@@ -8154,7 +8154,7 @@ export class DatabaseStorage implements IStorage {
         credit: 0,
         refId: ma.id,
         sortDate: ma.effectiveDate,
-        sortOrder: 5,
+        sortOrder: 4,
       });
       if (ma.rateOfInterest > 0) {
         const interestAmt = roundAmount(totalAmt - principalAmt);
@@ -8174,7 +8174,7 @@ export class DatabaseStorage implements IStorage {
             credit: 0,
             refId: ma.id,
             sortDate: ma.effectiveDate,
-            sortOrder: 5,
+            sortOrder: 4,
           });
         }
       }
