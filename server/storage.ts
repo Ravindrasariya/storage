@@ -8017,20 +8017,32 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const totalAdvanceOutstanding = buyerAdvances.reduce((sum, ma) => {
-      const due = (ma.finalAmount || ma.amount) - (ma.paidAmount || 0);
-      return sum + (due > 0 ? due : 0);
-    }, 0);
-    const advanceSummaryMeta: Record<string, string> = {};
-    if (buyerAdvances.some(ma => ma.rateOfInterest > 0)) {
-      const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
-      if (withInterest.length === 1) {
-        const ma = withInterest[0];
-        advanceSummaryMeta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
-        advanceSummaryMeta.rateOfInterest = String(ma.rateOfInterest);
-        advanceSummaryMeta.effectiveDate = ma.effectiveDate.toISOString().slice(0, 10);
+    const hasInterestAdvances = buyerAdvances.some(ma => ma.rateOfInterest > 0);
+    const advancePaymentMetaMap = new Map<string, Record<string, string>>();
+    if (hasInterestAdvances) {
+      const totalFinalAll = buyerAdvances.reduce((s, ma) => s + (ma.finalAmount || ma.amount), 0);
+      const allAdvanceReceipts = buyerReceipts
+        .filter(r => r.payerType === 'cold_merchant_advance' && !r.isReversed)
+        .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
+      let cumulativePaid = 0;
+      for (const r of allAdvanceReceipts) {
+        cumulativePaid += r.amount;
+        const outstandingAfter = roundAmount(Math.max(0, totalFinalAll - cumulativePaid));
+        const meta: Record<string, string> = { outstandingDue: String(outstandingAfter) };
+        const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
+        if (withInterest.length === 1) {
+          const ma = withInterest[0];
+          meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
+          meta.rateOfInterest = String(ma.rateOfInterest);
+          meta.effectiveDate = ma.effectiveDate.toISOString().slice(0, 10);
+        } else if (withInterest.length > 1) {
+          const avgRoi = roundAmount(withInterest.reduce((s, ma) => s + ma.rateOfInterest, 0) / withInterest.length);
+          const totalPrincipal = roundAmount(withInterest.reduce((s, ma) => s + (ma.latestPrincipal ?? ma.amount), 0));
+          meta.principal = String(totalPrincipal);
+          meta.rateOfInterest = String(avgRoi);
+        }
+        advancePaymentMetaMap.set(r.id, meta);
       }
-      advanceSummaryMeta.outstandingDue = String(roundAmount(totalAdvanceOutstanding));
     }
 
     const fyReceipts = buyerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
@@ -8038,8 +8050,9 @@ export class DatabaseStorage implements IStorage {
       const isCmAdvance = r.payerType === 'cold_merchant_advance';
       const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
       const receiptMeta: Record<string, string> = { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName };
-      if (isCmAdvance && Object.keys(advanceSummaryMeta).length > 0) {
-        Object.assign(receiptMeta, advanceSummaryMeta);
+      if (isCmAdvance) {
+        const advMeta = advancePaymentMetaMap.get(r.id);
+        if (advMeta) Object.assign(receiptMeta, advMeta);
       }
       transactions.push({
         type: isCmAdvance ? 'cm_advance_payment' : 'payment',
