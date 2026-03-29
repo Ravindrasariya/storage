@@ -236,6 +236,22 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       let lots = await storage.getAllLots(coldStorageId);
+
+      const { chamber, floor: floorParam } = req.query;
+      if (chamber && typeof chamber === "string" && chamber !== "all") {
+        if (chamber === "blank") {
+          lots = lots.filter(lot => !lot.chamberId);
+        } else {
+          lots = lots.filter(lot => lot.chamberId === chamber);
+        }
+      }
+      if (floorParam && typeof floorParam === "string" && floorParam !== "all") {
+        if (floorParam === "blank") {
+          lots = lots.filter(lot => !lot.floor);
+        } else {
+          lots = lots.filter(lot => lot.floor === Number(floorParam));
+        }
+      }
       
       // Sort by lot number if requested
       if (req.query.sort === "lotNo") {

@@ -188,11 +188,19 @@ export default function StockRegister() {
   const isLoadingMoreRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  const lotsFilterParams = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("sort", "lotNo");
+    if (chamberFilter !== "all") params.set("chamber", chamberFilter);
+    if (floorFilter !== "all") params.set("floor", floorFilter);
+    return params.toString();
+  }, [chamberFilter, floorFilter]);
+
   // Fetch initial lots sorted by lot number for display before any search
   const { data: initialLotsData, isLoading: isLoadingInitial } = useQuery<{ lots: Lot[], totalCount: number }>({
-    queryKey: ["/api/lots", { sort: "lotNo", limit: PAGE_SIZE, offset: 0 }],
+    queryKey: ["/api/lots", { sort: "lotNo", limit: PAGE_SIZE, offset: 0, chamber: chamberFilter, floor: floorFilter }],
     queryFn: async () => {
-      const response = await authFetch(`/api/lots?sort=lotNo&limit=${PAGE_SIZE}&offset=0`);
+      const response = await authFetch(`/api/lots?${lotsFilterParams}&limit=${PAGE_SIZE}&offset=0`);
       if (!response.ok) throw new Error("Failed to fetch initial lots");
       return response.json();
     },
@@ -201,7 +209,6 @@ export default function StockRegister() {
   // Update displayedLots when initial data loads or when search is cleared
   useEffect(() => {
     if (initialLotsData && !hasSearched) {
-      // Reset to initial data when not searching
       setDisplayedLots(initialLotsData.lots);
       setTotalLotCount(initialLotsData.totalCount);
     }
@@ -215,7 +222,7 @@ export default function StockRegister() {
     setIsLoadingMore(true);
     try {
       const offset = displayedLots.length;
-      const response = await authFetch(`/api/lots?sort=lotNo&limit=${PAGE_SIZE}&offset=${offset}`);
+      const response = await authFetch(`/api/lots?${lotsFilterParams}&limit=${PAGE_SIZE}&offset=${offset}`);
       if (!response.ok) throw new Error("Failed to fetch more lots");
       const data: { lots: Lot[], totalCount: number } = await response.json();
       setDisplayedLots(prev => [...prev, ...data.lots]);
@@ -226,7 +233,7 @@ export default function StockRegister() {
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [hasSearched, displayedLots.length, totalLotCount]);
+  }, [hasSearched, displayedLots.length, totalLotCount, lotsFilterParams]);
 
   // Scroll handler for infinite scroll — triggers load when near bottom of container
   const handleScroll = useCallback(() => {
