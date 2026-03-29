@@ -615,10 +615,10 @@ export default function StockRegister() {
       : bagTypeFilter === "ration_seed"
         ? rawLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
         : rawLots.filter(lot => lot.bagType === bagTypeFilter);
-    const afterChamber = chamberFilter !== "all"
+    const afterChamber = (chamberFilter !== "all" && hasSearched)
       ? afterBagType.filter(matchesChamberFilter)
       : afterBagType;
-    return floorFilter !== "all"
+    return (floorFilter !== "all" && hasSearched)
       ? afterChamber.filter(matchesFloorFilter)
       : afterChamber;
   }, [hasSearched, searchResults, initialLots, bagTypeFilter, chamberFilter, matchesChamberFilter, floorFilter, matchesFloorFilter]);
@@ -1707,11 +1707,11 @@ export default function StockRegister() {
               ? rawLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
               : rawLots.filter(lot => lot.bagType === bagTypeFilter);
 
-          // Apply chamber and floor filters (client-side, no backend call needed)
-          const afterChamber = chamberFilter !== "all"
+          // Apply chamber and floor filters (server-filtered for paginated lots, client-side for search results)
+          const afterChamber = (chamberFilter !== "all" && hasSearched)
             ? afterBagType.filter(matchesChamberFilter)
             : afterBagType;
-          const baseLots = floorFilter !== "all"
+          const baseLots = (floorFilter !== "all" && hasSearched)
             ? afterChamber.filter(matchesFloorFilter)
             : afterChamber;
           
