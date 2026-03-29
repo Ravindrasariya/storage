@@ -8005,6 +8005,7 @@ export class DatabaseStorage implements IStorage {
         });
         if (interestAmt > 0) {
           const intMeta: Record<string, string> = {
+            advanceAmount: String(roundAmount(r.dueAmount)),
             principal: String(roundAmount(r.latestPrincipal ?? r.dueAmount)),
             rateOfInterest: String(r.rateOfInterest),
             effectiveDate: r.effectiveDate ? toISTDateString(new Date(r.effectiveDate)) : '',
@@ -8065,12 +8066,15 @@ export class DatabaseStorage implements IStorage {
         const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
         if (withInterest.length === 1) {
           const ma = withInterest[0];
+          meta.advanceAmount = String(roundAmount(ma.amount));
           meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
           meta.rateOfInterest = String(ma.rateOfInterest);
           meta.effectiveDate = toISTDateString(ma.effectiveDate);
         } else if (withInterest.length > 1) {
+          const totalAdvAmt = roundAmount(withInterest.reduce((s, ma) => s + ma.amount, 0));
           const avgRoi = roundAmount(withInterest.reduce((s, ma) => s + ma.rateOfInterest, 0) / withInterest.length);
           const totalPrincipal = roundAmount(withInterest.reduce((s, ma) => s + (ma.latestPrincipal ?? ma.amount), 0));
+          meta.advanceAmount = String(totalAdvAmt);
           meta.principal = String(totalPrincipal);
           meta.rateOfInterest = String(avgRoi);
         }
@@ -8156,6 +8160,7 @@ export class DatabaseStorage implements IStorage {
         const interestAmt = roundAmount(totalAmt - principalAmt);
         if (interestAmt > 0) {
           const intMeta: Record<string, string> = {
+            advanceAmount: String(roundAmount(ma.amount)),
             principal: String(roundAmount(ma.latestPrincipal ?? ma.amount)),
             rateOfInterest: String(ma.rateOfInterest),
             effectiveDate: advDateStr,
