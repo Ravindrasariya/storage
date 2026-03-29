@@ -838,6 +838,8 @@ const translations: Translations = {
   paymentReceived: { en: "Payment Received", hi: "भुगतान प्राप्त" },
   advancePayment: { en: "Advance Payment", hi: "अग्रिम भुगतान" },
   advanceGiven: { en: "Advance Given", hi: "अग्रिम दिया गया" },
+  interestOnAdvance: { en: "Interest on Advance/Loan", hi: "अग्रिम/ऋण पर ब्याज" },
+  interestOnReceivable: { en: "Interest on Receivable", hi: "प्राप्य पर ब्याज" },
   transferFrom: { en: "Transfer from", hi: "से ट्रांसफर" },
   transferTo: { en: "Transfer to", hi: "को ट्रांसफर" },
   discountEntry: { en: "Discount", hi: "छूट" },

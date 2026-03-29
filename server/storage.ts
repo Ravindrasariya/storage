@@ -7981,25 +7981,52 @@ export class DatabaseStorage implements IStorage {
     const fyReceivables = buyerReceivables.filter(r => r.createdAt >= fyStart && r.createdAt <= fyEnd);
     for (const r of fyReceivables) {
       const amt = (r.finalAmount ?? r.dueAmount);
+      const principalAmt = roundAmount(r.dueAmount);
       const meta: Record<string, string> = {};
       if (r.remarks) meta.remarks = r.remarks;
       if (r.rateOfInterest > 0) {
-        meta.principal = String(roundAmount(r.latestPrincipal ?? r.dueAmount));
-        meta.rateOfInterest = String(r.rateOfInterest);
-        meta.effectiveDate = r.effectiveDate ? new Date(r.effectiveDate).toISOString().slice(0, 10) : '';
-        const outstanding = roundAmount(amt - (r.paidAmount || 0));
-        meta.outstandingDue = String(outstanding > 0 ? outstanding : 0);
+        const totalDebit = roundAmount(amt);
+        const interestAmt = roundAmount(totalDebit - principalAmt);
+        transactions.push({
+          type: 'py_receivable',
+          date: `${fyStartYear}-04-01`,
+          meta: Object.keys(meta).length > 0 ? { ...meta } : undefined,
+          debit: principalAmt,
+          credit: 0,
+          refId: r.id,
+          sortDate: fyStart,
+          sortOrder: 1,
+        });
+        if (interestAmt > 0) {
+          const intMeta: Record<string, string> = {
+            principal: String(roundAmount(r.latestPrincipal ?? r.dueAmount)),
+            rateOfInterest: String(r.rateOfInterest),
+            effectiveDate: r.effectiveDate ? new Date(r.effectiveDate).toISOString().slice(0, 10) : '',
+            outstandingDue: String(roundAmount(Math.max(0, amt - (r.paidAmount || 0)))),
+          };
+          transactions.push({
+            type: 'py_receivable_interest',
+            date: `${fyStartYear}-04-01`,
+            meta: intMeta,
+            debit: interestAmt,
+            credit: 0,
+            refId: r.id,
+            sortDate: fyStart,
+            sortOrder: 1,
+          });
+        }
+      } else {
+        transactions.push({
+          type: 'py_receivable',
+          date: `${fyStartYear}-04-01`,
+          meta: Object.keys(meta).length > 0 ? meta : undefined,
+          debit: principalAmt,
+          credit: 0,
+          refId: r.id,
+          sortDate: fyStart,
+          sortOrder: 1,
+        });
       }
-      transactions.push({
-        type: 'py_receivable',
-        date: `${fyStartYear}-04-01`,
-        meta: Object.keys(meta).length > 0 ? meta : undefined,
-        debit: roundAmount(amt),
-        credit: 0,
-        refId: r.id,
-        sortDate: fyStart,
-        sortOrder: 1,
-      });
     }
 
     const fySales = buyerSales.filter(s => s.soldAt >= fyStart && s.soldAt <= fyEnd);
@@ -8106,24 +8133,39 @@ export class DatabaseStorage implements IStorage {
 
     const fyAdvances = buyerAdvances.filter(ma => ma.effectiveDate >= fyStart && ma.effectiveDate <= fyEnd);
     for (const ma of fyAdvances) {
-      const advMeta: Record<string, string> = { amount: String(roundAmount(ma.finalAmount || ma.amount)) };
-      if (ma.rateOfInterest > 0) {
-        advMeta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
-        advMeta.rateOfInterest = String(ma.rateOfInterest);
-        advMeta.effectiveDate = ma.effectiveDate.toISOString().slice(0, 10);
-        const outstanding = roundAmount((ma.finalAmount || ma.amount) - (ma.paidAmount || 0));
-        advMeta.outstandingDue = String(outstanding > 0 ? outstanding : 0);
-      }
+      const principalAmt = roundAmount(ma.amount);
+      const totalAmt = roundAmount(ma.finalAmount || ma.amount);
       transactions.push({
         type: 'advance',
         date: ma.effectiveDate.toISOString().slice(0, 10),
-        meta: advMeta,
-        debit: roundAmount(ma.finalAmount || ma.amount),
+        meta: { amount: String(principalAmt) },
+        debit: principalAmt,
         credit: 0,
         refId: ma.id,
         sortDate: ma.effectiveDate,
         sortOrder: 5,
       });
+      if (ma.rateOfInterest > 0) {
+        const interestAmt = roundAmount(totalAmt - principalAmt);
+        if (interestAmt > 0) {
+          const intMeta: Record<string, string> = {
+            principal: String(roundAmount(ma.latestPrincipal ?? ma.amount)),
+            rateOfInterest: String(ma.rateOfInterest),
+            effectiveDate: ma.effectiveDate.toISOString().slice(0, 10),
+            outstandingDue: String(roundAmount(Math.max(0, totalAmt - (ma.paidAmount || 0)))),
+          };
+          transactions.push({
+            type: 'advance_interest',
+            date: ma.effectiveDate.toISOString().slice(0, 10),
+            meta: intMeta,
+            debit: interestAmt,
+            credit: 0,
+            refId: ma.id,
+            sortDate: ma.effectiveDate,
+            sortOrder: 5,
+          });
+        }
+      }
     }
 
     const fyDiscounts = allDiscounts.filter(d => {

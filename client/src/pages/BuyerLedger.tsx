@@ -105,7 +105,8 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
   const getParticular = useCallback((txn: BuyerTransaction): string => {
     const m = txn.meta || {};
     switch (txn.type) {
-      case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}${interestSuffix(m)}`;
+      case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}`;
+      case 'py_receivable_interest': return `${t("interestOnReceivable")}${interestSuffix(m)}`;
       case 'sale': return `${t("saleCharges")} - ${t("lotHash")}${m.lotNo}, ${m.farmerName}, ${m.bags} ${t("bagsLabel")}`;
       case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
       case 'cm_advance_payment': {
@@ -114,7 +115,8 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
       }
       case 'transfer_in': return `${t("transferFrom")} ${m.fromBuyer} - ${m.transactionId}`;
       case 'transfer_out': return `${t("transferTo")} ${m.toBuyer} - ${m.transactionId}`;
-      case 'advance': return `${t("advanceGiven")} - ${formatCurrency(Number(m.amount || 0))}${interestSuffix(m)}`;
+      case 'advance': return `${t("advanceGiven")} - ${formatCurrency(Number(m.amount || 0))}`;
+      case 'advance_interest': return `${t("interestOnAdvance")}${interestSuffix(m)}`;
       case 'discount': return `${t("discountEntry")} - ${m.transactionId}, ${m.farmerName}`;
       default: return txn.type;
     }
