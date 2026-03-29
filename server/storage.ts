@@ -7981,10 +7981,19 @@ export class DatabaseStorage implements IStorage {
     const fyReceivables = buyerReceivables.filter(r => r.createdAt >= fyStart && r.createdAt <= fyEnd);
     for (const r of fyReceivables) {
       const amt = (r.finalAmount ?? r.dueAmount);
+      const meta: Record<string, string> = {};
+      if (r.remarks) meta.remarks = r.remarks;
+      if (r.rateOfInterest > 0) {
+        meta.principal = String(roundAmount(r.latestPrincipal ?? r.dueAmount));
+        meta.rateOfInterest = String(r.rateOfInterest);
+        meta.effectiveDate = r.effectiveDate ? new Date(r.effectiveDate).toISOString().slice(0, 10) : '';
+        const outstanding = roundAmount(amt - (r.paidAmount || 0));
+        meta.outstandingDue = String(outstanding > 0 ? outstanding : 0);
+      }
       transactions.push({
         type: 'py_receivable',
         date: `${fyStartYear}-04-01`,
-        meta: r.remarks ? { remarks: r.remarks } : undefined,
+        meta: Object.keys(meta).length > 0 ? meta : undefined,
         debit: roundAmount(amt),
         credit: 0,
         refId: r.id,
@@ -8008,14 +8017,34 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
+    const totalAdvanceOutstanding = buyerAdvances.reduce((sum, ma) => {
+      const due = (ma.finalAmount || ma.amount) - (ma.paidAmount || 0);
+      return sum + (due > 0 ? due : 0);
+    }, 0);
+    const advanceSummaryMeta: Record<string, string> = {};
+    if (buyerAdvances.some(ma => ma.rateOfInterest > 0)) {
+      const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
+      if (withInterest.length === 1) {
+        const ma = withInterest[0];
+        advanceSummaryMeta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
+        advanceSummaryMeta.rateOfInterest = String(ma.rateOfInterest);
+        advanceSummaryMeta.effectiveDate = ma.effectiveDate.toISOString().slice(0, 10);
+      }
+      advanceSummaryMeta.outstandingDue = String(roundAmount(totalAdvanceOutstanding));
+    }
+
     const fyReceipts = buyerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
     for (const r of fyReceipts) {
       const isCmAdvance = r.payerType === 'cold_merchant_advance';
       const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
+      const receiptMeta: Record<string, string> = { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName };
+      if (isCmAdvance && Object.keys(advanceSummaryMeta).length > 0) {
+        Object.assign(receiptMeta, advanceSummaryMeta);
+      }
       transactions.push({
         type: isCmAdvance ? 'cm_advance_payment' : 'payment',
         date: r.receivedAt.toISOString().slice(0, 10),
-        meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName },
+        meta: receiptMeta,
         debit: 0,
         credit: roundAmount(r.amount),
         refId: r.id,
@@ -8064,10 +8093,18 @@ export class DatabaseStorage implements IStorage {
 
     const fyAdvances = buyerAdvances.filter(ma => ma.effectiveDate >= fyStart && ma.effectiveDate <= fyEnd);
     for (const ma of fyAdvances) {
+      const advMeta: Record<string, string> = { amount: String(roundAmount(ma.finalAmount || ma.amount)) };
+      if (ma.rateOfInterest > 0) {
+        advMeta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
+        advMeta.rateOfInterest = String(ma.rateOfInterest);
+        advMeta.effectiveDate = ma.effectiveDate.toISOString().slice(0, 10);
+        const outstanding = roundAmount((ma.finalAmount || ma.amount) - (ma.paidAmount || 0));
+        advMeta.outstandingDue = String(outstanding > 0 ? outstanding : 0);
+      }
       transactions.push({
         type: 'advance',
         date: ma.effectiveDate.toISOString().slice(0, 10),
-        meta: { amount: String(roundAmount(ma.finalAmount || ma.amount)) },
+        meta: advMeta,
         debit: roundAmount(ma.finalAmount || ma.amount),
         credit: 0,
         refId: ma.id,

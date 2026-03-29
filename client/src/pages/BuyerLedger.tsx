@@ -86,20 +86,39 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
     enabled: !!buyerId,
   });
 
+  const formatDateDDMMYYYY = useCallback((dateStr: string) => {
+    if (!dateStr) return '';
+    const [y, mo, d] = dateStr.split('-');
+    return `${d}/${mo}/${y}`;
+  }, []);
+
+  const interestSuffix = useCallback((m: Record<string, string>) => {
+    if (!m.rateOfInterest) return '';
+    const parts: string[] = [];
+    if (m.principal) parts.push(`${t("principal")}: ${formatCurrency(Number(m.principal))}`);
+    parts.push(`ROI: ${m.rateOfInterest}%`);
+    if (m.effectiveDate) parts.push(`${t("effectiveDate")}: ${formatDateDDMMYYYY(m.effectiveDate)}`);
+    if (m.outstandingDue) parts.push(`${t("due")}: ${formatCurrency(Number(m.outstandingDue))}`);
+    return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
+  }, [t, formatDateDDMMYYYY]);
+
   const getParticular = useCallback((txn: BuyerTransaction): string => {
     const m = txn.meta || {};
     switch (txn.type) {
-      case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}`;
+      case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}${interestSuffix(m)}`;
       case 'sale': return `${t("saleCharges")} - ${t("lotHash")}${m.lotNo}, ${m.farmerName}, ${m.bags} ${t("bagsLabel")}`;
       case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
-      case 'cm_advance_payment': return `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
+      case 'cm_advance_payment': {
+        const base = `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
+        return `${base}${interestSuffix(m)}`;
+      }
       case 'transfer_in': return `${t("transferFrom")} ${m.fromBuyer} - ${m.transactionId}`;
       case 'transfer_out': return `${t("transferTo")} ${m.toBuyer} - ${m.transactionId}`;
-      case 'advance': return `${t("advanceGiven")} - ${formatCurrency(Number(m.amount || 0))}`;
+      case 'advance': return `${t("advanceGiven")} - ${formatCurrency(Number(m.amount || 0))}${interestSuffix(m)}`;
       case 'discount': return `${t("discountEntry")} - ${m.transactionId}, ${m.farmerName}`;
       default: return txn.type;
     }
-  }, [t]);
+  }, [t, interestSuffix]);
 
   const rows = useMemo(() => {
     if (!data) return [];
