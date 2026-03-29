@@ -95,7 +95,7 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
   const interestSuffix = useCallback((m: Record<string, string>) => {
     if (!m.rateOfInterest) return '';
     const parts: string[] = [];
-    if (m.principal) parts.push(`${t("principal")}: ${formatCurrency(Number(m.principal))}`);
+    if (m.principal) parts.push(`${t("advanceAmount")}: ${formatCurrency(Number(m.principal))}`);
     parts.push(`ROI: ${m.rateOfInterest}%`);
     if (m.effectiveDate) parts.push(`${t("effectiveDate")}: ${formatDateDDMMYYYY(m.effectiveDate)}`);
     if (m.outstandingDue) parts.push(`${t("due")}: ${formatCurrency(Number(m.outstandingDue))}`);

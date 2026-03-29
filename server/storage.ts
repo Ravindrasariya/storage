@@ -492,6 +492,12 @@ export function roundAmount(amount: number): number {
   return Math.round(amount * 10) / 10;
 }
 
+function toISTDateString(date: Date): string {
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(date.getTime() + istOffset);
+  return istDate.toISOString().slice(0, 10);
+}
+
 export class DatabaseStorage implements IStorage {
   async initializeDefaultData(): Promise<void> {
     const existingStorage = await db.select().from(coldStorages).where(eq(coldStorages.id, "cs-default"));
@@ -8001,7 +8007,7 @@ export class DatabaseStorage implements IStorage {
           const intMeta: Record<string, string> = {
             principal: String(roundAmount(r.latestPrincipal ?? r.dueAmount)),
             rateOfInterest: String(r.rateOfInterest),
-            effectiveDate: r.effectiveDate ? new Date(r.effectiveDate).toISOString().slice(0, 10) : '',
+            effectiveDate: r.effectiveDate ? toISTDateString(new Date(r.effectiveDate)) : '',
             outstandingDue: String(roundAmount(Math.max(0, amt - (r.paidAmount || 0)))),
           };
           transactions.push({
@@ -8034,7 +8040,7 @@ export class DatabaseStorage implements IStorage {
       const amt = saleDebitAmount(s);
       transactions.push({
         type: 'sale',
-        date: s.soldAt.toISOString().slice(0, 10),
+        date: toISTDateString(s.soldAt),
         meta: { lotNo: String(s.lotNo), farmerName: s.farmerName, bags: String(s.quantitySold) },
         debit: roundAmount(amt),
         credit: 0,
@@ -8061,7 +8067,7 @@ export class DatabaseStorage implements IStorage {
           const ma = withInterest[0];
           meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
           meta.rateOfInterest = String(ma.rateOfInterest);
-          meta.effectiveDate = ma.effectiveDate.toISOString().slice(0, 10);
+          meta.effectiveDate = toISTDateString(ma.effectiveDate);
         } else if (withInterest.length > 1) {
           const avgRoi = roundAmount(withInterest.reduce((s, ma) => s + ma.rateOfInterest, 0) / withInterest.length);
           const totalPrincipal = roundAmount(withInterest.reduce((s, ma) => s + (ma.latestPrincipal ?? ma.amount), 0));
@@ -8083,7 +8089,7 @@ export class DatabaseStorage implements IStorage {
       }
       transactions.push({
         type: isCmAdvance ? 'cm_advance_payment' : 'payment',
-        date: r.receivedAt.toISOString().slice(0, 10),
+        date: toISTDateString(r.receivedAt),
         meta: receiptMeta,
         debit: 0,
         credit: roundAmount(r.amount),
@@ -8102,7 +8108,7 @@ export class DatabaseStorage implements IStorage {
       const amt = s.transferAmount || s.dueAmount || 0;
       transactions.push({
         type: 'transfer_in',
-        date: tDate.toISOString().slice(0, 10),
+        date: toISTDateString(tDate),
         meta: { fromBuyer: s.buyerName || '?', transactionId: s.transferTransactionId || '' },
         debit: roundAmount(amt),
         credit: 0,
@@ -8121,7 +8127,7 @@ export class DatabaseStorage implements IStorage {
       const amt = s.transferAmount || s.dueAmount || 0;
       transactions.push({
         type: 'transfer_out',
-        date: tDate.toISOString().slice(0, 10),
+        date: toISTDateString(tDate),
         meta: { toBuyer: s.transferToBuyerName || '?', transactionId: s.transferTransactionId || '' },
         debit: 0,
         credit: roundAmount(amt),
@@ -8135,9 +8141,10 @@ export class DatabaseStorage implements IStorage {
     for (const ma of fyAdvances) {
       const principalAmt = roundAmount(ma.amount);
       const totalAmt = roundAmount(ma.finalAmount || ma.amount);
+      const advDateStr = toISTDateString(ma.effectiveDate);
       transactions.push({
         type: 'advance',
-        date: ma.effectiveDate.toISOString().slice(0, 10),
+        date: advDateStr,
         meta: { amount: String(principalAmt) },
         debit: principalAmt,
         credit: 0,
@@ -8151,12 +8158,12 @@ export class DatabaseStorage implements IStorage {
           const intMeta: Record<string, string> = {
             principal: String(roundAmount(ma.latestPrincipal ?? ma.amount)),
             rateOfInterest: String(ma.rateOfInterest),
-            effectiveDate: ma.effectiveDate.toISOString().slice(0, 10),
+            effectiveDate: advDateStr,
             outstandingDue: String(roundAmount(Math.max(0, totalAmt - (ma.paidAmount || 0)))),
           };
           transactions.push({
             type: 'advance_interest',
-            date: ma.effectiveDate.toISOString().slice(0, 10),
+            date: advDateStr,
             meta: intMeta,
             debit: interestAmt,
             credit: 0,
@@ -8185,7 +8192,7 @@ export class DatabaseStorage implements IStorage {
       if (buyerAlloc) {
         transactions.push({
           type: 'discount',
-          date: d.discountDate.toISOString().slice(0, 10),
+          date: toISTDateString(d.discountDate),
           meta: { transactionId: d.transactionId || '', farmerName: d.farmerName },
           debit: 0,
           credit: roundAmount(buyerAlloc.amount || 0),
@@ -8355,7 +8362,7 @@ export class DatabaseStorage implements IStorage {
     for (const af of fyAdvFreight) {
       transactions.push({
         type: af.type === 'freight' ? 'freight' : 'advance',
-        date: af.effectiveDate.toISOString().slice(0, 10),
+        date: toISTDateString(af.effectiveDate),
         meta: { amount: String(roundAmount(af.finalAmount || af.amount)) },
         debit: roundAmount(af.finalAmount || af.amount),
         credit: 0,
@@ -8369,7 +8376,7 @@ export class DatabaseStorage implements IStorage {
     for (const s of fySelfSales) {
       transactions.push({
         type: 'self_sale',
-        date: s.soldAt.toISOString().slice(0, 10),
+        date: toISTDateString(s.soldAt),
         meta: { lotNo: String(s.lotNo), buyerName: s.buyerName || '', bags: String(s.quantitySold) },
         debit: roundAmount(s.coldStorageCharge || 0),
         credit: 0,
@@ -8384,7 +8391,7 @@ export class DatabaseStorage implements IStorage {
       const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
       transactions.push({
         type: 'payment',
-        date: r.receivedAt.toISOString().slice(0, 10),
+        date: toISTDateString(r.receivedAt),
         meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName },
         debit: 0,
         credit: roundAmount(r.amount),
@@ -8399,7 +8406,7 @@ export class DatabaseStorage implements IStorage {
       const selfAmt = getSelfAllocAmount(d);
       transactions.push({
         type: 'discount',
-        date: d.discountDate.toISOString().slice(0, 10),
+        date: toISTDateString(d.discountDate),
         meta: { transactionId: d.transactionId || '' },
         debit: 0,
         credit: roundAmount(selfAmt),
@@ -8413,7 +8420,7 @@ export class DatabaseStorage implements IStorage {
     for (const s of fyAdjSales) {
       transactions.push({
         type: 'sale_adj',
-        date: s.soldAt.toISOString().slice(0, 10),
+        date: toISTDateString(s.soldAt),
         meta: { lotNo: String(s.lotNo), buyerName: s.buyerName || '' },
         debit: 0,
         credit: roundAmount(s.adjReceivableSelfDueAmount || 0),
