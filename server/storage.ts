@@ -3047,11 +3047,13 @@ export class DatabaseStorage implements IStorage {
     for (const recv of fallbackReceivables) {
       const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
       if (recv.previousEffectiveDate && recv.rateOfInterest > 0) {
+        const accrualTarget = recv.lastAccrualDate ? new Date(recv.lastAccrualDate) : todayFallback;
+        accrualTarget.setHours(0, 0, 0, 0);
         const recomputed = this.computeYearlySimpleInterest(
           recv.previousLatestPrincipal ?? recv.dueAmount,
           recv.previousEffectiveDate,
           recv.rateOfInterest,
-          todayFallback
+          accrualTarget
         );
         resetFields.effectiveDate = recomputed.effectiveDate;
         resetFields.latestPrincipal = recomputed.latestPrincipal;
@@ -3071,11 +3073,13 @@ export class DatabaseStorage implements IStorage {
       for (const adv of fallbackAdvances) {
         const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
         if (adv.previousEffectiveDate && adv.rateOfInterest > 0) {
+          const accrualTarget = adv.lastAccrualDate ? new Date(adv.lastAccrualDate) : todayFallback;
+          accrualTarget.setHours(0, 0, 0, 0);
           const recomputed = this.computeYearlySimpleInterest(
             adv.previousLatestPrincipal ?? adv.amount,
             adv.previousEffectiveDate,
             adv.rateOfInterest,
-            todayFallback
+            accrualTarget
           );
           resetFields.effectiveDate = recomputed.effectiveDate;
           resetFields.latestPrincipal = recomputed.latestPrincipal;
@@ -5113,13 +5117,13 @@ export class DatabaseStorage implements IStorage {
     for (const recv of farmerReceivables) {
       const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
       if (recv.previousEffectiveDate && recv.rateOfInterest > 0) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const accrualTarget = recv.lastAccrualDate ? new Date(recv.lastAccrualDate) : new Date();
+        accrualTarget.setHours(0, 0, 0, 0);
         const recomputed = this.computeYearlySimpleInterest(
           recv.previousLatestPrincipal ?? recv.dueAmount,
           recv.previousEffectiveDate,
           recv.rateOfInterest,
-          today
+          accrualTarget
         );
         resetFields.effectiveDate = recomputed.effectiveDate;
         resetFields.latestPrincipal = recomputed.latestPrincipal;
@@ -5159,13 +5163,13 @@ export class DatabaseStorage implements IStorage {
       for (const adv of farmerAdvances) {
         const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
         if (adv.previousEffectiveDate && adv.rateOfInterest > 0) {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
+          const accrualTarget = adv.lastAccrualDate ? new Date(adv.lastAccrualDate) : new Date();
+          accrualTarget.setHours(0, 0, 0, 0);
           const recomputed = this.computeYearlySimpleInterest(
             adv.previousLatestPrincipal ?? adv.amount,
             adv.previousEffectiveDate,
             adv.rateOfInterest,
-            today
+            accrualTarget
           );
           resetFields.effectiveDate = recomputed.effectiveDate;
           resetFields.latestPrincipal = recomputed.latestPrincipal;
@@ -6117,12 +6121,14 @@ export class DatabaseStorage implements IStorage {
 
     for (const adv of advances) {
       const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
+      const accrualTarget = adv.lastAccrualDate ? new Date(adv.lastAccrualDate) : today;
+      accrualTarget.setHours(0, 0, 0, 0);
       if (adv.previousEffectiveDate && adv.rateOfInterest > 0) {
         const recomputed = this.computeYearlySimpleInterest(
           adv.previousLatestPrincipal ?? adv.amount,
           adv.previousEffectiveDate,
           adv.rateOfInterest,
-          today
+          accrualTarget
         );
         resetFields.effectiveDate = recomputed.effectiveDate;
         resetFields.latestPrincipal = recomputed.latestPrincipal;
@@ -6132,7 +6138,7 @@ export class DatabaseStorage implements IStorage {
           adv.latestPrincipal ?? adv.amount,
           adv.effectiveDate,
           adv.rateOfInterest,
-          today
+          accrualTarget
         );
         resetFields.finalAmount = recomputed.finalAmount;
         resetFields.latestPrincipal = recomputed.latestPrincipal;
