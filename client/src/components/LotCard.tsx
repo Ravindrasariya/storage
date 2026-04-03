@@ -151,7 +151,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
             {chargeUnit === "quintal" && lot.netWeight && lot.netWeight > 0 && (
               <div>
                 <span className="text-muted-foreground">{t("netWeightQtl")}: </span>
-                <span className="font-medium">{lot.netWeight} Kg</span>
+                <span className="font-medium">{lot.netWeight} {t("kg")}</span>
               </div>
             )}
             <div>
