@@ -667,6 +667,7 @@ export default function StockRegister() {
         "Quality",
         "Potato Size",
         "Original Size",
+        "Initial Net Weight (Kg)",
         "Remaining Size",
         "Sale Status",
         "Expected Cold Charges",
@@ -714,6 +715,7 @@ export default function StockRegister() {
           lot.quality,
           lot.potatoSize,
           lot.size,
+          lot.netWeight || "",
           lot.remainingSize,
           lot.saleStatus || "stored",
           expectedColdCharge.toFixed(1),
@@ -1794,6 +1796,7 @@ export default function StockRegister() {
                     calculatedDueCharge={lotDueCharge}
                     expectedColdCharge={expectedColdCharge}
                     canEdit={canEdit}
+                    chargeUnit={coldStorage?.chargeUnit}
                   />
                 ))}
               {/* Infinite scroll loader */}

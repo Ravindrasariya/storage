@@ -19,9 +19,10 @@ interface LotCardProps {
   calculatedDueCharge?: number;
   expectedColdCharge?: number;
   canEdit?: boolean;
+  chargeUnit?: "bag" | "quintal";
 }
 
-export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, onPrintReceipt, calculatedPaidCharge, calculatedDueCharge, expectedColdCharge, canEdit = true }: LotCardProps) {
+export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale, onPrintReceipt, calculatedPaidCharge, calculatedDueCharge, expectedColdCharge, canEdit = true, chargeUnit }: LotCardProps) {
   // Use calculated values if provided, otherwise fall back to stored lot values
   const paidCharge = calculatedPaidCharge ?? lot.totalPaidCharge ?? 0;
   const dueCharge = calculatedDueCharge ?? lot.totalDueCharge ?? 0;
@@ -147,6 +148,12 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
               <span className="text-muted-foreground">{t("originalSize")}: </span>
               <span className="font-medium">{lot.size} {t("bags")}</span>
             </div>
+            {chargeUnit === "quintal" && lot.netWeight && lot.netWeight > 0 && (
+              <div>
+                <span className="text-muted-foreground">{t("netWeightQtl")}: </span>
+                <span className="font-medium">{lot.netWeight} Kg</span>
+              </div>
+            )}
             <div>
               <span className="text-muted-foreground">{t("remaining")}: </span>
               <span className="font-bold text-chart-1">{lot.remainingSize} {t("bags")}</span>
