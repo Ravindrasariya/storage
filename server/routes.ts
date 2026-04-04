@@ -1941,12 +1941,6 @@ export async function registerRoutes(
 
       const transactionId = await generateSequentialId('cash_flow', coldStorageId);
 
-      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, uniqueAdvanceIds);
-
-      if (payResult.totalApplied <= 0) {
-        return res.status(400).json({ error: "No outstanding dues found for selected advances" });
-      }
-
       const receipt = await storage.createMerchantAdvanceReceipt({
         coldStorageId,
         transactionId,
@@ -1959,12 +1953,24 @@ export async function registerRoutes(
         amount: data.amount,
         receivedAt: new Date(data.receivedAt),
         notes: data.remarks || null,
+        appliedAmount: data.amount,
+        unappliedAmount: 0,
+        appliedAdvanceIds: uniqueAdvanceIds,
+      });
+
+      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, uniqueAdvanceIds, receipt.id);
+
+      if (payResult.totalApplied <= 0) {
+        return res.status(400).json({ error: "No outstanding dues found for selected advances" });
+      }
+
+      await storage.updateMerchantAdvanceReceipt(receipt.id, {
         appliedAmount: payResult.totalApplied,
         unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100,
         appliedAdvanceIds: payResult.appliedAdvanceIds,
       });
 
-      res.json({ receipt, ...payResult });
+      res.json({ receipt: { ...receipt, appliedAmount: payResult.totalApplied, unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100, appliedAdvanceIds: payResult.appliedAdvanceIds }, ...payResult });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid payment data", details: error.errors });

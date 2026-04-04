@@ -343,6 +343,7 @@ export interface IStorage {
   deletePYMerchantAdvance(coldStorageId: string, id: string): Promise<boolean>;
   getPYMerchantAdvances(coldStorageId: string): Promise<MerchantAdvance[]>;
   createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<CashReceipt>;
+  updateMerchantAdvanceReceipt(receiptId: string, updates: { appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<void>;
   accrueInterestForAll(coldStorageId: string): Promise<number>;
   computeYearlySimpleInterest(latestPrincipal: number, effectiveDate: Date, annualRate: number, today: Date): { finalAmount: number; latestPrincipal: number; effectiveDate: Date };
   calculateSimpleInterest(principal: number, annualRate: number, fromDate: Date, toDate: Date): number;
@@ -6089,7 +6090,17 @@ export class DatabaseStorage implements IStorage {
     return receipt;
   }
 
-  async payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[]): Promise<{ totalApplied: number; recordsUpdated: number; appliedAdvanceIds: string[] }> {
+  async updateMerchantAdvanceReceipt(receiptId: string, updates: { appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<void> {
+    const setValues: Record<string, unknown> = {};
+    if (updates.appliedAmount !== undefined) setValues.appliedAmount = updates.appliedAmount;
+    if (updates.unappliedAmount !== undefined) setValues.unappliedAmount = updates.unappliedAmount;
+    if (updates.appliedAdvanceIds !== undefined) setValues.appliedAdvanceIds = JSON.stringify(updates.appliedAdvanceIds);
+    if (Object.keys(setValues).length > 0) {
+      await db.update(cashReceipts).set(setValues).where(eq(cashReceipts.id, receiptId));
+    }
+  }
+
+  async payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[], receiptId?: string): Promise<{ totalApplied: number; recordsUpdated: number; appliedAdvanceIds: string[] }> {
     const records = await db.select()
       .from(merchantAdvance)
       .where(and(
@@ -6119,6 +6130,25 @@ export class DatabaseStorage implements IStorage {
       await db.update(merchantAdvance)
         .set({ paidAmount: newPaid, ...interestFields })
         .where(eq(merchantAdvance.id, record.id));
+
+      await db.insert(merchantAdvanceEvents).values({
+        id: randomUUID(),
+        merchantAdvanceId: record.id,
+        eventType: 'payment',
+        eventDate: new Date(),
+        amount: record.amount,
+        rateOfInterest: record.rateOfInterest,
+        latestPrincipalBefore: record.latestPrincipal ?? record.amount,
+        latestPrincipalAfter: interestFields.latestPrincipal ?? record.latestPrincipal ?? record.amount,
+        effectiveDateBefore: record.effectiveDate,
+        effectiveDateAfter: interestFields.effectiveDate ?? record.effectiveDate,
+        finalAmountBefore: record.finalAmount ?? record.amount,
+        finalAmountAfter: record.finalAmount ?? record.amount,
+        paidAmountBefore: record.paidAmount || 0,
+        paidAmountAfter: newPaid,
+        paymentAmount: applyAmount,
+        receiptId: receiptId || null,
+      });
 
       totalApplied += applyAmount;
       remaining -= applyAmount;
@@ -8130,6 +8160,22 @@ export class DatabaseStorage implements IStorage {
     const advancePaymentMetaMap = new Map<string, Record<string, string>>();
     {
       const advanceMap = new Map(buyerAdvances.map(ma => [ma.id, ma]));
+      const advanceIds = buyerAdvances.map(ma => ma.id);
+      const paymentEvents = advanceIds.length > 0
+        ? await db.select().from(merchantAdvanceEvents)
+            .where(and(
+              inArray(merchantAdvanceEvents.merchantAdvanceId, advanceIds),
+              eq(merchantAdvanceEvents.eventType, 'payment')
+            ))
+        : [];
+      const eventsByReceiptId = new Map<string, typeof paymentEvents>();
+      for (const evt of paymentEvents) {
+        if (!evt.receiptId) continue;
+        const arr = eventsByReceiptId.get(evt.receiptId) || [];
+        arr.push(evt);
+        eventsByReceiptId.set(evt.receiptId, arr);
+      }
+
       const totalFinalAll = buyerAdvances.reduce((s, ma) => s + (ma.finalAmount || ma.amount), 0);
       const allAdvanceReceipts = buyerReceipts
         .filter(r => r.payerType === 'cold_merchant_advance' && !r.isReversed)
@@ -8139,41 +8185,63 @@ export class DatabaseStorage implements IStorage {
         cumulativePaid += r.amount;
         const outstandingAfter = roundAmount(Math.max(0, totalFinalAll - cumulativePaid));
         const meta: Record<string, string> = { outstandingDue: String(outstandingAfter) };
-        let appliedIds: string[] = [];
-        try { appliedIds = r.appliedAdvanceIds ? JSON.parse(r.appliedAdvanceIds) : []; } catch {}
-        const matchedAdvances = appliedIds.map(id => advanceMap.get(id)).filter((ma): ma is NonNullable<typeof ma> => ma != null);
-        if (matchedAdvances.length === 1) {
-          const ma = matchedAdvances[0];
-          meta.advanceAmount = String(roundAmount(ma.amount));
-          meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
-          meta.rateOfInterest = String(ma.rateOfInterest);
-          meta.effectiveDate = toISTDateString(ma.effectiveDate);
-          meta.outstandingDue = String(roundAmount(Math.max(0, (ma.finalAmount || ma.amount) - (ma.paidAmount || 0))));
-        } else if (matchedAdvances.length > 1) {
-          const details = matchedAdvances.map(ma => {
-            const parts = [`₹${roundAmount(ma.amount)}`];
-            if (ma.rateOfInterest > 0) parts.push(`${ma.rateOfInterest}%`);
-            return parts.join('@');
-          });
-          meta.advanceDetails = details.join(' + ');
-          meta.advanceAmount = String(roundAmount(matchedAdvances.reduce((s, ma) => s + ma.amount, 0)));
-          meta.outstandingDue = String(roundAmount(Math.max(0, matchedAdvances.reduce((s, ma) => s + (ma.finalAmount || ma.amount) - (ma.paidAmount || 0), 0))));
+
+        const receiptEvents = eventsByReceiptId.get(r.id);
+        if (receiptEvents && receiptEvents.length > 0) {
+          if (receiptEvents.length === 1) {
+            const evt = receiptEvents[0];
+            meta.advanceAmount = String(roundAmount(evt.amount));
+            meta.principal = String(roundAmount(evt.latestPrincipalBefore ?? evt.amount));
+            meta.rateOfInterest = String(evt.rateOfInterest);
+            meta.effectiveDate = evt.effectiveDateBefore ? toISTDateString(evt.effectiveDateBefore) : '';
+            meta.outstandingDue = String(roundAmount(Math.max(0, (evt.finalAmountBefore ?? evt.amount) - (evt.paidAmountBefore ?? 0))));
+          } else {
+            const details = receiptEvents.map(evt => {
+              const parts = [`₹${roundAmount(evt.amount)}`];
+              if (evt.rateOfInterest > 0) parts.push(`${evt.rateOfInterest}%`);
+              return parts.join('@');
+            });
+            meta.advanceDetails = details.join(' + ');
+            meta.advanceAmount = String(roundAmount(receiptEvents.reduce((s, evt) => s + evt.amount, 0)));
+            meta.outstandingDue = String(roundAmount(Math.max(0, receiptEvents.reduce((s, evt) => s + (evt.finalAmountBefore ?? evt.amount) - (evt.paidAmountBefore ?? 0), 0))));
+          }
         } else {
-          const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
-          if (withInterest.length === 1) {
-            const ma = withInterest[0];
+          let appliedIds: string[] = [];
+          try { appliedIds = r.appliedAdvanceIds ? JSON.parse(r.appliedAdvanceIds) : []; } catch {}
+          const matchedAdvances = appliedIds.map(id => advanceMap.get(id)).filter((ma): ma is NonNullable<typeof ma> => ma != null);
+          if (matchedAdvances.length === 1) {
+            const ma = matchedAdvances[0];
             meta.advanceAmount = String(roundAmount(ma.amount));
             meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
             meta.rateOfInterest = String(ma.rateOfInterest);
             meta.effectiveDate = toISTDateString(ma.effectiveDate);
-          } else if (withInterest.length > 1) {
-            const details = withInterest.map(ma => {
+            meta.outstandingDue = String(roundAmount(Math.max(0, (ma.finalAmount || ma.amount) - (ma.paidAmount || 0))));
+          } else if (matchedAdvances.length > 1) {
+            const details = matchedAdvances.map(ma => {
               const parts = [`₹${roundAmount(ma.amount)}`];
               if (ma.rateOfInterest > 0) parts.push(`${ma.rateOfInterest}%`);
               return parts.join('@');
             });
             meta.advanceDetails = details.join(' + ');
-            meta.advanceAmount = String(roundAmount(withInterest.reduce((s, ma) => s + ma.amount, 0)));
+            meta.advanceAmount = String(roundAmount(matchedAdvances.reduce((s, ma) => s + ma.amount, 0)));
+            meta.outstandingDue = String(roundAmount(Math.max(0, matchedAdvances.reduce((s, ma) => s + (ma.finalAmount || ma.amount) - (ma.paidAmount || 0), 0))));
+          } else {
+            const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
+            if (withInterest.length === 1) {
+              const ma = withInterest[0];
+              meta.advanceAmount = String(roundAmount(ma.amount));
+              meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
+              meta.rateOfInterest = String(ma.rateOfInterest);
+              meta.effectiveDate = toISTDateString(ma.effectiveDate);
+            } else if (withInterest.length > 1) {
+              const details = withInterest.map(ma => {
+                const parts = [`₹${roundAmount(ma.amount)}`];
+                if (ma.rateOfInterest > 0) parts.push(`${ma.rateOfInterest}%`);
+                return parts.join('@');
+              });
+              meta.advanceDetails = details.join(' + ');
+              meta.advanceAmount = String(roundAmount(withInterest.reduce((s, ma) => s + ma.amount, 0)));
+            }
           }
         }
         advancePaymentMetaMap.set(r.id, meta);
