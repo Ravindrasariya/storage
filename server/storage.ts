@@ -6233,6 +6233,7 @@ export class DatabaseStorage implements IStorage {
         amount: data.amount,
         rateOfInterest: data.rateOfInterest,
         effectiveDate: computedEffectiveDate,
+        originalEffectiveDate: data.effectiveDate,
         finalAmount,
         latestPrincipal,
         lastAccrualDate: today,
@@ -6272,8 +6273,7 @@ export class DatabaseStorage implements IStorage {
       return undefined;
     }
 
-    const [updated] = await db.update(merchantAdvance)
-      .set({
+    const setFields: Record<string, any> = {
         amount: newAmount,
         rateOfInterest: newRate,
         effectiveDate: computedEffectiveDate,
@@ -6281,7 +6281,13 @@ export class DatabaseStorage implements IStorage {
         latestPrincipal,
         lastAccrualDate: today,
         remarks: updates.remarks !== undefined ? updates.remarks : record.remarks,
-      })
+    };
+    if (updates.effectiveDate) {
+      setFields.originalEffectiveDate = updates.effectiveDate;
+    }
+
+    const [updated] = await db.update(merchantAdvance)
+      .set(setFields)
       .where(eq(merchantAdvance.id, id))
       .returning();
     return updated;

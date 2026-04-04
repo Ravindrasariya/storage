@@ -196,6 +196,20 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-04-04_add_original_effective_date",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE merchant_advance
+          ADD COLUMN IF NOT EXISTS original_effective_date TIMESTAMP
+      `);
+      await db.execute(sql`
+        UPDATE merchant_advance
+        SET original_effective_date = COALESCE(previous_effective_date, effective_date)
+        WHERE original_effective_date IS NULL
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

@@ -476,6 +476,7 @@ export const merchantAdvance = pgTable("merchant_advance", {
   finalAmount: real("final_amount").notNull(),
   latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
   lastAccrualDate: timestamp("last_accrual_date").notNull(),
+  originalEffectiveDate: timestamp("original_effective_date"), // Immutable: the actual disbursement date, never modified by accrual/payments
   previousEffectiveDate: timestamp("previous_effective_date"), // Saved before payment resets effectiveDate; restored on reversal
   previousLatestPrincipal: real("previous_latest_principal"), // Saved before payment resets latestPrincipal; restored on reversal
   paidAmount: real("paid_amount").notNull().default(0),

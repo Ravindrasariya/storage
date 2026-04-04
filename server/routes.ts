@@ -2496,6 +2496,7 @@ export async function registerRoutes(
           amount: principal,
           rateOfInterest,
           effectiveDate: computedEffectiveDate,
+          originalEffectiveDate: effectiveDate,
           finalAmount,
           latestPrincipal,
           lastAccrualDate: new Date(),

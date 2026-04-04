@@ -109,6 +109,7 @@ interface PYMerchantAdvanceRow {
   amount: number;
   rateOfInterest: number;
   effectiveDate: string;
+  originalEffectiveDate: string | null;
   finalAmount: number;
   paidAmount: number;
   latestPrincipal: number;
@@ -5781,7 +5782,7 @@ export default function CashManagement() {
                                 </div>
                                 {!isEditing && a.remarks && <p className="text-xs text-muted-foreground">{a.remarks}</p>}
                                 <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-                                  <span>{t("effectiveDate")}: {format(new Date(a.effectiveDate), "dd/MM/yyyy")}</span>
+                                  <span>{t("effectiveDate")}: {format(new Date(a.originalEffectiveDate || a.effectiveDate), "dd/MM/yyyy")}</span>
                                   {!isEditing && a.rateOfInterest > 0 && (
                                     <span className="text-blue-600 font-medium">{t("rateOfInterest")}: {a.rateOfInterest}%</span>
                                   )}
@@ -5811,7 +5812,7 @@ export default function CashManagement() {
                                       setEditingReceivableId(`py-${a.id}`);
                                       setEditReceivableAmount(a.amount.toString());
                                       setEditReceivableROI((a.rateOfInterest || 0).toString());
-                                      setEditReceivableEffectiveDate(format(new Date(a.effectiveDate), "yyyy-MM-dd"));
+                                      setEditReceivableEffectiveDate(format(new Date(a.originalEffectiveDate || a.effectiveDate), "yyyy-MM-dd"));
                                       setEditReceivableRemarks(a.remarks || "");
                                     }}
                                   >
