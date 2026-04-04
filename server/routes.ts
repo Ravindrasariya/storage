@@ -1556,7 +1556,6 @@ export async function registerRoutes(
     extraHammali: z.number().optional(),
     gradingCharges: z.number().optional(),
     coldStorageCharge: z.number().optional(),
-    baseHammaliAmount: z.number().optional(),
     chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
     extraDueToMerchant: z.number().optional(),
     extraDueHammaliMerchant: z.number().optional(),
@@ -1589,24 +1588,28 @@ export async function registerRoutes(
         validatedData.extraDueToMerchant = hammali + grading + other;
       }
       
-      // Recompute baseHammaliAmount when hammali rate or coldStorageCharge is edited
+      // Recompute baseHammaliAmount server-side when hammali rate or coldStorageCharge is edited
+      let recomputedBaseHammali: number | undefined;
       if (validatedData.hammali !== undefined || validatedData.coldStorageCharge !== undefined) {
         const hammaliRate = validatedData.hammali ?? (currentSale.hammali || 0);
         const baseChargeAmount = validatedData.coldStorageCharge !== undefined
           ? validatedData.coldStorageCharge - (validatedData.kataCharges ?? (currentSale.kataCharges || 0)) - (validatedData.extraHammali ?? (currentSale.extraHammali || 0)) - (validatedData.gradingCharges ?? (currentSale.gradingCharges || 0)) - (validatedData.adjReceivableSelfDueAmount ?? (currentSale.adjReceivableSelfDueAmount || 0))
           : (currentSale.baseChargeAmountAtSale || 0);
         if (baseChargeAmount === 0) {
-          validatedData.baseHammaliAmount = 0;
+          recomputedBaseHammali = 0;
         } else {
           const chargeBasis = currentSale.chargeBasis || "actual";
           const bagsToUse = chargeBasis === "totalRemaining"
             ? (currentSale.remainingSizeAtSale || currentSale.quantitySold)
             : currentSale.quantitySold;
-          validatedData.baseHammaliAmount = hammaliRate * bagsToUse;
+          recomputedBaseHammali = hammaliRate * bagsToUse;
         }
       }
       
-      const updated = await storage.updateSalesHistory(req.params.id, validatedData);
+      const updated = await storage.updateSalesHistory(req.params.id, {
+        ...validatedData,
+        ...(recomputedBaseHammali !== undefined ? { baseHammaliAmount: recomputedBaseHammali } : {}),
+      });
       if (!updated) {
         return res.status(404).json({ error: "Sale not found" });
       }
