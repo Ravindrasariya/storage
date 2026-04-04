@@ -93,6 +93,11 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
   }, []);
 
   const interestSuffix = useCallback((m: Record<string, string>) => {
+    if (m.advanceDetails) {
+      const parts: string[] = [m.advanceDetails];
+      if (m.outstandingDue) parts.push(`${t("due")}: ${formatCurrency(Number(m.outstandingDue))}`);
+      return ` [${parts.join(', ')}]`;
+    }
     if (!m.rateOfInterest) return '';
     const parts: string[] = [];
     if (m.advanceAmount) parts.push(`${t("advanceAmount")}: ${formatCurrency(Number(m.advanceAmount))}`);

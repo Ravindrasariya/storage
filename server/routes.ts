@@ -1961,6 +1961,7 @@ export async function registerRoutes(
         notes: data.remarks || null,
         appliedAmount: payResult.totalApplied,
         unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100,
+        appliedAdvanceIds: payResult.appliedAdvanceIds,
       });
 
       res.json({ receipt, ...payResult });

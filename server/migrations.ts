@@ -187,6 +187,15 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-04-04_add_applied_advance_ids_to_receipts",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE cash_receipts
+          ADD COLUMN IF NOT EXISTS applied_advance_ids TEXT
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

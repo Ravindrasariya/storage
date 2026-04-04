@@ -296,6 +296,7 @@ export const cashReceipts = pgTable("cash_receipts", {
   // Buyer ledger reference (for cold_merchant payer type)
   buyerLedgerId: varchar("buyer_ledger_id"), // Reference to buyer_ledger table
   buyerId: text("buyer_id"), // User-friendly buyer ID (BYYYYYMMDD format)
+  appliedAdvanceIds: text("applied_advance_ids"), // JSON array of merchant_advance IDs this receipt paid (for cold_merchant_advance payer type)
 }, (table) => ({
   uniqueTxnPerColdStorage: uniqueIndex("cash_receipts_cs_txn_idx").on(table.coldStorageId, table.transactionId),
 }));

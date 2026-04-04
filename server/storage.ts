@@ -335,13 +335,13 @@ export interface IStorage {
   getMerchantAdvances(coldStorageId: string, buyerLedgerId?: string): Promise<MerchantAdvance[]>;
   getBuyersWithAdvanceDues(coldStorageId: string): Promise<{ buyerLedgerId: string; buyerId: string; buyerName: string; advanceDue: number }[]>;
   payMerchantAdvance(coldStorageId: string, buyerLedgerId: string, amount: number): Promise<{ totalApplied: number; recordsUpdated: number }>;
-  payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[]): Promise<{ totalApplied: number; recordsUpdated: number }>;
+  payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[]): Promise<{ totalApplied: number; recordsUpdated: number; appliedAdvanceIds: string[] }>;
   getOutstandingAdvancesForBuyer(coldStorageId: string, buyerLedgerId: string): Promise<{ id: string; effectiveDate: Date; amount: number; rateOfInterest: number; finalAmount: number; paidAmount: number; remainingDue: number; expenseId: string | null; createdAt: Date }[]>;
   createPYMerchantAdvance(data: { coldStorageId: string; buyerLedgerId: string; buyerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; remarks?: string | null }): Promise<MerchantAdvance>;
   updatePYMerchantAdvance(coldStorageId: string, id: string, updates: { amount?: number; rateOfInterest?: number; effectiveDate?: Date; remarks?: string | null }): Promise<MerchantAdvance | undefined>;
   deletePYMerchantAdvance(coldStorageId: string, id: string): Promise<boolean>;
   getPYMerchantAdvances(coldStorageId: string): Promise<MerchantAdvance[]>;
-  createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number }): Promise<CashReceipt>;
+  createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<CashReceipt>;
   accrueInterestForAll(coldStorageId: string): Promise<number>;
   computeYearlySimpleInterest(latestPrincipal: number, effectiveDate: Date, annualRate: number, today: Date): { finalAmount: number; latestPrincipal: number; effectiveDate: Date };
   calculateSimpleInterest(principal: number, annualRate: number, fromDate: Date, toDate: Date): number;
@@ -6047,7 +6047,7 @@ export class DatabaseStorage implements IStorage {
     return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated };
   }
 
-  async createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number }): Promise<CashReceipt> {
+  async createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<CashReceipt> {
     const [receipt] = await db.insert(cashReceipts)
       .values({
         id: randomUUID(),
@@ -6064,12 +6064,13 @@ export class DatabaseStorage implements IStorage {
         notes: data.notes,
         appliedAmount: data.appliedAmount ?? data.amount,
         unappliedAmount: data.unappliedAmount ?? 0,
+        appliedAdvanceIds: data.appliedAdvanceIds ? JSON.stringify(data.appliedAdvanceIds) : null,
       })
       .returning();
     return receipt;
   }
 
-  async payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[]): Promise<{ totalApplied: number; recordsUpdated: number }> {
+  async payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[]): Promise<{ totalApplied: number; recordsUpdated: number; appliedAdvanceIds: string[] }> {
     const records = await db.select()
       .from(merchantAdvance)
       .where(and(
@@ -6086,6 +6087,7 @@ export class DatabaseStorage implements IStorage {
     let remaining = amount;
     let totalApplied = 0;
     let recordsUpdated = 0;
+    const appliedAdvanceIds: string[] = [];
 
     for (const record of orderedRecords) {
       if (remaining <= 0) break;
@@ -6102,9 +6104,10 @@ export class DatabaseStorage implements IStorage {
       totalApplied += applyAmount;
       remaining -= applyAmount;
       recordsUpdated++;
+      appliedAdvanceIds.push(record.id);
     }
 
-    return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated };
+    return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated, appliedAdvanceIds };
   }
 
   async recomputeMerchantAdvancePayments(coldStorageId: string, buyerLedgerId: string): Promise<void> {
@@ -8057,9 +8060,9 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const hasInterestAdvances = buyerAdvances.some(ma => ma.rateOfInterest > 0);
     const advancePaymentMetaMap = new Map<string, Record<string, string>>();
-    if (hasInterestAdvances) {
+    {
+      const advanceMap = new Map(buyerAdvances.map(ma => [ma.id, ma]));
       const totalFinalAll = buyerAdvances.reduce((s, ma) => s + (ma.finalAmount || ma.amount), 0);
       const allAdvanceReceipts = buyerReceipts
         .filter(r => r.payerType === 'cold_merchant_advance' && !r.isReversed)
@@ -8069,20 +8072,40 @@ export class DatabaseStorage implements IStorage {
         cumulativePaid += r.amount;
         const outstandingAfter = roundAmount(Math.max(0, totalFinalAll - cumulativePaid));
         const meta: Record<string, string> = { outstandingDue: String(outstandingAfter) };
-        const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
-        if (withInterest.length === 1) {
-          const ma = withInterest[0];
+        let appliedIds: string[] = [];
+        try { appliedIds = r.appliedAdvanceIds ? JSON.parse(r.appliedAdvanceIds) : []; } catch {}
+        const matchedAdvances = appliedIds.map(id => advanceMap.get(id)).filter((ma): ma is NonNullable<typeof ma> => ma != null);
+        if (matchedAdvances.length === 1) {
+          const ma = matchedAdvances[0];
           meta.advanceAmount = String(roundAmount(ma.amount));
           meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
           meta.rateOfInterest = String(ma.rateOfInterest);
           meta.effectiveDate = toISTDateString(ma.effectiveDate);
-        } else if (withInterest.length > 1) {
-          const totalAdvAmt = roundAmount(withInterest.reduce((s, ma) => s + ma.amount, 0));
-          const avgRoi = roundAmount(withInterest.reduce((s, ma) => s + ma.rateOfInterest, 0) / withInterest.length);
-          const totalPrincipal = roundAmount(withInterest.reduce((s, ma) => s + (ma.latestPrincipal ?? ma.amount), 0));
-          meta.advanceAmount = String(totalAdvAmt);
-          meta.principal = String(totalPrincipal);
-          meta.rateOfInterest = String(avgRoi);
+        } else if (matchedAdvances.length > 1) {
+          const details = matchedAdvances.map(ma => {
+            const parts = [`₹${roundAmount(ma.amount)}`];
+            if (ma.rateOfInterest > 0) parts.push(`${ma.rateOfInterest}%`);
+            return parts.join('@');
+          });
+          meta.advanceDetails = details.join(' + ');
+          meta.advanceAmount = String(roundAmount(matchedAdvances.reduce((s, ma) => s + ma.amount, 0)));
+        } else {
+          const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
+          if (withInterest.length === 1) {
+            const ma = withInterest[0];
+            meta.advanceAmount = String(roundAmount(ma.amount));
+            meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
+            meta.rateOfInterest = String(ma.rateOfInterest);
+            meta.effectiveDate = toISTDateString(ma.effectiveDate);
+          } else if (withInterest.length > 1) {
+            const details = withInterest.map(ma => {
+              const parts = [`₹${roundAmount(ma.amount)}`];
+              if (ma.rateOfInterest > 0) parts.push(`${ma.rateOfInterest}%`);
+              return parts.join('@');
+            });
+            meta.advanceDetails = details.join(' + ');
+            meta.advanceAmount = String(roundAmount(withInterest.reduce((s, ma) => s + ma.amount, 0)));
+          }
         }
         advancePaymentMetaMap.set(r.id, meta);
       }
