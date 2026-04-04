@@ -344,21 +344,28 @@ export async function registerRoutes(
         }
       }
       
+      // Look up farmer records for entity type and custom rate overrides (include archived for charge accuracy)
+      const allFarmerRecords = await storage.getFarmerRecords(coldStorageId, undefined, true);
+      const farmerMap = new Map(allFarmerRecords.map(f => [f.farmerLedgerId, f]));
+      
       // Calculate expected cold charges and bag totals
       for (const lot of allLots) {
         totalBags += lot.size;
         remainingBags += lot.remainingSize;
         
-        // Calculate expected cold charges based on charge unit
-        const coldChargeRate = lot.bagType === "wafer" 
-          ? (coldStorage?.waferColdCharge || 0)
-          : (coldStorage?.seedColdCharge || 0);
-        const hammaliRate = lot.bagType === "wafer"
-          ? (coldStorage?.waferHammali || 0)
-          : (coldStorage?.seedHammali || 0);
+        // Look up farmer-level overrides
+        const farmer = lot.farmerLedgerId ? farmerMap.get(lot.farmerLedgerId) : undefined;
+        const farmerIsCompany = farmer?.entityType === "company";
+        const effectiveUnit = farmerIsCompany ? "quintal" : (coldStorage?.chargeUnit || "bag");
+        
+        const useWafer = lot.bagType === "wafer";
+        const globalColdCharge = useWafer ? (coldStorage?.waferColdCharge || 0) : (coldStorage?.seedColdCharge || 0);
+        const globalHammali = useWafer ? (coldStorage?.waferHammali || 0) : (coldStorage?.seedHammali || 0);
+        const coldChargeRate = farmer?.customColdChargeRate ?? globalColdCharge;
+        const hammaliRate = farmer?.customHammaliRate ?? globalHammali;
         
         let lotCharge: number;
-        if (coldStorage?.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
+        if (effectiveUnit === "quintal" && lot.netWeight && lot.size > 0) {
           const coldChargeQuintal = (lot.netWeight * coldChargeRate) / 100;
           const hammaliTotal = hammaliRate * lot.size;
           lotCharge = coldChargeQuintal + hammaliTotal;
@@ -422,6 +429,7 @@ export async function registerRoutes(
       district: z.string().min(1),
       state: z.string().min(1),
       contactNumber: z.string().min(1),
+      entityType: z.enum(["farmer", "company"]).optional(),
     }),
     lots: z.array(z.object({
       size: z.number().int().positive(),
@@ -462,6 +470,7 @@ export async function registerRoutes(
         tehsil: farmer.tehsil,
         district: farmer.district,
         state: farmer.state,
+        entityType: farmer.entityType,
       });
       
       // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
@@ -1056,31 +1065,45 @@ export async function registerRoutes(
       const coldStorage = await storage.getColdStorage(lot.coldStorageId);
       const useWaferRates = lot.bagType === "wafer";
       
-      // Use custom rates if provided, otherwise use cold storage defaults
-      const defaultRate = coldStorage ? (useWaferRates ? coldStorage.waferRate : coldStorage.seedRate) : 0;
-      const defaultHammali = coldStorage ? (useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
-      const defaultColdCharge = defaultRate - defaultHammali;
+      // Look up farmer's entity type and custom rates for overrides
+      let farmerEntityType = "farmer";
+      let farmerCustomColdCharge: number | null = null;
+      let farmerCustomHammali: number | null = null;
+      if (lot.farmerLedgerId) {
+        const farmerRecords = await storage.getFarmerRecords(lot.coldStorageId, undefined, true);
+        const farmerRecord = farmerRecords.find(f => f.farmerLedgerId === lot.farmerLedgerId);
+        if (farmerRecord) {
+          farmerEntityType = farmerRecord.entityType || "farmer";
+          farmerCustomColdCharge = farmerRecord.customColdChargeRate;
+          farmerCustomHammali = farmerRecord.customHammaliRate;
+        }
+      }
       
-      const hammaliRate = customHammali !== undefined ? customHammali : defaultHammali;
-      const coldChargeRate = customColdCharge !== undefined ? customColdCharge : defaultColdCharge;
+      // Resolve effective charge unit: company → always quintal, farmer → global setting
+      const effectiveChargeUnit = farmerEntityType === "company" ? "quintal" : (coldStorage?.chargeUnit || "bag");
+      
+      // Use custom rates if provided in sale request, then farmer-level overrides, then global defaults
+      const defaultHammali = coldStorage ? (useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
+      const defaultColdCharge = coldStorage ? (useWaferRates ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0)) : 0;
+      
+      const hammaliRate = customHammali !== undefined ? customHammali : (farmerCustomHammali ?? defaultHammali);
+      const coldChargeRate = customColdCharge !== undefined ? customColdCharge : (farmerCustomColdCharge ?? defaultColdCharge);
       const rate = coldChargeRate + hammaliRate;
       
       // When chargeBasis is "totalRemaining", charge for all remaining bags (before this sale)
       const chargeQuantity = chargeBasis === "totalRemaining" ? lot.remainingSize : quantitySold;
       
-      // Calculate storage charge based on charge unit mode
+      // Calculate storage charge based on effective charge unit
       // If baseColdChargesBilled is already set, skip base charges (only extras apply)
+      // For quintal mode without netWeight: coldCharge=0, hammali per bag (no bag-mode fallback)
       let storageCharge: number;
       if (lot.baseColdChargesBilled === 1) {
-        // Base charges already billed in a previous sale, don't charge again
         storageCharge = 0;
-      } else if (coldStorage?.chargeUnit === "quintal" && lot.netWeight && lot.size > 0) {
-        // Quintal mode: cold charges (per quintal) + hammali (per bag)
-        const coldChargeQuintal = (lot.netWeight * chargeQuantity * coldChargeRate) / (lot.size * 100);
+      } else if (effectiveChargeUnit === "quintal") {
+        const coldChargeQuintal = (lot.netWeight && lot.size > 0) ? (lot.netWeight * chargeQuantity * coldChargeRate) / (lot.size * 100) : 0;
         const hammaliPerBag = hammaliRate * chargeQuantity;
         storageCharge = coldChargeQuintal + hammaliPerBag;
       } else {
-        // Bag mode: chargeQuantity × rate
         storageCharge = chargeQuantity * rate;
       }
       
@@ -1216,7 +1239,7 @@ export async function registerRoutes(
         saleYear: new Date().getFullYear(),
         // Charge calculation context for edit dialog
         chargeBasis: chargeBasis || "actual",
-        chargeUnitAtSale: coldStorage?.chargeUnit || "bag", // Preserve charge unit used at sale time
+        chargeUnitAtSale: effectiveChargeUnit, // Preserve effective charge unit used at sale time (company=quintal, farmer=global)
         initialNetWeightKg: lot.netWeight || null,
         baseChargeAmountAtSale: storageCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
         remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
@@ -3198,6 +3221,9 @@ export async function registerRoutes(
         tehsil: z.string().optional(),
         district: z.string().optional(),
         state: z.string().optional(),
+        entityType: z.enum(["farmer", "company"]).optional(),
+        customColdChargeRate: z.number().nullable().optional(),
+        customHammaliRate: z.number().nullable().optional(),
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
@@ -4053,16 +4079,25 @@ export async function registerRoutes(
       const chambers = await storage.getChambers(coldStorageId);
       const coldStorage = await storage.getColdStorage(coldStorageId);
       const chamberMap = new Map(chambers.map(c => [c.id, c.name]));
+      
+      // Look up farmer records for entity type and custom rate overrides (include archived for charge accuracy)
+      const exportFarmerRecords = await storage.getFarmerRecords(coldStorageId, undefined, true);
+      const exportFarmerMap = new Map(exportFarmerRecords.map(f => [f.farmerLedgerId, f]));
 
-      // Calculate expected cold charge based on bag type and charge unit
-      // Note: "Ration" bagType uses seed rates (same as UI logic)
       const calculateExpectedCharge = (lot: typeof lots[0]) => {
         if (!coldStorage) return 0;
-        const coldChargeRate = (lot.bagType === "wafer" ? coldStorage.waferColdCharge : coldStorage.seedColdCharge) || 0;
-        const hammaliRate = (lot.bagType === "wafer" ? coldStorage.waferHammali : coldStorage.seedHammali) || 0;
-        // For quintal mode: cold charge (per quintal) + hammali (per bag)
-        // For bag mode: (coldCharge + hammali) × lot.size
-        if (coldStorage.chargeUnit === "quintal") {
+        
+        const farmer = lot.farmerLedgerId ? exportFarmerMap.get(lot.farmerLedgerId) : undefined;
+        const farmerIsCompany = farmer?.entityType === "company";
+        const effectiveUnit = farmerIsCompany ? "quintal" : (coldStorage.chargeUnit || "bag");
+        
+        const useWafer = lot.bagType === "wafer";
+        const globalColdCharge = (useWafer ? coldStorage.waferColdCharge : coldStorage.seedColdCharge) || 0;
+        const globalHammali = (useWafer ? coldStorage.waferHammali : coldStorage.seedHammali) || 0;
+        const coldChargeRate = farmer?.customColdChargeRate ?? globalColdCharge;
+        const hammaliRate = farmer?.customHammaliRate ?? globalHammali;
+        
+        if (effectiveUnit === "quintal") {
           const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
           const hammaliPerBag = lot.size * hammaliRate;
           return coldChargeQuintal + hammaliPerBag;

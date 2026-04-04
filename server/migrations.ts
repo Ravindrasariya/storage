@@ -244,6 +244,14 @@ const MIGRATIONS: Migration[] = [
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mae_receipt_id ON merchant_advance_events(receipt_id) WHERE receipt_id IS NOT NULL`);
     },
   },
+  {
+    name: "add_farmer_entity_type_and_custom_rates",
+    up: async () => {
+      await db.execute(sql`ALTER TABLE farmer_ledger ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT 'farmer'`);
+      await db.execute(sql`ALTER TABLE farmer_ledger ADD COLUMN IF NOT EXISTS custom_cold_charge_rate REAL`);
+      await db.execute(sql`ALTER TABLE farmer_ledger ADD COLUMN IF NOT EXISTS custom_hammali_rate REAL`);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

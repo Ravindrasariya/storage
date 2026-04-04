@@ -522,6 +522,9 @@ export const farmerLedger = pgTable("farmer_ledger", {
   tehsil: text("tehsil"),
   district: text("district"),
   state: text("state"),
+  entityType: text("entity_type").notNull().default("farmer"), // "farmer" or "company"
+  customColdChargeRate: real("custom_cold_charge_rate"), // nullable — if set, overrides global cold charge rate
+  customHammaliRate: real("custom_hammali_rate"), // nullable — if set, overrides global hammali rate
   isFlagged: integer("is_flagged").notNull().default(0), // 0 = normal, 1 = flagged for negative behavior
   isArchived: integer("is_archived").notNull().default(0), // 0 = active, 1 = archived
   archivedAt: timestamp("archived_at"),

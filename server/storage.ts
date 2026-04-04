@@ -290,7 +290,7 @@ export interface IStorage {
   getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date, filters?: { year?: string; farmerName?: string; village?: string; contactNumber?: string; buyerName?: string; paymentStatus?: string }): Promise<SalesHistory[]>;
   getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[]; transfers: CashTransfer[] }>;
   // Farmer lookup for auto-complete
-  getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string; farmerLedgerId: string; farmerId: string }[]>;
+  getFarmerRecords(coldStorageId: string, year?: number, includeArchived?: boolean): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string; farmerLedgerId: string; farmerId: string; entityType: string; customColdChargeRate: number | null; customHammaliRate: number | null }[]>;
   // Buyer lookup for auto-complete (last 2 years)
   getBuyerRecords(coldStorageId: string): Promise<{ buyerName: string; isSelfSale: boolean }[]>;
   // Bag type label lookup for auto-complete
@@ -4193,8 +4193,11 @@ export class DatabaseStorage implements IStorage {
     return { receipts: receiptsData, expenses: expensesData, transfers: transfersData };
   }
 
-  async getFarmerRecords(coldStorageId: string, year?: number): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string; farmerLedgerId: string; farmerId: string }[]> {
-    // Fetch all non-archived farmers from Farmer Ledger (single source of truth)
+  async getFarmerRecords(coldStorageId: string, year?: number, includeArchived?: boolean): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string; farmerLedgerId: string; farmerId: string; entityType: string; customColdChargeRate: number | null; customHammaliRate: number | null }[]> {
+    const conditions = [eq(farmerLedger.coldStorageId, coldStorageId)];
+    if (!includeArchived) {
+      conditions.push(eq(farmerLedger.isArchived, 0));
+    }
     const farmers = await db.select({
       farmerLedgerId: farmerLedger.id,
       farmerId: farmerLedger.farmerId,
@@ -4204,14 +4207,12 @@ export class DatabaseStorage implements IStorage {
       district: farmerLedger.district,
       state: farmerLedger.state,
       contactNumber: farmerLedger.contactNumber,
+      entityType: farmerLedger.entityType,
+      customColdChargeRate: farmerLedger.customColdChargeRate,
+      customHammaliRate: farmerLedger.customHammaliRate,
     })
       .from(farmerLedger)
-      .where(
-        and(
-          eq(farmerLedger.coldStorageId, coldStorageId),
-          eq(farmerLedger.isArchived, 0)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(farmerLedger.name);
 
     return farmers.map(f => ({
@@ -4223,6 +4224,9 @@ export class DatabaseStorage implements IStorage {
       district: f.district || "",
       state: f.state || "",
       contactNumber: f.contactNumber || "",
+      entityType: f.entityType || "farmer",
+      customColdChargeRate: f.customColdChargeRate ?? null,
+      customHammaliRate: f.customHammaliRate ?? null,
     }));
   }
 
@@ -6878,6 +6882,7 @@ export class DatabaseStorage implements IStorage {
     tehsil?: string;
     district?: string;
     state?: string;
+    entityType?: string;
   }): Promise<{ id: string; farmerId: string }> {
     const key = this.getFarmerCompositeKey(farmerData.name, farmerData.contactNumber, farmerData.village);
     
@@ -6926,6 +6931,7 @@ export class DatabaseStorage implements IStorage {
           tehsil: farmerData.tehsil?.trim() || null,
           district: farmerData.district?.trim() || null,
           state: farmerData.state?.trim() || null,
+          entityType: farmerData.entityType || "farmer",
           isFlagged: 0,
           isArchived: 0,
         });
@@ -6953,6 +6959,9 @@ export class DatabaseStorage implements IStorage {
     tehsil?: string;
     district?: string;
     state?: string;
+    entityType?: string;
+    customColdChargeRate?: number | null;
+    customHammaliRate?: number | null;
   }): Promise<{ id: string; farmerId: string }> {
     const [existing] = await db.select({ id: farmerLedger.id })
       .from(farmerLedger)
@@ -6984,6 +6993,9 @@ export class DatabaseStorage implements IStorage {
           tehsil: farmerData.tehsil?.trim() || null,
           district: farmerData.district?.trim() || null,
           state: farmerData.state?.trim() || null,
+          entityType: farmerData.entityType || "farmer",
+          customColdChargeRate: farmerData.customColdChargeRate ?? null,
+          customHammaliRate: farmerData.customHammaliRate ?? null,
           isFlagged: 0,
           isArchived: 0,
         });

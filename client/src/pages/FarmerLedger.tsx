@@ -249,6 +249,9 @@ export default function FarmerLedger() {
     tehsil: "",
     district: "",
     state: "",
+    entityType: "farmer" as string,
+    customColdChargeRate: null as number | null,
+    customHammaliRate: null as number | null,
   });
 
   // Edit dialog autocomplete state
@@ -272,6 +275,9 @@ export default function FarmerLedger() {
     tehsil: "",
     district: "",
     state: "",
+    entityType: "farmer" as string,
+    customColdChargeRate: null as number | null,
+    customHammaliRate: null as number | null,
   });
   const [addFarmerError, setAddFarmerError] = useState("");
   const [showAddNameSuggestions, setShowAddNameSuggestions] = useState(false);
@@ -457,7 +463,7 @@ export default function FarmerLedger() {
       queryClient.invalidateQueries({ queryKey: ['/api/lots'] });
       queryClient.invalidateQueries({ queryKey: ['/api/cash-receipts'] });
       setShowAddFarmerDialog(false);
-      setAddFormData({ name: "", contactNumber: "", village: "", tehsil: "", district: "", state: "" });
+      setAddFormData({ name: "", contactNumber: "", village: "", tehsil: "", district: "", state: "", entityType: "farmer", customColdChargeRate: null, customHammaliRate: null });
       setAddFarmerError("");
       toast({ title: t("farmerAdded") || "Farmer added", description: addFormData.name });
     },
@@ -603,6 +609,9 @@ export default function FarmerLedger() {
       tehsil: farmer.tehsil || "",
       district: farmer.district || "",
       state: farmer.state || "",
+      entityType: farmer.entityType || "farmer",
+      customColdChargeRate: farmer.customColdChargeRate ?? null,
+      customHammaliRate: farmer.customHammaliRate ?? null,
     });
     setEditingFarmer(farmer);
   };
@@ -965,7 +974,7 @@ export default function FarmerLedger() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { setAddFormData({ name: "", contactNumber: "", village: "", tehsil: "", district: "", state: "" }); setAddFarmerError(""); setShowAddFarmerDialog(true); }}
+            onClick={() => { setAddFormData({ name: "", contactNumber: "", village: "", tehsil: "", district: "", state: "", entityType: "farmer", customColdChargeRate: null, customHammaliRate: null }); setAddFarmerError(""); setShowAddFarmerDialog(true); }}
             data-testid="button-add-farmer"
           >
             <UserPlus className="w-4 h-4 mr-2" />
@@ -1515,6 +1524,46 @@ export default function FarmerLedger() {
                 </Select>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>{t("entityType")}</Label>
+                <Select value={editFormData.entityType} onValueChange={(val) => setEditFormData(prev => ({ ...prev, entityType: val }))}>
+                  <SelectTrigger data-testid="select-edit-entity-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="farmer">{t("farmer")}</SelectItem>
+                    <SelectItem value="company">{t("company")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>{t("customColdChargeRate")}</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  placeholder="Global"
+                  value={editFormData.customColdChargeRate ?? ""}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, customColdChargeRate: e.target.value === "" ? null : parseFloat(e.target.value) }))}
+                  data-testid="input-edit-custom-cold-charge"
+                />
+              </div>
+              <div>
+                <Label>{t("customHammaliRate")}</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  placeholder="Global"
+                  value={editFormData.customHammaliRate ?? ""}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, customHammaliRate: e.target.value === "" ? null : parseFloat(e.target.value) }))}
+                  data-testid="input-edit-custom-hammali"
+                />
+              </div>
+            </div>
 
             {editHistory && editHistory.length > 0 && (
               <div>
@@ -1828,6 +1877,46 @@ export default function FarmerLedger() {
                     <SelectItem value="Uttar Pradesh">Uttar Pradesh</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>{t("entityType")}</Label>
+                <Select value={addFormData.entityType} onValueChange={(val) => setAddFormData(prev => ({ ...prev, entityType: val }))}>
+                  <SelectTrigger data-testid="select-add-entity-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="farmer">{t("farmer")}</SelectItem>
+                    <SelectItem value="company">{t("company")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>{t("customColdChargeRate")}</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  placeholder="Global"
+                  value={addFormData.customColdChargeRate ?? ""}
+                  onChange={(e) => setAddFormData(prev => ({ ...prev, customColdChargeRate: e.target.value === "" ? null : parseFloat(e.target.value) }))}
+                  data-testid="input-add-custom-cold-charge"
+                />
+              </div>
+              <div>
+                <Label>{t("customHammaliRate")}</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  placeholder="Global"
+                  value={addFormData.customHammaliRate ?? ""}
+                  onChange={(e) => setAddFormData(prev => ({ ...prev, customHammaliRate: e.target.value === "" ? null : parseFloat(e.target.value) }))}
+                  data-testid="input-add-custom-hammali"
+                />
               </div>
             </div>
             {addFarmerError && (

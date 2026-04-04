@@ -42,6 +42,9 @@ interface FarmerRecord {
   district: string;
   state: string;
   contactNumber: string;
+  entityType: string;
+  customColdChargeRate: number | null;
+  customHammaliRate: number | null;
 }
 
 interface ColdStorageSettings {
@@ -136,6 +139,7 @@ export default function LotEntry() {
   const [manualLotNo, setManualLotNo] = useState<number | null>(null);
   const [entryDate, setEntryDate] = useState(getTodayStr());
   const [lotNoError, setLotNoError] = useState<string | null>(null);
+  const [isCompany, setIsCompany] = useState(false);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
@@ -418,6 +422,7 @@ export default function LotEntry() {
     form.setValue("district", farmer.district);
     form.setValue("state", farmer.state);
     form.setValue("contactNumber", farmer.contactNumber);
+    setIsCompany(farmer.entityType === "company");
     setShowNameSuggestions(false);
     setShowVillageSuggestions(false);
     setShowMobileSuggestions(false);
@@ -523,7 +528,7 @@ export default function LotEntry() {
     setIsSubmitting(true);
     try {
       const result = await createBatchLotsMutation.mutateAsync({
-        farmer: farmerData,
+        farmer: { ...farmerData, entityType: isCompany ? "company" : "farmer" },
         lots,
         bagTypeCategory,
         entryDate,
@@ -551,6 +556,7 @@ export default function LotEntry() {
       setImagePreviews({});
       setManualLotNo(null);
       setEntryDate(getTodayStr());
+      setIsCompany(false);
       
       // Scroll to top of page
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -633,17 +639,29 @@ export default function LotEntry() {
                 <User className="h-5 w-5 text-chart-1" />
                 <h2 className="text-lg font-semibold">{t("farmerDetails")}</h2>
               </div>
-              <div className="flex items-center gap-2">
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                <label className="text-sm font-medium text-muted-foreground">{t("entryDate")}:</label>
-                <Input
-                  type="date"
-                  value={entryDate}
-                  onChange={(e) => setEntryDate(e.target.value || getTodayStr())}
-                  required
-                  className="w-40 h-8 text-sm"
-                  data-testid="input-entry-date"
-                />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <label className="text-sm font-medium text-muted-foreground">{t("entryDate")}:</label>
+                  <Input
+                    type="date"
+                    value={entryDate}
+                    onChange={(e) => setEntryDate(e.target.value || getTodayStr())}
+                    required
+                    className="w-40 h-8 text-sm"
+                    data-testid="input-entry-date"
+                  />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isCompany}
+                    onChange={(e) => setIsCompany(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                    data-testid="checkbox-is-company"
+                  />
+                  <span className="text-sm font-medium">{t("isCompany")}</span>
+                </label>
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
@@ -902,7 +920,7 @@ export default function LotEntry() {
                   <Package className="h-4 w-4 text-chart-2" />
                   <h3 className="font-semibold">{t("lotInformation")}</h3>
                 </div>
-                <div className={`grid grid-cols-2 gap-4 ${coldStorage?.chargeUnit === "quintal" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+                <div className={`grid grid-cols-2 gap-4 ${(coldStorage?.chargeUnit === "quintal" || isCompany) ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                   <div className="col-span-2 sm:col-span-1">
                     <label className="text-sm font-medium">{t("lotNo")}</label>
                     {index === 0 ? (
@@ -954,7 +972,7 @@ export default function LotEntry() {
                       data-testid={`input-size-${index}`}
                     />
                   </div>
-                  {coldStorage?.chargeUnit === "quintal" && (
+                  {(coldStorage?.chargeUnit === "quintal" || isCompany) && (
                     <div>
                       <label className="text-sm font-medium">{t("netWeightQtl")}</label>
                       <Input

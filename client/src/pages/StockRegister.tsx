@@ -150,12 +150,37 @@ export default function StockRegister() {
     contactNumber: string;
     farmerLedgerId: string;
     farmerId: string;
+    entityType: string;
+    customColdChargeRate: number | null;
+    customHammaliRate: number | null;
   };
 
   const { data: farmerRecords } = useQuery<FarmerRecord[]>({
     queryKey: ["/api/farmers/lookup"],
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
+  
+  const farmerLookupMap = useMemo(() => {
+    if (!farmerRecords) return new Map<string, FarmerRecord>();
+    return new Map(farmerRecords.map(f => [f.farmerLedgerId, f]));
+  }, [farmerRecords]);
+  
+  const calcExpectedCharge = useCallback((lot: { bagType: string; netWeight?: number | null; size: number; farmerLedgerId?: string | null }) => {
+    if (!coldStorage) return 0;
+    const farmer = lot.farmerLedgerId ? farmerLookupMap.get(lot.farmerLedgerId) : undefined;
+    const isComp = farmer?.entityType === "company";
+    const effUnit = isComp ? "quintal" : (coldStorage.chargeUnit || "bag");
+    const useWafer = lot.bagType === "wafer";
+    const gCold = useWafer ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
+    const gHam = useWafer ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
+    const cRate = farmer?.customColdChargeRate ?? gCold;
+    const hRate = farmer?.customHammaliRate ?? gHam;
+    if (effUnit === "quintal") {
+      const cQuintal = lot.netWeight ? (lot.netWeight * cRate) / 100 : 0;
+      return cQuintal + lot.size * hRate;
+    }
+    return lot.size * (cRate + hRate);
+  }, [coldStorage, farmerLookupMap]);
 
   const { data: chambers } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
@@ -562,24 +587,7 @@ export default function StockRegister() {
       }
     }
     
-    const expectedColdCharges = filteredResults.reduce((sum, lot) => {
-      const useWaferRate = lot.bagType === "wafer";
-      const coldChargeRate = useWaferRate 
-        ? (coldStorage?.waferColdCharge || 0) 
-        : (coldStorage?.seedColdCharge || 0);
-      const hammaliRate = useWaferRate
-        ? (coldStorage?.waferHammali || 0)
-        : (coldStorage?.seedHammali || 0);
-      let lotCharge: number;
-      if (coldStorage?.chargeUnit === "quintal") {
-        const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
-        const hammaliPerBag = lot.size * hammaliRate;
-        lotCharge = coldChargeQuintal + hammaliPerBag;
-      } else {
-        lotCharge = lot.size * (coldChargeRate + hammaliRate);
-      }
-      return sum + lotCharge;
-    }, 0);
+    const expectedColdCharges = filteredResults.reduce((sum, lot) => sum + calcExpectedCharge(lot), 0);
     
     return {
       totalBags: filteredResults.reduce((sum, lot) => sum + lot.size, 0),
@@ -588,7 +596,7 @@ export default function StockRegister() {
       chargesDue,
       expectedColdCharges,
     };
-  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, chamberFilter, floorFilter, matchesChamberFilter, matchesFloorFilter, coldStorage, allLotsSummary]);
+  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, chamberFilter, floorFilter, matchesChamberFilter, matchesFloorFilter, coldStorage, allLotsSummary, calcExpectedCharge]);
 
   const floorOptions = useMemo(() => {
     if (chamberFilter === "all" || chamberFilter === "blank" || !chamberFloors) return [];
@@ -677,24 +685,7 @@ export default function StockRegister() {
       ];
 
       const rows = lots.map(lot => {
-        // Calculate expected cold charge based on charge unit mode
-        const useWaferRate = lot.bagType === "wafer";
-        const coldChargeRate = useWaferRate 
-          ? (coldStorage?.waferColdCharge || 0) 
-          : (coldStorage?.seedColdCharge || 0);
-        const hammaliRate = useWaferRate
-          ? (coldStorage?.waferHammali || 0)
-          : (coldStorage?.seedHammali || 0);
-        // For quintal mode: cold charge (per quintal) + hammali (per bag)
-        // For bag mode: (coldCharge + hammali) × lot.size
-        let expectedColdCharge: number;
-        if (coldStorage?.chargeUnit === "quintal") {
-          const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
-          const hammaliPerBag = lot.size * hammaliRate;
-          expectedColdCharge = coldChargeQuintal + hammaliPerBag;
-        } else {
-          expectedColdCharge = lot.size * (coldChargeRate + hammaliRate);
-        }
+        const expectedColdCharge = calcExpectedCharge(lot);
         
         const paidCharge = lot.totalPaidCharge || 0;
         const dueCharge = lot.totalDueCharge || 0;
@@ -818,21 +809,7 @@ export default function StockRegister() {
           }
         }
       }
-      const useWaferRate = lot.bagType === "wafer";
-      const coldChargeRate = useWaferRate 
-        ? (coldStorage?.waferColdCharge || 0) 
-        : (coldStorage?.seedColdCharge || 0);
-      const hammaliRate = useWaferRate
-        ? (coldStorage?.waferHammali || 0)
-        : (coldStorage?.seedHammali || 0);
-      let expectedColdCharge: number;
-      if (coldStorage?.chargeUnit === "quintal") {
-        const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
-        const hammaliPerBag = lot.size * hammaliRate;
-        expectedColdCharge = coldChargeQuintal + hammaliPerBag;
-      } else {
-        expectedColdCharge = lot.size * (coldChargeRate + hammaliRate);
-      }
+      const expectedColdCharge = calcExpectedCharge(lot);
       const chamberName = chamberMap[lot.chamberId] || "Unknown";
 
       return `
@@ -1736,24 +1713,7 @@ export default function StockRegister() {
                 }
               }
             }
-            // Calculate expected cold charge based on charge unit mode
-            const useWaferRate = lot.bagType === "wafer";
-            const coldChargeRate = useWaferRate 
-              ? (coldStorage?.waferColdCharge || 0) 
-              : (coldStorage?.seedColdCharge || 0);
-            const hammaliRate = useWaferRate
-              ? (coldStorage?.waferHammali || 0)
-              : (coldStorage?.seedHammali || 0);
-            // For quintal mode: cold charge (per quintal) + hammali (per bag)
-            // For bag mode: (coldCharge + hammali) × lot.size
-            let expectedColdCharge: number;
-            if (coldStorage?.chargeUnit === "quintal") {
-              const coldChargeQuintal = lot.netWeight ? (lot.netWeight * coldChargeRate) / 100 : 0;
-              const hammaliPerBag = lot.size * hammaliRate;
-              expectedColdCharge = coldChargeQuintal + hammaliPerBag;
-            } else {
-              expectedColdCharge = lot.size * (coldChargeRate + hammaliRate);
-            }
+            const expectedColdCharge = calcExpectedCharge(lot);
             return { lot, lotPaidCharge, lotDueCharge, expectedColdCharge };
           });
           
@@ -2080,53 +2040,53 @@ export default function StockRegister() {
                     </SelectContent>
                   </Select>
                 </div>
-                {coldStorage?.chargeUnit === "quintal" && (
-                  <div className="space-y-2">
-                    <Label>{t("netWeightQtl")}</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      placeholder="0.00"
-                      value={editForm.netWeight === undefined || editForm.netWeight === 0 ? "" : editForm.netWeight}
-                      onChange={(e) => setEditForm({ ...editForm, netWeight: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
-                      data-testid="input-edit-net-weight"
-                    />
-                  </div>
-                )}
+                {(() => {
+                  const editFarmer = selectedLot?.farmerLedgerId ? farmerLookupMap.get(selectedLot.farmerLedgerId) : undefined;
+                  const editIsCompany = editFarmer?.entityType === "company";
+                  const editEffUnit = editIsCompany ? "quintal" : (coldStorage?.chargeUnit || "bag");
+                  return editEffUnit === "quintal" ? (
+                    <div className="space-y-2">
+                      <Label>{t("netWeightQtl")}</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="0.00"
+                        value={editForm.netWeight === undefined || editForm.netWeight === 0 ? "" : editForm.netWeight}
+                        onChange={(e) => setEditForm({ ...editForm, netWeight: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
+                        data-testid="input-edit-net-weight"
+                      />
+                    </div>
+                  ) : null;
+                })()}
               </div>
               
-              {coldStorage?.chargeUnit === "quintal" && editForm.netWeight && editForm.netWeight > 0 && selectedLot && (
-                <div className="mt-4 p-3 bg-muted rounded-md">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{t("expectedCharge")}:</span>
-                    <span className="font-semibold">
-                      <Currency 
-                        amount={
-                          ((editForm.netWeight * (
-                            selectedLot.bagType === "wafer"
-                              ? coldStorage.waferColdCharge
-                              : coldStorage.seedColdCharge
-                          )) / 100) + 
-                          ((selectedLot.bagType === "wafer"
-                              ? coldStorage.waferHammali
-                              : coldStorage.seedHammali
-                          ) * selectedLot.size)
-                        } 
-                      />
-                    </span>
+              {(() => {
+                if (!selectedLot || !editForm.netWeight || editForm.netWeight <= 0 || !coldStorage) return null;
+                const prevFarmer = selectedLot.farmerLedgerId ? farmerLookupMap.get(selectedLot.farmerLedgerId) : undefined;
+                const prevIsCompany = prevFarmer?.entityType === "company";
+                const prevEffUnit = prevIsCompany ? "quintal" : (coldStorage.chargeUnit || "bag");
+                if (prevEffUnit !== "quintal") return null;
+                const useWafer = selectedLot.bagType === "wafer";
+                const gCold = useWafer ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
+                const gHam = useWafer ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
+                const cRate = prevFarmer?.customColdChargeRate ?? gCold;
+                const hRate = prevFarmer?.customHammaliRate ?? gHam;
+                const chargeAmt = (editForm.netWeight * cRate) / 100 + hRate * selectedLot.size;
+                return (
+                  <div className="mt-4 p-3 bg-muted rounded-md">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{t("expectedCharge")}:</span>
+                      <span className="font-semibold">
+                        <Currency amount={chargeAmt} />
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ({editForm.netWeight} {t("kg")} × <Currency amount={cRate} />) / 100 + (<Currency amount={hRate} /> × {selectedLot.size} {t("bags")})
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    ({editForm.netWeight} {t("kg")} × <Currency amount={selectedLot.bagType === "wafer" 
-                      ? coldStorage.waferColdCharge 
-                      : coldStorage.seedColdCharge
-                    } />) / 100 + (<Currency amount={selectedLot.bagType === "wafer" 
-                      ? coldStorage.waferHammali 
-                      : coldStorage.seedHammali
-                    } /> × {selectedLot.size} {t("bags")})
-                  </p>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
