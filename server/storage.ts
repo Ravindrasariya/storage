@@ -7978,7 +7978,7 @@ export class DatabaseStorage implements IStorage {
     openingBalance -= priorTransfersOut.reduce((sum, s) => sum + (s.transferAmount || s.dueAmount || 0), 0);
 
     const priorAdvances = buyerAdvances.filter(ma => (ma.originalEffectiveDate || ma.effectiveDate) < fyStart);
-    openingBalance += priorAdvances.reduce((sum, ma) => sum + (ma.finalAmount || ma.amount), 0);
+    openingBalance += priorAdvances.reduce((sum, ma) => sum + ((ma.finalAmount || ma.amount) + (ma.paidAmount || 0)), 0);
 
     const priorDiscounts = allDiscounts.filter(d => {
       if (d.discountDate >= fyStart) return false;
@@ -8185,7 +8185,7 @@ export class DatabaseStorage implements IStorage {
     });
     for (const ma of fyAdvances) {
       const principalAmt = roundAmount(ma.amount);
-      const totalAmt = roundAmount(ma.finalAmount || ma.amount);
+      const totalAmt = roundAmount((ma.finalAmount || ma.amount) + (ma.paidAmount || 0));
       const origDate = ma.originalEffectiveDate || ma.effectiveDate;
       const advDateStr = toISTDateString(origDate);
       transactions.push({
