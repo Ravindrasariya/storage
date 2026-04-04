@@ -140,6 +140,7 @@ export default function LotEntry() {
   const [entryDate, setEntryDate] = useState(getTodayStr());
   const [lotNoError, setLotNoError] = useState<string | null>(null);
   const [isCompany, setIsCompany] = useState(false);
+  const [farmerFromDropdown, setFarmerFromDropdown] = useState(false);
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
@@ -211,6 +212,13 @@ export default function LotEntry() {
 
   // Watch form values for reactive autocomplete filtering (must be after form initialization)
   const watchedFarmerName = form.watch("farmerName") || "";
+  
+  useEffect(() => {
+    if (farmerFromDropdown && watchedFarmerName.trim() === "") {
+      setFarmerFromDropdown(false);
+      setIsCompany(false);
+    }
+  }, [watchedFarmerName, farmerFromDropdown]);
   const watchedVillage = form.watch("village") || "";
   const watchedTehsil = form.watch("tehsil") || "";
   const watchedContactNumber = form.watch("contactNumber") || "";
@@ -423,6 +431,7 @@ export default function LotEntry() {
     form.setValue("state", farmer.state);
     form.setValue("contactNumber", farmer.contactNumber);
     setIsCompany(farmer.entityType === "company");
+    setFarmerFromDropdown(true);
     setShowNameSuggestions(false);
     setShowVillageSuggestions(false);
     setShowMobileSuggestions(false);
@@ -557,6 +566,7 @@ export default function LotEntry() {
       setManualLotNo(null);
       setEntryDate(getTodayStr());
       setIsCompany(false);
+      setFarmerFromDropdown(false);
       
       // Scroll to top of page
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -652,11 +662,12 @@ export default function LotEntry() {
                     data-testid="input-entry-date"
                   />
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className={`flex items-center gap-2 ${farmerFromDropdown ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
                   <input
                     type="checkbox"
                     checked={isCompany}
                     onChange={(e) => setIsCompany(e.target.checked)}
+                    disabled={farmerFromDropdown}
                     className="h-4 w-4 rounded border-gray-300"
                     data-testid="checkbox-is-company"
                   />
