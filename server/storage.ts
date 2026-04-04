@@ -8081,6 +8081,7 @@ export class DatabaseStorage implements IStorage {
           meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
           meta.rateOfInterest = String(ma.rateOfInterest);
           meta.effectiveDate = toISTDateString(ma.effectiveDate);
+          meta.outstandingDue = String(roundAmount(Math.max(0, (ma.finalAmount || ma.amount) - (ma.paidAmount || 0))));
         } else if (matchedAdvances.length > 1) {
           const details = matchedAdvances.map(ma => {
             const parts = [`₹${roundAmount(ma.amount)}`];
@@ -8089,6 +8090,7 @@ export class DatabaseStorage implements IStorage {
           });
           meta.advanceDetails = details.join(' + ');
           meta.advanceAmount = String(roundAmount(matchedAdvances.reduce((s, ma) => s + ma.amount, 0)));
+          meta.outstandingDue = String(roundAmount(Math.max(0, matchedAdvances.reduce((s, ma) => s + (ma.finalAmount || ma.amount) - (ma.paidAmount || 0), 0))));
         } else {
           const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
           if (withInterest.length === 1) {
