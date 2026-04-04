@@ -367,10 +367,8 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     const coldChargeRate = getEditableColdCharge(lot);
     const hammaliRate = getEditableHammali(lot);
     
-    // For quintal mode: cold charge (per quintal) + hammali (per bag)
-    // For bag mode: (coldCharge + hammali) × chargeQty
-    if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
-      const coldChargeQuintal = (lot.netWeight * chargeQty * coldChargeRate) / (lot.originalSize * 100);
+    if (lot.chargeUnit === "quintal") {
+      const coldChargeQuintal = (lot.netWeight && lot.originalSize > 0) ? (lot.netWeight * chargeQty * coldChargeRate) / (lot.originalSize * 100) : 0;
       const hammaliPerBag = hammaliRate * chargeQty;
       return coldChargeQuintal + hammaliPerBag;
     }
@@ -384,17 +382,13 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     const hammaliRate = getEditableHammali(lot);
     const rate = customRate ?? (coldChargeRate + hammaliRate);
     
-    // Skip base charge if already paid (only extras apply)
     let baseCharge: number = 0;
     if (lot.baseColdChargesBilled !== 1) {
-      // For quintal mode: cold charge (per quintal) + hammali (per bag)
-      // For bag mode: (coldCharge + hammali) × chargeQty
-      if (lot.chargeUnit === "quintal" && lot.netWeight && lot.originalSize > 0) {
-        // When customRate is provided, use it as combined rate for backward compatibility
+      if (lot.chargeUnit === "quintal") {
         if (customRate !== undefined) {
-          baseCharge = (lot.netWeight * chargeQty * rate) / (lot.originalSize * 100);
+          baseCharge = (lot.netWeight && lot.originalSize > 0) ? (lot.netWeight * chargeQty * rate) / (lot.originalSize * 100) : 0;
         } else {
-          const coldChargeQuintal = (lot.netWeight * chargeQty * coldChargeRate) / (lot.originalSize * 100);
+          const coldChargeQuintal = (lot.netWeight && lot.originalSize > 0) ? (lot.netWeight * chargeQty * coldChargeRate) / (lot.originalSize * 100) : 0;
           const hammaliPerBag = hammaliRate * chargeQty;
           baseCharge = coldChargeQuintal + hammaliPerBag;
         }

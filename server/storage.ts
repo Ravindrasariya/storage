@@ -921,20 +921,24 @@ export class DatabaseStorage implements IStorage {
     });
 
     const chamberMap = new Map(allChambers.map(c => [c.id, c.name]));
+    const saleFarmerRecords = await this.getFarmerRecords(coldStorageId, undefined, true);
+    const saleFarmerMap = new Map(saleFarmerRecords.map(f => [f.farmerLedgerId, f]));
     const saleLots = allLots
       .filter((lot) => lot.upForSale === 1 && lot.remainingSize > 0 && lot.saleStatus !== "sold")
       .map((lot) => {
-        // Wafer uses wafer rates, Seed and Ration use seed rates
         const useWaferRates = lot.bagType === "wafer";
-        const coldCharge = useWaferRates 
+        const globalColdCharge = useWaferRates 
           ? (coldStorage?.waferColdCharge || coldStorage?.waferRate || 0) 
           : (coldStorage?.seedColdCharge || coldStorage?.seedRate || 0);
-        const hammali = useWaferRates 
+        const globalHammali = useWaferRates 
           ? (coldStorage?.waferHammali || 0) 
           : (coldStorage?.seedHammali || 0);
-        const rate = useWaferRates 
-          ? (coldStorage?.waferRate || 0) 
-          : (coldStorage?.seedRate || 0);
+        const farmer = lot.farmerLedgerId ? saleFarmerMap.get(lot.farmerLedgerId) : undefined;
+        const isCompany = farmer?.entityType === "company";
+        const effectiveChargeUnit = isCompany ? "quintal" : (coldStorage?.chargeUnit || "bag");
+        const coldCharge = farmer?.customColdChargeRate ?? globalColdCharge;
+        const hammali = farmer?.customHammaliRate ?? globalHammali;
+        const rate = coldCharge + hammali;
         return {
           id: lot.id,
           lotNo: lot.lotNo,
@@ -955,7 +959,7 @@ export class DatabaseStorage implements IStorage {
           coldCharge,
           hammali,
           netWeight: lot.netWeight,
-          chargeUnit: coldStorage?.chargeUnit || "bag",
+          chargeUnit: effectiveChargeUnit,
           baseColdChargesBilled: lot.baseColdChargesBilled || 0,
         };
       })
