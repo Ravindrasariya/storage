@@ -1958,25 +1958,20 @@ export async function registerRoutes(
         appliedAdvanceIds: uniqueAdvanceIds,
       });
 
-      try {
-        const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, uniqueAdvanceIds, receipt.id, new Date(data.receivedAt));
+      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, uniqueAdvanceIds, receipt.id, new Date(data.receivedAt));
 
-        if (payResult.totalApplied <= 0) {
-          await storage.deleteMerchantAdvanceReceipt(receipt.id);
-          return res.status(400).json({ error: "No outstanding dues found for selected advances" });
-        }
-
-        await storage.updateMerchantAdvanceReceipt(receipt.id, {
-          appliedAmount: payResult.totalApplied,
-          unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100,
-          appliedAdvanceIds: payResult.appliedAdvanceIds,
-        });
-
-        res.json({ receipt: { ...receipt, appliedAmount: payResult.totalApplied, unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100, appliedAdvanceIds: payResult.appliedAdvanceIds }, ...payResult });
-      } catch (payError) {
-        try { await storage.deleteMerchantAdvanceReceipt(receipt.id); } catch {}
-        throw payError;
+      if (payResult.totalApplied <= 0) {
+        await storage.deleteMerchantAdvanceReceipt(receipt.id);
+        return res.status(400).json({ error: "No outstanding dues found for selected advances" });
       }
+
+      await storage.updateMerchantAdvanceReceipt(receipt.id, {
+        appliedAmount: payResult.totalApplied,
+        unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100,
+        appliedAdvanceIds: payResult.appliedAdvanceIds,
+      });
+
+      res.json({ receipt: { ...receipt, appliedAmount: payResult.totalApplied, unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100, appliedAdvanceIds: payResult.appliedAdvanceIds }, ...payResult });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid payment data", details: error.errors });
