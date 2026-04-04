@@ -237,6 +237,13 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-04-04_add_merchant_advance_events_indexes",
+    up: async () => {
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mae_advance_id ON merchant_advance_events(merchant_advance_id)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mae_receipt_id ON merchant_advance_events(receipt_id) WHERE receipt_id IS NOT NULL`);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {
