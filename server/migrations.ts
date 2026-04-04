@@ -252,6 +252,28 @@ const MIGRATIONS: Migration[] = [
       await db.execute(sql`ALTER TABLE farmer_ledger ADD COLUMN IF NOT EXISTS custom_hammali_rate REAL`);
     },
   },
+  {
+    name: "2026-04-04_add_base_hammali_amount",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ADD COLUMN IF NOT EXISTS base_hammali_amount REAL
+      `);
+      await db.execute(sql`
+        UPDATE sales_history
+        SET base_hammali_amount = CASE
+          WHEN base_charge_amount_at_sale = 0 THEN 0
+          WHEN hammali IS NOT NULL THEN
+            hammali * CASE
+              WHEN charge_basis = 'totalRemaining' THEN COALESCE(remaining_size_at_sale, quantity_sold)
+              ELSE quantity_sold
+            END
+          ELSE 0
+        END
+        WHERE base_hammali_amount IS NULL
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

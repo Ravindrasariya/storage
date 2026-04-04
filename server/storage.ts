@@ -1167,24 +1167,25 @@ export class DatabaseStorage implements IStorage {
       // Do NOT add them again to avoid double-counting
       const totalCharges = sale.coldStorageCharge || 0;
       
-      // Calculate base hammali proportionally from coldStorageCharge (same as CSV export)
-      // coldStorageCharge = base charges + extras (kata + extraHammali + grading)
-      const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
-      const baseChargesTotal = Math.max(0, (sale.coldStorageCharge || 0) - extras - (sale.adjReceivableSelfDueAmount || 0));
+      // Use stored baseHammaliAmount (computed at sale time) instead of re-deriving
+      // For legacy sales without the field, fall back to proportional split
       let baseHammali = 0;
-      if (sale.coldCharge && sale.hammali) {
-        // Both rates present - use proportional split
-        const totalRate = sale.coldCharge + sale.hammali;
-        if (totalRate > 0) {
-          baseHammali = (baseChargesTotal * sale.hammali) / totalRate;
+      if (sale.baseHammaliAmount != null) {
+        baseHammali = sale.baseHammaliAmount;
+      } else {
+        const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+        const baseChargesTotal = Math.max(0, (sale.coldStorageCharge || 0) - extras - (sale.adjReceivableSelfDueAmount || 0));
+        if (sale.coldCharge && sale.hammali) {
+          const totalRate = sale.coldCharge + sale.hammali;
+          if (totalRate > 0) {
+            baseHammali = (baseChargesTotal * sale.hammali) / totalRate;
+          }
+        } else if (sale.hammali && sale.hammali > 0 && !sale.coldCharge) {
+          baseHammali = baseChargesTotal;
         }
-      } else if (sale.hammali && sale.hammali > 0 && !sale.coldCharge) {
-        // Only hammali rate present (no cold charge) - all base is hammali
-        baseHammali = baseChargesTotal;
       }
-      // Note: If neither rate present, baseHammali stays 0 (legacy data without rates)
       
-      // Total hammali = base hammali (from coldStorageCharge) + extra hammali (bilty cut) + hammali to merchant
+      // Total hammali = base hammali + extra hammali (bilty cut) + hammali to merchant
       totalHammali += baseHammali + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
       totalGradingCharges += (sale.gradingCharges || 0) + (sale.extraDueGradingMerchant || 0);
       
@@ -1653,6 +1654,7 @@ export class DatabaseStorage implements IStorage {
     extraHammali?: number;
     gradingCharges?: number;
     coldStorageCharge?: number;
+    baseHammaliAmount?: number;
     chargeBasis?: "actual" | "totalRemaining";
     extraDueToMerchant?: number;
     extraDueHammaliMerchant?: number;
@@ -1734,6 +1736,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.adjReceivableSelfDueAmount !== undefined) {
       updateData.adjReceivableSelfDueAmount = updates.adjReceivableSelfDueAmount;
+    }
+    if (updates.baseHammaliAmount !== undefined) {
+      updateData.baseHammaliAmount = updates.baseHammaliAmount;
     }
 
     // Handle coldStorageCharge - use provided value if present, otherwise recalculate

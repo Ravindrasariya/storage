@@ -818,6 +818,9 @@ function calculateNetPayableToFarmer(sale: SalesHistory): number {
   if (sale.baseChargeAmountAtSale === 0) {
     coldChargeAmount = 0;
     hammaliAmount = 0;
+  } else if (sale.baseHammaliAmount != null) {
+    hammaliAmount = sale.baseHammaliAmount;
+    coldChargeAmount = (sale.baseChargeAmountAtSale || 0) - hammaliAmount;
   } else if (hasSeparateCharges && sale.coldCharge != null && sale.hammali != null) {
     if (isQuintalBased) {
       coldChargeAmount = (sale.coldCharge || 0) * quintalValueNum;

@@ -1097,14 +1097,18 @@ export async function registerRoutes(
       // If baseColdChargesBilled is already set, skip base charges (only extras apply)
       // For quintal mode without netWeight: coldCharge=0, hammali per bag (no bag-mode fallback)
       let storageCharge: number;
+      let baseHammaliAmount: number;
       if (lot.baseColdChargesBilled === 1) {
         storageCharge = 0;
+        baseHammaliAmount = 0;
       } else if (effectiveChargeUnit === "quintal") {
         const coldChargeQuintal = (lot.netWeight && lot.size > 0) ? (lot.netWeight * chargeQuantity * coldChargeRate) / (lot.size * 100) : 0;
         const hammaliPerBag = hammaliRate * chargeQuantity;
         storageCharge = coldChargeQuintal + hammaliPerBag;
+        baseHammaliAmount = hammaliPerBag;
       } else {
         storageCharge = chargeQuantity * rate;
+        baseHammaliAmount = hammaliRate * chargeQuantity;
       }
       
       // Calculate total charge including all extra charges for lot tracking
@@ -1242,6 +1246,7 @@ export async function registerRoutes(
         chargeUnitAtSale: effectiveChargeUnit, // Preserve effective charge unit used at sale time (company=quintal, farmer=global)
         initialNetWeightKg: lot.netWeight || null,
         baseChargeAmountAtSale: storageCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
+        baseHammaliAmount, // Actual hammali amount (hammali_rate × chargeQuantity); 0 if base already billed
         remainingSizeAtSale: lot.remainingSize, // Remaining bags before this sale (for totalRemaining basis)
         // Self sale flag (farmer buying own produce)
         isSelfSale: isSelfSale ? 1 : 0,
@@ -1551,6 +1556,7 @@ export async function registerRoutes(
     extraHammali: z.number().optional(),
     gradingCharges: z.number().optional(),
     coldStorageCharge: z.number().optional(),
+    baseHammaliAmount: z.number().optional(),
     chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
     extraDueToMerchant: z.number().optional(),
     extraDueHammaliMerchant: z.number().optional(),
@@ -1581,6 +1587,23 @@ export async function registerRoutes(
         const grading = validatedData.extraDueGradingMerchant ?? (currentSale.extraDueGradingMerchant || 0);
         const other = validatedData.extraDueOtherMerchant ?? (currentSale.extraDueOtherMerchant || 0);
         validatedData.extraDueToMerchant = hammali + grading + other;
+      }
+      
+      // Recompute baseHammaliAmount when hammali rate or coldStorageCharge is edited
+      if (validatedData.hammali !== undefined || validatedData.coldStorageCharge !== undefined) {
+        const hammaliRate = validatedData.hammali ?? (currentSale.hammali || 0);
+        const baseChargeAmount = validatedData.coldStorageCharge !== undefined
+          ? validatedData.coldStorageCharge - (validatedData.kataCharges ?? (currentSale.kataCharges || 0)) - (validatedData.extraHammali ?? (currentSale.extraHammali || 0)) - (validatedData.gradingCharges ?? (currentSale.gradingCharges || 0)) - (validatedData.adjReceivableSelfDueAmount ?? (currentSale.adjReceivableSelfDueAmount || 0))
+          : (currentSale.baseChargeAmountAtSale || 0);
+        if (baseChargeAmount === 0) {
+          validatedData.baseHammaliAmount = 0;
+        } else {
+          const chargeBasis = currentSale.chargeBasis || "actual";
+          const bagsToUse = chargeBasis === "totalRemaining"
+            ? (currentSale.remainingSizeAtSale || currentSale.quantitySold)
+            : currentSale.quantitySold;
+          validatedData.baseHammaliAmount = hammaliRate * bagsToUse;
+        }
       }
       
       const updated = await storage.updateSalesHistory(req.params.id, validatedData);
@@ -4202,15 +4225,22 @@ export async function registerRoutes(
         // coldStorageCharge already includes base charges + all extras (but NOT extraDueToMerchant)
         const totalCharges = sale.coldStorageCharge || 0;
         
-        // Calculate Total Hammali: base hammali + extra hammali (bilty cut) + extra hammali to merchant
+        // Compute baseChargesTotal for CSV column (base portion of coldStorageCharge)
         const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
         const baseChargesTotal = (sale.coldStorageCharge || 0) - extras - (sale.adjReceivableSelfDueAmount || 0);
+        
+        // Use stored baseHammaliAmount (computed at sale time) instead of re-deriving
+        // For legacy sales without the field, fall back to proportional split
         let baseHammali = 0;
-        if (sale.coldCharge && sale.hammali) {
+        if (sale.baseHammaliAmount != null) {
+          baseHammali = sale.baseHammaliAmount;
+        } else if (sale.coldCharge && sale.hammali) {
           const totalRate = sale.coldCharge + sale.hammali;
           if (totalRate > 0) {
             baseHammali = (baseChargesTotal * sale.hammali) / totalRate;
           }
+        } else if (sale.hammali && sale.hammali > 0 && !sale.coldCharge) {
+          baseHammali = baseChargesTotal;
         }
         const totalHammali = baseHammali + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
         
