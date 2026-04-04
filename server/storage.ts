@@ -344,6 +344,7 @@ export interface IStorage {
   getPYMerchantAdvances(coldStorageId: string): Promise<MerchantAdvance[]>;
   createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<CashReceipt>;
   updateMerchantAdvanceReceipt(receiptId: string, updates: { appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<void>;
+  deleteMerchantAdvanceReceipt(receiptId: string): Promise<void>;
   accrueInterestForAll(coldStorageId: string): Promise<number>;
   computeYearlySimpleInterest(latestPrincipal: number, effectiveDate: Date, annualRate: number, today: Date): { finalAmount: number; latestPrincipal: number; effectiveDate: Date };
   calculateSimpleInterest(principal: number, annualRate: number, fromDate: Date, toDate: Date): number;
@@ -6100,7 +6101,11 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[], receiptId?: string): Promise<{ totalApplied: number; recordsUpdated: number; appliedAdvanceIds: string[] }> {
+  async deleteMerchantAdvanceReceipt(receiptId: string): Promise<void> {
+    await db.delete(cashReceipts).where(eq(cashReceipts.id, receiptId));
+  }
+
+  async payMerchantAdvanceSelected(coldStorageId: string, buyerLedgerId: string, amount: number, selectedAdvanceIds: string[], receiptId?: string, eventDate?: Date): Promise<{ totalApplied: number; recordsUpdated: number; appliedAdvanceIds: string[] }> {
     const records = await db.select()
       .from(merchantAdvance)
       .where(and(
@@ -6135,7 +6140,7 @@ export class DatabaseStorage implements IStorage {
         id: randomUUID(),
         merchantAdvanceId: record.id,
         eventType: 'payment',
-        eventDate: new Date(),
+        eventDate: eventDate || new Date(),
         amount: record.amount,
         rateOfInterest: record.rateOfInterest,
         latestPrincipalBefore: record.latestPrincipal ?? record.amount,

@@ -1958,9 +1958,10 @@ export async function registerRoutes(
         appliedAdvanceIds: uniqueAdvanceIds,
       });
 
-      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, uniqueAdvanceIds, receipt.id);
+      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, uniqueAdvanceIds, receipt.id, new Date(data.receivedAt));
 
       if (payResult.totalApplied <= 0) {
+        await storage.deleteMerchantAdvanceReceipt(receipt.id);
         return res.status(400).json({ error: "No outstanding dues found for selected advances" });
       }
 
