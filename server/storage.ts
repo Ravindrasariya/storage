@@ -7977,7 +7977,7 @@ export class DatabaseStorage implements IStorage {
     });
     openingBalance -= priorTransfersOut.reduce((sum, s) => sum + (s.transferAmount || s.dueAmount || 0), 0);
 
-    const priorAdvances = buyerAdvances.filter(ma => ma.effectiveDate < fyStart);
+    const priorAdvances = buyerAdvances.filter(ma => (ma.originalEffectiveDate || ma.effectiveDate) < fyStart);
     openingBalance += priorAdvances.reduce((sum, ma) => sum + (ma.finalAmount || ma.amount), 0);
 
     const priorDiscounts = allDiscounts.filter(d => {
@@ -8179,11 +8179,15 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const fyAdvances = buyerAdvances.filter(ma => ma.effectiveDate >= fyStart && ma.effectiveDate <= fyEnd);
+    const fyAdvances = buyerAdvances.filter(ma => {
+      const origDate = ma.originalEffectiveDate || ma.effectiveDate;
+      return origDate >= fyStart && origDate <= fyEnd;
+    });
     for (const ma of fyAdvances) {
       const principalAmt = roundAmount(ma.amount);
       const totalAmt = roundAmount(ma.finalAmount || ma.amount);
-      const advDateStr = toISTDateString(ma.effectiveDate);
+      const origDate = ma.originalEffectiveDate || ma.effectiveDate;
+      const advDateStr = toISTDateString(origDate);
       transactions.push({
         type: 'advance',
         date: advDateStr,
@@ -8191,7 +8195,7 @@ export class DatabaseStorage implements IStorage {
         debit: principalAmt,
         credit: 0,
         refId: ma.id,
-        sortDate: ma.effectiveDate,
+        sortDate: origDate,
         sortOrder: 4,
       });
       if (ma.rateOfInterest > 0) {
@@ -8211,7 +8215,7 @@ export class DatabaseStorage implements IStorage {
             debit: interestAmt,
             credit: 0,
             refId: ma.id,
-            sortDate: ma.effectiveDate,
+            sortDate: origDate,
             sortOrder: 4,
           });
         }
