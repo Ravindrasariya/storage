@@ -210,6 +210,33 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-04-04_create_merchant_advance_events",
+    up: async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS merchant_advance_events (
+          id VARCHAR PRIMARY KEY,
+          merchant_advance_id VARCHAR NOT NULL,
+          event_type TEXT NOT NULL,
+          event_date TIMESTAMP NOT NULL,
+          amount REAL NOT NULL,
+          rate_of_interest REAL NOT NULL DEFAULT 0,
+          latest_principal_before REAL,
+          latest_principal_after REAL,
+          effective_date_before TIMESTAMP,
+          effective_date_after TIMESTAMP,
+          final_amount_before REAL,
+          final_amount_after REAL,
+          paid_amount_before REAL,
+          paid_amount_after REAL,
+          payment_amount REAL,
+          receipt_id VARCHAR,
+          interest_compounded REAL,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

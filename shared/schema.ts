@@ -487,6 +487,29 @@ export const merchantAdvance = pgTable("merchant_advance", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const merchantAdvanceEvents = pgTable("merchant_advance_events", {
+  id: varchar("id").primaryKey(),
+  merchantAdvanceId: varchar("merchant_advance_id").notNull(),
+  eventType: text("event_type").notNull(),
+  eventDate: timestamp("event_date").notNull(),
+  amount: real("amount").notNull(),
+  rateOfInterest: real("rate_of_interest").notNull().default(0),
+  latestPrincipalBefore: real("latest_principal_before"),
+  latestPrincipalAfter: real("latest_principal_after"),
+  effectiveDateBefore: timestamp("effective_date_before"),
+  effectiveDateAfter: timestamp("effective_date_after"),
+  finalAmountBefore: real("final_amount_before"),
+  finalAmountAfter: real("final_amount_after"),
+  paidAmountBefore: real("paid_amount_before"),
+  paidAmountAfter: real("paid_amount_after"),
+  paymentAmount: real("payment_amount"),
+  receiptId: varchar("receipt_id"),
+  interestCompounded: real("interest_compounded"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type MerchantAdvanceEvent = typeof merchantAdvanceEvents.$inferSelect;
+
 // Farmer Ledger - master farmer records per cold storage
 // Composite key: name + contact + village (case-insensitive, trimmed)
 export const farmerLedger = pgTable("farmer_ledger", {

@@ -63,6 +63,7 @@ import {
   type FarmerAdvanceFreight,
   type InsertFarmerAdvanceFreight,
   merchantAdvance,
+  merchantAdvanceEvents,
   type MerchantAdvance,
   type InsertMerchantAdvance,
   farmerLedger,
@@ -5943,6 +5944,24 @@ export class DatabaseStorage implements IStorage {
         ...data,
       })
       .returning();
+
+    await db.insert(merchantAdvanceEvents).values({
+      id: randomUUID(),
+      merchantAdvanceId: record.id,
+      eventType: 'creation',
+      eventDate: record.effectiveDate,
+      amount: record.amount,
+      rateOfInterest: record.rateOfInterest,
+      latestPrincipalBefore: null,
+      latestPrincipalAfter: record.latestPrincipal ?? record.amount,
+      effectiveDateBefore: null,
+      effectiveDateAfter: record.effectiveDate,
+      finalAmountBefore: null,
+      finalAmountAfter: record.finalAmount,
+      paidAmountBefore: null,
+      paidAmountAfter: 0,
+    });
+
     return record;
   }
 
@@ -6242,6 +6261,24 @@ export class DatabaseStorage implements IStorage {
         remarks: data.remarks || null,
       })
       .returning();
+
+    await db.insert(merchantAdvanceEvents).values({
+      id: randomUUID(),
+      merchantAdvanceId: record.id,
+      eventType: 'creation',
+      eventDate: data.effectiveDate,
+      amount: record.amount,
+      rateOfInterest: record.rateOfInterest,
+      latestPrincipalBefore: null,
+      latestPrincipalAfter: record.latestPrincipal ?? record.amount,
+      effectiveDateBefore: null,
+      effectiveDateAfter: record.effectiveDate,
+      finalAmountBefore: null,
+      finalAmountAfter: record.finalAmount,
+      paidAmountBefore: null,
+      paidAmountAfter: 0,
+    });
+
     return record;
   }
 
@@ -6421,9 +6458,32 @@ export class DatabaseStorage implements IStorage {
 
       const result = this.computeYearlySimpleInterest(curPrincipal, curEffective, maRecord.rateOfInterest, today);
 
+      const newFinalAmount = roundAmount(result.finalAmount + paid);
+
+      if (result.latestPrincipal !== curPrincipal) {
+        const interestCompounded = roundAmount(result.latestPrincipal - curPrincipal);
+        await db.insert(merchantAdvanceEvents).values({
+          id: randomUUID(),
+          merchantAdvanceId: maRecord.id,
+          eventType: 'annual_compounding',
+          eventDate: result.effectiveDate,
+          amount: maRecord.amount,
+          rateOfInterest: maRecord.rateOfInterest,
+          latestPrincipalBefore: curPrincipal,
+          latestPrincipalAfter: result.latestPrincipal,
+          effectiveDateBefore: curEffective,
+          effectiveDateAfter: result.effectiveDate,
+          finalAmountBefore: grossFinal,
+          finalAmountAfter: newFinalAmount,
+          paidAmountBefore: paid,
+          paidAmountAfter: paid,
+          interestCompounded,
+        });
+      }
+
       await db.update(merchantAdvance)
         .set({
-          finalAmount: roundAmount(result.finalAmount + paid),
+          finalAmount: newFinalAmount,
           latestPrincipal: result.latestPrincipal,
           effectiveDate: result.effectiveDate,
           lastAccrualDate: today,
