@@ -365,8 +365,8 @@ export async function registerRoutes(
         const hammaliRate = farmer?.customHammaliRate ?? globalHammali;
         
         let lotCharge: number;
-        if (effectiveUnit === "quintal" && lot.netWeight && lot.size > 0) {
-          const coldChargeQuintal = (lot.netWeight * coldChargeRate) / 100;
+        if (effectiveUnit === "quintal") {
+          const coldChargeQuintal = (lot.netWeight && lot.size > 0) ? (lot.netWeight * coldChargeRate) / 100 : 0;
           const hammaliTotal = hammaliRate * lot.size;
           lotCharge = coldChargeQuintal + hammaliTotal;
         } else {
