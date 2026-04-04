@@ -164,23 +164,6 @@ export default function StockRegister() {
     if (!farmerRecords) return new Map<string, FarmerRecord>();
     return new Map(farmerRecords.map(f => [f.farmerLedgerId, f]));
   }, [farmerRecords]);
-  
-  const calcExpectedCharge = useCallback((lot: { bagType: string; netWeight?: number | null; size: number; farmerLedgerId?: string | null }) => {
-    if (!coldStorage) return 0;
-    const farmer = lot.farmerLedgerId ? farmerLookupMap.get(lot.farmerLedgerId) : undefined;
-    const isComp = farmer?.entityType === "company";
-    const effUnit = isComp ? "quintal" : (coldStorage.chargeUnit || "bag");
-    const useWafer = lot.bagType === "wafer";
-    const gCold = useWafer ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
-    const gHam = useWafer ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
-    const cRate = farmer?.customColdChargeRate ?? gCold;
-    const hRate = farmer?.customHammaliRate ?? gHam;
-    if (effUnit === "quintal") {
-      const cQuintal = lot.netWeight ? (lot.netWeight * cRate) / 100 : 0;
-      return cQuintal + lot.size * hRate;
-    }
-    return lot.size * (cRate + hRate);
-  }, [coldStorage, farmerLookupMap]);
 
   const { data: chambers } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
@@ -204,6 +187,23 @@ export default function StockRegister() {
   const { data: coldStorage } = useQuery<ColdStorageSettings>({
     queryKey: ["/api/cold-storage"],
   });
+
+  const calcExpectedCharge = useCallback((lot: { bagType: string; netWeight?: number | null; size: number; farmerLedgerId?: string | null }) => {
+    if (!coldStorage) return 0;
+    const farmer = lot.farmerLedgerId ? farmerLookupMap.get(lot.farmerLedgerId) : undefined;
+    const isComp = farmer?.entityType === "company";
+    const effUnit = isComp ? "quintal" : (coldStorage.chargeUnit || "bag");
+    const useWafer = lot.bagType === "wafer";
+    const gCold = useWafer ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
+    const gHam = useWafer ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
+    const cRate = farmer?.customColdChargeRate ?? gCold;
+    const hRate = farmer?.customHammaliRate ?? gHam;
+    if (effUnit === "quintal") {
+      const cQuintal = lot.netWeight ? (lot.netWeight * cRate) / 100 : 0;
+      return cQuintal + lot.size * hRate;
+    }
+    return lot.size * (cRate + hRate);
+  }, [coldStorage, farmerLookupMap]);
 
   // Infinite scroll state
   const PAGE_SIZE = 50;
