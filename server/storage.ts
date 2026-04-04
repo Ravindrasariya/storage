@@ -3153,7 +3153,7 @@ export class DatabaseStorage implements IStorage {
         const amountToApply = Math.min(remainingAmount, remainingDue);
         if (amountToApply > 0) {
           const newPaid = roundAmount((receivable.paidAmount || 0) + amountToApply);
-          const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount);
+          const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount, receipt.receivedAt);
           await db.update(openingReceivables)
             .set({ paidAmount: newPaid, ...interestFields })
             .where(eq(openingReceivables.id, receivable.id));
@@ -3181,7 +3181,7 @@ export class DatabaseStorage implements IStorage {
           const amountToApply = Math.min(remainingAmount, remainingDue);
           if (amountToApply > 0) {
             const newPaid = roundAmount((record.paidAmount || 0) + amountToApply);
-            const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+            const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, receipt.receivedAt);
             await db.update(farmerAdvanceFreight)
               .set({ paidAmount: newPaid, ...interestFields })
               .where(eq(farmerAdvanceFreight.id, record.id));
@@ -3210,7 +3210,7 @@ export class DatabaseStorage implements IStorage {
           const amountToApply = Math.min(remainingAmount, remainingDue);
           if (amountToApply > 0) {
             const newPaid = roundAmount((record.paidAmount || 0) + amountToApply);
-            const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+            const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, receipt.receivedAt);
             await db.update(farmerAdvanceFreight)
               .set({ paidAmount: newPaid, ...interestFields })
               .where(eq(farmerAdvanceFreight.id, record.id));
@@ -3529,7 +3529,7 @@ export class DatabaseStorage implements IStorage {
 
         if (remainingAmount >= receivableDue) {
           const newPaid = roundAmount((receivable.paidAmount || 0) + receivableDue);
-          const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount);
+          const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount, receipt.receivedAt);
           await db.update(openingReceivables)
             .set({ paidAmount: newPaid, ...interestFields })
             .where(eq(openingReceivables.id, receivable.id));
@@ -3538,7 +3538,7 @@ export class DatabaseStorage implements IStorage {
           appliedAmount = roundAmount(appliedAmount + receivableDue);
         } else {
           const newPaidAmount = roundAmount((receivable.paidAmount || 0) + remainingAmount);
-          const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaidAmount, receivable.dueAmount);
+          const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaidAmount, receivable.dueAmount, receipt.receivedAt);
           await db.update(openingReceivables)
             .set({ paidAmount: newPaidAmount, ...interestFields })
             .where(eq(openingReceivables.id, receivable.id));
@@ -5363,7 +5363,7 @@ export class DatabaseStorage implements IStorage {
           
           if (amountToApply > 0) {
             const newPaid = roundAmount((receivable.paidAmount || 0) + amountToApply);
-            const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount);
+            const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount, txn.date);
             await db.update(openingReceivables)
               .set({ paidAmount: newPaid, ...interestFields })
               .where(eq(openingReceivables.id, receivable.id));
@@ -5391,7 +5391,7 @@ export class DatabaseStorage implements IStorage {
             const amountToApply = Math.min(remainingAmount, remainingDue);
             if (amountToApply > 0) {
               const newPaid = roundAmount((record.paidAmount || 0) + amountToApply);
-              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, txn.date);
               await db.update(farmerAdvanceFreight)
                 .set({ paidAmount: newPaid, ...interestFields })
                 .where(eq(farmerAdvanceFreight.id, record.id));
@@ -5420,7 +5420,7 @@ export class DatabaseStorage implements IStorage {
             const amountToApply = Math.min(remainingAmount, remainingDue);
             if (amountToApply > 0) {
               const newPaid = roundAmount((record.paidAmount || 0) + amountToApply);
-              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, txn.date);
               await db.update(farmerAdvanceFreight)
                 .set({ paidAmount: newPaid, ...interestFields })
                 .where(eq(farmerAdvanceFreight.id, record.id));
@@ -5502,7 +5502,7 @@ export class DatabaseStorage implements IStorage {
           const amountToApply = Math.min(remainingAmount, remainingDue);
           if (amountToApply > 0) {
             const newPaid = roundAmount((receivable.paidAmount || 0) + amountToApply);
-            const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount);
+            const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount, txn.date);
             await db.update(openingReceivables)
               .set({ paidAmount: newPaid, ...interestFields })
               .where(eq(openingReceivables.id, receivable.id));
@@ -5531,7 +5531,7 @@ export class DatabaseStorage implements IStorage {
             const amountToApply = Math.min(remainingAmount, remainingDue);
             if (amountToApply > 0) {
               const newPaid = roundAmount((record.paidAmount || 0) + amountToApply);
-              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, txn.date);
               await db.update(farmerAdvanceFreight)
                 .set({ paidAmount: newPaid, ...interestFields })
                 .where(eq(farmerAdvanceFreight.id, record.id));
@@ -5560,7 +5560,7 @@ export class DatabaseStorage implements IStorage {
             const amountToApply = Math.min(remainingAmount, remainingDue);
             if (amountToApply > 0) {
               const newPaid = roundAmount((record.paidAmount || 0) + amountToApply);
-              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, txn.date);
               await db.update(farmerAdvanceFreight)
                 .set({ paidAmount: newPaid, ...interestFields })
                 .where(eq(farmerAdvanceFreight.id, record.id));
@@ -5654,7 +5654,7 @@ export class DatabaseStorage implements IStorage {
           
           if (amountToApply > 0) {
             const newPaid = roundAmount((receivable.paidAmount || 0) + amountToApply);
-            const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount);
+            const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount, txn.date);
             await db.update(openingReceivables)
               .set({ paidAmount: newPaid, ...interestFields })
               .where(eq(openingReceivables.id, receivable.id));
@@ -5682,7 +5682,7 @@ export class DatabaseStorage implements IStorage {
             const amountToApply = Math.min(remainingAmount, remainingDue);
             if (amountToApply > 0) {
               const newPaid = roundAmount((record.paidAmount || 0) + amountToApply);
-              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, txn.date);
               await db.update(farmerAdvanceFreight)
                 .set({ paidAmount: newPaid, ...interestFields })
                 .where(eq(farmerAdvanceFreight.id, record.id));
@@ -5711,7 +5711,7 @@ export class DatabaseStorage implements IStorage {
             const amountToApply = Math.min(remainingAmount, remainingDue);
             if (amountToApply > 0) {
               const newPaid = roundAmount((record.paidAmount || 0) + amountToApply);
-              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+              const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, txn.date);
               await db.update(farmerAdvanceFreight)
                 .set({ paidAmount: newPaid, ...interestFields })
                 .where(eq(farmerAdvanceFreight.id, record.id));
@@ -6175,7 +6175,7 @@ export class DatabaseStorage implements IStorage {
         if (due <= 0) continue;
         const applyAmount = Math.min(remaining, due);
         const newPaid = roundAmount((record.paidAmount || 0) + applyAmount);
-        const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+        const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, rcpt.receivedAt);
         await db.update(merchantAdvance)
           .set({ paidAmount: newPaid, ...interestFields })
           .where(eq(merchantAdvance.id, record.id));
@@ -6432,7 +6432,8 @@ export class DatabaseStorage implements IStorage {
   computeInterestAwarePaymentFields(
     record: { latestPrincipal: number | null; effectiveDate: Date | string | null; rateOfInterest: number; finalAmount: number | null; paidAmount: number | null; dueAmount?: number | null; previousEffectiveDate?: Date | string | null; previousLatestPrincipal?: number | null },
     newPaidAmount: number,
-    defaultPrincipal: number
+    defaultPrincipal: number,
+    paymentDate?: Date
   ): { latestPrincipal?: number; effectiveDate?: Date; previousEffectiveDate?: Date | null; previousLatestPrincipal?: number | null } | null {
     if (record.rateOfInterest <= 0) return null;
     const prevPrincipal = record.latestPrincipal ?? defaultPrincipal;
@@ -6441,11 +6442,11 @@ export class DatabaseStorage implements IStorage {
     if (netFinal <= 0) return null;
     const newPrincipal = Math.min(prevPrincipal, netFinal);
     if (newPrincipal < prevPrincipal) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const effectivePaymentDate = paymentDate ? new Date(paymentDate) : new Date();
+      effectivePaymentDate.setHours(0, 0, 0, 0);
       const result: { latestPrincipal: number; effectiveDate: Date; previousEffectiveDate?: Date | null; previousLatestPrincipal?: number | null } = {
         latestPrincipal: roundAmount(newPrincipal),
-        effectiveDate: today,
+        effectiveDate: effectivePaymentDate,
       };
       if (!record.previousEffectiveDate) {
         result.previousEffectiveDate = record.effectiveDate ? new Date(record.effectiveDate) : null;
