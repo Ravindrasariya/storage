@@ -6137,44 +6137,46 @@ export class DatabaseStorage implements IStorage {
     let recordsUpdated = 0;
     const appliedAdvanceIds: string[] = [];
 
-    for (const record of orderedRecords) {
-      if (remaining <= 0) break;
-      const due = (record.finalAmount || 0) - (record.paidAmount || 0);
-      if (due <= 0) continue;
+    return await db.transaction(async (tx) => {
+      for (const record of orderedRecords) {
+        if (remaining <= 0) break;
+        const due = (record.finalAmount || 0) - (record.paidAmount || 0);
+        if (due <= 0) continue;
 
-      const applyAmount = Math.min(remaining, due);
-      const newPaid = roundAmount((record.paidAmount || 0) + applyAmount);
-      const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
-      await db.update(merchantAdvance)
-        .set({ paidAmount: newPaid, ...interestFields })
-        .where(eq(merchantAdvance.id, record.id));
+        const applyAmount = Math.min(remaining, due);
+        const newPaid = roundAmount((record.paidAmount || 0) + applyAmount);
+        const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount);
+        await tx.update(merchantAdvance)
+          .set({ paidAmount: newPaid, ...interestFields })
+          .where(eq(merchantAdvance.id, record.id));
 
-      await db.insert(merchantAdvanceEvents).values({
-        id: randomUUID(),
-        merchantAdvanceId: record.id,
-        eventType: 'payment',
-        eventDate: eventDate || new Date(),
-        amount: record.amount,
-        rateOfInterest: record.rateOfInterest,
-        latestPrincipalBefore: record.latestPrincipal ?? record.amount,
-        latestPrincipalAfter: interestFields?.latestPrincipal ?? record.latestPrincipal ?? record.amount,
-        effectiveDateBefore: record.effectiveDate,
-        effectiveDateAfter: interestFields?.effectiveDate ?? record.effectiveDate,
-        finalAmountBefore: record.finalAmount ?? record.amount,
-        finalAmountAfter: record.finalAmount ?? record.amount,
-        paidAmountBefore: record.paidAmount || 0,
-        paidAmountAfter: newPaid,
-        paymentAmount: applyAmount,
-        receiptId: receiptId || null,
-      });
+        await tx.insert(merchantAdvanceEvents).values({
+          id: randomUUID(),
+          merchantAdvanceId: record.id,
+          eventType: 'payment',
+          eventDate: eventDate || new Date(),
+          amount: record.amount,
+          rateOfInterest: record.rateOfInterest,
+          latestPrincipalBefore: record.latestPrincipal ?? record.amount,
+          latestPrincipalAfter: interestFields?.latestPrincipal ?? record.latestPrincipal ?? record.amount,
+          effectiveDateBefore: record.effectiveDate,
+          effectiveDateAfter: interestFields?.effectiveDate ?? record.effectiveDate,
+          finalAmountBefore: record.finalAmount ?? record.amount,
+          finalAmountAfter: record.finalAmount ?? record.amount,
+          paidAmountBefore: record.paidAmount || 0,
+          paidAmountAfter: newPaid,
+          paymentAmount: applyAmount,
+          receiptId: receiptId || null,
+        });
 
-      totalApplied += applyAmount;
-      remaining -= applyAmount;
-      recordsUpdated++;
-      appliedAdvanceIds.push(record.id);
-    }
+        totalApplied += applyAmount;
+        remaining -= applyAmount;
+        recordsUpdated++;
+        appliedAdvanceIds.push(record.id);
+      }
 
-    return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated, appliedAdvanceIds };
+      return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated, appliedAdvanceIds };
+    });
   }
 
   async recomputeMerchantAdvancePayments(coldStorageId: string, buyerLedgerId: string): Promise<void> {
