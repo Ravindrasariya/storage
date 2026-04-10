@@ -74,6 +74,7 @@ interface LotData {
   type: string;
   bagType: "wafer" | "seed" | "Ration";
   bagTypeLabel: string;
+  marka: string;
   chamberId: string;
   floor: number;
   position: string;
@@ -92,6 +93,7 @@ const defaultLotData: LotData = {
   type: "",
   bagType: "wafer",
   bagTypeLabel: "",
+  marka: "",
   chamberId: "",
   floor: 0,
   position: "",
@@ -931,7 +933,7 @@ export default function LotEntry() {
                   <Package className="h-4 w-4 text-chart-2" />
                   <h3 className="font-semibold">{t("lotInformation")}</h3>
                 </div>
-                <div className={`grid grid-cols-2 gap-4 ${(coldStorage?.chargeUnit === "quintal" || isCompany) ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+                <div className={`grid grid-cols-2 gap-4 ${(coldStorage?.chargeUnit === "quintal" || isCompany) ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
                   <div className="col-span-2 sm:col-span-1">
                     <label className="text-sm font-medium">{t("lotNo")}</label>
                     {index === 0 ? (
@@ -972,6 +974,15 @@ export default function LotEntry() {
                         {manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "...")}
                       </div>
                     )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">{t("marka") || "Marka"}</label>
+                    <Input
+                      value={lot.marka}
+                      onChange={(e) => updateLot(index, "marka", e.target.value)}
+                      placeholder="e.g., ABC-123"
+                      data-testid={`input-marka-${index}`}
+                    />
                   </div>
                   <div>
                     <label className="text-sm font-medium">{t("size")} *</label>

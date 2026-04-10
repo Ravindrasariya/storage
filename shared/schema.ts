@@ -87,6 +87,7 @@ export const lots = pgTable("lots", {
   state: text("state").notNull(),
   contactNumber: text("contact_number").notNull(),
   lotNo: text("lot_no").notNull(), // String representation of entrySequence (for backward compat)
+  marka: text("marka"), // Optional marka/mark label (free text)
   entrySequence: integer("entry_sequence"), // Unified lot/receipt/bill number (auto-assigned)
   size: integer("size").notNull(), // Original lot size (bags)
   netWeight: real("net_weight"), // Net weight in kg (for quintal-based charging)

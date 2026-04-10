@@ -437,6 +437,7 @@ export async function registerRoutes(
       type: z.string().min(1),
       bagType: z.enum(["wafer", "seed", "Ration"]),
       bagTypeLabel: z.string().optional().default(""),
+      marka: z.string().optional().default(""),
       chamberId: z.string().optional().default(""),
       floor: z.number().int().min(0).optional().default(0),
       position: z.string().optional().default(""),
@@ -787,6 +788,8 @@ export async function registerRoutes(
     size: z.number().int().min(1).optional(),
     // Lot number (editable with uniqueness validation)
     lotNo: z.string().optional(),
+    // Marka (optional label)
+    marka: z.string().optional(),
     // Farmer details (editable)
     farmerName: z.string().min(1).optional(),
     village: z.string().optional(),
@@ -851,6 +854,7 @@ export async function registerRoutes(
         position: lot.position,
         quality: lot.quality,
         lotNo: lot.lotNo,
+        marka: lot.marka,
         size: lot.size,
         farmerName: lot.farmerName,
         village: lot.village,

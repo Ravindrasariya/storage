@@ -83,6 +83,7 @@ const translations: Translations = {
   type: { en: "Potato Variety", hi: "आलू की किस्म" },
   bagType: { en: "Potato Type", hi: "आलू का प्रकार" },
   bagTypeLabel: { en: "Bag type", hi: "बैग प्रकार" },
+  marka: { en: "Marka", hi: "मारका" },
   enterBagType: { en: "e.g., 50kg, Jute", hi: "जैसे: 50kg, जूट" },
   quality: { en: "Quality", hi: "गुणवत्ता" },
   selectQuality: { en: "Select Quality", hi: "गुणवत्ता चुनें" },

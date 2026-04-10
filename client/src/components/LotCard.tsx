@@ -113,6 +113,11 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
               <Package className="h-4 w-4 shrink-0" />
               <span>
                 {t("lotNo")}: <span className="font-mono font-medium text-foreground">{lot.lotNo}</span>
+                {lot.marka && (
+                  <span className="ml-2 text-muted-foreground">
+                    {t("marka") || "Marka"}: <span className="font-medium text-foreground">{lot.marka}</span>
+                  </span>
+                )}
               </span>
             </div>
             <div className="flex items-center gap-2">

@@ -118,6 +118,7 @@ export default function StockRegister() {
     netWeight?: number;
     size: number;
     lotNo: string;
+    marka: string;
     farmerName: string;
     village: string;
     tehsil: string;
@@ -1015,6 +1016,7 @@ export default function StockRegister() {
       netWeight: lot.netWeight || undefined,
       size: lot.size,
       lotNo: lot.lotNo,
+      marka: lot.marka || "",
       farmerName: lot.farmerName,
       village: lot.village || "",
       tehsil: lot.tehsil || "",
@@ -1902,7 +1904,7 @@ export default function StockRegister() {
           {/* Lot Information - Lot No is editable */}
           <div className="space-y-4 border-t pt-4">
             <h4 className="font-semibold text-sm text-muted-foreground">{t("lotInformation")}</h4>
-            <div className="grid grid-cols-3 gap-3 p-3 bg-muted/50 rounded-lg">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-muted/50 rounded-lg">
               <div className="flex items-center gap-2">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("lotNo")}</Label>
                 {editForm && canEdit ? (
@@ -1924,6 +1926,20 @@ export default function StockRegister() {
                   </div>
                 ) : (
                   <p className="font-medium text-sm">{selectedLot?.lotNo}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("marka") || "Marka"}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.marka}
+                    onChange={(e) => setEditForm({ ...editForm, marka: e.target.value })}
+                    className="h-8 w-24 text-sm"
+                    placeholder="—"
+                    data-testid="input-edit-marka"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.marka || "—"}</p>
                 )}
               </div>
               <div className="flex items-center gap-2">
