@@ -1904,8 +1904,8 @@ export default function StockRegister() {
           {/* Lot Information - Lot No is editable */}
           <div className="space-y-4 border-t pt-4">
             <h4 className="font-semibold text-sm text-muted-foreground">{t("lotInformation")}</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("lotNo")}</Label>
                 {editForm && canEdit ? (
                   <div>
@@ -1917,7 +1917,7 @@ export default function StockRegister() {
                         setEditForm({ ...editForm, lotNo: e.target.value });
                         setLotNoError(null);
                       }}
-                      className={`h-8 w-16 text-sm ${lotNoError ? "border-destructive" : ""}`}
+                      className={`h-8 w-14 text-sm ${lotNoError ? "border-destructive" : ""}`}
                       data-testid="input-edit-lot-no"
                     />
                     {lotNoError && (
@@ -1928,13 +1928,13 @@ export default function StockRegister() {
                   <p className="font-medium text-sm">{selectedLot?.lotNo}</p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("marka") || "Marka"}</Label>
                 {editForm && canEdit ? (
                   <Input
                     value={editForm.marka}
                     onChange={(e) => setEditForm({ ...editForm, marka: e.target.value })}
-                    className="h-8 w-24 text-sm"
+                    className="h-8 w-20 text-sm"
                     placeholder="—"
                     data-testid="input-edit-marka"
                   />
@@ -1942,7 +1942,7 @@ export default function StockRegister() {
                   <p className="font-medium text-sm">{selectedLot?.marka || "—"}</p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <p className="text-xs text-muted-foreground whitespace-nowrap">{t("originalSize")}</p>
                 {editForm && canEdit ? (
                   <Input
@@ -1950,14 +1950,14 @@ export default function StockRegister() {
                     min={1}
                     value={editForm.size}
                     onChange={(e) => setEditForm({ ...editForm, size: parseInt(e.target.value, 10) || 0 })}
-                    className="h-8 w-16 text-sm"
+                    className="h-8 w-14 text-sm"
                     data-testid="input-edit-size"
                   />
                 ) : (
                   <p className="font-medium text-sm">{selectedLot?.size} {t("bags")}</p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <p className="text-xs text-muted-foreground whitespace-nowrap">{t("remainingBags")}</p>
                 <p className="font-medium text-sm">{selectedLot?.remainingSize} {t("bags")}</p>
               </div>
