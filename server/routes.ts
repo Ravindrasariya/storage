@@ -846,6 +846,7 @@ export async function registerRoutes(
                                        validated.position !== undefined || 
                                        validated.quality !== undefined ||
                                        validated.lotNo !== undefined ||
+                                       validated.marka !== undefined ||
                                        validated.size !== undefined;
 
       const previousData = {
