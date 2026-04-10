@@ -455,12 +455,17 @@ export default function StockRegister() {
       .slice(0, 8);
   }, [farmerRecords, searchQuery]);
 
-  // Filtered suggestions for farmer name search
+  // Filtered suggestions for farmer name search (matches name and/or village)
   const getFarmerNameSuggestions = useMemo(() => {
     if (!farmerRecords || farmerRecords.length === 0 || !farmerNameQuery.trim()) return [];
-    const nameVal = farmerNameQuery.toLowerCase().trim();
+    const tokens = farmerNameQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return [];
     return farmerRecords
-      .filter(farmer => farmer.farmerName.toLowerCase().includes(nameVal))
+      .filter(farmer => {
+        const name = farmer.farmerName.toLowerCase();
+        const village = farmer.village.toLowerCase();
+        return tokens.every(token => name.includes(token) || village.includes(token));
+      })
       .slice(0, 8);
   }, [farmerRecords, farmerNameQuery]);
 
