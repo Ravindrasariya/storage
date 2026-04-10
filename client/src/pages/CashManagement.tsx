@@ -5553,7 +5553,7 @@ export default function CashManagement() {
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-xs">{t("district")} *</Label>
+                          <Label className="text-xs">{t("district")}</Label>
                           <Select value={newReceivableDistrict} onValueChange={setNewReceivableDistrict}>
                             <SelectTrigger data-testid="select-receivable-district">
                               <SelectValue placeholder={t("selectDistrict")} />
@@ -5570,7 +5570,7 @@ export default function CashManagement() {
                           </Select>
                         </div>
                         <div>
-                          <Label className="text-xs">{t("state")} *</Label>
+                          <Label className="text-xs">{t("state")}</Label>
                           <Select value={newReceivableState} onValueChange={setNewReceivableState}>
                             <SelectTrigger data-testid="select-receivable-state">
                               <SelectValue placeholder={t("selectState")} />
@@ -5667,14 +5667,7 @@ export default function CashManagement() {
                           toast({ title: t("error"), description: t("villageRequired"), variant: "destructive" });
                           return;
                         }
-                        if (!newReceivableDistrict) {
-                          toast({ title: t("error"), description: t("districtRequired"), variant: "destructive" });
-                          return;
-                        }
-                        if (!newReceivableState) {
-                          toast({ title: t("error"), description: t("stateRequired"), variant: "destructive" });
-                          return;
-                        }
+                        
                       }
                       const rateVal = parseFloat(newReceivableRateOfInterest) || 0;
                       createReceivableMutation.mutate({

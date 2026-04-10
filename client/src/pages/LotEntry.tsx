@@ -60,9 +60,9 @@ interface ColdStorageSettings {
 const farmerSchema = z.object({
   farmerName: z.string().min(1, "Farmer name is required"),
   village: z.string().min(1, "Village is required"),
-  tehsil: z.string().min(1, "Tehsil is required"),
-  district: z.string().min(1, "District is required"),
-  state: z.string().min(1, "State is required"),
+  tehsil: z.string().optional().default(""),
+  district: z.string().optional().default(""),
+  state: z.string().optional().default(""),
   contactNumber: z.string().regex(/^\d{10}$/, "Contact number must be exactly 10 digits"),
 });
 
@@ -808,7 +808,7 @@ export default function LotEntry() {
                 name="tehsil"
                 render={({ field }) => (
                   <FormItem className="relative">
-                    <FormLabel>{t("tehsil")} *</FormLabel>
+                    <FormLabel>{t("tehsil")}</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
@@ -852,7 +852,7 @@ export default function LotEntry() {
                 name="district"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t("district")} *</FormLabel>
+                    <FormLabel>{t("district")}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger 
@@ -881,7 +881,7 @@ export default function LotEntry() {
                 name="state"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t("state")} *</FormLabel>
+                    <FormLabel>{t("state")}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger 

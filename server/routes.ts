@@ -425,9 +425,9 @@ export async function registerRoutes(
     farmer: z.object({
       farmerName: z.string().min(1),
       village: z.string().min(1),
-      tehsil: z.string().min(1),
-      district: z.string().min(1),
-      state: z.string().min(1),
+      tehsil: z.string().optional().default(""),
+      district: z.string().optional().default(""),
+      state: z.string().optional().default(""),
       contactNumber: z.string().min(1),
       entityType: z.enum(["farmer", "company"]).optional(),
     }),
