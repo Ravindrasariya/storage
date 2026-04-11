@@ -1220,7 +1220,7 @@ export default function LotEntry() {
                             <img
                               src={imagePreviews[index]}
                               alt="Preview"
-                              className="w-8 h-8 object-cover rounded border"
+                              className="w-10 h-10 object-cover rounded border"
                             />
                           )}
                         </div>
