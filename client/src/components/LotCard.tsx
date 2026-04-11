@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Edit, Phone, MapPin, Package, Layers, ShoppingCart, CheckCircle, Clock, Receipt, Printer } from "lucide-react";
+import { Edit, Phone, MapPin, Package, Layers, ShoppingCart, CheckCircle, Clock, Receipt, Printer, Truck } from "lucide-react";
 import type { Lot } from "@shared/schema";
 import { Currency } from "@/components/Currency";
 
@@ -120,9 +120,20 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
                 )}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Phone className="h-4 w-4 shrink-0" />
               <span className="font-mono">{lot.contactNumber}</span>
+              {lot.rstNo && (
+                <span className="text-xs text-muted-foreground">
+                  RST: <span className="font-medium text-foreground">{lot.rstNo}</span>
+                </span>
+              )}
+              {lot.vehicle && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Truck className="h-3 w-3 shrink-0" />
+                  <span className="font-medium text-foreground">{lot.vehicle}</span>
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <MapPin className="h-4 w-4 shrink-0" />

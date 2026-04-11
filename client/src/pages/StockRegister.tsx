@@ -119,6 +119,8 @@ export default function StockRegister() {
     size: number;
     lotNo: string;
     marka: string;
+    rstNo: string;
+    vehicle: string;
     farmerName: string;
     village: string;
     tehsil: string;
@@ -1054,6 +1056,8 @@ export default function StockRegister() {
       size: lot.size,
       lotNo: lot.lotNo,
       marka: lot.marka || "",
+      rstNo: lot.rstNo || "",
+      vehicle: lot.vehicle || "",
       farmerName: lot.farmerName,
       village: lot.village || "",
       tehsil: lot.tehsil || "",
@@ -2002,6 +2006,34 @@ export default function StockRegister() {
               <div className="flex items-center gap-1">
                 <p className="text-xs text-muted-foreground whitespace-nowrap">{t("remainingBags")}</p>
                 <p className="font-medium text-sm">{selectedLot?.remainingSize} {t("bags")}</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("rstNo") || "RST No"}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.rstNo}
+                    onChange={(e) => setEditForm({ ...editForm, rstNo: e.target.value })}
+                    className="h-8 w-20 text-sm"
+                    placeholder="—"
+                    data-testid="input-edit-rst-no"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.rstNo || "—"}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("vehicle") || "Vehicle"}</Label>
+                {editForm && canEdit ? (
+                  <Input
+                    value={editForm.vehicle}
+                    onChange={(e) => setEditForm({ ...editForm, vehicle: e.target.value })}
+                    className="h-8 w-24 text-sm"
+                    placeholder="e.g., Tractor"
+                    data-testid="input-edit-vehicle"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.vehicle || "—"}</p>
+                )}
               </div>
             </div>
           </div>

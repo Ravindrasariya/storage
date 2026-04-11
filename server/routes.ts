@@ -438,6 +438,8 @@ export async function registerRoutes(
       bagType: z.enum(["wafer", "seed", "Ration"]),
       bagTypeLabel: z.string().optional().default(""),
       marka: z.string().optional().default(""),
+      rstNo: z.string().optional(),
+      vehicle: z.string().optional(),
       chamberId: z.string().optional().default(""),
       floor: z.number().int().min(0).optional().default(0),
       position: z.string().optional().default(""),
@@ -790,6 +792,9 @@ export async function registerRoutes(
     lotNo: z.string().optional(),
     // Marka (optional label)
     marka: z.string().optional(),
+    // RST No and Vehicle
+    rstNo: z.string().optional(),
+    vehicle: z.string().optional(),
     // Farmer details (editable)
     farmerName: z.string().min(1).optional(),
     village: z.string().optional(),
@@ -4139,8 +4144,8 @@ export async function registerRoutes(
       // Column headers (English / Hindi)
       // "Potato Type" = wafer/seed/Ration classification, "Potato Variety" = CS1/CS3/etc., "Bag Type" = custom label (bagTypeLabel)
       const headers = language === "hi" 
-        ? ["तारीख", "रसीद नं.", "किसान का नाम", "मोबाइल", "गाँव", "तहसील", "जिला", "राज्य", "चैम्बर", "फ्लोर", "पोजीशन", "आलू प्रकार", "बैग का प्रकार", "कुल बोरे", "बचे हुए बोरे", "आलू किस्म", "गुणवत्ता", "आलू का आकार", "प्रारंभिक नेट वजन (Kg)", "अपेक्षित कोल्ड शुल्क", "भुगतान किया गया शुल्क", "बकाया शुल्क", "बेस कोल्ड चार्ज बिल्ड", "टिप्पणी", "स्थिति"]
-        : ["Date", "Receipt #", "Farmer Name", "Mobile", "Village", "Tehsil", "District", "State", "Chamber", "Floor", "Position", "Potato Type", "Bag Type", "Total Bags", "Remaining Bags", "Potato Variety", "Quality", "Potato Size", "Initial Net Weight (Kg)", "Expected Cold Charges", "Charges Paid", "Charges Due", "Base Cold Charges Billed", "Remarks", "Status"];
+        ? ["तारीख", "रसीद नं.", "किसान का नाम", "मोबाइल", "गाँव", "तहसील", "जिला", "राज्य", "चैम्बर", "फ्लोर", "पोजीशन", "आलू प्रकार", "बैग का प्रकार", "कुल बोरे", "बचे हुए बोरे", "आलू किस्म", "गुणवत्ता", "आलू का आकार", "प्रारंभिक नेट वजन (Kg)", "अपेक्षित कोल्ड शुल्क", "भुगतान किया गया शुल्क", "बकाया शुल्क", "बेस कोल्ड चार्ज बिल्ड", "टिप्पणी", "RST No", "वाहन", "स्थिति"]
+        : ["Date", "Receipt #", "Farmer Name", "Mobile", "Village", "Tehsil", "District", "State", "Chamber", "Floor", "Position", "Potato Type", "Bag Type", "Total Bags", "Remaining Bags", "Potato Variety", "Quality", "Potato Size", "Initial Net Weight (Kg)", "Expected Cold Charges", "Charges Paid", "Charges Due", "Base Cold Charges Billed", "Remarks", "RST No", "Vehicle", "Status"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
@@ -4177,6 +4182,8 @@ export async function registerRoutes(
           chargesDue.toFixed(2),
           baseBilledTag,
           lot.remarks || "",
+          lot.rstNo || "",
+          lot.vehicle || "",
           lot.saleStatus,
         ];
         csvRows.push(row.map(escapeCSV).join(","));

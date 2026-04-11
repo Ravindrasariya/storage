@@ -76,6 +76,8 @@ interface LotData {
   bagTypeLabel: string;
   marka: string;
   markaUserEdited: boolean;
+  rstNo: string;
+  vehicle: string;
   chamberId: string;
   floor: number;
   position: string;
@@ -96,6 +98,8 @@ const defaultLotData: LotData = {
   bagTypeLabel: "",
   marka: "",
   markaUserEdited: false,
+  rstNo: "",
+  vehicle: "",
   chamberId: "",
   floor: 0,
   position: "",
@@ -1043,6 +1047,24 @@ export default function LotEntry() {
                       }}
                       placeholder="e.g., ABC-123"
                       data-testid={`input-marka-${index}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">{t("rstNo") || "RST No"}</label>
+                    <Input
+                      value={lot.rstNo}
+                      onChange={(e) => updateLot(index, "rstNo", e.target.value)}
+                      placeholder="RST No"
+                      data-testid={`input-rst-no-${index}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">{t("vehicle") || "Vehicle"}</label>
+                    <Input
+                      value={lot.vehicle}
+                      onChange={(e) => updateLot(index, "vehicle", e.target.value)}
+                      placeholder="e.g., Tractor"
+                      data-testid={`input-vehicle-${index}`}
                     />
                   </div>
                   {(coldStorage?.chargeUnit === "quintal" || isCompany) && (
