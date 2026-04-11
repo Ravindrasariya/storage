@@ -659,12 +659,12 @@ export default function LotEntry() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <Card className="p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-              <div className="flex items-center gap-2">
-                <User className="h-5 w-5 text-chart-1" />
-                <h2 className="text-lg font-semibold">{t("farmerDetails")}</h2>
-              </div>
-              <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <User className="h-5 w-5 text-chart-1" />
+                  <h2 className="text-lg font-semibold">{t("farmerDetails")}</h2>
+                </div>
                 <div className="flex items-center gap-2">
                   <CalendarDays className="h-4 w-4 text-muted-foreground" />
                   <label className="text-sm font-medium text-muted-foreground">{t("entryDate")}:</label>
@@ -677,25 +677,25 @@ export default function LotEntry() {
                     data-testid="input-entry-date"
                   />
                 </div>
-                <label className={`flex items-center gap-2 ${farmerFromDropdown ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
-                  <input
-                    type="checkbox"
-                    checked={isCompany}
-                    onChange={(e) => { setIsCompany(e.target.checked); sessionStorage.setItem("lotEntry_isCompany", String(e.target.checked)); }}
-                    disabled={farmerFromDropdown}
-                    className="h-4 w-4 rounded border-gray-300"
-                    data-testid="checkbox-is-company"
-                  />
-                  <span className="text-sm font-medium">{t("isCompany")}</span>
-                </label>
               </div>
+              <label className={`flex items-center gap-2 ${farmerFromDropdown ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
+                <input
+                  type="checkbox"
+                  checked={isCompany}
+                  onChange={(e) => { setIsCompany(e.target.checked); sessionStorage.setItem("lotEntry_isCompany", String(e.target.checked)); }}
+                  disabled={farmerFromDropdown}
+                  className="h-4 w-4 rounded border-gray-300"
+                  data-testid="checkbox-is-company"
+                />
+                <span className="text-sm font-medium">{t("isCompany")}</span>
+              </label>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <FormField
                 control={form.control}
                 name="farmerName"
                 render={({ field }) => (
-                  <FormItem className="relative col-span-2 sm:col-span-1">
+                  <FormItem className="relative">
                     <FormLabel>{t("farmerName")} *</FormLabel>
                     <FormControl>
                       <Input
@@ -737,7 +737,7 @@ export default function LotEntry() {
                 control={form.control}
                 name="contactNumber"
                 render={({ field }) => (
-                  <FormItem className="relative col-span-2 sm:col-span-1">
+                  <FormItem className="relative">
                     <FormLabel>{t("contactNumber")} *</FormLabel>
                     <FormControl>
                       <Input
@@ -1149,85 +1149,87 @@ export default function LotEntry() {
                   <ClipboardCheck className="h-4 w-4 text-chart-4" />
                   <h3 className="font-semibold">{t("qualityAssessment")}</h3>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium">{t("quality")}</label>
-                    <Select value={lot.quality} onValueChange={(v) => updateLot(index, "quality", v as "poor" | "medium" | "good")}>
-                      <SelectTrigger data-testid={`select-quality-${index}`}>
-                        <SelectValue placeholder="Select quality" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="poor">{t("poor")}</SelectItem>
-                        <SelectItem value="medium">{t("medium")}</SelectItem>
-                        <SelectItem value="good">{t("good")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">{t("potatoSize")} *</label>
-                    <Select value={lot.potatoSize} onValueChange={(v) => updateLot(index, "potatoSize", v as "large" | "small")}>
-                      <SelectTrigger data-testid={`select-potato-size-${index}`}>
-                        <SelectValue placeholder={t("selectSize")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="large">{t("large")}</SelectItem>
-                        <SelectItem value="small">{t("small")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-sm font-medium">{t("assayingType")} *</label>
-                    <RadioGroup
-                      value={lot.assayingType}
-                      onValueChange={(v) => updateLot(index, "assayingType", v as "Quality Check" | "Visual")}
-                      className="flex gap-4 pt-2"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="Quality Check" id={`quality-check-${index}`} data-testid={`radio-quality-check-${index}`} />
-                        <label htmlFor={`quality-check-${index}`} className="text-sm">
-                          {t("qualityCheck")}
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="Visual" id={`visual-${index}`} data-testid={`radio-visual-${index}`} />
-                        <label htmlFor={`visual-${index}`} className="text-sm">
-                          {t("visual")}
-                        </label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-
-                  {lot.assayingType === "Quality Check" && (
-                    <>
-                      <div className="col-span-2">
-                        <label className="text-sm font-medium">{t("assayerImage")}</label>
-                        <div className="flex flex-col gap-4 mt-2">
-                          <div className="flex items-center gap-4">
-                            <label
-                              htmlFor={`image-upload-${index}`}
-                              className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md cursor-pointer hover-elevate"
-                            >
-                              <Upload className="h-4 w-4" />
-                              Upload Image
-                            </label>
-                            <input
-                              id={`image-upload-${index}`}
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => handleImageUpload(index, e)}
-                              data-testid={`input-image-${index}`}
-                            />
-                          </div>
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-end gap-4">
+                    <div className="flex-1 min-w-[130px]">
+                      <label className="text-sm font-medium">{t("quality")}</label>
+                      <Select value={lot.quality} onValueChange={(v) => updateLot(index, "quality", v as "poor" | "medium" | "good")}>
+                        <SelectTrigger data-testid={`select-quality-${index}`}>
+                          <SelectValue placeholder="Select quality" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="poor">{t("poor")}</SelectItem>
+                          <SelectItem value="medium">{t("medium")}</SelectItem>
+                          <SelectItem value="good">{t("good")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex-1 min-w-[130px]">
+                      <label className="text-sm font-medium">{t("potatoSize")} *</label>
+                      <Select value={lot.potatoSize} onValueChange={(v) => updateLot(index, "potatoSize", v as "large" | "small")}>
+                        <SelectTrigger data-testid={`select-potato-size-${index}`}>
+                          <SelectValue placeholder={t("selectSize")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="large">{t("large")}</SelectItem>
+                          <SelectItem value="small">{t("small")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="shrink-0">
+                      <label className="text-sm font-medium block mb-1">{t("assayingType")} *</label>
+                      <RadioGroup
+                        value={lot.assayingType}
+                        onValueChange={(v) => updateLot(index, "assayingType", v as "Quality Check" | "Visual")}
+                        className="flex gap-4 h-9 items-center"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="Quality Check" id={`quality-check-${index}`} data-testid={`radio-quality-check-${index}`} />
+                          <label htmlFor={`quality-check-${index}`} className="text-sm">
+                            {t("qualityCheck")}
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="Visual" id={`visual-${index}`} data-testid={`radio-visual-${index}`} />
+                          <label htmlFor={`visual-${index}`} className="text-sm">
+                            {t("visual")}
+                          </label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+                    {lot.assayingType === "Quality Check" && (
+                      <div className="shrink-0">
+                        <label className="text-sm font-medium block mb-1">{t("assayerImage")}</label>
+                        <div className="flex items-center gap-3 h-9">
+                          <label
+                            htmlFor={`image-upload-${index}`}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md cursor-pointer hover-elevate text-sm"
+                          >
+                            <Upload className="h-4 w-4" />
+                            Upload Image
+                          </label>
+                          <input
+                            id={`image-upload-${index}`}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleImageUpload(index, e)}
+                            data-testid={`input-image-${index}`}
+                          />
                           {imagePreviews[index] && (
                             <img
                               src={imagePreviews[index]}
                               alt="Preview"
-                              className="w-32 h-32 object-cover rounded-lg border"
+                              className="w-8 h-8 object-cover rounded border"
                             />
                           )}
                         </div>
                       </div>
+                    )}
+                  </div>
+
+                  {lot.assayingType === "Quality Check" && (
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-sm font-medium">{t("reducingSugar")}</label>
                         <Input
@@ -1248,16 +1250,16 @@ export default function LotEntry() {
                           data-testid={`input-dm-${index}`}
                         />
                       </div>
-                    </>
+                    </div>
                   )}
 
-                  <div className="col-span-2">
+                  <div>
                     <label className="text-sm font-medium">{t("remarks")}</label>
                     <Textarea
                       value={lot.remarks}
                       onChange={(e) => updateLot(index, "remarks", e.target.value)}
                       placeholder="Any additional remarks..."
-                      rows={3}
+                      rows={1}
                       data-testid={`input-remarks-${index}`}
                     />
                   </div>
