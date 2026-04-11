@@ -1953,7 +1953,10 @@ export default function StockRegister() {
                       min={1}
                       value={editForm.lotNo}
                       onChange={(e) => {
-                        setEditForm({ ...editForm, lotNo: e.target.value });
+                        const newLotNo = e.target.value;
+                        const slashIdx = editForm.marka.indexOf("/");
+                        const denominator = slashIdx >= 0 ? editForm.marka.slice(slashIdx + 1) : editForm.marka;
+                        setEditForm({ ...editForm, lotNo: newLotNo, marka: `${newLotNo}/${denominator}` });
                         setLotNoError(null);
                       }}
                       className={`h-8 w-14 text-sm ${lotNoError ? "border-destructive" : ""}`}

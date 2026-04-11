@@ -75,6 +75,7 @@ interface LotData {
   bagType: "wafer" | "seed" | "Ration";
   bagTypeLabel: string;
   marka: string;
+  markaUserEdited: boolean;
   chamberId: string;
   floor: number;
   position: string;
@@ -94,6 +95,7 @@ const defaultLotData: LotData = {
   bagType: "wafer",
   bagTypeLabel: "",
   marka: "",
+  markaUserEdited: false,
   chamberId: "",
   floor: 0,
   position: "",
@@ -291,6 +293,27 @@ export default function LotEntry() {
       bagType: newBagType as "wafer" | "seed" | "Ration",
     })));
   }, [bagTypeCategory, isInitialized]);
+
+  // Auto-populate Marka as "<receiptNo>/<denominator>"
+  // Numerator always tracks receipt #; denominator tracks bag count unless user edited it.
+  useEffect(() => {
+    if (!isInitialized || !nextSequenceData) return;
+    const effectiveReceiptNo = manualLotNo !== null ? manualLotNo : nextSequenceData.nextSequence;
+    setLots(prevLots => prevLots.map(lot => {
+      let newMarka: string;
+      if (!lot.markaUserEdited) {
+        // Auto-fill both parts
+        newMarka = `${effectiveReceiptNo}/${lot.size > 0 ? lot.size : ""}`;
+      } else {
+        // Numerator always updates; preserve denominator
+        const slashIdx = lot.marka.indexOf("/");
+        const denominator = slashIdx >= 0 ? lot.marka.slice(slashIdx + 1) : lot.marka;
+        newMarka = `${effectiveReceiptNo}/${denominator}`;
+      }
+      if (newMarka === lot.marka) return lot;
+      return { ...lot, marka: newMarka };
+    }));
+  }, [manualLotNo, nextSequenceData, isInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save bagTypeCategory preference separately (persists across logout/login)
   useEffect(() => {
@@ -990,22 +1013,34 @@ export default function LotEntry() {
                     )}
                   </div>
                   <div>
-                    <label className="text-sm font-medium">{t("marka") || "Marka"}</label>
-                    <Input
-                      value={lot.marka}
-                      onChange={(e) => updateLot(index, "marka", e.target.value)}
-                      placeholder="e.g., ABC-123"
-                      data-testid={`input-marka-${index}`}
-                    />
-                  </div>
-                  <div>
                     <label className="text-sm font-medium">{t("size")} *</label>
                     <Input
                       type="number"
                       min={0}
                       value={lot.size === 0 ? "" : lot.size}
-                      onChange={(e) => updateLot(index, "size", e.target.value === "" ? 0 : parseInt(e.target.value))}
+                      onChange={(e) => {
+                        const newSize = e.target.value === "" ? 0 : parseInt(e.target.value);
+                        updateLot(index, "size", newSize);
+                        // If user hasn't manually edited marka, update denominator too
+                        if (!lot.markaUserEdited) {
+                          const effectiveReceiptNo = manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "");
+                          updateLot(index, "marka", `${effectiveReceiptNo}/${newSize > 0 ? newSize : ""}`);
+                        }
+                      }}
                       data-testid={`input-size-${index}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">{t("marka") || "Marka"}</label>
+                    <Input
+                      value={lot.marka}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateLot(index, "marka", val);
+                        updateLot(index, "markaUserEdited", val !== "");
+                      }}
+                      placeholder="e.g., ABC-123"
+                      data-testid={`input-marka-${index}`}
                     />
                   </div>
                   {(coldStorage?.chargeUnit === "quintal" || isCompany) && (
