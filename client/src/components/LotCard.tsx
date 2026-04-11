@@ -125,7 +125,7 @@ export function LotCard({ lot, chamberName, onEdit, onPartialSale, onToggleSale,
               <span className="font-mono">{lot.contactNumber}</span>
               {lot.rstNo && (
                 <span className="text-xs text-muted-foreground">
-                  RST: <span className="font-medium text-foreground">{lot.rstNo}</span>
+                  {t("rstNo")}: <span className="font-medium text-foreground">{lot.rstNo}</span>
                 </span>
               )}
               {lot.vehicle && (
