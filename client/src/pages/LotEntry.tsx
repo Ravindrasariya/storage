@@ -597,7 +597,7 @@ export default function LotEntry() {
 
   if (chambersLoading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl lg:max-w-[1120px] mx-auto space-y-6">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl lg:max-w-[1080px] mx-auto space-y-6">
         <Skeleton className="h-10 w-48" />
         <Skeleton className="h-96" />
       </div>
@@ -605,7 +605,7 @@ export default function LotEntry() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl lg:max-w-[1120px] mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl lg:max-w-[1080px] mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="flex items-center gap-4 flex-1">
           <Button
