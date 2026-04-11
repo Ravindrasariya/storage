@@ -141,8 +141,8 @@ export default function LotEntry() {
   const [manualLotNo, setManualLotNo] = useState<number | null>(null);
   const [entryDate, setEntryDate] = useState(getTodayStr());
   const [lotNoError, setLotNoError] = useState<string | null>(null);
-  const [isCompany, setIsCompany] = useState(false);
-  const [farmerFromDropdown, setFarmerFromDropdown] = useState(false);
+  const [isCompany, setIsCompany] = useState(() => sessionStorage.getItem("lotEntry_isCompany") === "true");
+  const [farmerFromDropdown, setFarmerFromDropdown] = useState(() => sessionStorage.getItem("lotEntry_farmerFromDropdown") === "true");
 
   const { data: chambers, isLoading: chambersLoading } = useQuery<Chamber[]>({
     queryKey: ["/api/chambers"],
@@ -219,6 +219,8 @@ export default function LotEntry() {
     if (farmerFromDropdown && watchedFarmerName.trim() === "") {
       setFarmerFromDropdown(false);
       setIsCompany(false);
+      sessionStorage.removeItem("lotEntry_isCompany");
+      sessionStorage.removeItem("lotEntry_farmerFromDropdown");
     }
   }, [watchedFarmerName, farmerFromDropdown]);
   const watchedVillage = form.watch("village") || "";
@@ -432,8 +434,11 @@ export default function LotEntry() {
     form.setValue("district", farmer.district);
     form.setValue("state", farmer.state);
     form.setValue("contactNumber", farmer.contactNumber);
-    setIsCompany(farmer.entityType === "company");
+    const companyVal = farmer.entityType === "company";
+    setIsCompany(companyVal);
     setFarmerFromDropdown(true);
+    sessionStorage.setItem("lotEntry_isCompany", String(companyVal));
+    sessionStorage.setItem("lotEntry_farmerFromDropdown", "true");
     setShowNameSuggestions(false);
     setShowVillageSuggestions(false);
     setShowMobileSuggestions(false);
@@ -569,6 +574,8 @@ export default function LotEntry() {
       setEntryDate(getTodayStr());
       setIsCompany(false);
       setFarmerFromDropdown(false);
+      sessionStorage.removeItem("lotEntry_isCompany");
+      sessionStorage.removeItem("lotEntry_farmerFromDropdown");
       
       // Scroll to top of page
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -668,7 +675,7 @@ export default function LotEntry() {
                   <input
                     type="checkbox"
                     checked={isCompany}
-                    onChange={(e) => setIsCompany(e.target.checked)}
+                    onChange={(e) => { setIsCompany(e.target.checked); sessionStorage.setItem("lotEntry_isCompany", String(e.target.checked)); }}
                     disabled={farmerFromDropdown}
                     className="h-4 w-4 rounded border-gray-300"
                     data-testid="checkbox-is-company"
