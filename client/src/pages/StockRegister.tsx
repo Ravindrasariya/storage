@@ -784,6 +784,12 @@ export default function StockRegister() {
     .label { color: #666; }
     .value { font-weight: 500; }
     .charges-row { display: flex; gap: 20px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; font-size: 13px; }
+    .receipt-badge { font-size: 11px; color: #555; background: #f0f0f0; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
+    .badge-sold { background: #f3e8ff; color: #6b21a8; }
+    .badge-paid { background: #dcfce7; color: #166534; }
+    .badge-due { background: #fef3c7; color: #92400e; }
+    .badge-base-billed { background: #ccfbf1; color: #115e59; }
+    .remarks-row { margin-top: 6px; font-size: 12px; color: #666; font-style: italic; }
     @media print {
       body { padding: 10px; }
       .lot-card { break-inside: avoid; }
@@ -795,7 +801,14 @@ export default function StockRegister() {
     if (lots.length === 0 || !summaryTotals) return null;
 
     const coldStoreName = coldStorage?.name || "Cold Storage";
+    const effChargeUnit = coldStorage?.chargeUnit || "bag";
     const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    const formatDate = (d: string | Date | null | undefined) => {
+      if (!d) return "";
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return "";
+      return `${dt.getDate().toString().padStart(2, '0')}/${(dt.getMonth() + 1).toString().padStart(2, '0')}/${dt.getFullYear()}`;
+    };
 
     const lotCards = lots.map((lot) => {
       let lotPaidCharge = 0;
@@ -818,20 +831,35 @@ export default function StockRegister() {
       const expectedColdCharge = calcExpectedCharge(lot);
       const chamberName = chamberMap[lot.chamberId] || "Unknown";
 
+      const receiptHtml = lot.entryBillNumber ? `<span class="receipt-badge">Receipt #${lot.entryBillNumber}</span>` : '';
+      const soldBadge = lot.saleStatus === "sold" ? `<span class="badge badge-sold">Sold</span>` : '';
+      const paidDueBadge = (lotPaidCharge > 0 || lotDueCharge > 0)
+        ? (lotPaidCharge > 0 && lotDueCharge === 0)
+          ? `<span class="badge badge-paid">Paid</span>`
+          : `<span class="badge badge-due">Due</span>`
+        : '';
+      const baseBilledBadge = lot.baseColdChargesBilled === 1 ? `<span class="badge badge-base-billed">Base Charges Billed</span>` : '';
+      const markaHtml = lot.marka ? ` &nbsp; Marka: <strong>${lot.marka}</strong>` : '';
+      const hasNetWeight = effChargeUnit === "quintal" && lot.netWeight && lot.netWeight > 0;
+      const entryDateStr = formatDate(lot.entryDate);
+      const remarksHtml = lot.remarks ? `<div class="remarks-row">"${lot.remarks}"</div>` : '';
+
       return `
         <div class="lot-card">
+          ${receiptHtml ? `<div style="text-align:right;margin-bottom:4px">${receiptHtml}</div>` : ''}
           <div class="lot-header">
             <span class="farmer-name">${lot.farmerName}</span>
             <span class="lot-badges">
               ${lot.quality ? `<span class="badge quality-${lot.quality}">${t(lot.quality) || lot.quality}</span>` : ''}
               ${lot.bagType ? `<span class="badge">${lot.bagTypeLabel || t(lot.bagType) || lot.bagType}</span>` : ''}
               ${lot.potatoSize ? `<span class="badge">${t(lot.potatoSize) || lot.potatoSize}</span>` : ''}
+              ${soldBadge}${paidDueBadge}${baseBilledBadge}
             </span>
           </div>
           <div class="lot-details">
             <div class="detail-row">
               <span class="label">Lot No:</span>
-              <span class="value">${lot.lotNo}</span>
+              <span class="value">${lot.lotNo}${markaHtml}</span>
               <span class="label">Phone:</span>
               <span class="value">${lot.contactNumber || "-"}</span>
             </div>
@@ -847,17 +875,26 @@ export default function StockRegister() {
               <span class="label">Bag Type:</span>
               <span class="value">${lot.bagTypeLabel || lot.bagType || "-"}</span>
             </div>
+            ${(entryDateStr || lot.potatoType) ? `<div class="detail-row">
+              ${entryDateStr ? `<span class="label">Entry Date:</span><span class="value">${entryDateStr}</span>` : `<span></span><span></span>`}
+              ${lot.potatoType ? `<span class="label">Potato Type:</span><span class="value" style="text-transform:capitalize">${lot.potatoType}</span>` : `<span></span><span></span>`}
+            </div>` : ''}
             <div class="detail-row">
               <span class="label">Original Size:</span>
               <span class="value">${lot.size} bags</span>
               <span class="label">Remaining:</span>
               <span class="value">${lot.remainingSize} bags</span>
             </div>
+            ${hasNetWeight ? `<div class="detail-row">
+              <span class="label">Net Weight:</span><span class="value">${lot.netWeight} Kg</span>
+              <span></span><span></span>
+            </div>` : ''}
             <div class="charges-row">
               <span><strong>Expected Charges:</strong> <span class="blue">${formatCurrency(expectedColdCharge)}</span></span>
               <span><strong>Paid:</strong> <span class="green">${formatCurrency(lotPaidCharge)}</span></span>
               <span><strong>Due:</strong> <span class="red">${formatCurrency(lotDueCharge)}</span></span>
             </div>
+            ${remarksHtml}
           </div>
         </div>
       `;
