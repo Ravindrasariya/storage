@@ -981,7 +981,7 @@ export default function LotEntry() {
                   <Package className="h-4 w-4 text-chart-2" />
                   <h3 className="font-semibold">{t("lotInformation")}</h3>
                 </div>
-                <div className={`grid grid-cols-2 gap-4 ${(coldStorage?.chargeUnit === "quintal" || isCompany) ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+                <div className={`grid grid-cols-2 gap-4 ${(coldStorage?.chargeUnit === "quintal" || isCompany) ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
                   <div className="col-span-2 sm:col-span-1">
                     <label className="text-sm font-medium">{t("lotNo")}</label>
                     {index === 0 ? (
@@ -1047,24 +1047,6 @@ export default function LotEntry() {
                       }}
                       placeholder="e.g., ABC-123"
                       data-testid={`input-marka-${index}`}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">{t("rstNo") || "RST No"}</label>
-                    <Input
-                      value={lot.rstNo}
-                      onChange={(e) => updateLot(index, "rstNo", e.target.value)}
-                      placeholder="RST No"
-                      data-testid={`input-rst-no-${index}`}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">{t("vehicle") || "Vehicle"}</label>
-                    <Input
-                      value={lot.vehicle}
-                      onChange={(e) => updateLot(index, "vehicle", e.target.value)}
-                      placeholder="e.g., Tractor"
-                      data-testid={`input-vehicle-${index}`}
                     />
                   </div>
                   {(coldStorage?.chargeUnit === "quintal" || isCompany) && (
@@ -1147,6 +1129,24 @@ export default function LotEntry() {
                           ))}
                       </div>
                     )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">{t("rstNo") || "RST No"}</label>
+                    <Input
+                      value={lot.rstNo}
+                      onChange={(e) => updateLot(index, "rstNo", e.target.value)}
+                      placeholder="RST No"
+                      data-testid={`input-rst-no-${index}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">{t("vehicle") || "Vehicle"}</label>
+                    <Input
+                      value={lot.vehicle}
+                      onChange={(e) => updateLot(index, "vehicle", e.target.value)}
+                      placeholder="e.g., Tractor"
+                      data-testid={`input-vehicle-${index}`}
+                    />
                   </div>
                 </div>
               </div>
