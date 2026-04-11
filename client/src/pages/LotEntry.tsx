@@ -1289,6 +1289,10 @@ export default function LotEntry() {
                 setLots([{ ...defaultLotData }]);
                 setImagePreviews({});
                 setEntryDate(getTodayStr());
+                setIsCompany(false);
+                setFarmerFromDropdown(false);
+                sessionStorage.removeItem("lotEntry_isCompany");
+                sessionStorage.removeItem("lotEntry_farmerFromDropdown");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               data-testid="button-cancel"
