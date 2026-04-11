@@ -296,24 +296,31 @@ export default function LotEntry() {
 
   // Auto-populate Marka as "<receiptNo>/<denominator>"
   // Numerator always tracks receipt #; denominator tracks bag count unless user edited it.
+  // Including `lots` so clearing marka (markaUserEdited=false) immediately resumes auto-fill.
   useEffect(() => {
     if (!isInitialized || !nextSequenceData) return;
     const effectiveReceiptNo = manualLotNo !== null ? manualLotNo : nextSequenceData.nextSequence;
-    setLots(prevLots => prevLots.map(lot => {
-      let newMarka: string;
-      if (!lot.markaUserEdited) {
-        // Auto-fill both parts
-        newMarka = `${effectiveReceiptNo}/${lot.size > 0 ? lot.size : ""}`;
-      } else {
-        // Numerator always updates; preserve denominator
-        const slashIdx = lot.marka.indexOf("/");
-        const denominator = slashIdx >= 0 ? lot.marka.slice(slashIdx + 1) : lot.marka;
-        newMarka = `${effectiveReceiptNo}/${denominator}`;
-      }
-      if (newMarka === lot.marka) return lot;
-      return { ...lot, marka: newMarka };
-    }));
-  }, [manualLotNo, nextSequenceData, isInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLots(prevLots => {
+      let anyChanged = false;
+      const mapped = prevLots.map(lot => {
+        let newMarka: string;
+        if (!lot.markaUserEdited) {
+          // Auto-fill both parts from current receipt # and bag count
+          newMarka = `${effectiveReceiptNo}/${lot.size > 0 ? lot.size : ""}`;
+        } else {
+          // Numerator always updates; preserve denominator
+          const slashIdx = lot.marka.indexOf("/");
+          const denominator = slashIdx >= 0 ? lot.marka.slice(slashIdx + 1) : lot.marka;
+          newMarka = `${effectiveReceiptNo}/${denominator}`;
+        }
+        if (newMarka === lot.marka) return lot;
+        anyChanged = true;
+        return { ...lot, marka: newMarka };
+      });
+      // Return same reference if nothing changed to prevent infinite loop
+      return anyChanged ? mapped : prevLots;
+    });
+  }, [manualLotNo, nextSequenceData, isInitialized, lots]);
 
   // Save bagTypeCategory preference separately (persists across logout/login)
   useEffect(() => {
@@ -1021,11 +1028,6 @@ export default function LotEntry() {
                       onChange={(e) => {
                         const newSize = e.target.value === "" ? 0 : parseInt(e.target.value);
                         updateLot(index, "size", newSize);
-                        // If user hasn't manually edited marka, update denominator too
-                        if (!lot.markaUserEdited) {
-                          const effectiveReceiptNo = manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? "");
-                          updateLot(index, "marka", `${effectiveReceiptNo}/${newSize > 0 ? newSize : ""}`);
-                        }
                       }}
                       data-testid={`input-size-${index}`}
                     />
