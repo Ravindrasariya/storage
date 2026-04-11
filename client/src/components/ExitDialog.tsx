@@ -226,7 +226,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs bg-muted/50 p-2 rounded-md">
               <div className="truncate">
-                <span className="text-muted-foreground">Lot:</span> <span className="font-medium">{sale.lotNo}</span>
+                <span className="text-muted-foreground">Receipt:</span> <span className="font-medium">{sale.lotNo}</span>
               </div>
               <div className="truncate">
                 <span className="text-muted-foreground">Bags:</span> <span className="font-medium">{sale.quantitySold}</span>

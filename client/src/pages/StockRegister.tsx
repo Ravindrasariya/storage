@@ -666,7 +666,7 @@ export default function StockRegister() {
 
       // Build CSV content
       const headers = [
-        "Lot No",
+        "Receipt No",
         "Farmer Name",
         "Contact Number",
         "Village",
@@ -1157,7 +1157,7 @@ export default function StockRegister() {
         if (response.ok) {
           const result = await response.json();
           if (result.isDuplicate) {
-            setLotNoError(t("duplicateLotNumber") || `Lot #${newLotNo} already exists for this bag type`);
+            setLotNoError(t("duplicateLotNumber") || `Receipt #${newLotNo} already exists for this bag type`);
             return;
           }
         }

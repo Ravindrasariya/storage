@@ -697,7 +697,7 @@ export class DatabaseStorage implements IStorage {
         return parseInt(lot.lotNo, 10) === manualLotNo;
       });
       if (isDuplicate) {
-        throw new Error(`Lot # ${manualLotNo} already exists for this category.`);
+        throw new Error(`Receipt # ${manualLotNo} already exists for this category.`);
       }
     }
 
