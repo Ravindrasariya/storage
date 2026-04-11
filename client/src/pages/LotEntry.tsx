@@ -1260,6 +1260,7 @@ export default function LotEntry() {
                       onChange={(e) => updateLot(index, "remarks", e.target.value)}
                       placeholder="Any additional remarks..."
                       rows={1}
+                      style={{ minHeight: "unset", height: "2.25rem" }}
                       data-testid={`input-remarks-${index}`}
                     />
                   </div>
