@@ -1157,7 +1157,9 @@ export default function StockRegister() {
         if (response.ok) {
           const result = await response.json();
           if (result.isDuplicate) {
-            setLotNoError(t("duplicateLotNumber") || `Receipt #${newLotNo} already exists for this bag type`);
+            const dupMsg = t("duplicateLotNumber") || `Receipt #${newLotNo} already exists for this bag type`;
+            setLotNoError(dupMsg);
+            toast({ title: t("error"), description: dupMsg, variant: "destructive" });
             return;
           }
         }

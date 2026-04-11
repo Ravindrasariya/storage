@@ -588,6 +588,7 @@ export default function LotEntry() {
     } catch (error) {
       if (error instanceof Error && error.message.includes("already exists")) {
         setLotNoError(error.message);
+        toast({ title: t("error"), description: error.message, variant: "destructive" });
       }
       // Other errors handled by mutation onError toast
     } finally {
