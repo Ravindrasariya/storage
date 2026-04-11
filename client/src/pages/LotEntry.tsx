@@ -257,6 +257,12 @@ export default function LotEntry() {
           if (savedEntryDate) {
             setEntryDate(savedEntryDate);
           }
+          if (parsed.isCompany !== undefined) {
+            setIsCompany(parsed.isCompany);
+          }
+          if (parsed.farmerFromDropdown !== undefined) {
+            setFarmerFromDropdown(parsed.farmerFromDropdown);
+          }
         }
       }
     } catch (e) {
@@ -270,11 +276,11 @@ export default function LotEntry() {
     if (!isInitialized) return;
     try {
       const farmer = form.getValues();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ farmer, lots, imagePreviews, bagTypeCategory, entryDate, savedDate: getTodayStr() }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ farmer, lots, imagePreviews, bagTypeCategory, entryDate, isCompany, farmerFromDropdown, savedDate: getTodayStr() }));
     } catch (e) {
       console.error("Failed to save form data", e);
     }
-  }, [lots, imagePreviews, isInitialized, bagTypeCategory, entryDate, form.watch()]);
+  }, [lots, imagePreviews, isInitialized, bagTypeCategory, entryDate, isCompany, farmerFromDropdown, form.watch()]);
 
   // Update all lots when bag type category changes
   useEffect(() => {
