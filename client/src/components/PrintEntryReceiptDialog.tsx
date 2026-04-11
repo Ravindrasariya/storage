@@ -42,18 +42,6 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
 
   const lotsInBatch = allLotsInBatch?.filter(l => sameCategory(l.bagType, lot.bagType));
 
-  const getRate = (bagType: string) => {
-    if (!coldStorage) return 0;
-    if (isWafer(bagType)) {
-      return (coldStorage.waferColdCharge || 0) + (coldStorage.waferHammali || 0);
-    }
-    return (coldStorage.seedColdCharge || 0) + (coldStorage.seedHammali || 0);
-  };
-
-  const getExpectedCharges = (lotItem: Lot) => {
-    return lotItem.size * getRate(lotItem.bagType);
-  };
-
   const getBagTypeHindi = (bagType: string) => {
     if (isWafer(bagType)) return "वेफर";
     if (bagType === "seed") return "बीज";
@@ -218,7 +206,6 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
   };
 
   const firstLot = lotsInBatch?.[0] || lot;
-  const totalExpected = lotsInBatch?.reduce((sum, l) => sum + getExpectedCharges(l), 0) || 0;
   const remarksLots = lotsInBatch?.filter(l => l.remarks && l.remarks.trim()) || [];
 
   const cellStyle = { border: "1px solid #ccc", padding: "4px 6px", textAlign: "left" as const };
@@ -248,7 +235,7 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
                 <h1 style={{ fontSize: "18px", margin: "0 0 3px 0" }}>{coldStorage?.name || "Cold Storage"}</h1>
                 <h2 style={{ fontSize: "14px", margin: "0", color: "#555" }}>लॉट प्रवेश रसीद</h2>
                 <div style={{ marginTop: "8px", fontSize: "14px" }}>
-                  लॉट / बिल नंबर: <strong>{lot.entrySequence}</strong>
+                  रसीद नं.: <strong>{lot.entrySequence}</strong>
                   {" "}({isWafer(lot.bagType) ? "वेफर" : "बीज/राशन"})
                 </div>
               </div>
@@ -283,6 +270,18 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
                     <span style={{ fontWeight: 600, minWidth: "90px" }}>राज्य:</span>
                     <span>{firstLot.state}</span>
                   </div>
+                  {firstLot.rstNo && (
+                    <div style={{ display: "flex", gap: "5px" }}>
+                      <span style={{ fontWeight: 600, minWidth: "90px" }}>RST No:</span>
+                      <span>{firstLot.rstNo}</span>
+                    </div>
+                  )}
+                  {firstLot.vehicle && (
+                    <div style={{ display: "flex", gap: "5px" }}>
+                      <span style={{ fontWeight: 600, minWidth: "90px" }}>वाहन:</span>
+                      <span>{firstLot.vehicle}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -301,15 +300,13 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
                       <th style={thStyle}>श्रेणी</th>
                       <th style={thStyle}>बोरा लेबल</th>
                       <th style={thStyle}>आलू का आकार</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>दर (₹/बोरा)</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>अनु. शुल्क (₹)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {lotsInBatch.map((lotItem, index) => (
                       <tr key={lotItem.id}>
                         <td style={cellStyle}>{index + 1}</td>
-                        <td style={cellStyle}>{lotItem.lotNo}</td>
+                        <td style={cellStyle}>{lotItem.marka || lotItem.lotNo}</td>
                         <td style={cellStyle}>{lotItem.type}</td>
                         <td style={numCellStyle}>{lotItem.size}</td>
                         <td style={cellStyle}>{getBagTypeHindi(lotItem.bagType)}</td>
@@ -317,8 +314,6 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
                         <td style={cellStyle}>
                           {lotItem.potatoSize === "large" ? "बड़ा" : "छोटा"}
                         </td>
-                        <td style={numCellStyle}>{getRate(lotItem.bagType)}</td>
-                        <td style={numCellStyle}>{getExpectedCharges(lotItem).toLocaleString("en-IN")}</td>
                       </tr>
                     ))}
                     {lotsInBatch.length > 1 && (
@@ -326,8 +321,6 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
                         <td colSpan={3} style={{ ...cellStyle, fontWeight: 600 }}>कुल / Total</td>
                         <td style={{ ...numCellStyle, fontWeight: 600 }}>{lotsInBatch.reduce((s, l) => s + l.size, 0)}</td>
                         <td colSpan={3} style={cellStyle}></td>
-                        <td style={cellStyle}></td>
-                        <td style={{ ...numCellStyle, fontWeight: 600 }}>₹{totalExpected.toLocaleString("en-IN")}</td>
                       </tr>
                     )}
                   </tbody>
@@ -351,7 +344,8 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
 
               {/* Footer */}
               <div style={{ textAlign: "center", fontSize: "9px", color: "#666", marginTop: "10px", paddingTop: "6px", borderTop: "1px solid #ccc" }}>
-                यह कंप्यूटर जनरेटेड रसीद है।
+                <div>यह कंप्यूटर जनरेटेड रसीद है।</div>
+                <div>By कृषुवेद</div>
               </div>
             </div>
 
