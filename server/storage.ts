@@ -6709,7 +6709,7 @@ export class DatabaseStorage implements IStorage {
 
   // ============ FARMER LOAN ============
 
-  async createFarmerLoan(data: { coldStorageId: string; farmerLedgerId: string; farmerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; finalAmount: number; latestPrincipal: number; lastAccrualDate: Date; expenseId: string | null; remarks?: string | null }): Promise<FarmerLoan> {
+  async createFarmerLoan(data: { coldStorageId: string; farmerLedgerId: string; farmerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; finalAmount: number; latestPrincipal: number; lastAccrualDate: Date; expenseId: string | null; remarks?: string | null; originalEffectiveDate?: Date }): Promise<FarmerLoan> {
     const [record] = await db.insert(farmerLoan)
       .values({
         id: randomUUID(),
@@ -6719,6 +6719,7 @@ export class DatabaseStorage implements IStorage {
         amount: data.amount,
         rateOfInterest: data.rateOfInterest,
         effectiveDate: data.effectiveDate,
+        originalEffectiveDate: data.originalEffectiveDate || data.effectiveDate,
         finalAmount: data.finalAmount,
         latestPrincipal: data.latestPrincipal,
         lastAccrualDate: data.lastAccrualDate,
@@ -9192,9 +9193,10 @@ export class DatabaseStorage implements IStorage {
       });
 
       if (interestAmount > 0) {
+        const originDate = fl.originalEffectiveDate || fl.effectiveDate;
         transactions.push({
           type: 'farmer_loan_interest',
-          date: toISTDateString(fl.effectiveDate),
+          date: toISTDateString(originDate),
           meta: {
             principal: String(roundAmount(fl.amount)),
             interest: String(interestAmount),
@@ -9204,7 +9206,7 @@ export class DatabaseStorage implements IStorage {
           debit: interestAmount,
           credit: 0,
           refId: fl.id,
-          sortDate: fl.effectiveDate,
+          sortDate: originDate,
           sortOrder: 4,
         });
       }

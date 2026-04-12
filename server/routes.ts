@@ -2138,6 +2138,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/farmer-loans", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const farmerLedgerId = req.query.farmerLedgerId as string | undefined;
+      const loans = await storage.getFarmerLoans(coldStorageId, farmerLedgerId);
+      res.json(loans);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch farmer loans" });
+    }
+  });
+
   // Farmer Loan - Farmers with outstanding loan dues
   app.get("/api/farmer-loans/farmers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
@@ -2315,6 +2326,19 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete PY farmer loan" });
+    }
+  });
+
+  app.post("/api/farmer-loans/:id/reverse", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const success = await storage.reverseFarmerLoan(coldStorageId, req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Farmer loan not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reverse farmer loan" });
     }
   });
 
@@ -2774,6 +2798,7 @@ export async function registerRoutes(
           amount: principal,
           rateOfInterest,
           effectiveDate: computedEffectiveDate,
+          originalEffectiveDate: effectiveDate,
           finalAmount,
           latestPrincipal,
           lastAccrualDate: new Date(),
