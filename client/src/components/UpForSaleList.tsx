@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useI18n } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
@@ -65,6 +65,9 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [showFarmerFilterSuggestions, setShowFarmerFilterSuggestions] = useState(false);
   const [selectedFarmerFilter, setSelectedFarmerFilter] = useState<{ name: string; phone: string; village: string } | null>(null);
   const farmerFilterRef = useRef<HTMLDivElement>(null);
+  
+  // Variety filter state
+  const [selectedVariety, setSelectedVariety] = useState<string>("all");
 
   const { data: buyersData } = useQuery<{ buyerName: string; isSelfSale: boolean }[]>({
     queryKey: ["/api/buyers/lookup"],
@@ -128,16 +131,34 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setSelectedFarmerFilter(null);
   };
   
-  // Filter saleLots based on selected farmer (normalize for trailing spaces)
+  const uniqueVarieties = useMemo(() => {
+    const types = new Set(saleLots.map(lot => lot.type.trim()));
+    return Array.from(types).sort();
+  }, [saleLots]);
+
+  useEffect(() => {
+    if (selectedVariety !== "all" && !uniqueVarieties.includes(selectedVariety)) {
+      setSelectedVariety("all");
+    }
+  }, [uniqueVarieties, selectedVariety]);
+
   const filteredSaleLots = useMemo(() => {
-    if (!selectedFarmerFilter) return saleLots;
-    const filterName = selectedFarmerFilter.name.trim().toLowerCase();
-    const filterPhone = selectedFarmerFilter.phone.trim();
-    return saleLots.filter(lot => 
-      lot.farmerName.trim().toLowerCase() === filterName &&
-      lot.contactNumber.trim() === filterPhone
-    );
-  }, [saleLots, selectedFarmerFilter]);
+    let result = saleLots;
+    if (selectedFarmerFilter) {
+      const filterName = selectedFarmerFilter.name.trim().toLowerCase();
+      const filterPhone = selectedFarmerFilter.phone.trim();
+      result = result.filter(lot => 
+        lot.farmerName.trim().toLowerCase() === filterName &&
+        lot.contactNumber.trim() === filterPhone
+      );
+    }
+    if (selectedVariety !== "all") {
+      result = result.filter(lot => lot.type === selectedVariety);
+    }
+    return result;
+  }, [saleLots, selectedFarmerFilter, selectedVariety]);
+
+  const hasActiveFilter = !!selectedFarmerFilter || selectedVariety !== "all";
 
   const partialSaleMutation = useMutation({
     mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number }) => {
@@ -482,13 +503,27 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
               </div>
             )}
           </div>
+
+          {(uniqueVarieties.length > 1 || selectedVariety !== "all") && (
+            <Select value={selectedVariety} onValueChange={setSelectedVariety}>
+              <SelectTrigger className="w-[130px] h-9" data-testid="select-variety-filter">
+                <SelectValue placeholder={t("variety")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allVarieties")}</SelectItem>
+                {uniqueVarieties.map(v => (
+                  <SelectItem key={v} value={v}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           
           <Badge variant="secondary">
-            {selectedFarmerFilter ? `${filteredSaleLots.length}/${saleLots.length}` : saleLots.length}
+            {hasActiveFilter ? `${filteredSaleLots.length}/${saleLots.length}` : saleLots.length}
           </Badge>
         </div>
         <div className="space-y-3 max-h-96 overflow-y-auto">
-          {filteredSaleLots.length === 0 && selectedFarmerFilter && (
+          {filteredSaleLots.length === 0 && hasActiveFilter && (
             <div className="text-center py-4 text-muted-foreground" data-testid="no-filtered-results">
               {t("noResults")}
             </div>

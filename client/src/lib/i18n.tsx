@@ -349,6 +349,8 @@ const translations: Translations = {
   extraHammaliPerBag: { en: "Extra Hammali/bag", hi: "अतिरिक्त हमाली/बैग" },
   rateBreakdown: { en: "Rate Breakdown", hi: "दर विवरण" },
   perBag: { en: "/bag", hi: "/बैग" },
+  variety: { en: "Variety", hi: "किस्म" },
+  allVarieties: { en: "All Varieties", hi: "सभी किस्में" },
   chargeBasis: { en: "Charge Basis", hi: "शुल्क आधार" },
   actualBags: { en: "Actual Bags", hi: "वास्तविक बैग" },
   allRemainingBags: { en: "All Remaining Bags", hi: "सभी शेष बैग" },
