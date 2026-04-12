@@ -56,7 +56,7 @@ interface FarmerLedgerData {
   };
 }
 
-type SortField = 'farmerId' | 'name' | 'village' | 'contactNumber' | 'pyReceivables' | 'loanDue' | 'selfDue' | 'merchantDue' | 'totalDue';
+type SortField = 'farmerId' | 'name' | 'village' | 'contactNumber' | 'pyReceivables' | 'selfDue' | 'merchantDue' | 'totalDue';
 type SortDirection = 'asc' | 'desc';
 
 interface FarmerTransaction {
@@ -747,8 +747,7 @@ export default function FarmerLedger() {
       farmer.name,
       farmer.village,
       farmer.contactNumber || '',
-      formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0)),
-      formatDueValue(farmer.loanDue),
+      formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0) + (farmer.loanDue || 0)),
       formatDueValue(farmer.selfDue),
       formatDueValue(farmer.merchantDue),
       formatDueValue(farmer.totalDue),
@@ -767,8 +766,7 @@ export default function FarmerLedger() {
 
     tableData.push([
       '', t("total"), '', '',
-      formatDueValue(totals.pyReceivables + (totals.advanceDue || 0) + (totals.freightDue || 0)),
-      formatDueValue(totals.loanDue),
+      formatDueValue(totals.pyReceivables + (totals.advanceDue || 0) + (totals.freightDue || 0) + (totals.loanDue || 0)),
       formatDueValue(totals.selfDue),
       formatDueValue(totals.merchantDue),
       formatDueValue(totals.totalDue),
@@ -778,7 +776,7 @@ export default function FarmerLedger() {
     autoTable(doc, {
       head: [[
         t("farmerId"), t("name"), t("village"), t("contact"),
-        t("pyReceivables"), t("farmerLoanOutstanding"), t("selfDue"), t("merchantDues"), t("totalDues"), t("status")
+        t("pyReceivables"), t("selfDue"), t("merchantDues"), t("totalDues"), t("status")
       ]],
       body: tableData,
       startY: filterInfo.length > 0 ? 32 : 26,
@@ -789,8 +787,8 @@ export default function FarmerLedger() {
         1: { cellWidth: 40 },
         2: { cellWidth: 30 },
         3: { cellWidth: 28 },
-        4: { halign: 'right', cellWidth: 25 },
-        5: { halign: 'right', cellWidth: 22 },
+        4: { halign: 'right', cellWidth: 28 },
+        5: { halign: 'right', cellWidth: 25 },
         6: { halign: 'right', cellWidth: 25 },
         7: { halign: 'right', cellWidth: 25 },
         8: { cellWidth: 20 },
@@ -843,11 +841,11 @@ export default function FarmerLedger() {
                 <CardTitle className="text-xs font-medium text-blue-600 dark:text-blue-400">{t("pyReceivables")}</CardTitle>
               </CardHeader>
               <CardContent className="py-1 px-3">
-                <div className="text-base font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables + (summary.advanceDue || 0) + (summary.freightDue || 0))}</div>
+                <div className="text-base font-bold text-blue-600 dark:text-blue-400" data-testid="text-py-receivables">{formatDueValue(summary.pyReceivables + (summary.advanceDue || 0) + (summary.freightDue || 0) + (summary.loanDue || 0))}</div>
               </CardContent>
             </Card>
           </PopoverTrigger>
-          {((summary.advanceDue || 0) > 0 || (summary.freightDue || 0) > 0) && (
+          {((summary.advanceDue || 0) > 0 || (summary.freightDue || 0) > 0 || (summary.loanDue || 0) > 0) && (
             <PopoverContent className="w-56 p-3" data-testid="hover-summary-receivable-breakup">
               <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
               <div className="space-y-1 text-xs">
@@ -867,22 +865,20 @@ export default function FarmerLedger() {
                     <span className="font-medium">{formatDueValue(summary.freightDue)}</span>
                   </div>
                 )}
+                {(summary.loanDue || 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-purple-600 dark:text-purple-400">{t("farmerLoanOutstanding")}</span>
+                    <span className="font-medium text-purple-600 dark:text-purple-400">{formatDueValue(summary.loanDue)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between border-t pt-1 font-semibold">
                   <span>{t("total")}</span>
-                  <span>{formatDueValue(summary.pyReceivables + (summary.advanceDue || 0) + (summary.freightDue || 0))}</span>
+                  <span>{formatDueValue(summary.pyReceivables + (summary.advanceDue || 0) + (summary.freightDue || 0) + (summary.loanDue || 0))}</span>
                 </div>
               </div>
             </PopoverContent>
           )}
         </Popover>
-        <Card className="py-1">
-          <CardHeader className="py-1 px-3">
-            <CardTitle className="text-xs font-medium text-purple-600 dark:text-purple-400">{t("farmerLoanOutstanding")}</CardTitle>
-          </CardHeader>
-          <CardContent className="py-1 px-3">
-            <div className="text-base font-bold text-purple-600 dark:text-purple-400" data-testid="text-loan-due">{formatDueValue(summary.loanDue)}</div>
-          </CardContent>
-        </Card>
         <Card className="py-1">
           <CardHeader className="py-1 px-3">
             <CardTitle className="text-xs font-medium text-orange-500 dark:text-orange-400">{t("selfDue")}</CardTitle>
@@ -1067,15 +1063,15 @@ export default function FarmerLedger() {
                   </div>
                   <div className="font-medium text-base mb-1">{farmer.name}</div>
                   <div className="text-sm text-muted-foreground mb-2">{farmer.village} | {farmer.contactNumber}</div>
-                  <div className="grid grid-cols-5 gap-2 text-center text-xs">
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
                     <Popover>
                       <PopoverTrigger asChild>
                         <div className="cursor-pointer">
                           <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
-                          <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</div>
+                          <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue + (farmer.loanDue || 0))}</div>
                         </div>
                       </PopoverTrigger>
-                      {(farmer.advanceDue > 0 || farmer.freightDue > 0) && (
+                      {(farmer.advanceDue > 0 || farmer.freightDue > 0 || farmer.loanDue > 0) && (
                         <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-${farmer.id}`}>
                           <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
                           <div className="space-y-1 text-xs">
@@ -1095,18 +1091,20 @@ export default function FarmerLedger() {
                                 <span className="font-medium">{formatDueValue(farmer.freightDue)}</span>
                               </div>
                             )}
+                            {farmer.loanDue > 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-purple-600 dark:text-purple-400">{t("farmerLoanOutstanding")}</span>
+                                <span className="font-medium text-purple-600 dark:text-purple-400">{formatDueValue(farmer.loanDue)}</span>
+                              </div>
+                            )}
                             <div className="flex justify-between border-t pt-1 font-semibold">
                               <span>{t("total")}</span>
-                              <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
+                              <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue + (farmer.loanDue || 0))}</span>
                             </div>
                           </div>
                         </PopoverContent>
                       )}
                     </Popover>
-                    <div>
-                      <div className="text-purple-600 dark:text-purple-400 font-medium">{t("farmerLoanOutstanding")}</div>
-                      <div className="text-purple-600 dark:text-purple-400 font-bold">{formatDueValue(farmer.loanDue)}</div>
-                    </div>
                     <div>
                       <div className="text-orange-500 dark:text-orange-400 font-medium">{t("selfDue")}</div>
                       <div className="text-orange-500 dark:text-orange-400 font-bold">{formatDueValue(farmer.selfDue)}</div>
@@ -1148,15 +1146,15 @@ export default function FarmerLedger() {
                   </div>
                   <div className="font-medium text-base mb-1">{farmer.name}</div>
                   <div className="text-sm text-muted-foreground mb-2">{farmer.village} | {farmer.contactNumber}</div>
-                  <div className="grid grid-cols-5 gap-2 text-center text-xs">
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
                     <Popover>
                       <PopoverTrigger asChild>
                         <div className="cursor-pointer">
                           <div className="text-blue-600 dark:text-blue-400 font-medium">{t("pyReceivables")}</div>
-                          <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</div>
+                          <div className="text-blue-600 dark:text-blue-400 font-bold">{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue + (farmer.loanDue || 0))}</div>
                         </div>
                       </PopoverTrigger>
-                      {(farmer.advanceDue > 0 || farmer.freightDue > 0) && (
+                      {(farmer.advanceDue > 0 || farmer.freightDue > 0 || farmer.loanDue > 0) && (
                         <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-archived-card-${farmer.id}`}>
                           <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
                           <div className="space-y-1 text-xs">
@@ -1176,18 +1174,20 @@ export default function FarmerLedger() {
                                 <span className="font-medium">{formatDueValue(farmer.freightDue)}</span>
                               </div>
                             )}
+                            {farmer.loanDue > 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-purple-600 dark:text-purple-400">{t("farmerLoanOutstanding")}</span>
+                                <span className="font-medium text-purple-600 dark:text-purple-400">{formatDueValue(farmer.loanDue)}</span>
+                              </div>
+                            )}
                             <div className="flex justify-between border-t pt-1 font-semibold">
                               <span>{t("total")}</span>
-                              <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
+                              <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue + (farmer.loanDue || 0))}</span>
                             </div>
                           </div>
                         </PopoverContent>
                       )}
                     </Popover>
-                    <div>
-                      <div className="text-purple-600 dark:text-purple-400 font-medium">{t("farmerLoanOutstanding")}</div>
-                      <div className="text-purple-600 dark:text-purple-400 font-bold">{formatDueValue(farmer.loanDue)}</div>
-                    </div>
                     <div>
                       <div className="text-orange-500 dark:text-orange-400 font-medium">{t("selfDue")}</div>
                       <div className="text-orange-500 dark:text-orange-400 font-bold">{formatDueValue(farmer.selfDue)}</div>
@@ -1215,11 +1215,10 @@ export default function FarmerLedger() {
                   <col className="w-[160px]" />
                   <col className="w-[110px]" />
                   <col className="w-[90px]" />
+                  <col className="w-[95px]" />
                   <col className="w-[85px]" />
                   <col className="w-[85px]" />
-                  <col className="w-[75px]" />
                   <col className="w-[85px]" />
-                  <col className="w-[80px]" />
                   <col className="w-[90px]" />
                 </colgroup>
                 <thead className="bg-muted/50">
@@ -1230,7 +1229,6 @@ export default function FarmerLedger() {
                     <SortHeader field="village" className="text-muted-foreground">{t("village")}</SortHeader>
                     <SortHeader field="contactNumber" className="text-muted-foreground">{t("contact")}</SortHeader>
                     <SortHeader field="pyReceivables" className="text-blue-600 dark:text-blue-400" center>{t("pyReceivables")}</SortHeader>
-                    <SortHeader field="loanDue" className="text-purple-600 dark:text-purple-400" center>{t("farmerLoanOutstanding")}</SortHeader>
                     <SortHeader field="selfDue" className="text-orange-500 dark:text-orange-400" center>{t("selfDue")}</SortHeader>
                     <SortHeader field="merchantDue" className="text-orange-700 dark:text-orange-500" center>{t("merchantDues")}</SortHeader>
                     <SortHeader field="totalDue" className="text-red-600 dark:text-red-500" center>{t("totalDues")}</SortHeader>
@@ -1266,10 +1264,10 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
                       <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400" onClick={(e) => e.stopPropagation()}>
-                        {(farmer.advanceDue > 0 || farmer.freightDue > 0) ? (
+                        {(farmer.advanceDue > 0 || farmer.freightDue > 0 || farmer.loanDue > 0) ? (
                           <Popover>
                             <PopoverTrigger asChild>
-                              <span className="cursor-pointer underline decoration-dotted">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</span>
+                              <span className="cursor-pointer underline decoration-dotted">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0) + (farmer.loanDue || 0))}</span>
                             </PopoverTrigger>
                             <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-table-${farmer.id}`}>
                               <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
@@ -1290,18 +1288,23 @@ export default function FarmerLedger() {
                                     <span className="font-medium">{formatDueValue(farmer.freightDue)}</span>
                                   </div>
                                 )}
+                                {farmer.loanDue > 0 && (
+                                  <div className="flex justify-between">
+                                    <span className="text-purple-600 dark:text-purple-400">{t("farmerLoanOutstanding")}</span>
+                                    <span className="font-medium text-purple-600 dark:text-purple-400">{formatDueValue(farmer.loanDue)}</span>
+                                  </div>
+                                )}
                                 <div className="flex justify-between border-t pt-1 font-semibold">
                                   <span>{t("total")}</span>
-                                  <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
+                                  <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue + (farmer.loanDue || 0))}</span>
                                 </div>
                               </div>
                             </PopoverContent>
                           </Popover>
                         ) : (
-                          formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))
+                          formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0) + (farmer.loanDue || 0))
                         )}
                       </td>
-                      <td className="px-2 py-2 text-center text-purple-600 dark:text-purple-400">{formatDueValue(farmer.loanDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
                       <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>
@@ -1359,10 +1362,10 @@ export default function FarmerLedger() {
                       <td className="px-2 py-2 text-muted-foreground truncate">{farmer.village}</td>
                       <td className="px-2 py-2 text-muted-foreground text-xs">{farmer.contactNumber}</td>
                       <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400">
-                        {(farmer.advanceDue > 0 || farmer.freightDue > 0) ? (
+                        {(farmer.advanceDue > 0 || farmer.freightDue > 0 || farmer.loanDue > 0) ? (
                           <Popover>
                             <PopoverTrigger asChild>
-                              <span className="cursor-pointer underline decoration-dotted">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))}</span>
+                              <span className="cursor-pointer underline decoration-dotted">{formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0) + (farmer.loanDue || 0))}</span>
                             </PopoverTrigger>
                             <PopoverContent className="w-56 p-3" data-testid={`hover-receivable-breakup-archived-${farmer.id}`}>
                               <div className="text-xs font-semibold mb-2">{t("receivableBreakup")}</div>
@@ -1383,18 +1386,23 @@ export default function FarmerLedger() {
                                     <span className="font-medium">{formatDueValue(farmer.freightDue)}</span>
                                   </div>
                                 )}
+                                {farmer.loanDue > 0 && (
+                                  <div className="flex justify-between">
+                                    <span className="text-purple-600 dark:text-purple-400">{t("farmerLoanOutstanding")}</span>
+                                    <span className="font-medium text-purple-600 dark:text-purple-400">{formatDueValue(farmer.loanDue)}</span>
+                                  </div>
+                                )}
                                 <div className="flex justify-between border-t pt-1 font-semibold">
                                   <span>{t("total")}</span>
-                                  <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue)}</span>
+                                  <span>{formatDueValue(farmer.pyReceivables + farmer.advanceDue + farmer.freightDue + (farmer.loanDue || 0))}</span>
                                 </div>
                               </div>
                             </PopoverContent>
                           </Popover>
                         ) : (
-                          formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0))
+                          formatDueValue(farmer.pyReceivables + (farmer.advanceDue || 0) + (farmer.freightDue || 0) + (farmer.loanDue || 0))
                         )}
                       </td>
-                      <td className="px-2 py-2 text-center text-purple-600 dark:text-purple-400">{formatDueValue(farmer.loanDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-500 dark:text-orange-400">{formatDueValue(farmer.selfDue)}</td>
                       <td className="px-2 py-2 text-center text-orange-700 dark:text-orange-500">{formatDueValue(farmer.merchantDue)}</td>
                       <td className="px-2 py-2 text-center font-medium text-red-600 dark:text-red-500">{formatDueValue(farmer.totalDue)}</td>
