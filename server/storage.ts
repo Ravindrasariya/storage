@@ -353,6 +353,17 @@ export interface IStorage {
   accrueInterestForAll(coldStorageId: string): Promise<number>;
   computeYearlySimpleInterest(latestPrincipal: number, effectiveDate: Date, annualRate: number, today: Date): { finalAmount: number; latestPrincipal: number; effectiveDate: Date };
   calculateSimpleInterest(principal: number, annualRate: number, fromDate: Date, toDate: Date): number;
+  // Farmer Loan
+  createFarmerLoan(data: { coldStorageId: string; farmerLedgerId: string; farmerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; finalAmount: number; latestPrincipal: number; lastAccrualDate: Date; expenseId: string | null; remarks?: string | null; originalEffectiveDate?: Date }): Promise<FarmerLoan>;
+  getFarmerLoans(coldStorageId: string, farmerLedgerId?: string): Promise<FarmerLoan[]>;
+  getFarmersWithLoanDues(coldStorageId: string): Promise<{ farmerLedgerId: string; farmerId: string; farmerName: string; loanDue: number }[]>;
+  getOutstandingLoansForFarmer(coldStorageId: string, farmerLedgerId: string): Promise<{ id: string; effectiveDate: Date; amount: number; rateOfInterest: number; finalAmount: number; paidAmount: number; remainingDue: number; expenseId: string | null; createdAt: Date }[]>;
+  payFarmerLoanSelected(coldStorageId: string, farmerLedgerId: string, amount: number, selectedLoanIds: string[], receiptId?: string, eventDate?: Date): Promise<{ totalApplied: number; recordsUpdated: number; appliedLoanIds: string[] }>;
+  createFarmerLoanReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; farmerName: string; farmerLedgerId: string; farmerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedLoanIds?: string[] }): Promise<CashReceipt>;
+  deleteFarmerLoanReceipt(receiptId: string): Promise<void>;
+  createPYFarmerLoan(data: { coldStorageId: string; farmerLedgerId: string; farmerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; remarks?: string | null }): Promise<FarmerLoan>;
+  updatePYFarmerLoan(coldStorageId: string, id: string, updates: { amount?: number; rateOfInterest?: number; effectiveDate?: Date; remarks?: string | null }): Promise<FarmerLoan | undefined>;
+  reverseFarmerLoan(coldStorageId: string, loanId: string): Promise<boolean>;
   // Farmer Ledger
   getFarmerLedger(coldStorageId: string, includeArchived?: boolean): Promise<{
     farmers: (FarmerLedgerEntry & {
@@ -361,6 +372,7 @@ export interface IStorage {
       merchantDue: number;
       advanceDue: number;
       freightDue: number;
+      loanDue: number;
       totalDue: number;
     })[];
     summary: {
@@ -370,10 +382,11 @@ export interface IStorage {
       merchantDue: number;
       advanceDue: number;
       freightDue: number;
+      loanDue: number;
       totalDue: number;
     };
   }>;
-  getFarmerDuesByLedgerId(farmerLedgerId: string, coldStorageId: string): Promise<{ pyReceivables: number; selfDue: number; merchantDue: number; advanceDue: number; freightDue: number; totalDue: number }>;
+  getFarmerDuesByLedgerId(farmerLedgerId: string, coldStorageId: string): Promise<{ pyReceivables: number; selfDue: number; merchantDue: number; advanceDue: number; freightDue: number; loanDue: number; totalDue: number }>;
   syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number; lotsLinked: number; receivablesLinked: number }>;
   generateFarmerId(coldStorageId: string): Promise<string>;
   checkPotentialMerge(id: string, updates: Partial<FarmerLedgerEntry>): Promise<{
