@@ -95,6 +95,12 @@ function FarmerDetailedLedger({ farmerId, farmerName }: { farmerId: string; farm
     enabled: !!farmerId,
   });
 
+  const formatDateDDMMYYYY = useCallback((dateStr: string) => {
+    if (!dateStr) return '';
+    const [y, mo, d] = dateStr.split('-');
+    return `${d}/${mo}/${y}`;
+  }, []);
+
   const loanSuffix = useCallback((m: Record<string, string>) => {
     if (m.loanDetails) {
       const parts: string[] = [m.loanDetails];
@@ -106,10 +112,10 @@ function FarmerDetailedLedger({ farmerId, farmerName }: { farmerId: string; farm
     if (m.loanAmount) parts.push(`${t("loanAmount")}: ${formatCurrency(Number(m.loanAmount))}`);
     if (m.principal)  parts.push(`${t("principal")}: ${formatCurrency(Number(m.principal))}`);
     parts.push(`ROI: ${m.rateOfInterest}%`);
-    if (m.effectiveDate) parts.push(`${t("effectiveDate")}: ${m.effectiveDate}`);
+    if (m.effectiveDate) parts.push(`${t("effectiveDate")}: ${formatDateDDMMYYYY(m.effectiveDate)}`);
     if (m.outstandingDue) parts.push(`${t("due")}: ${formatCurrency(Number(m.outstandingDue))}`);
     return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
-  }, [t, formatCurrency]);
+  }, [t, formatCurrency, formatDateDDMMYYYY]);
 
   const getParticular = useCallback((txn: FarmerTransaction): string => {
     const m = txn.meta || {};
