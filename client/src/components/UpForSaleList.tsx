@@ -451,7 +451,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
           <h3 className="text-lg font-semibold">{t("upForSale") || "Up for Sale"}</h3>
           
           {/* Farmer Filter */}
-          <div className="relative flex-1 min-w-0 max-w-xs" ref={farmerFilterRef}>
+          <div className="relative flex-1 min-w-[180px] max-w-xs" ref={farmerFilterRef}>
             <div className="flex items-center gap-1">
               <div className="relative w-full">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
