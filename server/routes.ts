@@ -2281,13 +2281,13 @@ export async function registerRoutes(
       });
       const data = patchSchema.parse(req.body);
       const coldStorageId = getColdStorageId(req);
-      const updates: Record<string, unknown> = {};
+      const updates: { amount?: number; rateOfInterest?: number; effectiveDate?: Date; remarks?: string | null } = {};
       if (data.amount !== undefined) updates.amount = data.amount;
       if (data.rateOfInterest !== undefined) updates.rateOfInterest = data.rateOfInterest;
       if (data.effectiveDate !== undefined) updates.effectiveDate = new Date(data.effectiveDate);
       if (data.remarks !== undefined) updates.remarks = data.remarks;
 
-      const updated = await storage.updatePYFarmerLoan(coldStorageId, id, updates as any);
+      const updated = await storage.updatePYFarmerLoan(coldStorageId, id, updates);
       if (!updated) {
         return res.status(404).json({ error: "PY farmer loan not found or cannot be edited" });
       }
