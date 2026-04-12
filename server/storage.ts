@@ -69,6 +69,7 @@ import {
   farmerLoan,
   farmerLoanEvents,
   type FarmerLoan,
+  type FarmerLoanEvent,
   type InsertFarmerLoan,
   farmerLedger,
   farmerLedgerEditHistory,
@@ -9044,6 +9045,17 @@ export class DatabaseStorage implements IStorage {
         eq(farmerLoan.isReversed, 0)
       ));
 
+    const allFarmerLoanEventRows = allFarmerLoans.length > 0
+      ? await db.select().from(farmerLoanEvents)
+          .where(sql`${farmerLoanEvents.farmerLoanId} IN (${sql.join(allFarmerLoans.map(fl => sql`${fl.id}`), sql`, `)})`)
+          .orderBy(farmerLoanEvents.eventDate)
+      : [];
+    const loanEventsMap = new Map<string, FarmerLoanEvent[]>();
+    for (const ev of allFarmerLoanEventRows) {
+      if (!loanEventsMap.has(ev.farmerLoanId)) loanEventsMap.set(ev.farmerLoanId, []);
+      loanEventsMap.get(ev.farmerLoanId)!.push(ev);
+    }
+
     const allFarmerLoanReceipts = await db.select().from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
@@ -9159,16 +9171,65 @@ export class DatabaseStorage implements IStorage {
 
     const fyFarmerLoans = farmerLoans.filter(fl => fl.effectiveDate >= fyStart && fl.effectiveDate <= fyEnd);
     for (const fl of fyFarmerLoans) {
+      const events = loanEventsMap.get(fl.id) || [];
+      const creationEvent = events.find(e => e.eventType === 'creation');
+      const interestAmount = roundAmount((fl.finalAmount || fl.amount) - fl.amount);
+
       transactions.push({
         type: 'farmer_loan',
-        date: toISTDateString(fl.effectiveDate),
-        meta: { amount: String(roundAmount(fl.finalAmount || fl.amount)) },
-        debit: roundAmount(fl.finalAmount || fl.amount),
+        date: toISTDateString(fl.originalEffectiveDate || fl.effectiveDate),
+        meta: {
+          amount: String(roundAmount(fl.amount)),
+          principal: String(roundAmount(fl.amount)),
+          rateOfInterest: String(fl.rateOfInterest || 0),
+          eventType: creationEvent ? 'creation' : 'disbursement',
+        },
+        debit: roundAmount(fl.amount),
         credit: 0,
         refId: fl.id,
-        sortDate: fl.effectiveDate,
+        sortDate: fl.originalEffectiveDate || fl.effectiveDate,
         sortOrder: 3,
       });
+
+      if (interestAmount > 0) {
+        transactions.push({
+          type: 'farmer_loan_interest',
+          date: toISTDateString(fl.effectiveDate),
+          meta: {
+            principal: String(roundAmount(fl.amount)),
+            interest: String(interestAmount),
+            rateOfInterest: String(fl.rateOfInterest || 0),
+            loanId: fl.id,
+          },
+          debit: interestAmount,
+          credit: 0,
+          refId: fl.id,
+          sortDate: fl.effectiveDate,
+          sortOrder: 4,
+        });
+      }
+
+      const compoundingEvents = events.filter(e => e.eventType === 'annual_compounding' && e.eventDate >= fyStart && e.eventDate <= fyEnd);
+      for (const ce of compoundingEvents) {
+        const compoundedAmt = roundAmount(ce.interestCompounded || 0);
+        if (compoundedAmt > 0) {
+          transactions.push({
+            type: 'farmer_loan_interest',
+            date: toISTDateString(ce.eventDate),
+            meta: {
+              interest: String(compoundedAmt),
+              rateOfInterest: String(ce.rateOfInterest || 0),
+              eventType: 'annual_compounding',
+              loanId: fl.id,
+            },
+            debit: compoundedAmt,
+            credit: 0,
+            refId: ce.id,
+            sortDate: ce.eventDate,
+            sortOrder: 4,
+          });
+        }
+      }
     }
 
     const fyFarmerLoanRcpts = farmerLoanRcpts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);

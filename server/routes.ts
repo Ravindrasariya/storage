@@ -3188,6 +3188,34 @@ export async function registerRoutes(
         return;
       }
 
+      if (payerType === "farmer_loan") {
+        if (!farmerName || !contactNumber || !village) {
+          return res.status(400).json({ error: "Farmer name, contact, and village are required for farmer_loan type" });
+        }
+
+        const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
+          name: farmerName,
+          contactNumber,
+          village,
+          tehsil,
+          district,
+          state,
+        });
+
+        const loan = await storage.createPYFarmerLoan({
+          coldStorageId,
+          farmerLedgerId: farmerEntry.id,
+          farmerId: farmerEntry.farmerId,
+          amount: dueAmount,
+          rateOfInterest: rateOfInterest || 0,
+          effectiveDate: effectiveDate ? new Date(effectiveDate) : new Date(),
+          remarks: remarks || null,
+        });
+
+        res.json(loan);
+        return;
+      }
+
       // For cold_merchant type, ensure buyer exists in Buyer Ledger BEFORE creating receivable
       // This matches the farmer pattern where we get IDs first
       if (payerType === "cold_merchant" && buyerName) {

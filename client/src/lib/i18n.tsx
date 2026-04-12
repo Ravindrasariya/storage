@@ -779,6 +779,8 @@ const translations: Translations = {
   farmerAdvanceOutstanding: { en: "Farmer Advance", hi: "किसान अग्रिम" },
   farmerFreightOutstanding: { en: "Farmer Freight", hi: "किसान भाड़ा" },
   farmerLoanOutstanding: { en: "Farmer Loan", hi: "किसान ऋण" },
+  farmerLoanInterest: { en: "Farmer Loan Interest", hi: "किसान ऋण ब्याज" },
+  compounded: { en: "Compounded", hi: "चक्रवृद्धि" },
   merchantAdvanceOutstanding: { en: "Merchant Advance/Loan", hi: "व्यापारी अग्रिम/ऋण" },
   selectAdvancesToPay: { en: "Select advances to pay", hi: "भुगतान के लिए अग्रिम चुनें" },
   selectLoansToPay: { en: "Select loans to pay", hi: "भुगतान के लिए ऋण चुनें" },
