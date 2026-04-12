@@ -637,7 +637,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       <Dialog open={!!selectedLot} onOpenChange={(open) => !open && resetDialog()}>
         <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
               <DialogTitle>{t("sale")}</DialogTitle>
               <Input
                 type="date"
