@@ -1331,7 +1331,7 @@ export default function FarmerLedger() {
                     </tr>
                     {expandedFarmerId === farmer.id && (
                       <tr key={`${farmer.id}-detail`}>
-                        <td colSpan={11} className="p-0 border-b">
+                        <td colSpan={10} className="p-0 border-b">
                           <FarmerDetailedLedger farmerId={farmer.id} farmerName={farmer.name} />
                         </td>
                       </tr>
