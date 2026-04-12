@@ -8114,6 +8114,36 @@ export class DatabaseStorage implements IStorage {
             .where(eq(farmerAdvanceFreight.farmerLedgerId, mergedId));
         }
 
+        const mergedFarmerLoans = await db.select()
+          .from(farmerLoan)
+          .where(eq(farmerLoan.farmerLedgerId, mergedId));
+        if (mergedFarmerLoans.length > 0) {
+          await db.update(farmerLoan)
+            .set({
+              farmerLedgerId: survivorId,
+              farmerId: survivorFarmerId,
+            })
+            .where(eq(farmerLoan.farmerLedgerId, mergedId));
+        }
+
+        const mergedFarmerLoanReceipts = await db.select()
+          .from(cashReceipts)
+          .where(and(
+            eq(cashReceipts.buyerLedgerId, mergedId),
+            eq(cashReceipts.payerType, 'farmer_loan')
+          ));
+        if (mergedFarmerLoanReceipts.length > 0) {
+          await db.update(cashReceipts)
+            .set({
+              buyerLedgerId: survivorId,
+              buyerId: survivorFarmerId,
+            })
+            .where(and(
+              eq(cashReceipts.buyerLedgerId, mergedId),
+              eq(cashReceipts.payerType, 'farmer_loan')
+            ));
+        }
+
         // Transfer discounts from merged farmer to survivor
         const mergedDiscounts = await db.select()
           .from(discounts)
