@@ -66,6 +66,10 @@ import {
   merchantAdvanceEvents,
   type MerchantAdvance,
   type InsertMerchantAdvance,
+  farmerLoan,
+  farmerLoanEvents,
+  type FarmerLoan,
+  type InsertFarmerLoan,
   farmerLedger,
   farmerLedgerEditHistory,
   type FarmerLedgerEntry,
@@ -2914,7 +2918,9 @@ export class DatabaseStorage implements IStorage {
       .where(eq(cashReceipts.id, receiptId));
 
     // Handle recomputation based on payer type
-    if (receipt.payerType === "cold_merchant_advance" && receipt.coldStorageId && receipt.buyerLedgerId) {
+    if (receipt.payerType === "farmer_loan" && receipt.coldStorageId && receipt.buyerLedgerId) {
+      await this.recomputeFarmerLoanPayments(receipt.coldStorageId, receipt.buyerLedgerId);
+    } else if (receipt.payerType === "cold_merchant_advance" && receipt.coldStorageId && receipt.buyerLedgerId) {
       await this.recomputeMerchantAdvancePayments(receipt.coldStorageId, receipt.buyerLedgerId);
     } else if (receipt.payerType === "farmer" && receipt.coldStorageId && receipt.buyerName) {
       // For farmer payments, use recomputeFarmerPaymentsWithDiscounts to properly reset self-sales
@@ -3324,6 +3330,17 @@ export class DatabaseStorage implements IStorage {
           reversedAt: new Date(),
         })
         .where(eq(merchantAdvance.expenseId, expenseId));
+    }
+
+    if (expense.expenseType === "farmer_loan") {
+      const [linkedLoan] = await db.select().from(farmerLoan)
+        .where(eq(farmerLoan.expenseId, expenseId));
+      if (linkedLoan) {
+        await db.update(farmerLoan)
+          .set({ isReversed: 1, reversedAt: new Date() })
+          .where(eq(farmerLoan.id, linkedLoan.id));
+        await this.recomputeFarmerLoanPayments(linkedLoan.coldStorageId, linkedLoan.farmerLedgerId);
+      }
     }
 
     // If this is a loan_principal expense, also reverse the linked liability payment
@@ -6542,6 +6559,63 @@ export class DatabaseStorage implements IStorage {
       updatedCount++;
     }
 
+    const flRecords = await db.select().from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.isReversed, 0)
+      ));
+
+    for (const flRecord of flRecords) {
+      if (flRecord.rateOfInterest <= 0) continue;
+
+      const paid = flRecord.paidAmount || 0;
+      const grossFinal = flRecord.finalAmount || flRecord.amount;
+      if (grossFinal - paid <= 0) continue;
+
+      const lastAccrual = new Date(flRecord.lastAccrualDate);
+      lastAccrual.setHours(0, 0, 0, 0);
+      if (lastAccrual >= today) continue;
+
+      const curPrincipal = flRecord.latestPrincipal ?? flRecord.amount;
+      let curEffective = new Date(flRecord.effectiveDate);
+      curEffective.setHours(0, 0, 0, 0);
+
+      const result = this.computeYearlySimpleInterest(curPrincipal, curEffective, flRecord.rateOfInterest, today);
+
+      const newFinalAmount = roundAmount(result.finalAmount + paid);
+
+      if (result.latestPrincipal !== curPrincipal) {
+        const interestCompounded = roundAmount(result.latestPrincipal - curPrincipal);
+        await db.insert(farmerLoanEvents).values({
+          id: randomUUID(),
+          farmerLoanId: flRecord.id,
+          eventType: 'annual_compounding',
+          eventDate: result.effectiveDate,
+          amount: flRecord.amount,
+          rateOfInterest: flRecord.rateOfInterest,
+          latestPrincipalBefore: curPrincipal,
+          latestPrincipalAfter: result.latestPrincipal,
+          effectiveDateBefore: curEffective,
+          effectiveDateAfter: result.effectiveDate,
+          finalAmountBefore: grossFinal,
+          finalAmountAfter: newFinalAmount,
+          paidAmountBefore: paid,
+          paidAmountAfter: paid,
+          interestCompounded,
+        });
+      }
+
+      await db.update(farmerLoan)
+        .set({
+          finalAmount: newFinalAmount,
+          latestPrincipal: result.latestPrincipal,
+          effectiveDate: result.effectiveDate,
+          lastAccrualDate: today,
+        })
+        .where(eq(farmerLoan.id, flRecord.id));
+      updatedCount++;
+    }
+
     return updatedCount;
   }
 
@@ -6630,6 +6704,447 @@ export class DatabaseStorage implements IStorage {
     const days = diffMs / (24 * 60 * 60 * 1000);
     const rate = annualRate / 100;
     return Math.round((principal + (principal * rate * days / 365)) * 100) / 100;
+  }
+
+  // ============ FARMER LOAN ============
+
+  async createFarmerLoan(data: { coldStorageId: string; farmerLedgerId: string; farmerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; finalAmount: number; latestPrincipal: number; lastAccrualDate: Date; expenseId: string | null; remarks?: string | null }): Promise<FarmerLoan> {
+    const [record] = await db.insert(farmerLoan)
+      .values({
+        id: randomUUID(),
+        coldStorageId: data.coldStorageId,
+        farmerLedgerId: data.farmerLedgerId,
+        farmerId: data.farmerId,
+        amount: data.amount,
+        rateOfInterest: data.rateOfInterest,
+        effectiveDate: data.effectiveDate,
+        finalAmount: data.finalAmount,
+        latestPrincipal: data.latestPrincipal,
+        lastAccrualDate: data.lastAccrualDate,
+        expenseId: data.expenseId,
+        remarks: data.remarks || null,
+        paidAmount: 0,
+      })
+      .returning();
+
+    await db.insert(farmerLoanEvents).values({
+      id: randomUUID(),
+      farmerLoanId: record.id,
+      eventType: 'creation',
+      eventDate: record.effectiveDate,
+      amount: record.amount,
+      rateOfInterest: record.rateOfInterest,
+      latestPrincipalBefore: null,
+      latestPrincipalAfter: record.latestPrincipal ?? record.amount,
+      effectiveDateBefore: null,
+      effectiveDateAfter: record.effectiveDate,
+      finalAmountBefore: null,
+      finalAmountAfter: record.finalAmount,
+      paidAmountBefore: null,
+      paidAmountAfter: 0,
+    });
+
+    return record;
+  }
+
+  async getFarmerLoans(coldStorageId: string, farmerLedgerId?: string): Promise<FarmerLoan[]> {
+    if (farmerLedgerId) {
+      return db.select().from(farmerLoan)
+        .where(and(
+          eq(farmerLoan.coldStorageId, coldStorageId),
+          eq(farmerLoan.farmerLedgerId, farmerLedgerId),
+          eq(farmerLoan.isReversed, 0)
+        ))
+        .orderBy(desc(farmerLoan.createdAt));
+    }
+    return db.select().from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.isReversed, 0)
+      ))
+      .orderBy(desc(farmerLoan.createdAt));
+  }
+
+  async getFarmersWithLoanDues(coldStorageId: string): Promise<{ farmerLedgerId: string; farmerId: string; farmerName: string; loanDue: number }[]> {
+    const records = await db.select()
+      .from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.isReversed, 0)
+      ));
+
+    const grouped = new Map<string, { farmerLedgerId: string; farmerId: string; loanDue: number }>();
+    for (const r of records) {
+      const remaining = (r.finalAmount || 0) - (r.paidAmount || 0);
+      if (remaining <= 0) continue;
+      const existing = grouped.get(r.farmerLedgerId);
+      if (existing) {
+        existing.loanDue += remaining;
+      } else {
+        grouped.set(r.farmerLedgerId, {
+          farmerLedgerId: r.farmerLedgerId,
+          farmerId: r.farmerId,
+          loanDue: remaining,
+        });
+      }
+    }
+
+    const farmerLedgerRecords = await db.select()
+      .from(farmerLedger)
+      .where(eq(farmerLedger.coldStorageId, coldStorageId));
+
+    const farmerNameMap = new Map<string, string>();
+    for (const fl of farmerLedgerRecords) {
+      farmerNameMap.set(fl.id, fl.name);
+    }
+
+    const result: { farmerLedgerId: string; farmerId: string; farmerName: string; loanDue: number }[] = [];
+    for (const [ledgerId, data] of grouped) {
+      const name = farmerNameMap.get(ledgerId);
+      if (name && data.loanDue > 0) {
+        result.push({
+          farmerLedgerId: ledgerId,
+          farmerId: data.farmerId,
+          farmerName: name,
+          loanDue: Math.round(data.loanDue * 100) / 100,
+        });
+      }
+    }
+
+    return result.sort((a, b) => a.farmerName.toLowerCase().localeCompare(b.farmerName.toLowerCase()));
+  }
+
+  async getOutstandingLoansForFarmer(coldStorageId: string, farmerLedgerId: string): Promise<{ id: string; effectiveDate: Date; amount: number; rateOfInterest: number; finalAmount: number; paidAmount: number; remainingDue: number; expenseId: string | null; createdAt: Date }[]> {
+    const records = await db.select()
+      .from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.farmerLedgerId, farmerLedgerId),
+        eq(farmerLoan.isReversed, 0)
+      ))
+      .orderBy(asc(farmerLoan.effectiveDate));
+
+    return records
+      .map(r => ({
+        id: r.id,
+        effectiveDate: r.effectiveDate,
+        amount: r.amount,
+        rateOfInterest: r.rateOfInterest,
+        finalAmount: r.finalAmount,
+        paidAmount: r.paidAmount,
+        remainingDue: roundAmount((r.finalAmount || 0) - (r.paidAmount || 0)),
+        expenseId: r.expenseId,
+        createdAt: r.createdAt,
+      }))
+      .filter(r => r.remainingDue > 0);
+  }
+
+  async payFarmerLoanSelected(coldStorageId: string, farmerLedgerId: string, amount: number, selectedLoanIds: string[], receiptId?: string, eventDate?: Date): Promise<{ totalApplied: number; recordsUpdated: number; appliedLoanIds: string[] }> {
+    const records = await db.select()
+      .from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.farmerLedgerId, farmerLedgerId),
+        eq(farmerLoan.isReversed, 0),
+        inArray(farmerLoan.id, selectedLoanIds)
+      ));
+
+    const orderedRecords = selectedLoanIds
+      .map(id => records.find(r => r.id === id))
+      .filter((r): r is NonNullable<typeof r> => r != null);
+
+    let remaining = amount;
+    let totalApplied = 0;
+    let recordsUpdated = 0;
+    const appliedLoanIds: string[] = [];
+
+    return await db.transaction(async (tx) => {
+      for (const record of orderedRecords) {
+        if (remaining <= 0) break;
+        const due = (record.finalAmount || 0) - (record.paidAmount || 0);
+        if (due <= 0) continue;
+
+        const applyAmount = Math.min(remaining, due);
+        const newPaid = roundAmount((record.paidAmount || 0) + applyAmount);
+        const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, eventDate);
+        await tx.update(farmerLoan)
+          .set({ paidAmount: newPaid, ...interestFields })
+          .where(eq(farmerLoan.id, record.id));
+
+        await tx.insert(farmerLoanEvents).values({
+          id: randomUUID(),
+          farmerLoanId: record.id,
+          eventType: 'payment',
+          eventDate: eventDate || new Date(),
+          amount: record.amount,
+          rateOfInterest: record.rateOfInterest,
+          latestPrincipalBefore: record.latestPrincipal ?? record.amount,
+          latestPrincipalAfter: interestFields?.latestPrincipal ?? record.latestPrincipal ?? record.amount,
+          effectiveDateBefore: record.effectiveDate,
+          effectiveDateAfter: interestFields?.effectiveDate ?? record.effectiveDate,
+          finalAmountBefore: record.finalAmount ?? record.amount,
+          finalAmountAfter: record.finalAmount ?? record.amount,
+          paidAmountBefore: record.paidAmount || 0,
+          paidAmountAfter: newPaid,
+          paymentAmount: applyAmount,
+          receiptId: receiptId || null,
+        });
+
+        totalApplied += applyAmount;
+        remaining -= applyAmount;
+        recordsUpdated++;
+        appliedLoanIds.push(record.id);
+      }
+
+      return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated, appliedLoanIds };
+    });
+  }
+
+  async createFarmerLoanReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; farmerName: string; farmerLedgerId: string; farmerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedLoanIds?: string[] }): Promise<CashReceipt> {
+    const [receipt] = await db.insert(cashReceipts)
+      .values({
+        id: randomUUID(),
+        transactionId: data.transactionId,
+        coldStorageId: data.coldStorageId,
+        payerType: data.payerType,
+        buyerName: data.farmerName,
+        buyerLedgerId: data.farmerLedgerId,
+        buyerId: data.farmerId,
+        receiptType: data.receiptType,
+        accountId: data.accountId,
+        amount: data.amount,
+        receivedAt: data.receivedAt,
+        notes: data.notes,
+        appliedAmount: data.appliedAmount ?? data.amount,
+        unappliedAmount: data.unappliedAmount ?? 0,
+        appliedAdvanceIds: data.appliedLoanIds ? JSON.stringify(data.appliedLoanIds) : null,
+      })
+      .returning();
+    return receipt;
+  }
+
+  async updateFarmerLoanReceipt(receiptId: string, updates: { appliedAmount?: number; unappliedAmount?: number; appliedLoanIds?: string[] }): Promise<void> {
+    const setValues: Record<string, unknown> = {};
+    if (updates.appliedAmount !== undefined) setValues.appliedAmount = updates.appliedAmount;
+    if (updates.unappliedAmount !== undefined) setValues.unappliedAmount = updates.unappliedAmount;
+    if (updates.appliedLoanIds !== undefined) setValues.appliedAdvanceIds = JSON.stringify(updates.appliedLoanIds);
+    if (Object.keys(setValues).length > 0) {
+      await db.update(cashReceipts).set(setValues).where(eq(cashReceipts.id, receiptId));
+    }
+  }
+
+  async deleteFarmerLoanReceipt(receiptId: string): Promise<void> {
+    await db.delete(cashReceipts).where(eq(cashReceipts.id, receiptId));
+  }
+
+  async recomputeFarmerLoanPayments(coldStorageId: string, farmerLedgerId: string): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const loans = await db.select().from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.farmerLedgerId, farmerLedgerId),
+        eq(farmerLoan.isReversed, 0)
+      ))
+      .orderBy(asc(farmerLoan.effectiveDate));
+
+    for (const loan of loans) {
+      const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
+      const accrualTarget = loan.lastAccrualDate ? new Date(loan.lastAccrualDate) : today;
+      accrualTarget.setHours(0, 0, 0, 0);
+      if (loan.previousEffectiveDate && loan.rateOfInterest > 0) {
+        const recomputed = this.computeYearlySimpleInterest(
+          loan.previousLatestPrincipal ?? loan.amount,
+          loan.previousEffectiveDate,
+          loan.rateOfInterest,
+          accrualTarget
+        );
+        resetFields.effectiveDate = recomputed.effectiveDate;
+        resetFields.latestPrincipal = recomputed.latestPrincipal;
+        resetFields.finalAmount = recomputed.finalAmount;
+      } else if (loan.rateOfInterest > 0 && loan.effectiveDate) {
+        const recomputed = this.computeYearlySimpleInterest(
+          loan.latestPrincipal ?? loan.amount,
+          loan.effectiveDate,
+          loan.rateOfInterest,
+          accrualTarget
+        );
+        resetFields.finalAmount = recomputed.finalAmount;
+        resetFields.latestPrincipal = recomputed.latestPrincipal;
+        resetFields.effectiveDate = recomputed.effectiveDate;
+      }
+      await db.update(farmerLoan).set(resetFields).where(eq(farmerLoan.id, loan.id));
+    }
+
+    const activeReceipts = await db.select().from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.buyerLedgerId, farmerLedgerId),
+        eq(cashReceipts.payerType, "farmer_loan"),
+        eq(cashReceipts.isReversed, 0)
+      ))
+      .orderBy(cashReceipts.receivedAt);
+
+    for (const rcpt of activeReceipts) {
+      const freshLoans = await db.select().from(farmerLoan)
+        .where(and(
+          eq(farmerLoan.coldStorageId, coldStorageId),
+          eq(farmerLoan.farmerLedgerId, farmerLedgerId),
+          eq(farmerLoan.isReversed, 0)
+        ))
+        .orderBy(asc(farmerLoan.effectiveDate));
+
+      let remaining = rcpt.amount;
+      for (const record of freshLoans) {
+        if (remaining <= 0) break;
+        const due = (record.finalAmount || record.amount) - (record.paidAmount || 0);
+        if (due <= 0) continue;
+        const applyAmount = Math.min(remaining, due);
+        const newPaid = roundAmount((record.paidAmount || 0) + applyAmount);
+        const interestFields = this.computeInterestAwarePaymentFields(record, newPaid, record.amount, rcpt.receivedAt);
+        await db.update(farmerLoan)
+          .set({ paidAmount: newPaid, ...interestFields })
+          .where(eq(farmerLoan.id, record.id));
+        remaining -= applyAmount;
+      }
+    }
+  }
+
+  async createPYFarmerLoan(data: { coldStorageId: string; farmerLedgerId: string; farmerId: string; amount: number; rateOfInterest: number; effectiveDate: Date; remarks?: string | null }): Promise<FarmerLoan> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let finalAmount = data.amount;
+    let latestPrincipal = data.amount;
+    let computedEffectiveDate = data.effectiveDate;
+
+    if (data.rateOfInterest > 0) {
+      const result = this.computeYearlySimpleInterest(data.amount, data.effectiveDate, data.rateOfInterest, today);
+      finalAmount = result.finalAmount;
+      latestPrincipal = result.latestPrincipal;
+      computedEffectiveDate = result.effectiveDate;
+    }
+
+    const [record] = await db.insert(farmerLoan)
+      .values({
+        id: randomUUID(),
+        coldStorageId: data.coldStorageId,
+        farmerLedgerId: data.farmerLedgerId,
+        farmerId: data.farmerId,
+        amount: data.amount,
+        rateOfInterest: data.rateOfInterest,
+        effectiveDate: computedEffectiveDate,
+        originalEffectiveDate: data.effectiveDate,
+        finalAmount,
+        latestPrincipal,
+        lastAccrualDate: today,
+        paidAmount: 0,
+        expenseId: null,
+        remarks: data.remarks || null,
+      })
+      .returning();
+
+    await db.insert(farmerLoanEvents).values({
+      id: randomUUID(),
+      farmerLoanId: record.id,
+      eventType: 'creation',
+      eventDate: data.effectiveDate,
+      amount: record.amount,
+      rateOfInterest: record.rateOfInterest,
+      latestPrincipalBefore: null,
+      latestPrincipalAfter: record.latestPrincipal ?? record.amount,
+      effectiveDateBefore: null,
+      effectiveDateAfter: record.effectiveDate,
+      finalAmountBefore: null,
+      finalAmountAfter: record.finalAmount,
+      paidAmountBefore: null,
+      paidAmountAfter: 0,
+    });
+
+    return record;
+  }
+
+  async updatePYFarmerLoan(coldStorageId: string, id: string, updates: { amount?: number; rateOfInterest?: number; effectiveDate?: Date; remarks?: string | null }): Promise<FarmerLoan | undefined> {
+    const existing = await db.select().from(farmerLoan).where(and(eq(farmerLoan.id, id), eq(farmerLoan.coldStorageId, coldStorageId)));
+    if (!existing.length || existing[0].expenseId !== null) return undefined;
+
+    const record = existing[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const newAmount = updates.amount ?? record.amount;
+    const newRate = updates.rateOfInterest ?? record.rateOfInterest;
+    const newEffDate = updates.effectiveDate ?? record.effectiveDate;
+
+    let finalAmount = newAmount;
+    let latestPrincipal = newAmount;
+    let computedEffectiveDate = newEffDate;
+
+    if (newRate > 0) {
+      const result = this.computeYearlySimpleInterest(newAmount, newEffDate, newRate, today);
+      finalAmount = result.finalAmount;
+      latestPrincipal = result.latestPrincipal;
+      computedEffectiveDate = result.effectiveDate;
+    }
+
+    const setValues: Record<string, unknown> = {
+      amount: newAmount,
+      rateOfInterest: newRate,
+      effectiveDate: computedEffectiveDate,
+      originalEffectiveDate: newEffDate,
+      finalAmount,
+      latestPrincipal,
+      lastAccrualDate: today,
+    };
+    if (updates.remarks !== undefined) setValues.remarks = updates.remarks;
+
+    const [updated] = await db.update(farmerLoan)
+      .set(setValues)
+      .where(eq(farmerLoan.id, id))
+      .returning();
+
+    await this.recomputeFarmerLoanPayments(coldStorageId, record.farmerLedgerId);
+
+    return updated;
+  }
+
+  async getPYFarmerLoans(coldStorageId: string): Promise<(FarmerLoan & { farmerName: string; remainingDue: number })[]> {
+    const records = await db.select().from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.isReversed, 0),
+        isNull(farmerLoan.expenseId)
+      ))
+      .orderBy(desc(farmerLoan.createdAt));
+
+    const farmerLedgerRecords = await db.select()
+      .from(farmerLedger)
+      .where(eq(farmerLedger.coldStorageId, coldStorageId));
+
+    const farmerNameMap = new Map<string, string>();
+    for (const fl of farmerLedgerRecords) {
+      farmerNameMap.set(fl.id, fl.name);
+    }
+
+    return records.map(r => ({
+      ...r,
+      farmerName: farmerNameMap.get(r.farmerLedgerId) || 'Unknown',
+      remainingDue: roundAmount((r.finalAmount || 0) - (r.paidAmount || 0)),
+    }));
+  }
+
+  async reverseFarmerLoan(coldStorageId: string, loanId: string): Promise<boolean> {
+    const [record] = await db.select().from(farmerLoan)
+      .where(and(eq(farmerLoan.id, loanId), eq(farmerLoan.coldStorageId, coldStorageId)));
+    if (!record) return false;
+
+    await db.update(farmerLoan)
+      .set({ isReversed: 1, reversedAt: new Date() })
+      .where(eq(farmerLoan.id, loanId));
+
+    await this.recomputeFarmerLoanPayments(coldStorageId, record.farmerLedgerId);
+    return true;
   }
 
   // ============ FARMER LEDGER ============
@@ -7029,6 +7544,7 @@ export class DatabaseStorage implements IStorage {
       merchantDue: number;
       advanceDue: number;
       freightDue: number;
+      loanDue: number;
       totalDue: number;
     })[];
     summary: {
@@ -7038,6 +7554,7 @@ export class DatabaseStorage implements IStorage {
       merchantDue: number;
       advanceDue: number;
       freightDue: number;
+      loanDue: number;
       totalDue: number;
     };
   }> {
@@ -7167,8 +7684,22 @@ export class DatabaseStorage implements IStorage {
       const freightDue = advFreightData
         .filter(r => r.type === 'freight')
         .reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
+
+      const farmerLoanData = await db.select({
+        finalAmount: farmerLoan.finalAmount,
+        paidAmount: farmerLoan.paidAmount,
+      })
+        .from(farmerLoan)
+        .where(and(
+          eq(farmerLoan.coldStorageId, coldStorageId),
+          eq(farmerLoan.farmerLedgerId, farmer.id),
+          eq(farmerLoan.isReversed, 0)
+        ));
+
+      const loanDue = farmerLoanData
+        .reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
       
-      const totalDue = pyReceivables + selfDue + merchantDue + advanceDue + freightDue;
+      const totalDue = pyReceivables + selfDue + merchantDue + advanceDue + freightDue + loanDue;
       
       return {
         ...farmer,
@@ -7177,6 +7708,7 @@ export class DatabaseStorage implements IStorage {
         merchantDue: roundAmount(merchantDue),
         advanceDue: roundAmount(advanceDue),
         freightDue: roundAmount(freightDue),
+        loanDue: roundAmount(loanDue),
         totalDue: roundAmount(totalDue),
       };
     }));
@@ -7189,14 +7721,15 @@ export class DatabaseStorage implements IStorage {
       merchantDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.merchantDue, 0)),
       advanceDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.advanceDue, 0)),
       freightDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.freightDue, 0)),
+      loanDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.loanDue, 0)),
       totalDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.totalDue, 0)),
     };
     
     return { farmers: farmersWithDues, summary };
   }
 
-  async getFarmerDuesByLedgerId(farmerLedgerId: string, coldStorageId: string): Promise<{ pyReceivables: number; selfDue: number; merchantDue: number; advanceDue: number; freightDue: number; totalDue: number }> {
-    const zero = { pyReceivables: 0, selfDue: 0, merchantDue: 0, advanceDue: 0, freightDue: 0, totalDue: 0 };
+  async getFarmerDuesByLedgerId(farmerLedgerId: string, coldStorageId: string): Promise<{ pyReceivables: number; selfDue: number; merchantDue: number; advanceDue: number; freightDue: number; loanDue: number; totalDue: number }> {
+    const zero = { pyReceivables: 0, selfDue: 0, merchantDue: 0, advanceDue: 0, freightDue: 0, loanDue: 0, totalDue: 0 };
     const [farmer] = await db.select().from(farmerLedger).where(and(eq(farmerLedger.id, farmerLedgerId), eq(farmerLedger.coldStorageId, coldStorageId)));
     if (!farmer) return zero;
 
@@ -7282,13 +7815,26 @@ export class DatabaseStorage implements IStorage {
     const advanceDue = advFreightData.filter(r => r.type === 'advance').reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
     const freightDue = advFreightData.filter(r => r.type === 'freight').reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
 
-    const totalDue = pyReceivables + selfDue + merchantDue + advanceDue + freightDue;
+    const farmerLoanData = await db.select({
+      finalAmount: farmerLoan.finalAmount,
+      paidAmount: farmerLoan.paidAmount,
+    })
+      .from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.farmerLedgerId, farmer.id),
+        eq(farmerLoan.isReversed, 0)
+      ));
+    const loanDue = farmerLoanData.reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
+
+    const totalDue = pyReceivables + selfDue + merchantDue + advanceDue + freightDue + loanDue;
     return {
       pyReceivables: roundAmount(pyReceivables),
       selfDue: roundAmount(selfDue),
       merchantDue: roundAmount(merchantDue),
       advanceDue: roundAmount(advanceDue),
       freightDue: roundAmount(freightDue),
+      loanDue: roundAmount(loanDue),
       totalDue: roundAmount(totalDue),
     };
   }
@@ -8492,6 +9038,19 @@ export class DatabaseStorage implements IStorage {
         sql`COALESCE(adj_receivable_self_due_amount, 0) > 0`,
       ));
 
+    const allFarmerLoans = await db.select().from(farmerLoan)
+      .where(and(
+        eq(farmerLoan.coldStorageId, coldStorageId),
+        eq(farmerLoan.isReversed, 0)
+      ));
+
+    const allFarmerLoanReceipts = await db.select().from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.payerType, 'farmer_loan'),
+        eq(cashReceipts.isReversed, 0)
+      ));
+
     const farmerReceivables = allReceivables.filter(r => matchesFarmer(r));
     const farmerAdvFreight = allAdvFreight.filter(af => af.farmerLedgerId === farmer.id);
     const farmerSelfSales = allSelfSales.filter(s => {
@@ -8521,6 +9080,9 @@ export class DatabaseStorage implements IStorage {
 
     const farmerAdjSales = allAdjSales.filter(s => matchesFarmer(s));
 
+    const farmerLoans = allFarmerLoans.filter(fl => fl.farmerLedgerId === farmer.id);
+    const farmerLoanRcpts = allFarmerLoanReceipts.filter(r => r.buyerLedgerId === farmer.id);
+
     let openingBalance = 0;
 
     const priorReceivables = farmerReceivables.filter(r => r.createdAt < fyStart);
@@ -8532,8 +9094,14 @@ export class DatabaseStorage implements IStorage {
     const priorSelfSales = farmerSelfSales.filter(s => s.soldAt < fyStart);
     openingBalance += priorSelfSales.reduce((sum, s) => sum + (s.coldStorageCharge || 0), 0);
 
+    const priorFarmerLoans = farmerLoans.filter(fl => fl.effectiveDate < fyStart);
+    openingBalance += priorFarmerLoans.reduce((sum, fl) => sum + (fl.finalAmount || fl.amount), 0);
+
     const priorReceipts = farmerReceipts.filter(r => r.receivedAt < fyStart);
     openingBalance -= priorReceipts.reduce((sum, r) => sum + r.amount, 0);
+
+    const priorFarmerLoanRcpts = farmerLoanRcpts.filter(r => r.receivedAt < fyStart);
+    openingBalance -= priorFarmerLoanRcpts.reduce((sum, r) => sum + r.amount, 0);
 
     const priorDiscounts = farmerDiscounts.filter(d => d.discountDate < fyStart);
     for (const d of priorDiscounts) {
@@ -8586,6 +9154,35 @@ export class DatabaseStorage implements IStorage {
         refId: s.id,
         sortDate: s.soldAt,
         sortOrder: 3,
+      });
+    }
+
+    const fyFarmerLoans = farmerLoans.filter(fl => fl.effectiveDate >= fyStart && fl.effectiveDate <= fyEnd);
+    for (const fl of fyFarmerLoans) {
+      transactions.push({
+        type: 'farmer_loan',
+        date: toISTDateString(fl.effectiveDate),
+        meta: { amount: String(roundAmount(fl.finalAmount || fl.amount)) },
+        debit: roundAmount(fl.finalAmount || fl.amount),
+        credit: 0,
+        refId: fl.id,
+        sortDate: fl.effectiveDate,
+        sortOrder: 3,
+      });
+    }
+
+    const fyFarmerLoanRcpts = farmerLoanRcpts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
+    for (const r of fyFarmerLoanRcpts) {
+      const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
+      transactions.push({
+        type: 'farmer_loan_payment',
+        date: toISTDateString(r.receivedAt),
+        meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName },
+        debit: 0,
+        credit: roundAmount(r.amount),
+        refId: r.id,
+        sortDate: r.receivedAt,
+        sortOrder: 5,
       });
     }
 

@@ -2138,6 +2138,186 @@ export async function registerRoutes(
     }
   });
 
+  // Farmer Loan - Farmers with outstanding loan dues
+  app.get("/api/farmer-loans/farmers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const farmers = await storage.getFarmersWithLoanDues(coldStorageId);
+      res.json(farmers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch farmers with loan dues" });
+    }
+  });
+
+  // Farmer Loan - Get outstanding loans for a specific farmer (for pick-and-pay)
+  app.get("/api/farmer-loans/outstanding/:farmerLedgerId", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const loans = await storage.getOutstandingLoansForFarmer(coldStorageId, req.params.farmerLedgerId);
+      res.json(loans);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch outstanding loans" });
+    }
+  });
+
+  // Farmer Loan - Pay loan dues (pick-and-pay)
+  app.post("/api/farmer-loans/pay", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const schema = z.object({
+        farmerLedgerId: z.string(),
+        farmerId: z.string(),
+        farmerName: z.string(),
+        amount: z.number().positive(),
+        receivedAt: z.string(),
+        remarks: z.string().optional(),
+        receiptType: z.enum(["cash", "account"]),
+        accountId: z.string().optional(),
+        selectedLoanIds: z.array(z.string()).min(1),
+      });
+      const data = schema.parse(req.body);
+
+      const uniqueLoanIds = [...new Set(data.selectedLoanIds)];
+
+      const transactionId = await generateSequentialId('cash_flow', coldStorageId);
+
+      const receipt = await storage.createFarmerLoanReceipt({
+        coldStorageId,
+        transactionId,
+        payerType: "farmer_loan",
+        farmerName: data.farmerName,
+        farmerLedgerId: data.farmerLedgerId,
+        farmerId: data.farmerId,
+        receiptType: data.receiptType,
+        accountId: data.accountId || null,
+        amount: data.amount,
+        receivedAt: new Date(data.receivedAt),
+        notes: data.remarks || null,
+        appliedAmount: data.amount,
+        unappliedAmount: 0,
+        appliedLoanIds: uniqueLoanIds,
+      });
+
+      const payResult = await storage.payFarmerLoanSelected(coldStorageId, data.farmerLedgerId, data.amount, uniqueLoanIds, receipt.id, new Date(data.receivedAt));
+
+      if (payResult.totalApplied <= 0) {
+        await storage.deleteFarmerLoanReceipt(receipt.id);
+        return res.status(400).json({ error: "No outstanding dues found for selected loans" });
+      }
+
+      await storage.updateFarmerLoanReceipt(receipt.id, {
+        appliedAmount: payResult.totalApplied,
+        unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100,
+        appliedLoanIds: payResult.appliedLoanIds,
+      });
+
+      res.json({ receipt: { ...receipt, appliedAmount: payResult.totalApplied, unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100, appliedLoanIds: payResult.appliedLoanIds }, ...payResult });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid payment data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to process farmer loan payment" });
+    }
+  });
+
+  // PY Farmer Loan - CRUD
+  app.get("/api/farmer-loans/py", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const loans = await storage.getPYFarmerLoans(coldStorageId);
+      res.json(loans.map(l => ({ ...l, buyerName: l.farmerName })));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch PY farmer loans" });
+    }
+  });
+
+  app.post("/api/farmer-loans/py", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const schema = z.object({
+        farmerName: z.string().min(1),
+        contactNumber: z.string().min(1),
+        village: z.string().min(1),
+        amount: z.number().positive(),
+        rateOfInterest: z.number().min(0).default(0),
+        effectiveDate: z.string(),
+        remarks: z.string().optional(),
+      });
+      const data = schema.parse(req.body);
+
+      const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
+        name: data.farmerName,
+        contactNumber: data.contactNumber,
+        village: data.village,
+      });
+
+      const loan = await storage.createPYFarmerLoan({
+        coldStorageId,
+        farmerLedgerId: farmerEntry.id,
+        farmerId: farmerEntry.farmerId,
+        amount: data.amount,
+        rateOfInterest: data.rateOfInterest,
+        effectiveDate: new Date(data.effectiveDate),
+        remarks: data.remarks || null,
+      });
+
+      res.status(201).json(loan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create PY farmer loan" });
+    }
+  });
+
+  app.patch("/api/farmer-loans/py/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const patchSchema = z.object({
+        amount: z.number().positive().optional(),
+        rateOfInterest: z.number().min(0).optional(),
+        effectiveDate: z.string().optional(),
+        remarks: z.string().optional().nullable(),
+      });
+      const data = patchSchema.parse(req.body);
+      const coldStorageId = getColdStorageId(req);
+      const updates: Record<string, unknown> = {};
+      if (data.amount !== undefined) updates.amount = data.amount;
+      if (data.rateOfInterest !== undefined) updates.rateOfInterest = data.rateOfInterest;
+      if (data.effectiveDate !== undefined) updates.effectiveDate = new Date(data.effectiveDate);
+      if (data.remarks !== undefined) updates.remarks = data.remarks;
+
+      const updated = await storage.updatePYFarmerLoan(coldStorageId, id, updates as any);
+      if (!updated) {
+        return res.status(404).json({ error: "PY farmer loan not found or cannot be edited" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update PY farmer loan" });
+    }
+  });
+
+  app.delete("/api/farmer-loans/py/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const pyLoans = await storage.getPYFarmerLoans(coldStorageId);
+      const isPY = pyLoans.some(l => l.id === req.params.id);
+      if (!isPY) {
+        return res.status(400).json({ error: "Can only delete PY farmer loans from this endpoint" });
+      }
+      const success = await storage.reverseFarmerLoan(coldStorageId, req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "PY farmer loan not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete PY farmer loan" });
+    }
+  });
+
   // Cash Receipts (Cash Management)
   app.get("/api/cash-receipts/buyers-with-dues", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
@@ -2437,7 +2617,7 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const expenseList = await storage.getExpenses(coldStorageId);
-      const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance'];
+      const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance', 'farmer_loan'];
       const namesSet = new Set<string>();
       expenseList.forEach(e => {
         if (e.receiverName && e.receiverName.trim() && !advanceTypes.includes(e.expenseType)) {
@@ -2452,7 +2632,7 @@ export async function registerRoutes(
   });
 
   const createExpenseSchema = z.object({
-    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "interest_on_loan", "electricity_charges", "chemical_spray_charges", "farmer_advance", "farmer_freight", "merchant_advance", "asset_purchase", "bank_charges", "bank_penalty_charges", "insurance", "loan_principal"]),
+    expenseType: z.enum(["salary", "hammali", "grading_charges", "general_expenses", "cost_of_goods_sold", "tds", "interest_on_loan", "electricity_charges", "chemical_spray_charges", "farmer_advance", "farmer_freight", "merchant_advance", "farmer_loan", "asset_purchase", "bank_charges", "bank_penalty_charges", "insurance", "loan_principal"]),
     expenseClass: z.enum(["revenue", "capital", "advance"]).optional(),
     receiverName: z.string().optional(),
     paymentMode: z.enum(["cash", "account"]),
@@ -2473,11 +2653,11 @@ export async function registerRoutes(
     }
     return true;
   }, { message: "Account is required when paymentMode is 'account'" }).refine((data) => {
-    if ((data.expenseType === "farmer_advance" || data.expenseType === "farmer_freight") && (!data.farmerLedgerId || !data.farmerId)) {
+    if ((data.expenseType === "farmer_advance" || data.expenseType === "farmer_freight" || data.expenseType === "farmer_loan") && (!data.farmerLedgerId || !data.farmerId)) {
       return false;
     }
     return true;
-  }, { message: "Farmer selection is required for advance/freight expenses" }).refine((data) => {
+  }, { message: "Farmer selection is required for advance/freight/loan expenses" }).refine((data) => {
     if (data.expenseType === "merchant_advance" && (!data.buyerLedgerId || !data.buyerId)) {
       return false;
     }
@@ -2488,7 +2668,7 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = createExpenseSchema.parse(req.body);
-      const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance'];
+      const advanceTypes = ['farmer_advance', 'farmer_freight', 'merchant_advance', 'farmer_loan'];
       const capitalTypes = ['asset_purchase', 'loan_principal'];
       const expenseClass = advanceTypes.includes(validatedData.expenseType) ? 'advance' 
         : capitalTypes.includes(validatedData.expenseType) ? 'capital'
@@ -2563,6 +2743,37 @@ export async function registerRoutes(
           rateOfInterest,
           effectiveDate: computedEffectiveDate,
           originalEffectiveDate: effectiveDate,
+          finalAmount,
+          latestPrincipal,
+          lastAccrualDate: new Date(),
+          expenseId: expense.id,
+        });
+      }
+
+      if (validatedData.expenseType === "farmer_loan" && validatedData.farmerLedgerId && validatedData.farmerId) {
+        const effectiveDate = validatedData.effectiveDate ? new Date(validatedData.effectiveDate) : new Date();
+        const rateOfInterest = validatedData.rateOfInterest || 0;
+        const principal = validatedData.amount;
+
+        let finalAmount = principal;
+        let latestPrincipal = principal;
+        let computedEffectiveDate = effectiveDate;
+        if (rateOfInterest > 0) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const result = storage.computeYearlySimpleInterest(principal, effectiveDate, rateOfInterest, today);
+          finalAmount = result.finalAmount;
+          latestPrincipal = result.latestPrincipal;
+          computedEffectiveDate = result.effectiveDate;
+        }
+
+        await storage.createFarmerLoan({
+          coldStorageId,
+          farmerLedgerId: validatedData.farmerLedgerId,
+          farmerId: validatedData.farmerId,
+          amount: principal,
+          rateOfInterest,
+          effectiveDate: computedEffectiveDate,
           finalAmount,
           latestPrincipal,
           lastAccrualDate: new Date(),

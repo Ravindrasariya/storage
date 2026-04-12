@@ -514,6 +514,51 @@ export const merchantAdvanceEvents = pgTable("merchant_advance_events", {
 
 export type MerchantAdvanceEvent = typeof merchantAdvanceEvents.$inferSelect;
 
+export const farmerLoan = pgTable("farmer_loan", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  farmerLedgerId: varchar("farmer_ledger_id").notNull(),
+  farmerId: text("farmer_id").notNull(),
+  amount: real("amount").notNull(),
+  rateOfInterest: real("rate_of_interest").notNull().default(0),
+  effectiveDate: timestamp("effective_date").notNull(),
+  finalAmount: real("final_amount").notNull(),
+  latestPrincipal: real("latest_principal"),
+  lastAccrualDate: timestamp("last_accrual_date").notNull(),
+  originalEffectiveDate: timestamp("original_effective_date"),
+  previousEffectiveDate: timestamp("previous_effective_date"),
+  previousLatestPrincipal: real("previous_latest_principal"),
+  paidAmount: real("paid_amount").notNull().default(0),
+  expenseId: varchar("expense_id"),
+  remarks: text("remarks"),
+  isReversed: integer("is_reversed").notNull().default(0),
+  reversedAt: timestamp("reversed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const farmerLoanEvents = pgTable("farmer_loan_events", {
+  id: varchar("id").primaryKey(),
+  farmerLoanId: varchar("farmer_loan_id").notNull(),
+  eventType: text("event_type").notNull(),
+  eventDate: timestamp("event_date").notNull(),
+  amount: real("amount").notNull(),
+  rateOfInterest: real("rate_of_interest").notNull().default(0),
+  latestPrincipalBefore: real("latest_principal_before"),
+  latestPrincipalAfter: real("latest_principal_after"),
+  effectiveDateBefore: timestamp("effective_date_before"),
+  effectiveDateAfter: timestamp("effective_date_after"),
+  finalAmountBefore: real("final_amount_before"),
+  finalAmountAfter: real("final_amount_after"),
+  paidAmountBefore: real("paid_amount_before"),
+  paidAmountAfter: real("paid_amount_after"),
+  paymentAmount: real("payment_amount"),
+  receiptId: varchar("receipt_id"),
+  interestCompounded: real("interest_compounded"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type FarmerLoanEvent = typeof farmerLoanEvents.$inferSelect;
+
 // Farmer Ledger - master farmer records per cold storage
 // Composite key: name + contact + village (case-insensitive, trimmed)
 export const farmerLedger = pgTable("farmer_ledger", {
@@ -692,6 +737,7 @@ export const insertDiscountSchema = createInsertSchema(discounts).omit({ id: tru
 export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({ id: true, createdAt: true });
 export const insertFarmerAdvanceFreightSchema = createInsertSchema(farmerAdvanceFreight).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true, paidAmount: true });
 export const insertMerchantAdvanceSchema = createInsertSchema(merchantAdvance).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true, paidAmount: true });
+export const insertFarmerLoanSchema = createInsertSchema(farmerLoan).omit({ id: true, createdAt: true, isReversed: true, reversedAt: true, paidAmount: true });
 export const insertFarmerLedgerSchema = createInsertSchema(farmerLedger).omit({ id: true, createdAt: true, archivedAt: true });
 export const insertFarmerLedgerEditHistorySchema = createInsertSchema(farmerLedgerEditHistory).omit({ id: true, modifiedAt: true });
 export const insertBuyerLedgerSchema = createInsertSchema(buyerLedger).omit({ id: true, createdAt: true, archivedAt: true });
@@ -744,6 +790,8 @@ export type FarmerAdvanceFreight = typeof farmerAdvanceFreight.$inferSelect;
 export type InsertFarmerAdvanceFreight = z.infer<typeof insertFarmerAdvanceFreightSchema>;
 export type MerchantAdvance = typeof merchantAdvance.$inferSelect;
 export type InsertMerchantAdvance = z.infer<typeof insertMerchantAdvanceSchema>;
+export type FarmerLoan = typeof farmerLoan.$inferSelect;
+export type InsertFarmerLoan = z.infer<typeof insertFarmerLoanSchema>;
 export type FarmerLedgerEntry = typeof farmerLedger.$inferSelect;
 export type InsertFarmerLedger = z.infer<typeof insertFarmerLedgerSchema>;
 export type FarmerLedgerEditHistoryEntry = typeof farmerLedgerEditHistory.$inferSelect;

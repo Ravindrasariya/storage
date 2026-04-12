@@ -162,9 +162,9 @@ export default function CashManagement() {
   
   const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">(persistedState?.activeTab || "inward");
   
-  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer" | "cold_merchant_advance" | "kata">(() => {
+  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata">(() => {
     const persisted = persistedState?.payerType;
-    if (persisted === "cold_merchant" || persisted === "farmer" || persisted === "cold_merchant_advance" || persisted === "kata") return persisted;
+    if (persisted === "cold_merchant" || persisted === "farmer" || persisted === "cold_merchant_advance" || persisted === "farmer_loan" || persisted === "kata") return persisted;
     return "cold_merchant";
   });
   const [buyerName, setBuyerName] = useState(persistedState?.buyerName || "");
@@ -181,6 +181,12 @@ export default function CashManagement() {
   const [advanceBuyerComboboxOpen, setAdvanceBuyerComboboxOpen] = useState(false);
   const [advanceBuyerSearchQuery, setAdvanceBuyerSearchQuery] = useState("");
   const [selectedAdvanceIds, setSelectedAdvanceIds] = useState<string[]>([]);
+  const [loanFarmerLedgerId, setLoanFarmerLedgerId] = useState("");
+  const [loanFarmerId, setLoanFarmerId] = useState("");
+  const [loanFarmerName, setLoanFarmerName] = useState("");
+  const [loanFarmerComboboxOpen, setLoanFarmerComboboxOpen] = useState(false);
+  const [loanFarmerSearchQuery, setLoanFarmerSearchQuery] = useState("");
+  const [selectedLoanIds, setSelectedLoanIds] = useState<string[]>([]);
   const [receiptType, setReceiptType] = useState<"cash" | "account">((persistedState?.receiptType as "cash" | "account") || "cash");
   const [accountId, setAccountId] = useState<string>(persistedState?.accountId || "");
   const [inwardAmount, setInwardAmount] = useState(persistedState?.inwardAmount || "");
@@ -370,7 +376,7 @@ export default function CashManagement() {
       if (loaded) {
         // Apply loaded state to all form fields
         if (loaded.activeTab) setActiveTab(loaded.activeTab);
-        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer" || loaded.payerType === "cold_merchant_advance" || loaded.payerType === "kata") setPayerType(loaded.payerType as "cold_merchant" | "farmer" | "cold_merchant_advance" | "kata");
+        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer" || loaded.payerType === "cold_merchant_advance" || loaded.payerType === "farmer_loan" || loaded.payerType === "kata") setPayerType(loaded.payerType as "cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata");
         if (loaded.buyerName) setBuyerName(loaded.buyerName);
         if (loaded.customBuyerName) setCustomBuyerName(loaded.customBuyerName);
         if (loaded.salesGoodsBuyerName) setSalesGoodsBuyerName(loaded.salesGoodsBuyerName);
@@ -421,13 +427,27 @@ export default function CashManagement() {
     queryKey: ["/api/merchant-advances/py"],
   });
 
+  const { data: farmersWithLoanDues = [], isLoading: loadingLoanFarmers } = useQuery<{ farmerLedgerId: string; farmerId: string; farmerName: string; loanDue: number }[]>({
+    queryKey: ["/api/farmer-loans/farmers-with-dues"],
+    enabled: payerType === "farmer_loan",
+  });
+
+  const { data: outstandingLoans = [] } = useQuery<OutstandingAdvanceRow[]>({
+    queryKey: ["/api/farmer-loans/outstanding", loanFarmerLedgerId],
+    enabled: payerType === "farmer_loan" && !!loanFarmerLedgerId,
+  });
+
+  const { data: pyFarmerLoans = [] } = useQuery<PYMerchantAdvanceRow[]>({
+    queryKey: ["/api/farmer-loans/py"],
+  });
+
   // Farmer dues from Farmer Ledger (for Cash Inward "farmer" payer type)
   // Returns pyReceivables + selfDue as totalDue (farmer-liable dues only)
   const { data: farmerLedgerDues = [] } = useQuery<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; pyReceivables: number; advanceDue: number; freightDue: number; selfDue: number; totalDue: number }[]>({
     queryKey: ["/api/farmer-ledger/dues-for-dropdown"],
   });
 
-  const isFarmerExpenseType = expenseType === "farmer_advance" || expenseType === "farmer_freight";
+  const isFarmerExpenseType = expenseType === "farmer_advance" || expenseType === "farmer_freight" || expenseType === "farmer_loan";
   const isMerchantExpenseType = expenseType === "merchant_advance";
   const { data: allFarmersData } = useQuery<{ farmers: { id: string; farmerId: string; name: string; contactNumber: string; village: string }[] }>({
     queryKey: ["/api/farmer-ledger"],
@@ -794,6 +814,37 @@ export default function CashManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: "Failed to record payment", variant: "destructive" });
+    },
+  });
+
+  const payFarmerLoanMutation = useMutation({
+    mutationFn: async (data: { farmerLedgerId: string; farmerId: string; farmerName: string; amount: number; receivedAt: string; remarks?: string; receiptType: string; accountId?: string; selectedLoanIds: string[] }) => {
+      const response = await apiRequest("POST", "/api/farmer-loans/pay", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("paymentRecorded"), variant: "success" });
+      setInwardAmount("");
+      setReceivedDate(format(new Date(), "yyyy-MM-dd"));
+      setInwardRemarks("");
+      setLoanFarmerLedgerId("");
+      setLoanFarmerId("");
+      setLoanFarmerName("");
+      setSelectedLoanIds([]);
+      clearPersistedState(coldStorageId);
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/farmers-with-dues"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]) === "/api/farmer-loans/outstanding" });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/py"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
@@ -1252,6 +1303,70 @@ export default function CashManagement() {
     },
   });
 
+  const createPYFarmerLoanMutation = useMutation({
+    mutationFn: async (data: { farmerName: string; contactNumber: string; village: string; amount: number; rateOfInterest: number; effectiveDate: string; remarks?: string }) => {
+      const response = await apiRequest("POST", "/api/farmer-loans/py", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableAdded"), variant: "success" });
+      setNewReceivableBuyerName("");
+      setNewReceivableAmount("");
+      setNewReceivableRateOfInterest("");
+      setNewReceivableEffectiveDate(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      });
+      setNewReceivableRemarks("");
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/py"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const updatePYFarmerLoanMutation = useMutation({
+    mutationFn: async (data: { id: string; amount?: number; rateOfInterest?: number; effectiveDate?: string; remarks?: string | null }) => {
+      const { id, ...updates } = data;
+      const response = await apiRequest("PATCH", `/api/farmer-loans/py/${id}`, updates);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableUpdated"), variant: "success" });
+      setEditingReceivableId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/py"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const deletePYFarmerLoanMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("DELETE", `/api/farmer-loans/py/${id}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: t("success"), description: t("receivableDeleted"), variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/py"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/farmers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
+    },
+    onError: () => {
+      toast({ title: t("error"), description: t("deleteFailed"), variant: "destructive" });
+    },
+  });
+
   // Bank account mutations
   const createBankAccountMutation = useMutation({
     mutationFn: async (data: { accountName: string; accountType: string; openingBalance: number; year: number }) => {
@@ -1333,6 +1448,44 @@ export default function CashManagement() {
         receiptType,
         accountId: receiptType === "account" ? accountId : undefined,
         selectedAdvanceIds,
+      });
+      return;
+    }
+
+    if (payerType === "farmer_loan") {
+      if (!loanFarmerLedgerId) {
+        toast({ title: t("error"), description: t("selectFarmer"), variant: "destructive" });
+        return;
+      }
+      if (selectedLoanIds.length === 0) {
+        toast({ title: t("error"), description: t("selectLoansToPay"), variant: "destructive" });
+        return;
+      }
+      if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
+        toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+        return;
+      }
+      const selectedDueTotal = outstandingLoans
+        .filter(a => selectedLoanIds.includes(a.id))
+        .reduce((sum, a) => sum + a.remainingDue, 0);
+      if (parseFloat(inwardAmount) > selectedDueTotal) {
+        toast({ title: t("error"), description: `${t("amountExceedsDue")} (₹${formatCurrency(selectedDueTotal)})`, variant: "destructive" });
+        return;
+      }
+      if (receiptType === "account" && !accountId) {
+        toast({ title: t("error"), description: t("selectBankAccount"), variant: "destructive" });
+        return;
+      }
+      payFarmerLoanMutation.mutate({
+        farmerLedgerId: loanFarmerLedgerId,
+        farmerId: loanFarmerId,
+        farmerName: loanFarmerName,
+        amount: parseFloat(inwardAmount),
+        receivedAt: new Date(receivedDate).toISOString(),
+        remarks: inwardRemarks || undefined,
+        receiptType,
+        accountId: receiptType === "account" ? accountId : undefined,
+        selectedLoanIds,
       });
       return;
     }
@@ -1682,6 +1835,7 @@ export default function CashManagement() {
       case "bank_penalty_charges": return t("bankPenaltyCharges");
       case "farmer_advance": return t("farmerAdvance");
       case "farmer_freight": return t("farmerFreight");
+      case "farmer_loan": return t("farmerLoan");
       case "merchant_advance": return t("merchantAdvance");
       case "insurance": return t("insurance");
       case "loan_principal": return t("loanPrincipal");
@@ -1694,6 +1848,7 @@ export default function CashManagement() {
     switch (type) {
       case "cold_merchant": return t("coldMerchant");
       case "cold_merchant_advance": return t("coldMerchantAdvance");
+      case "farmer_loan": return t("farmerLoanPayment");
       case "sales_goods": return t("salesGoods");
       case "kata": return t("kata");
       case "others": return t("others");
@@ -3013,6 +3168,7 @@ export default function CashManagement() {
                     <SelectItem value="electricity_charges">{t("electricityCharges")}</SelectItem>
                     <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                     <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
+                    <SelectItem value="farmer_loan">{t("farmerLoan")}</SelectItem>
                     <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                     <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
                     <SelectItem value="hammali">{t("hammali")}</SelectItem>
@@ -3159,13 +3315,17 @@ export default function CashManagement() {
                 <div className="space-y-2">
                   <Label>{t("payerType")} *</Label>
                   <Select value={payerType} onValueChange={(v) => {
-                    setPayerType(v as "cold_merchant" | "farmer" | "cold_merchant_advance" | "kata");
+                    setPayerType(v as "cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata");
                     setBuyerName("");
                     setCustomBuyerName("");
                     setSalesGoodsBuyerName("");
                     setAdvanceBuyerLedgerId("");
                     setAdvanceBuyerId("");
                     setAdvanceBuyerName("");
+                    setLoanFarmerLedgerId("");
+                    setLoanFarmerId("");
+                    setLoanFarmerName("");
+                    setSelectedLoanIds([]);
                   }}>
                     <SelectTrigger data-testid="select-payer-type">
                       <SelectValue />
@@ -3174,6 +3334,7 @@ export default function CashManagement() {
                       <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                       <SelectItem value="cold_merchant_advance">{t("coldMerchantAdvance")}</SelectItem>
                       <SelectItem value="farmer">{t("farmer")}</SelectItem>
+                      <SelectItem value="farmer_loan">{t("farmerLoanPayment")}</SelectItem>
                       <SelectItem value="kata">{t("kata")}</SelectItem>
                     </SelectContent>
                   </Select>
@@ -3384,6 +3545,127 @@ export default function CashManagement() {
                   </div>
                 )}
 
+                {payerType === "farmer_loan" && (
+                  <div className="space-y-2">
+                    <Label>{t("selectFarmer")} *</Label>
+                    {loadingLoanFarmers ? (
+                      <div className="text-sm text-muted-foreground">{t("loading")}</div>
+                    ) : farmersWithLoanDues.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">{t("noLoansDue")}</p>
+                    ) : (
+                      <Popover open={loanFarmerComboboxOpen} onOpenChange={setLoanFarmerComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={loanFarmerComboboxOpen}
+                            className="w-full justify-between font-normal"
+                            data-testid="select-loan-farmer"
+                          >
+                            {loanFarmerLedgerId ? (
+                              <span className="truncate">{loanFarmerName}</span>
+                            ) : (
+                              <span className="text-muted-foreground">{t("selectFarmer")}</span>
+                            )}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[350px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder={t("searchFarmer") || "Search farmer..."}
+                              value={loanFarmerSearchQuery}
+                              onValueChange={setLoanFarmerSearchQuery}
+                            />
+                            <CommandList>
+                              <CommandEmpty>{t("noFarmersFound") || "No farmers found"}</CommandEmpty>
+                              <CommandGroup>
+                                {farmersWithLoanDues
+                                  .filter(farmer => {
+                                    if (!loanFarmerSearchQuery) return true;
+                                    return farmer.farmerName.toLowerCase().includes(loanFarmerSearchQuery.toLowerCase());
+                                  })
+                                  .map((farmer) => (
+                                    <CommandItem
+                                      key={farmer.farmerLedgerId}
+                                      value={farmer.farmerLedgerId}
+                                      onSelect={() => {
+                                        setLoanFarmerLedgerId(farmer.farmerLedgerId);
+                                        setLoanFarmerId(farmer.farmerId);
+                                        setLoanFarmerName(farmer.farmerName);
+                                        setLoanFarmerComboboxOpen(false);
+                                        setLoanFarmerSearchQuery("");
+                                        setSelectedLoanIds([]);
+                                      }}
+                                    >
+                                      <Check
+                                        className={`mr-2 h-4 w-4 ${loanFarmerLedgerId === farmer.farmerLedgerId ? "opacity-100" : "opacity-0"}`}
+                                      />
+                                      <span className="flex items-center justify-between gap-4 w-full">
+                                        <span>{farmer.farmerName}</span>
+                                        <Badge variant="outline" className="text-xs">
+                                          ₹{formatCurrency(farmer.loanDue)}
+                                        </Badge>
+                                      </span>
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                    {loanFarmerLedgerId && outstandingLoans.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <Label className="text-xs font-medium">{t("selectLoansToPay")}</Label>
+                        <div className="border rounded-md max-h-40 overflow-auto">
+                          {outstandingLoans.map((loan) => {
+                            const isSelected = selectedLoanIds.includes(loan.id);
+                            return (
+                              <div
+                                key={loan.id}
+                                className={`flex items-center justify-between px-3 py-2 cursor-pointer border-b last:border-b-0 transition-colors ${isSelected ? "bg-blue-50 dark:bg-blue-950" : "hover:bg-muted"}`}
+                                onClick={() => {
+                                  setSelectedLoanIds(prev =>
+                                    isSelected ? prev.filter(id => id !== loan.id) : [...prev, loan.id]
+                                  );
+                                }}
+                                data-testid={`loan-pick-${loan.id}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isSelected ? "bg-blue-600 border-blue-600" : "border-gray-400"}`}>
+                                    {isSelected && <Check className="h-3 w-3 text-white" />}
+                                  </div>
+                                  <div className="text-xs">
+                                    <span className="font-medium">{format(new Date(loan.effectiveDate), "dd/MM/yyyy")}</span>
+                                    <span className="text-muted-foreground ml-2">
+                                      {t("principal")}: ₹{formatCurrency(loan.amount)}
+                                      {loan.rateOfInterest > 0 && ` @ ${loan.rateOfInterest}%`}
+                                    </span>
+                                    {!loan.expenseId && <Badge variant="outline" className="ml-1 text-[10px] py-0">{t("py")}</Badge>}
+                                  </div>
+                                </div>
+                                <span className="text-xs font-bold text-green-600">₹{formatCurrency(loan.remainingDue)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {t("totalDue")}: ₹{formatCurrency(farmersWithLoanDues.find(f => f.farmerLedgerId === loanFarmerLedgerId)?.loanDue || 0)}
+                          {selectedLoanIds.length > 0 && (
+                            <span className="ml-2 text-blue-600">
+                              ({t("selected")}: ₹{formatCurrency(outstandingLoans.filter(a => selectedLoanIds.includes(a.id)).reduce((sum, a) => sum + a.remainingDue, 0))})
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    {loanFarmerLedgerId && outstandingLoans.length === 0 && (
+                      <p className="text-xs text-muted-foreground">{t("noLoansDue")}</p>
+                    )}
+                  </div>
+                )}
+
                 {payerType === "cold_merchant" && (
                   <div className="space-y-2">
                     <Label>{t("buyerName")} *</Label>
@@ -3523,15 +3805,17 @@ export default function CashManagement() {
                     !inwardAmount || 
                     createReceiptMutation.isPending ||
                     payMerchantAdvanceMutation.isPending ||
+                    payFarmerLoanMutation.isPending ||
                     (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim()))) ||
                     (payerType === "cold_merchant_advance" && (!advanceBuyerLedgerId || selectedAdvanceIds.length === 0)) ||
+                    (payerType === "farmer_loan" && (!loanFarmerLedgerId || selectedLoanIds.length === 0)) ||
                     (payerType === "farmer" && !selectedFarmerReceivableId)
                   }
                   className="w-full"
                   data-testid="button-record-payment"
                 >
                   <Save className="h-4 w-4 mr-2" />
-                  {(createReceiptMutation.isPending || payMerchantAdvanceMutation.isPending) ? t("saving") : t("recordPayment")}
+                  {(createReceiptMutation.isPending || payMerchantAdvanceMutation.isPending || payFarmerLoanMutation.isPending) ? t("saving") : t("recordPayment")}
                 </Button>
                 {!canEdit && (
                   <p className="text-xs text-muted-foreground text-center mt-2">
@@ -3969,6 +4253,7 @@ export default function CashManagement() {
                       <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
                       <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                       <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
+                      <SelectItem value="farmer_loan">{t("farmerLoan")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -4858,7 +5143,7 @@ export default function CashManagement() {
                     {(selectedTransaction.data as Expense).receiverName && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">
-                          {((selectedTransaction.data as Expense).expenseType === "farmer_advance" || (selectedTransaction.data as Expense).expenseType === "farmer_freight") ? t("farmerName") : (selectedTransaction.data as Expense).expenseType === "merchant_advance" ? t("merchantName") : t("receiverName")}:
+                          {((selectedTransaction.data as Expense).expenseType === "farmer_advance" || (selectedTransaction.data as Expense).expenseType === "farmer_freight" || (selectedTransaction.data as Expense).expenseType === "farmer_loan") ? t("farmerName") : (selectedTransaction.data as Expense).expenseType === "merchant_advance" ? t("merchantName") : t("receiverName")}:
                         </span>
                         <span className="font-medium">{(selectedTransaction.data as Expense).receiverName}</span>
                       </div>
@@ -5383,10 +5668,11 @@ export default function CashManagement() {
                           <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                           <SelectItem value="farmer">{t("farmer")}</SelectItem>
                           <SelectItem value="cold_merchant_advance">{t("coldMerchantAdvance")}</SelectItem>
+                          <SelectItem value="farmer_loan">{t("farmerLoanPayment")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    {newReceivablePayerType !== "farmer" && (
+                    {newReceivablePayerType !== "farmer" && newReceivablePayerType !== "farmer_loan" && (
                       <div className="relative">
                         <Label className="text-xs">{t("buyerName")}</Label>
                         <Input
@@ -5442,7 +5728,7 @@ export default function CashManagement() {
                   </div>
                   
                   {/* Farmer-specific fields */}
-                  {newReceivablePayerType === "farmer" && (
+                  {(newReceivablePayerType === "farmer" || newReceivablePayerType === "farmer_loan") && (
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div className="relative">
@@ -5654,6 +5940,31 @@ export default function CashManagement() {
                         });
                         return;
                       }
+                      if (newReceivablePayerType === "farmer_loan") {
+                        if (!newReceivableFarmerName.trim()) {
+                          toast({ title: t("error"), description: t("farmerNameRequired"), variant: "destructive" });
+                          return;
+                        }
+                        if (!newReceivableContactNumber.trim() || newReceivableContactNumber.length !== 10) {
+                          toast({ title: t("error"), description: t("validContactRequired"), variant: "destructive" });
+                          return;
+                        }
+                        if (!newReceivableVillage.trim()) {
+                          toast({ title: t("error"), description: t("villageRequired"), variant: "destructive" });
+                          return;
+                        }
+                        const rateVal = parseFloat(newReceivableRateOfInterest) || 0;
+                        createPYFarmerLoanMutation.mutate({
+                          farmerName: newReceivableFarmerName,
+                          contactNumber: newReceivableContactNumber,
+                          village: newReceivableVillage,
+                          amount: parseFloat(newReceivableAmount),
+                          rateOfInterest: rateVal,
+                          effectiveDate: newReceivableEffectiveDate ? new Date(newReceivableEffectiveDate).toISOString() : new Date().toISOString(),
+                          remarks: newReceivableRemarks || undefined,
+                        });
+                        return;
+                      }
                       if (newReceivablePayerType === "farmer") {
                         if (!newReceivableFarmerName.trim()) {
                           toast({ title: t("error"), description: t("farmerNameRequired"), variant: "destructive" });
@@ -5686,7 +5997,7 @@ export default function CashManagement() {
                         state: newReceivablePayerType === "farmer" ? newReceivableState : undefined,
                       });
                     }}
-                    disabled={createReceivableMutation.isPending || createPYAdvanceMutation.isPending}
+                    disabled={createReceivableMutation.isPending || createPYAdvanceMutation.isPending || createPYFarmerLoanMutation.isPending}
                     className="w-full bg-blue-600 hover:bg-blue-700"
                     data-testid="button-add-receivable"
                   >
@@ -5697,7 +6008,7 @@ export default function CashManagement() {
               </Card>
 
               {/* Search filter for receivables */}
-              {(openingReceivables.length > 0 || pyMerchantAdvances.length > 0) && (
+              {(openingReceivables.length > 0 || pyMerchantAdvances.length > 0 || pyFarmerLoans.length > 0) && (
                 <div className="flex items-center gap-2 mb-2">
                   <div className="relative flex-1">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -5750,7 +6061,7 @@ export default function CashManagement() {
 
               {/* List of receivables */}
               <ScrollArea className="h-64">
-                {openingReceivables.length === 0 && pyMerchantAdvances.length === 0 ? (
+                {openingReceivables.length === 0 && pyMerchantAdvances.length === 0 && pyFarmerLoans.length === 0 ? (
                   <p className="text-center text-muted-foreground py-4">{t("noReceivables")}</p>
                 ) : (
                   <div className="space-y-2">
@@ -5908,6 +6219,167 @@ export default function CashManagement() {
                                     data-testid="button-save-edit-py-advance"
                                   >
                                     {updatePYAdvanceMutation.isPending ? "..." : t("save")}
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    {pyFarmerLoans
+                      .filter((a) => {
+                        if (!receivableSearchQuery.trim()) return true;
+                        const q = receivableSearchQuery.toLowerCase().trim();
+                        return (a.buyerName || "").toLowerCase().includes(q) || (a.remarks || "").toLowerCase().includes(q);
+                      })
+                      .map((a) => {
+                        const capitalizeName = (name: string) =>
+                          name.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                        const isEditing = editingReceivableId === `py-loan-${a.id}`;
+                        return (
+                          <div key={`py-loan-${a.id}`} className="p-2 bg-muted rounded-md border-l-4 border-l-purple-400">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge variant="outline" className="text-xs bg-purple-50 dark:bg-purple-950 border-purple-300">{t("farmerLoanOutstanding")}</Badge>
+                                  <Badge variant="outline" className="text-[10px] py-0 bg-yellow-50 dark:bg-yellow-950">{t("py")}</Badge>
+                                  {a.buyerName && <span className="text-sm font-medium">{capitalizeName(a.buyerName)}</span>}
+                                </div>
+                                {!isEditing && a.remarks && <p className="text-xs text-muted-foreground">{a.remarks}</p>}
+                                <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+                                  <span>{t("effectiveDate")}: {format(new Date(a.originalEffectiveDate || a.effectiveDate), "dd/MM/yyyy")}</span>
+                                  {!isEditing && a.rateOfInterest > 0 && (
+                                    <span className="text-blue-600 font-medium">{t("rateOfInterest")}: {a.rateOfInterest}%</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {!isEditing && (
+                                  <div className="text-right mr-1">
+                                    <span className="font-bold text-green-600">₹{formatCurrency(a.finalAmount ?? a.amount)}</span>
+                                    {a.paidAmount > 0 && (
+                                      <p className="text-xs text-muted-foreground">({t("paid")}: ₹{formatCurrency(a.paidAmount)})</p>
+                                    )}
+                                    {a.paidAmount > 0 && (
+                                      <p className="text-xs text-muted-foreground">({t("remaining")}: ₹{formatCurrency(a.remainingDue ?? ((a.finalAmount ?? a.amount) - (a.paidAmount ?? 0)))})</p>
+                                    )}
+                                    {a.rateOfInterest > 0 && a.finalAmount !== a.amount && (
+                                      <p className="text-xs text-muted-foreground">({t("principal")}: ₹{formatCurrency(a.amount)})</p>
+                                    )}
+                                  </div>
+                                )}
+                                {!isEditing && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    data-testid={`button-edit-py-loan-${a.id}`}
+                                    onClick={() => {
+                                      setEditingReceivableId(`py-loan-${a.id}`);
+                                      setEditReceivableAmount(a.amount.toString());
+                                      setEditReceivableROI((a.rateOfInterest || 0).toString());
+                                      setEditReceivableEffectiveDate(format(new Date(a.originalEffectiveDate || a.effectiveDate), "yyyy-MM-dd"));
+                                      setEditReceivableRemarks(a.remarks || "");
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4 text-blue-500" />
+                                  </Button>
+                                )}
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      data-testid={`button-delete-py-loan-${a.id}`}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>{t("confirmDelete")}</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        {t("deleteReceivableWarning")}
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deletePYFarmerLoanMutation.mutate(a.id)}
+                                        className="bg-destructive text-destructive-foreground"
+                                      >
+                                        {t("delete")}
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </div>
+                            {isEditing && (
+                              <div className="mt-2 p-2 bg-background rounded border space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs">{t("amount")} (₹)</Label>
+                                    <Input
+                                      type="number"
+                                      value={editReceivableAmount}
+                                      onChange={(e) => setEditReceivableAmount(e.target.value)}
+                                      data-testid="input-edit-py-loan-amount"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">{t("rateOfInterest")} (%)</Label>
+                                    <Input
+                                      type="number"
+                                      step="0.1"
+                                      value={editReceivableROI}
+                                      onChange={(e) => setEditReceivableROI(e.target.value)}
+                                      data-testid="input-edit-py-loan-roi"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs">{t("effectiveDate")}</Label>
+                                    <Input
+                                      type="date"
+                                      value={editReceivableEffectiveDate}
+                                      onChange={(e) => setEditReceivableEffectiveDate(e.target.value)}
+                                      data-testid="input-edit-py-loan-effective-date"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">{t("remarks")}</Label>
+                                    <Input
+                                      value={editReceivableRemarks}
+                                      onChange={(e) => setEditReceivableRemarks(e.target.value)}
+                                      data-testid="input-edit-py-loan-remarks"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setEditingReceivableId(null)}
+                                    data-testid="button-cancel-edit-py-loan"
+                                  >
+                                    {t("cancel")}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      updatePYFarmerLoanMutation.mutate({
+                                        id: a.id,
+                                        amount: parseFloat(editReceivableAmount) || a.amount,
+                                        rateOfInterest: parseFloat(editReceivableROI) || 0,
+                                        effectiveDate: editReceivableEffectiveDate || undefined,
+                                        remarks: editReceivableRemarks || null,
+                                      });
+                                    }}
+                                    disabled={updatePYFarmerLoanMutation.isPending}
+                                    data-testid="button-save-edit-py-loan"
+                                  >
+                                    {updatePYFarmerLoanMutation.isPending ? "..." : t("save")}
                                   </Button>
                                 </div>
                               </div>
