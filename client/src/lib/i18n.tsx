@@ -787,6 +787,7 @@ const translations: Translations = {
   noAdvancesDue: { en: "No outstanding advances", hi: "कोई बकाया अग्रिम नहीं" },
   noLoansDue: { en: "No outstanding loans", hi: "कोई बकाया ऋण नहीं" },
   farmerLoanPayment: { en: "Farmer Loan Payment", hi: "किसान ऋण भुगतान" },
+  loanAmount: { en: "Loan Amount", hi: "ऋण राशि" },
   selected: { en: "Selected", hi: "चयनित" },
   py: { en: "PY", hi: "PY" },
   buyerNameRequired: { en: "Buyer name is required", hi: "खरीदार का नाम आवश्यक है" },

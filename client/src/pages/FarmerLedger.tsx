@@ -95,6 +95,22 @@ function FarmerDetailedLedger({ farmerId, farmerName }: { farmerId: string; farm
     enabled: !!farmerId,
   });
 
+  const loanSuffix = useCallback((m: Record<string, string>) => {
+    if (m.loanDetails) {
+      const parts: string[] = [m.loanDetails];
+      if (m.outstandingDue) parts.push(`${t("due")}: ${formatCurrency(Number(m.outstandingDue))}`);
+      return ` [${parts.join(', ')}]`;
+    }
+    if (!m.rateOfInterest) return '';
+    const parts: string[] = [];
+    if (m.loanAmount) parts.push(`${t("loanAmount")}: ${formatCurrency(Number(m.loanAmount))}`);
+    if (m.principal)  parts.push(`${t("principal")}: ${formatCurrency(Number(m.principal))}`);
+    parts.push(`ROI: ${m.rateOfInterest}%`);
+    if (m.effectiveDate) parts.push(`${t("effectiveDate")}: ${m.effectiveDate}`);
+    if (m.outstandingDue) parts.push(`${t("due")}: ${formatCurrency(Number(m.outstandingDue))}`);
+    return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
+  }, [t, formatCurrency]);
+
   const getParticular = useCallback((txn: FarmerTransaction): string => {
     const m = txn.meta || {};
     switch (txn.type) {
@@ -103,14 +119,14 @@ function FarmerDetailedLedger({ farmerId, farmerName }: { farmerId: string; farm
       case 'freight': return `${t("freightGiven")} - ${formatCurrency(Number(m.amount || 0))}`;
       case 'self_sale': return `${t("selfSaleEntry")} - ${t("lotHash")}${m.lotNo}, ${m.buyerName}, ${m.bags} ${t("bagsLabel")}`;
       case 'farmer_loan': return `${t("farmerLoan")} - ${t("principal")} ${formatCurrency(Number(m.principal || m.amount || 0))}${Number(m.rateOfInterest || 0) > 0 ? ` @ ${m.rateOfInterest}%` : ''}`;
-      case 'farmer_loan_interest': return `${t("farmerLoanInterest")}${m.eventType === 'annual_compounding' ? ` (${t("compounded")})` : ''} - ${formatCurrency(Number(m.interest || 0))}${Number(m.rateOfInterest || 0) > 0 ? ` @ ${m.rateOfInterest}%` : ''}`;
-      case 'farmer_loan_payment': return `${t("farmerLoanPayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
+      case 'farmer_loan_interest': return `${t("farmerLoanInterest")}${m.eventType === 'annual_compounding' ? ` (${t("compounded")})` : ''}${loanSuffix(m)}`;
+      case 'farmer_loan_payment': return `${t("farmerLoanPayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})${loanSuffix(m)}`;
       case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
       case 'discount': return `${t("discountEntry")} - ${m.transactionId}`;
       case 'sale_adj': return `${t("saleAdjustment")} - ${t("lotHash")}${m.lotNo}, ${m.buyerName}`;
       default: return txn.type;
     }
-  }, [t]);
+  }, [t, loanSuffix]);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -669,6 +685,7 @@ export default function FarmerLedger() {
     merchantDue: 0,
     advanceDue: 0,
     freightDue: 0,
+    loanDue: 0,
     totalDue: 0,
   };
 

@@ -5668,7 +5668,7 @@ export default function CashManagement() {
                           <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                           <SelectItem value="farmer">{t("farmer")}</SelectItem>
                           <SelectItem value="cold_merchant_advance">{t("coldMerchantAdvance")}</SelectItem>
-                          <SelectItem value="farmer_loan">{t("farmerLoanPayment")}</SelectItem>
+                          <SelectItem value="farmer_loan">{t("farmerLoan")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

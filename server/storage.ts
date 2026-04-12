@@ -9195,7 +9195,7 @@ export class DatabaseStorage implements IStorage {
     const priorSelfSales = farmerSelfSales.filter(s => s.soldAt < fyStart);
     openingBalance += priorSelfSales.reduce((sum, s) => sum + (s.coldStorageCharge || 0), 0);
 
-    const priorFarmerLoans = farmerLoans.filter(fl => fl.effectiveDate < fyStart);
+    const priorFarmerLoans = farmerLoans.filter(fl => (fl.originalEffectiveDate || fl.effectiveDate) < fyStart);
     openingBalance += priorFarmerLoans.reduce((sum, fl) => sum + (fl.finalAmount || fl.amount), 0);
 
     const priorReceipts = farmerReceipts.filter(r => r.receivedAt < fyStart);
@@ -9258,7 +9258,10 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const fyFarmerLoans = farmerLoans.filter(fl => fl.effectiveDate >= fyStart && fl.effectiveDate <= fyEnd);
+    const fyFarmerLoans = farmerLoans.filter(fl => {
+      const origDate = fl.originalEffectiveDate || fl.effectiveDate;
+      return origDate >= fyStart && origDate <= fyEnd;
+    });
     for (const fl of fyFarmerLoans) {
       const events = loanEventsMap.get(fl.id) || [];
       const creationEvent = events.find(e => e.eventType === 'creation');
@@ -9286,10 +9289,13 @@ export class DatabaseStorage implements IStorage {
           type: 'farmer_loan_interest',
           date: toISTDateString(originDate),
           meta: {
-            principal: String(roundAmount(fl.amount)),
-            interest: String(interestAmount),
+            loanAmount:     String(roundAmount(fl.amount)),
+            principal:      String(roundAmount(fl.latestPrincipal ?? fl.amount)),
+            interest:       String(interestAmount),
             rateOfInterest: String(fl.rateOfInterest || 0),
-            loanId: fl.id,
+            effectiveDate:  toISTDateString(fl.originalEffectiveDate || fl.effectiveDate),
+            outstandingDue: String(roundAmount(Math.max(0, (fl.finalAmount || fl.amount) - (fl.paidAmount || 0)))),
+            loanId:         fl.id,
           },
           debit: interestAmount,
           credit: 0,
@@ -9322,13 +9328,88 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    const loanPaymentMetaMap = new Map<string, Record<string, string>>();
+    {
+      const loanMap = new Map(farmerLoans.map(fl => [fl.id, fl]));
+      const loanIds = farmerLoans.map(fl => fl.id);
+      const paymentEvents = loanIds.length > 0
+        ? await db.select().from(farmerLoanEvents)
+            .where(and(
+              inArray(farmerLoanEvents.farmerLoanId, loanIds),
+              eq(farmerLoanEvents.eventType, 'payment')
+            ))
+        : [];
+      const eventsByReceiptId = new Map<string, typeof paymentEvents>();
+      for (const evt of paymentEvents) {
+        if (!evt.receiptId) continue;
+        const arr = eventsByReceiptId.get(evt.receiptId) || [];
+        arr.push(evt);
+        eventsByReceiptId.set(evt.receiptId, arr);
+      }
+
+      const totalFinalAll = farmerLoans.reduce((s, fl) => s + (fl.finalAmount || fl.amount), 0);
+      const allLoanReceipts = [...farmerLoanRcpts].sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
+      let cumulativePaid = 0;
+      for (const r of allLoanReceipts) {
+        cumulativePaid += r.amount;
+        const outstandingAfter = roundAmount(Math.max(0, totalFinalAll - cumulativePaid));
+        const meta: Record<string, string> = { outstandingDue: String(outstandingAfter) };
+
+        const receiptEvents = eventsByReceiptId.get(r.id);
+        if (receiptEvents && receiptEvents.length > 0) {
+          if (receiptEvents.length === 1) {
+            const evt = receiptEvents[0];
+            meta.loanAmount    = String(roundAmount(evt.amount));
+            meta.principal     = String(roundAmount(evt.latestPrincipalBefore ?? evt.amount));
+            meta.rateOfInterest = String(evt.rateOfInterest);
+            meta.effectiveDate = evt.effectiveDateBefore ? toISTDateString(evt.effectiveDateBefore) : '';
+            meta.outstandingDue = String(roundAmount(Math.max(0, (evt.finalAmountBefore ?? evt.amount) - (evt.paidAmountBefore ?? 0))));
+          } else {
+            const details = receiptEvents.map(evt => {
+              const parts = [`₹${roundAmount(evt.amount)}`];
+              if (evt.rateOfInterest > 0) parts.push(`${evt.rateOfInterest}%`);
+              return parts.join('@');
+            });
+            meta.loanDetails   = details.join(' + ');
+            meta.loanAmount    = String(roundAmount(receiptEvents.reduce((s, evt) => s + evt.amount, 0)));
+            meta.outstandingDue = String(roundAmount(Math.max(0, receiptEvents.reduce((s, evt) => s + (evt.finalAmountBefore ?? evt.amount) - (evt.paidAmountBefore ?? 0), 0))));
+          }
+        } else {
+          let appliedIds: string[] = [];
+          try { appliedIds = r.appliedAdvanceIds ? JSON.parse(r.appliedAdvanceIds) : []; } catch {}
+          const matchedLoans = appliedIds.map(id => loanMap.get(id)).filter((fl): fl is NonNullable<typeof fl> => fl != null);
+          if (matchedLoans.length === 1) {
+            const fl = matchedLoans[0];
+            meta.loanAmount    = String(roundAmount(fl.amount));
+            meta.principal     = String(roundAmount(fl.latestPrincipal ?? fl.amount));
+            meta.rateOfInterest = String(fl.rateOfInterest);
+            meta.effectiveDate = toISTDateString(fl.originalEffectiveDate || fl.effectiveDate);
+            meta.outstandingDue = String(roundAmount(Math.max(0, (fl.finalAmount || fl.amount) - (fl.paidAmount || 0))));
+          } else if (matchedLoans.length > 1) {
+            const details = matchedLoans.map(fl => {
+              const parts = [`₹${roundAmount(fl.amount)}`];
+              if (fl.rateOfInterest > 0) parts.push(`${fl.rateOfInterest}%`);
+              return parts.join('@');
+            });
+            meta.loanDetails   = details.join(' + ');
+            meta.loanAmount    = String(roundAmount(matchedLoans.reduce((s, fl) => s + fl.amount, 0)));
+            meta.outstandingDue = String(roundAmount(Math.max(0, matchedLoans.reduce((s, fl) => s + (fl.finalAmount || fl.amount) - (fl.paidAmount || 0), 0))));
+          }
+        }
+        loanPaymentMetaMap.set(r.id, meta);
+      }
+    }
+
     const fyFarmerLoanRcpts = farmerLoanRcpts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
     for (const r of fyFarmerLoanRcpts) {
       const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
+      const loanMeta = loanPaymentMetaMap.get(r.id);
+      const payMeta: Record<string, string> = { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName };
+      if (loanMeta) Object.assign(payMeta, loanMeta);
       transactions.push({
         type: 'farmer_loan_payment',
         date: toISTDateString(r.receivedAt),
-        meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName },
+        meta: payMeta,
         debit: 0,
         credit: roundAmount(r.amount),
         refId: r.id,
