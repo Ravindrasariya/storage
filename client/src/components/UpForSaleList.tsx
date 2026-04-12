@@ -59,7 +59,11 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   const [isSelfBuyer, setIsSelfBuyer] = useState(false);
   const [adjAmount, setAdjAmount] = useState<string>("");
-  const [saleDate, setSaleDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const getTodayLocalStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const [saleDate, setSaleDate] = useState<string>(getTodayLocalStr);
   
   // Variety filter state
   const [selectedVarietyFilter, setSelectedVarietyFilter] = useState<string | null>(null);
@@ -216,7 +220,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setEditableHammali("");
     setChargeBasis("actual");
     setAdjAmount("");
-    setSaleDate(new Date().toISOString().split("T")[0]);
+    setSaleDate(getTodayLocalStr());
   };
 
   const openSaleDialog = (lot: SaleLotInfo) => {

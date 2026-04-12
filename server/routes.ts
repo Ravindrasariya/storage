@@ -1048,7 +1048,14 @@ export async function registerRoutes(
       }
 
       const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, saleDate } = req.body;
-      const effectiveSaleDate = saleDate ? new Date(saleDate) : new Date();
+      let effectiveSaleDate = new Date();
+      if (saleDate) {
+        const parsed = new Date(saleDate);
+        if (isNaN(parsed.getTime())) {
+          return res.status(400).json({ error: "Invalid sale date" });
+        }
+        effectiveSaleDate = parsed;
+      }
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
