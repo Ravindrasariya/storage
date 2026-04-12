@@ -1047,15 +1047,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, saleDate } = req.body;
-      let effectiveSaleDate = new Date();
-      if (saleDate) {
-        const parsed = new Date(`${saleDate}T00:00:00`);
-        if (isNaN(parsed.getTime())) {
-          return res.status(400).json({ error: "Invalid sale date" });
-        }
-        effectiveSaleDate = parsed;
-      }
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -1154,7 +1146,7 @@ export async function registerRoutes(
         updateData.saleStatus = "sold";
         updateData.paymentStatus = paymentStatus;
         updateData.saleCharge = storageCharge;
-        updateData.soldAt = effectiveSaleDate;
+        updateData.soldAt = new Date();
         updateData.upForSale = 0;
       }
       
@@ -1258,8 +1250,7 @@ export async function registerRoutes(
         paidAmount: salePaidAmount,
         dueAmount: saleDueAmount,
         entryDate: lot.createdAt,
-        saleYear: effectiveSaleDate.getFullYear(),
-        soldAt: effectiveSaleDate,
+        saleYear: new Date().getFullYear(),
         // Charge calculation context for edit dialog
         chargeBasis: chargeBasis || "actual",
         chargeUnitAtSale: effectiveChargeUnit, // Preserve effective charge unit used at sale time (company=quintal, farmer=global)

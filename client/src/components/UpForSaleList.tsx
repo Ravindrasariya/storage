@@ -59,14 +59,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   const [isSelfBuyer, setIsSelfBuyer] = useState(false);
   const [adjAmount, setAdjAmount] = useState<string>("");
-  const getTodayLocalStr = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  };
-  const [saleDate, setSaleDate] = useState<string>(getTodayLocalStr);
-  
-  // Variety filter state
-  const [selectedVarietyFilter, setSelectedVarietyFilter] = useState<string | null>(null);
   
   // Farmer filter state
   const [farmerFilterQuery, setFarmerFilterQuery] = useState("");
@@ -136,29 +128,20 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setSelectedFarmerFilter(null);
   };
   
-  const uniqueVarieties = useMemo(() => {
-    return [...new Set(saleLots.map(l => l.type))].sort();
-  }, [saleLots]);
-
+  // Filter saleLots based on selected farmer (normalize for trailing spaces)
   const filteredSaleLots = useMemo(() => {
-    let result = saleLots;
-    if (selectedFarmerFilter) {
-      const filterName = selectedFarmerFilter.name.trim().toLowerCase();
-      const filterPhone = selectedFarmerFilter.phone.trim();
-      result = result.filter(lot => 
-        lot.farmerName.trim().toLowerCase() === filterName &&
-        lot.contactNumber.trim() === filterPhone
-      );
-    }
-    if (selectedVarietyFilter) {
-      result = result.filter(lot => lot.type === selectedVarietyFilter);
-    }
-    return result;
-  }, [saleLots, selectedFarmerFilter, selectedVarietyFilter]);
+    if (!selectedFarmerFilter) return saleLots;
+    const filterName = selectedFarmerFilter.name.trim().toLowerCase();
+    const filterPhone = selectedFarmerFilter.phone.trim();
+    return saleLots.filter(lot => 
+      lot.farmerName.trim().toLowerCase() === filterName &&
+      lot.contactNumber.trim() === filterPhone
+    );
+  }, [saleLots, selectedFarmerFilter]);
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, saleDate }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; saleDate?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, saleDate });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
@@ -220,7 +203,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     setEditableHammali("");
     setChargeBasis("actual");
     setAdjAmount("");
-    setSaleDate(getTodayLocalStr());
   };
 
   const openSaleDialog = (lot: SaleLotInfo) => {
@@ -344,7 +326,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
         chargeBasis: effectiveChargeBasis,
         isSelfSale: isSelfBuyer,
         adjReceivableSelfDueAmount: !isSelfBuyer ? (parseFloat(adjAmount) || 0) : 0,
-        saleDate,
       });
     }
   };
@@ -502,29 +483,12 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
             )}
           </div>
           
-          {uniqueVarieties.length > 1 && (
-            <Select
-              value={selectedVarietyFilter || "all"}
-              onValueChange={(v) => setSelectedVarietyFilter(v === "all" ? null : v)}
-            >
-              <SelectTrigger className="h-8 w-auto min-w-[100px] text-sm" data-testid="select-variety-filter">
-                <SelectValue placeholder={t("type")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" data-testid="variety-filter-all">{t("all") || "All"}</SelectItem>
-                {uniqueVarieties.map(v => (
-                  <SelectItem key={v} value={v} data-testid={`variety-filter-${v}`}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          
           <Badge variant="secondary">
-            {(selectedFarmerFilter || selectedVarietyFilter) ? `${filteredSaleLots.length}/${saleLots.length}` : saleLots.length}
+            {selectedFarmerFilter ? `${filteredSaleLots.length}/${saleLots.length}` : saleLots.length}
           </Badge>
         </div>
         <div className="space-y-3 max-h-96 overflow-y-auto">
-          {filteredSaleLots.length === 0 && (selectedFarmerFilter || selectedVarietyFilter) && (
+          {filteredSaleLots.length === 0 && selectedFarmerFilter && (
             <div className="text-center py-4 text-muted-foreground" data-testid="no-filtered-results">
               {t("noResults")}
             </div>
@@ -637,16 +601,7 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       <Dialog open={!!selectedLot} onOpenChange={(open) => !open && resetDialog()}>
         <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
-            <div className="flex items-center gap-3">
-              <DialogTitle>{t("sale")}</DialogTitle>
-              <Input
-                type="date"
-                value={saleDate}
-                onChange={(e) => setSaleDate(e.target.value)}
-                className="h-8 w-auto text-sm"
-                data-testid="input-sale-date"
-              />
-            </div>
+            <DialogTitle>{t("sale")}</DialogTitle>
             <DialogDescription>
               {selectedLot && `${selectedLot.farmerName} - ${selectedLot.lotNo}`}
             </DialogDescription>
