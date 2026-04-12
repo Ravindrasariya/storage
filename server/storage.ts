@@ -2920,6 +2920,30 @@ export class DatabaseStorage implements IStorage {
 
     // Handle recomputation based on payer type
     if (receipt.payerType === "farmer_loan" && receipt.coldStorageId && receipt.buyerLedgerId) {
+      const appliedIds: string[] = receipt.appliedAdvanceIds ? JSON.parse(receipt.appliedAdvanceIds) : [];
+      for (const loanId of appliedIds) {
+        const [loan] = await db.select().from(farmerLoan).where(eq(farmerLoan.id, loanId));
+        if (loan) {
+          await db.insert(farmerLoanEvents).values({
+            id: randomUUID(),
+            farmerLoanId: loanId,
+            eventType: 'payment_reversal',
+            eventDate: new Date(),
+            amount: loan.amount,
+            rateOfInterest: loan.rateOfInterest,
+            latestPrincipalBefore: loan.latestPrincipal,
+            latestPrincipalAfter: loan.latestPrincipal,
+            effectiveDateBefore: loan.effectiveDate,
+            effectiveDateAfter: loan.effectiveDate,
+            finalAmountBefore: loan.finalAmount,
+            finalAmountAfter: loan.finalAmount,
+            paidAmountBefore: loan.paidAmount,
+            paidAmountAfter: loan.paidAmount,
+            paymentAmount: receipt.amount,
+            receiptId: receipt.id,
+          });
+        }
+      }
       await this.recomputeFarmerLoanPayments(receipt.coldStorageId, receipt.buyerLedgerId);
     } else if (receipt.payerType === "cold_merchant_advance" && receipt.coldStorageId && receipt.buyerLedgerId) {
       await this.recomputeMerchantAdvancePayments(receipt.coldStorageId, receipt.buyerLedgerId);
@@ -7077,24 +7101,28 @@ export class DatabaseStorage implements IStorage {
 
     const newAmount = updates.amount ?? record.amount;
     const newRate = updates.rateOfInterest ?? record.rateOfInterest;
-    const newEffDate = updates.effectiveDate ?? record.effectiveDate;
+    const newOriginalEffDate = updates.effectiveDate ?? (record.originalEffectiveDate || record.effectiveDate);
 
     let finalAmount = newAmount;
     let latestPrincipal = newAmount;
-    let computedEffectiveDate = newEffDate;
+    let computedEffectiveDate = newOriginalEffDate;
 
     if (newRate > 0) {
-      const result = this.computeYearlySimpleInterest(newAmount, newEffDate, newRate, today);
+      const result = this.computeYearlySimpleInterest(newAmount, newOriginalEffDate, newRate, today);
       finalAmount = result.finalAmount;
       latestPrincipal = result.latestPrincipal;
       computedEffectiveDate = result.effectiveDate;
+    }
+
+    if (roundAmount(finalAmount) < roundAmount(record.paidAmount || 0)) {
+      return undefined;
     }
 
     const setValues: Record<string, unknown> = {
       amount: newAmount,
       rateOfInterest: newRate,
       effectiveDate: computedEffectiveDate,
-      originalEffectiveDate: newEffDate,
+      originalEffectiveDate: newOriginalEffDate,
       finalAmount,
       latestPrincipal,
       lastAccrualDate: today,
@@ -7144,6 +7172,23 @@ export class DatabaseStorage implements IStorage {
     await db.update(farmerLoan)
       .set({ isReversed: 1, reversedAt: new Date() })
       .where(eq(farmerLoan.id, loanId));
+
+    await db.insert(farmerLoanEvents).values({
+      id: randomUUID(),
+      farmerLoanId: loanId,
+      eventType: 'reversal',
+      eventDate: new Date(),
+      amount: record.amount,
+      rateOfInterest: record.rateOfInterest,
+      latestPrincipalBefore: record.latestPrincipal,
+      latestPrincipalAfter: 0,
+      effectiveDateBefore: record.effectiveDate,
+      effectiveDateAfter: record.effectiveDate,
+      finalAmountBefore: record.finalAmount,
+      finalAmountAfter: 0,
+      paidAmountBefore: record.paidAmount,
+      paidAmountAfter: record.paidAmount,
+    });
 
     await this.recomputeFarmerLoanPayments(coldStorageId, record.farmerLedgerId);
     return true;
