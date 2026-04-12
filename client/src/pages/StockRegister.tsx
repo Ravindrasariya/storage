@@ -83,7 +83,7 @@ export default function StockRegister() {
     : [currentYear];
 
   const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "filter" | "farmerName">(
-    savedState?.searchType || "phone"
+    savedState?.searchType || "farmerName"
   );
   const [farmerNameQuery, setFarmerNameQuery] = useState(savedState?.farmerNameQuery || "");
   const [selectedFarmerVillage, setSelectedFarmerVillage] = useState(savedState?.selectedFarmerVillage || "");
