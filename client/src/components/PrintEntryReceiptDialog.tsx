@@ -262,14 +262,6 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
                     <span style={{ fontWeight: 600, minWidth: "90px" }}>तहसील:</span>
                     <span>{firstLot.tehsil}</span>
                   </div>
-                  <div style={{ display: "flex", gap: "5px" }}>
-                    <span style={{ fontWeight: 600, minWidth: "90px" }}>जिला:</span>
-                    <span>{firstLot.district}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: "5px" }}>
-                    <span style={{ fontWeight: 600, minWidth: "90px" }}>राज्य:</span>
-                    <span>{firstLot.state}</span>
-                  </div>
                   {firstLot.rstNo && (
                     <div style={{ display: "flex", gap: "5px" }}>
                       <span style={{ fontWeight: 600, minWidth: "90px" }}>RST No:</span>
