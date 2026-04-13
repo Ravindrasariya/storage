@@ -444,7 +444,7 @@ export async function registerRoutes(
       floor: z.number().int().min(0).optional().default(0),
       position: z.string().optional().default(""),
       quality: z.enum(["poor", "medium", "good"]).optional().default("medium"),
-      potatoSize: z.enum(["large", "small"]).default("large"),
+      potatoSize: z.enum(["large", "medium", "small"]).default("large"),
       assayingType: z.string().min(1),
       assayerImage: z.string().optional(),
       reducingSugar: z.number().optional(),

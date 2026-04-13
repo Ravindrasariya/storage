@@ -76,13 +76,14 @@ interface LotData {
   bagTypeLabel: string;
   marka: string;
   markaUserEdited: boolean;
+  markaNumUserEdited: boolean;
   rstNo: string;
   vehicle: string;
   chamberId: string;
   floor: number;
   position: string;
   quality: "poor" | "medium" | "good";
-  potatoSize: "large" | "small";
+  potatoSize: "large" | "medium" | "small";
   assayingType: "Quality Check" | "Visual";
   assayerImage: string;
   reducingSugar?: number;
@@ -98,6 +99,7 @@ const defaultLotData: LotData = {
   bagTypeLabel: "",
   marka: "",
   markaUserEdited: false,
+  markaNumUserEdited: false,
   rstNo: "",
   vehicle: "",
   chamberId: "",
@@ -299,8 +301,9 @@ export default function LotEntry() {
   }, [bagTypeCategory, isInitialized]);
 
   // Auto-populate Marka as "<receiptNo>/<denominator>"
-  // Numerator always tracks receipt #; denominator tracks bag count unless user edited it.
-  // Including `lots` so clearing marka (markaUserEdited=false) immediately resumes auto-fill.
+  // Numerator tracks receipt # unless user has manually changed it (markaNumUserEdited=true).
+  // Denominator tracks bag count unless user edited it (markaUserEdited=true).
+  // Including `lots` so clearing marka immediately resumes auto-fill.
   useEffect(() => {
     if (!isInitialized || !nextSequenceData) return;
     const effectiveReceiptNo = manualLotNo !== null ? manualLotNo : nextSequenceData.nextSequence;
@@ -311,8 +314,11 @@ export default function LotEntry() {
         if (!lot.markaUserEdited) {
           // Auto-fill both parts from current receipt # and bag count
           newMarka = `${effectiveReceiptNo}/${lot.size > 0 ? lot.size : ""}`;
+        } else if (lot.markaNumUserEdited) {
+          // User has edited the numerator — keep entire marka string as-is
+          newMarka = lot.marka;
         } else {
-          // Numerator always updates; preserve denominator
+          // Only denominator user-edited — update numerator, preserve denominator
           const slashIdx = lot.marka.indexOf("/");
           const denominator = slashIdx >= 0 ? lot.marka.slice(slashIdx + 1) : lot.marka;
           newMarka = `${effectiveReceiptNo}/${denominator}`;
@@ -1042,8 +1048,14 @@ export default function LotEntry() {
                       value={lot.marka}
                       onChange={(e) => {
                         const val = e.target.value;
+                        const userEdited = val !== "";
+                        const autoNumerator = String(manualLotNo !== null ? manualLotNo : (nextSequenceData?.nextSequence ?? ""));
+                        const slashIdx = val.indexOf("/");
+                        const userNumerator = slashIdx >= 0 ? val.slice(0, slashIdx) : val;
+                        const numUserEdited = userEdited && userNumerator !== autoNumerator;
                         updateLot(index, "marka", val);
-                        updateLot(index, "markaUserEdited", val !== "");
+                        updateLot(index, "markaUserEdited", userEdited);
+                        updateLot(index, "markaNumUserEdited", numUserEdited);
                       }}
                       placeholder="e.g., ABC-123"
                       data-testid={`input-marka-${index}`}
@@ -1226,13 +1238,14 @@ export default function LotEntry() {
                     </div>
                     <div className="flex-1 min-w-[130px]">
                       <label className="text-sm font-medium">{t("potatoSize")} *</label>
-                      <Select value={lot.potatoSize} onValueChange={(v) => updateLot(index, "potatoSize", v as "large" | "small")}>
+                      <Select value={lot.potatoSize} onValueChange={(v) => updateLot(index, "potatoSize", v as "large" | "medium" | "small")}>
                         <SelectTrigger data-testid={`select-potato-size-${index}`}>
                           <SelectValue placeholder={t("selectSize")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="large">{t("large")}</SelectItem>
-                          <SelectItem value="small">{t("small")}</SelectItem>
+                          <SelectItem value="large">Large</SelectItem>
+                          <SelectItem value="medium">Medium (Gulla)</SelectItem>
+                          <SelectItem value="small">Small (Kirri)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
