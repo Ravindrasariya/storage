@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, ShoppingCart, UserPlus, ChevronDown, ChevronRight } from "lucide-react";
+import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, ShoppingCart, UserPlus, ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -64,7 +64,17 @@ interface BuyerTransactionData {
   transactions: BuyerTransaction[];
 }
 
-function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerName: string }) {
+function BuyerDetailedLedger({
+  buyerId,
+  buyerName,
+  displayBuyerId,
+  coldStorage,
+}: {
+  buyerId: string;
+  buyerName: string;
+  displayBuyerId: string | null;
+  coldStorage: { name: string; address?: string | null } | null;
+}) {
   const { t } = useI18n();
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -145,20 +155,144 @@ function BuyerDetailedLedger({ buyerId, buyerName }: { buyerId: string; buyerNam
     return <span>{formatCurrency(0)}</span>;
   };
 
+  const generatePDF = useCallback(() => {
+    if (!data) return;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = 210;
+    const margin = 12;
+    const fmtDate = (d: string) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
+    const fmtAmt = (n: number) => n > 0 ? n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '-';
+    const fmtBal = (n: number) => {
+      if (n > 0) return `${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Dr`;
+      if (n < 0) return `${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
+      return '0';
+    };
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text(coldStorage?.name || '', pageWidth / 2, 16, { align: 'center' });
+
+    let nextY = 21;
+    if (coldStorage?.address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(coldStorage.address, pageWidth / 2, nextY, { align: 'center' });
+      nextY += 6;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(`Buyer Ledger: ${buyerName}${displayBuyerId ? ` (${displayBuyerId})` : ''}`, margin, nextY + 2);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    const endYY = String((selectedFY + 1) % 100).padStart(2, '0');
+    doc.text(`FY: 01 Apr ${selectedFY} to 31 Mar ${selectedFY + 1}`, margin, nextY + 7);
+    const tableStartY = nextY + 13;
+
+    const openBal = data.openingBalance ?? 0;
+    const tableBody: string[][] = [];
+
+    tableBody.push([
+      '-',
+      fmtDate(`${selectedFY}-04-01`),
+      'Opening Balance',
+      openBal >= 0 ? fmtAmt(openBal) : '-',
+      openBal < 0 ? fmtAmt(Math.abs(openBal)) : '-',
+      fmtBal(openBal),
+    ]);
+
+    rows.forEach((row) => {
+      const particular = row.particular.length > 45 ? row.particular.slice(0, 45) + '...' : row.particular;
+      tableBody.push([
+        String(row.sr),
+        fmtDate(row.date),
+        particular,
+        fmtAmt(row.debit),
+        fmtAmt(row.credit),
+        fmtBal(row.balance),
+      ]);
+    });
+
+    tableBody.push([
+      '-',
+      fmtDate(`${selectedFY + 1}-03-31`),
+      'Closing Balance',
+      closingBalance >= 0 ? fmtAmt(closingBalance) : '-',
+      closingBalance < 0 ? fmtAmt(Math.abs(closingBalance)) : '-',
+      fmtBal(closingBalance),
+    ]);
+
+    const GREEN: [number, number, number] = [46, 125, 50];
+    const LIGHT_GREEN: [number, number, number] = [232, 245, 233];
+    const LIGHT_GREY: [number, number, number] = [248, 248, 248];
+    const lastIdx = tableBody.length - 1;
+
+    autoTable(doc, {
+      head: [['#', 'Date', 'Particulars', 'Dr (Rs.)', 'Cr (Rs.)', 'Balance']],
+      body: tableBody,
+      startY: tableStartY,
+      margin: { left: margin, right: margin },
+      styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 2 },
+      headStyles: { fillColor: GREEN, textColor: 255, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 86 },
+        3: { halign: 'right', cellWidth: 22 },
+        4: { halign: 'right', cellWidth: 22 },
+        5: { halign: 'right', cellWidth: 28 },
+      },
+      didParseCell: (hookData) => {
+        if (hookData.section !== 'body') return;
+        const i = hookData.row.index;
+        if (i === 0 || i === lastIdx) {
+          hookData.cell.styles.fillColor = LIGHT_GREEN;
+          hookData.cell.styles.fontStyle = 'bold';
+        } else if (i % 2 === 0) {
+          hookData.cell.styles.fillColor = LIGHT_GREY;
+        }
+      },
+      didDrawPage: () => {
+        const pageHeight = doc.internal.pageSize.height;
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(150);
+        doc.text(`Generated by ${coldStorage?.name || ''}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+        doc.setTextColor(0);
+      },
+    });
+
+    const safeName = buyerName.replace(/[^a-zA-Z0-9]/g, '_');
+    doc.save(`Buyer_Ledger_${safeName}_FY${selectedFY}-${endYY}.pdf`);
+  }, [data, rows, closingBalance, selectedFY, buyerName, displayBuyerId, coldStorage]);
+
   return (
     <div className="p-3 bg-muted/20" data-testid={`detailed-ledger-${buyerId}`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-semibold">{t("detailedLedger")} — {buyerName}</span>
-        <Select value={String(selectedFY)} onValueChange={(v) => setSelectedFY(Number(v))}>
-          <SelectTrigger className="w-[120px] h-7 text-xs" data-testid={`select-fy-${buyerId}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {fyOptions.map(opt => (
-              <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-1">
+          <Select value={String(selectedFY)} onValueChange={(v) => setSelectedFY(Number(v))}>
+            <SelectTrigger className="w-[120px] h-7 text-xs" data-testid={`select-fy-${buyerId}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {fyOptions.map(opt => (
+                <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={generatePDF}
+            disabled={isLoading || !data}
+            title="Download PDF"
+            data-testid={`button-pdf-buyer-${buyerId}`}
+          >
+            <FileText className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-4">
@@ -859,7 +993,7 @@ export default function BuyerLedger() {
                     </div>
                   </div>
                   {expandedBuyerId === buyer.id && (
-                    <BuyerDetailedLedger buyerId={buyer.id} buyerName={buyer.buyerName} />
+                    <BuyerDetailedLedger buyerId={buyer.id} buyerName={buyer.buyerName} displayBuyerId={buyer.buyerId} coldStorage={coldStorage} />
                   )}
                 </Card>
               ))}
@@ -982,7 +1116,7 @@ export default function BuyerLedger() {
                       {expandedBuyerId === buyer.id && (
                         <tr key={`${buyer.id}-detail`}>
                           <td colSpan={11} className="p-0 border-b">
-                            <BuyerDetailedLedger buyerId={buyer.id} buyerName={buyer.buyerName} />
+                            <BuyerDetailedLedger buyerId={buyer.id} buyerName={buyer.buyerName} displayBuyerId={buyer.buyerId} coldStorage={coldStorage} />
                           </td>
                         </tr>
                       )}

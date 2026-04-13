@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, X, ChevronDown, ChevronRight, UserPlus } from "lucide-react";
+import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, X, ChevronDown, ChevronRight, UserPlus, FileText } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -73,7 +73,17 @@ interface FarmerTransactionData {
   transactions: FarmerTransaction[];
 }
 
-function FarmerDetailedLedger({ farmerId, farmerName }: { farmerId: string; farmerName: string }) {
+function FarmerDetailedLedger({
+  farmerId,
+  farmerName,
+  displayFarmerId,
+  coldStorage,
+}: {
+  farmerId: string;
+  farmerName: string;
+  displayFarmerId: string | null;
+  coldStorage: { name: string; address?: string | null } | null;
+}) {
   const { t } = useI18n();
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -151,20 +161,144 @@ function FarmerDetailedLedger({ farmerId, farmerName }: { farmerId: string; farm
     return <span>{formatCurrency(0)}</span>;
   };
 
+  const generatePDF = useCallback(() => {
+    if (!data) return;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = 210;
+    const margin = 12;
+    const fmtDate = (d: string) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
+    const fmtAmt = (n: number) => n > 0 ? n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '-';
+    const fmtBal = (n: number) => {
+      if (n > 0) return `${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Dr`;
+      if (n < 0) return `${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
+      return '0';
+    };
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text(coldStorage?.name || '', pageWidth / 2, 16, { align: 'center' });
+
+    let nextY = 21;
+    if (coldStorage?.address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(coldStorage.address, pageWidth / 2, nextY, { align: 'center' });
+      nextY += 6;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(`Farmer Ledger: ${farmerName}${displayFarmerId ? ` (${displayFarmerId})` : ''}`, margin, nextY + 2);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    const endYY = String((selectedFY + 1) % 100).padStart(2, '0');
+    doc.text(`FY: 01 Apr ${selectedFY} to 31 Mar ${selectedFY + 1}`, margin, nextY + 7);
+    const tableStartY = nextY + 13;
+
+    const openBal = data.openingBalance ?? 0;
+    const tableBody: string[][] = [];
+
+    tableBody.push([
+      '-',
+      fmtDate(`${selectedFY}-04-01`),
+      'Opening Balance',
+      openBal >= 0 ? fmtAmt(openBal) : '-',
+      openBal < 0 ? fmtAmt(Math.abs(openBal)) : '-',
+      fmtBal(openBal),
+    ]);
+
+    rows.forEach((row) => {
+      const particular = row.particular.length > 45 ? row.particular.slice(0, 45) + '...' : row.particular;
+      tableBody.push([
+        String(row.sr),
+        fmtDate(row.date),
+        particular,
+        fmtAmt(row.debit),
+        fmtAmt(row.credit),
+        fmtBal(row.balance),
+      ]);
+    });
+
+    tableBody.push([
+      '-',
+      fmtDate(`${selectedFY + 1}-03-31`),
+      'Closing Balance',
+      closingBalance >= 0 ? fmtAmt(closingBalance) : '-',
+      closingBalance < 0 ? fmtAmt(Math.abs(closingBalance)) : '-',
+      fmtBal(closingBalance),
+    ]);
+
+    const GREEN: [number, number, number] = [46, 125, 50];
+    const LIGHT_GREEN: [number, number, number] = [232, 245, 233];
+    const LIGHT_GREY: [number, number, number] = [248, 248, 248];
+    const lastIdx = tableBody.length - 1;
+
+    autoTable(doc, {
+      head: [['#', 'Date', 'Particulars', 'Dr (Rs.)', 'Cr (Rs.)', 'Balance']],
+      body: tableBody,
+      startY: tableStartY,
+      margin: { left: margin, right: margin },
+      styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 2 },
+      headStyles: { fillColor: GREEN, textColor: 255, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 86 },
+        3: { halign: 'right', cellWidth: 22 },
+        4: { halign: 'right', cellWidth: 22 },
+        5: { halign: 'right', cellWidth: 28 },
+      },
+      didParseCell: (hookData) => {
+        if (hookData.section !== 'body') return;
+        const i = hookData.row.index;
+        if (i === 0 || i === lastIdx) {
+          hookData.cell.styles.fillColor = LIGHT_GREEN;
+          hookData.cell.styles.fontStyle = 'bold';
+        } else if (i % 2 === 0) {
+          hookData.cell.styles.fillColor = LIGHT_GREY;
+        }
+      },
+      didDrawPage: () => {
+        const pageHeight = doc.internal.pageSize.height;
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(150);
+        doc.text(`Generated by ${coldStorage?.name || ''}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+        doc.setTextColor(0);
+      },
+    });
+
+    const safeName = farmerName.replace(/[^a-zA-Z0-9]/g, '_');
+    doc.save(`Farmer_Ledger_${safeName}_FY${selectedFY}-${endYY}.pdf`);
+  }, [data, rows, closingBalance, selectedFY, farmerName, displayFarmerId, coldStorage]);
+
   return (
     <div className="p-3 bg-muted/20" data-testid={`detailed-ledger-farmer-${farmerId}`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-semibold">{t("detailedLedger")} — {farmerName}</span>
-        <Select value={String(selectedFY)} onValueChange={(v) => setSelectedFY(Number(v))}>
-          <SelectTrigger className="w-[120px] h-7 text-xs" data-testid={`select-fy-farmer-${farmerId}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {fyOptions.map(opt => (
-              <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-1">
+          <Select value={String(selectedFY)} onValueChange={(v) => setSelectedFY(Number(v))}>
+            <SelectTrigger className="w-[120px] h-7 text-xs" data-testid={`select-fy-farmer-${farmerId}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {fyOptions.map(opt => (
+                <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={generatePDF}
+            disabled={isLoading || !data}
+            title="Download PDF"
+            data-testid={`button-pdf-farmer-${farmerId}`}
+          >
+            <FileText className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-4">
@@ -1119,7 +1253,7 @@ export default function FarmerLedger() {
                     </div>
                   </div>
                   {expandedFarmerId === farmer.id && (
-                    <FarmerDetailedLedger farmerId={farmer.id} farmerName={farmer.name} />
+                    <FarmerDetailedLedger farmerId={farmer.id} farmerName={farmer.name} displayFarmerId={farmer.farmerId} coldStorage={coldStorage} />
                   )}
                 </Card>
               ))}
@@ -1332,7 +1466,7 @@ export default function FarmerLedger() {
                     {expandedFarmerId === farmer.id && (
                       <tr key={`${farmer.id}-detail`}>
                         <td colSpan={10} className="p-0 border-b">
-                          <FarmerDetailedLedger farmerId={farmer.id} farmerName={farmer.name} />
+                          <FarmerDetailedLedger farmerId={farmer.id} farmerName={farmer.name} displayFarmerId={farmer.farmerId} coldStorage={coldStorage} />
                         </td>
                       </tr>
                     )}
