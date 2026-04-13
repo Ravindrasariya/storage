@@ -202,11 +202,10 @@ function BuyerDetailedLedger({
     ]);
 
     rows.forEach((row) => {
-      const particular = row.particular.length > 45 ? row.particular.slice(0, 45) + '...' : row.particular;
       tableBody.push([
         String(row.sr),
         fmtDate(row.date),
-        particular,
+        row.particular,
         fmtAmt(row.debit),
         fmtAmt(row.credit),
         fmtBal(row.balance),
