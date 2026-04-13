@@ -167,11 +167,11 @@ function FarmerDetailedLedger({
     const pageWidth = 210;
     const margin = 12;
     const fmtDate = (d: string) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
-    const fmtAmt = (n: number) => n > 0 ? `\u20B9${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '-';
+    const fmtAmt = (n: number) => n > 0 ? n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '-';
     const fmtBal = (n: number) => {
-      if (n > 0) return `\u20B9${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Dr`;
-      if (n < 0) return `\u20B9${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
-      return '\u20B90';
+      if (n > 0) return `${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Dr`;
+      if (n < 0) return `${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
+      return '0';
     };
 
     doc.setFont('helvetica', 'bold');
@@ -233,7 +233,7 @@ function FarmerDetailedLedger({
     const lastIdx = tableBody.length - 1;
 
     autoTable(doc, {
-      head: [['#', 'Date', 'Particulars', 'Dr (Rs.)', 'Cr (Rs.)', 'Balance']],
+      head: [['#', 'Date', 'Particulars', 'Dr (Rs.)', 'Cr (Rs.)', 'Balance (Rs.)']],
       body: tableBody,
       startY: tableStartY,
       margin: { left: margin, right: margin },
