@@ -161,11 +161,11 @@ function BuyerDetailedLedger({
     const pageWidth = 210;
     const margin = 12;
     const fmtDate = (d: string) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
-    const fmtAmt = (n: number) => n > 0 ? `Rs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '-';
+    const fmtAmt = (n: number) => n > 0 ? `\u20B9${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '-';
     const fmtBal = (n: number) => {
-      if (n > 0) return `Rs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Dr`;
-      if (n < 0) return `Rs. ${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
-      return 'Rs. 0';
+      if (n > 0) return `\u20B9${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })} Dr`;
+      if (n < 0) return `\u20B9${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
+      return '\u20B90';
     };
 
     doc.setFont('helvetica', 'bold');
