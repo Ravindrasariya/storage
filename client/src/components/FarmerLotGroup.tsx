@@ -65,12 +65,14 @@ const FULL_ROW_GRID =
 const RIGHT_HALF_START = "border-l border-border/60 pl-2 md:pl-3";
 
 // Two-tone background bands sit BEHIND every row of the table area so
-// the LEFT half reads as one continuous green band and the RIGHT half
-// as one continuous orange band, instead of per-cell rectangles. The
-// `-mx-1` on each background cell closes the grid `gap-x-2` so the
-// bands have no white slivers between cells.
-const LEFT_BAND_BG  = "bg-green-100/70 dark:bg-green-900/30";
-const RIGHT_BAND_BG = "bg-orange-100/70 dark:bg-orange-900/30";
+// the LEFT half reads as one continuous sky-blue band and the RIGHT
+// half as one continuous amber band, instead of per-cell rectangles.
+// Cool/warm pairing keeps the two halves visually distinct while
+// staying light enough that all text and badges read clearly in both
+// light and dark mode. Negative horizontal margins on each background
+// cell close the grid `gap-x-2` so each band reads as solid colour.
+const LEFT_BAND_BG  = "bg-sky-100/70 dark:bg-sky-900/30";
+const RIGHT_BAND_BG = "bg-amber-100/70 dark:bg-amber-900/30";
 
 // Format an exit date as IST `dd-mm-yyyy` (matches the rest of CSM,
 // which standardises on Asia/Kolkata for all human-facing dates).
@@ -215,6 +217,10 @@ export function FarmerLotGroup({
             className={`${FULL_ROW_GRID} absolute inset-0 px-2 pointer-events-none`}
             aria-hidden="true"
           >
+            {/* Cells 1-7 close the inner LEFT-half gaps. Cell 8 extends
+                the full 8px gap to the right (`-mr-2`) so the LEFT band
+                reaches all the way to the vertical divider line at the
+                start of column 9 (Exited / Sold) with no white seam. */}
             <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
             <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
             <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
@@ -222,8 +228,11 @@ export function FarmerLotGroup({
             <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
             <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
             <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
-            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
-            <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
+            <span className={`${LEFT_BAND_BG} h-full -ml-1 -mr-2`} />
+            {/* Cell 9 starts cleanly at the divider line (no left bleed)
+                so the RIGHT band begins exactly where the LEFT band
+                ends. Cells 10-12 close their own inner gaps. */}
+            <span className={`${RIGHT_BAND_BG} h-full -mr-1`} />
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
