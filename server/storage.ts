@@ -2011,7 +2011,43 @@ export class DatabaseStorage implements IStorage {
     const [record] = await db.insert(exitHistory)
       .values({ id: randomUUID(), billNumber, ...data })
       .returning();
+
+    // Refresh denormalised exit info on the parent sale row
+    await this.syncSaleExitSummary(data.salesHistoryId);
+
     return record;
+  }
+
+  // Recompute and persist comma-separated exit bill numbers / dates
+  // on the parent sales_history row from live (non-reversed) exit_history rows.
+  private async syncSaleExitSummary(salesHistoryId: string): Promise<void> {
+    const exits = await db.select({
+      billNumber: exitHistory.billNumber,
+      exitDate: exitHistory.exitDate,
+    })
+      .from(exitHistory)
+      .where(and(
+        eq(exitHistory.salesHistoryId, salesHistoryId),
+        eq(exitHistory.isReversed, 0),
+      ))
+      .orderBy(asc(exitHistory.exitDate));
+
+    const billNumbersStr = exits.length > 0
+      ? exits.map(e => String(e.billNumber)).join(", ")
+      : null;
+    const datesStr = exits.length > 0
+      ? exits.map(e => {
+          const d = new Date(e.exitDate);
+          const dd = String(d.getDate()).padStart(2, "0");
+          const mm = String(d.getMonth() + 1).padStart(2, "0");
+          const yyyy = d.getFullYear();
+          return `${dd}/${mm}/${yyyy}`;
+        }).join(", ")
+      : null;
+
+    await db.update(salesHistory)
+      .set({ exitBillNumbers: billNumbersStr, exitDates: datesStr })
+      .where(eq(salesHistory.id, salesHistoryId));
   }
 
   async getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]> {
@@ -2157,6 +2193,9 @@ export class DatabaseStorage implements IStorage {
         reversedAt: new Date() 
       })
       .where(eq(exitHistory.id, latestExit.id));
+
+    // Refresh denormalised exit info on the parent sale row
+    await this.syncSaleExitSummary(salesHistoryId);
 
     return { success: true };
   }

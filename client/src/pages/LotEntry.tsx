@@ -987,7 +987,7 @@ export default function LotEntry() {
                   <Package className="h-4 w-4 text-chart-2" />
                   <h3 className="font-semibold">{t("lotInformation")}</h3>
                 </div>
-                <div className={`grid grid-cols-2 gap-4 ${(coldStorage?.chargeUnit === "quintal" || isCompany) ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
                   <div className="col-span-2 sm:col-span-1">
                     <label className="text-sm font-medium">{t("lotNo")}</label>
                     {index === 0 ? (
@@ -1061,25 +1061,23 @@ export default function LotEntry() {
                       data-testid={`input-marka-${index}`}
                     />
                   </div>
-                  {(coldStorage?.chargeUnit === "quintal" || isCompany) && (
-                    <div>
-                      <label className="text-sm font-medium">{t("netWeightQtl")}</label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        placeholder="0.00"
-                        value={lot.netWeight === undefined || lot.netWeight === 0 ? "" : lot.netWeight}
-                        onChange={(e) => updateLot(index, "netWeight", e.target.value === "" ? undefined : parseFloat(e.target.value))}
-                        data-testid={`input-net-weight-${index}`}
-                      />
-                      {lot.netWeight && lot.netWeight > 0 && lot.size > 0 && (
-                        <p className="text-xs font-medium text-orange-600 dark:text-orange-400 mt-1" data-testid={`avg-weight-${index}`}>
-                          {t("avgWeight") || "Avg Weight"}: {(lot.netWeight / lot.size).toFixed(2)} {t("qtlPerBag") || "qtl/bag"}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  <div>
+                    <label className="text-sm font-medium">{t("netWeightQtl")}</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      placeholder="0.00"
+                      value={lot.netWeight === undefined || lot.netWeight === 0 ? "" : lot.netWeight}
+                      onChange={(e) => updateLot(index, "netWeight", e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                      data-testid={`input-net-weight-${index}`}
+                    />
+                    {lot.netWeight && lot.netWeight > 0 && lot.size > 0 && (
+                      <p className="text-xs font-medium text-orange-600 dark:text-orange-400 mt-1" data-testid={`avg-weight-${index}`}>
+                        {t("avgWeight") || "Avg Weight"}: {(lot.netWeight / lot.size).toFixed(2)} {t("qtlPerBag") || "qtl/bag"}
+                      </p>
+                    )}
+                  </div>
                   <div>
                     <label className="text-sm font-medium">{t("type")} *</label>
                     <Select value={lot.type} onValueChange={(v) => updateLot(index, "type", v)}>

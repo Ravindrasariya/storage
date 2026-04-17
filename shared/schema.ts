@@ -221,6 +221,9 @@ export const salesHistory = pgTable("sales_history", {
   // Farmer payment tracking (has buyer paid the farmer?)
   farmerPaymentStatus: text("farmer_payment_status").default("unpaid"),
   farmerPaidAt: text("farmer_paid_at"),
+  // Denormalised exit info (comma-separated; maintained on exit create/reverse)
+  exitBillNumbers: text("exit_bill_numbers"), // e.g., "12, 13, 14" - non-reversed exit bill numbers ordered by exitDate asc
+  exitDates: text("exit_dates"), // e.g., "15/04/2026, 16/04/2026" - matching non-reversed exit dates ordered by exitDate asc
 });
 
 // Edit history for tracking changes
