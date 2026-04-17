@@ -123,7 +123,14 @@ function BuyerDetailedLedger({
     switch (txn.type) {
       case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}`;
       case 'py_receivable_interest': return `${t("interestOnReceivable")}${interestSuffix(m)}`;
-      case 'sale': return `${t("saleCharges")} - ${t("lotHash")}${m.lotNo}, ${m.farmerName}, ${m.bags} ${t("bagsLabel")}`;
+      case 'sale': {
+        const parts = [`${t("saleCharges")} - ${t("lotHash")}${m.lotNo}`];
+        if (m.marka)      parts.push(`${t("marka")}: ${m.marka}`);
+        if (m.coldBillNo) parts.push(`${t("coldBillNo")}${m.coldBillNo}`);
+        parts.push(m.farmerName);
+        parts.push(`${m.bags} ${t("bagsLabel")}`);
+        return parts.join(', ');
+      }
       case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
       case 'cm_advance_payment': {
         const base = `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;

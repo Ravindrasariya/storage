@@ -133,7 +133,14 @@ function FarmerDetailedLedger({
       case 'py_receivable': return `${t("pyReceivableEntry")}${m.remarks ? ' - ' + m.remarks : ''}`;
       case 'advance': return `${t("advanceGiven")} - ${formatCurrency(Number(m.amount || 0))}`;
       case 'freight': return `${t("freightGiven")} - ${formatCurrency(Number(m.amount || 0))}`;
-      case 'self_sale': return `${t("selfSaleEntry")} - ${t("lotHash")}${m.lotNo}, ${m.buyerName}, ${m.bags} ${t("bagsLabel")}`;
+      case 'self_sale': {
+        const parts = [`${t("selfSaleEntry")} - ${t("lotHash")}${m.lotNo}`];
+        if (m.marka)      parts.push(`${t("marka")}: ${m.marka}`);
+        if (m.coldBillNo) parts.push(`${t("coldBillNo")}${m.coldBillNo}`);
+        parts.push(m.buyerName);
+        parts.push(`${m.bags} ${t("bagsLabel")}`);
+        return parts.join(', ');
+      }
       case 'farmer_loan': return `${t("farmerLoan")} - ${t("principal")} ${formatCurrency(Number(m.principal || m.amount || 0))}${Number(m.rateOfInterest || 0) > 0 ? ` @ ${m.rateOfInterest}%` : ''}`;
       case 'farmer_loan_interest': return `${t("farmerLoanInterest")}${m.eventType === 'annual_compounding' ? ` (${t("compounded")})` : ''}${loanSuffix(m)}`;
       case 'farmer_loan_payment': return `${t("farmerLoanPayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})${loanSuffix(m)}`;

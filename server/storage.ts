@@ -9006,7 +9006,13 @@ export class DatabaseStorage implements IStorage {
       transactions.push({
         type: 'sale',
         date: toISTDateString(s.soldAt),
-        meta: { lotNo: String(s.lotNo), farmerName: s.farmerName, bags: String(s.quantitySold) },
+        meta: {
+          lotNo: String(s.lotNo),
+          farmerName: s.farmerName,
+          bags: String(s.quantitySold),
+          marka: s.marka || '',
+          coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
+        },
         debit: roundAmount(amt),
         credit: 0,
         refId: s.id,
@@ -9443,7 +9449,13 @@ export class DatabaseStorage implements IStorage {
       transactions.push({
         type: 'self_sale',
         date: toISTDateString(s.soldAt),
-        meta: { lotNo: String(s.lotNo), buyerName: s.buyerName || '', bags: String(s.quantitySold) },
+        meta: {
+          lotNo: String(s.lotNo),
+          buyerName: s.buyerName || '',
+          bags: String(s.quantitySold),
+          marka: s.marka || '',
+          coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
+        },
         debit: roundAmount(s.coldStorageCharge || 0),
         credit: 0,
         refId: s.id,
