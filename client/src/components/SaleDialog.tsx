@@ -129,6 +129,7 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });

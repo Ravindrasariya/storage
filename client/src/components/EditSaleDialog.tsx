@@ -264,6 +264,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       toast({ title: t("success"), description: t("saleReversed"), variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/search"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });

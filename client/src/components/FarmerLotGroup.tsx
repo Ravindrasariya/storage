@@ -27,6 +27,15 @@ export interface LotWithCharges {
   expectedColdCharge: number;
 }
 
+export interface SaleSummary {
+  saleId: string;
+  soldAt: string | Date;
+  quantitySold: number;
+  coldStorageBillNumber: number | null;
+  totalExited: number;
+  exits: Array<{ exitDate: string | Date; billNumber: number; bagsExited: number }>;
+}
+
 interface FarmerLotGroupProps {
   farmerName: string;
   village: string;
@@ -35,6 +44,7 @@ interface FarmerLotGroupProps {
   contactNumber: string;
   lots: LotWithCharges[];
   chamberMap: Record<string, string>;
+  salesByLot?: Record<string, SaleSummary[]>;
   onEdit: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
@@ -43,8 +53,31 @@ interface FarmerLotGroupProps {
   chargeUnit?: "bag" | "quintal";
 }
 
-const ROW_GRID =
-  "grid grid-cols-[24px_minmax(70px,0.9fr)_minmax(70px,0.9fr)_minmax(70px,0.8fr)_minmax(70px,0.9fr)_minmax(140px,1.6fr)_minmax(70px,0.7fr)_minmax(80px,0.8fr)] gap-x-2 items-center";
+// Single full-width grid combining LEFT (lot identity) + RIGHT (per-sale)
+// columns. Left fr-total ≈ right fr-total so the divider lands near 50/50
+// on wide screens. On mobile the row scrolls horizontally via min-width.
+const FULL_ROW_GRID =
+  "grid grid-cols-[24px_minmax(70px,0.9fr)_minmax(70px,0.9fr)_minmax(70px,0.8fr)_minmax(70px,0.9fr)_minmax(140px,1.6fr)_minmax(70px,0.7fr)_minmax(80px,0.8fr)_minmax(80px,1.5fr)_minmax(140px,2fr)_minmax(90px,1.7fr)_minmax(70px,1.4fr)] gap-x-2 items-center min-w-[1000px] md:min-w-0";
+
+// Tailwind class added to every column that belongs to the right (sale)
+// half — used by both the header and the per-row cells so the visual
+// dividing line between halves is consistent.
+const RIGHT_HALF_START = "border-l border-border/60 pl-2 md:pl-3";
+
+// Format an exit date as IST `dd-mm-yyyy` (matches the rest of CSM,
+// which standardises on Asia/Kolkata for all human-facing dates).
+function fmtDateShort(d: string | Date): string {
+  const dt = typeof d === "string" ? new Date(d) : d;
+  if (isNaN(dt.getTime())) return "-";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(dt);
+  const get = (t: string) => parts.find(p => p.type === t)?.value || "";
+  return `${get("day")}-${get("month")}-${get("year")}`;
+}
 
 function getQualityColor(quality: string) {
   switch (quality) {
@@ -71,6 +104,7 @@ export function FarmerLotGroup({
   contactNumber,
   lots,
   chamberMap,
+  salesByLot,
   onEdit,
   onToggleSale,
   onPrintReceipt,
@@ -155,11 +189,12 @@ export function FarmerLotGroup({
         </div>
       </div>
 
-      {/* Lot table — compact rows fill the LEFT HALF on desktop; expanded
-          detail panels span the FULL width so dense action UI is not crowded. */}
+      {/* Lot table — full-width row combining LEFT (lot identity) and
+          RIGHT (per-sale exit info) halves. Expanded detail panels span
+          the FULL width so dense action UI is not crowded. */}
       <div className="overflow-x-auto">
         {/* Column headers */}
-        <div className={`${ROW_GRID} md:max-w-[50%] px-2 py-2 text-xs font-medium text-muted-foreground border-b min-w-[600px] md:min-w-0`}>
+        <div className={`${FULL_ROW_GRID} px-2 py-2 text-xs font-medium text-muted-foreground border-b`}>
           <span></span>
           <span>{t("lotNo")}</span>
           <span>{t("marka") || "Marka"}</span>
@@ -168,6 +203,10 @@ export function FarmerLotGroup({
           <span>{t("location") || "Location"}</span>
           <span className="text-right">{t("originalSize") || "Original"}</span>
           <span className="text-right">{t("remaining") || "Remaining"}</span>
+          <span className={`${RIGHT_HALF_START} text-right`}>{t("exitedSold")}</span>
+          <span>{t("exitDates")}</span>
+          <span>{t("exitBills")}</span>
+          <span className="text-right">{t("coldBillNo")}</span>
         </div>
 
         {/* Lot rows */}
@@ -181,14 +220,54 @@ export function FarmerLotGroup({
               ? chamberName.replace(/chamber\s*/i, "Ch-")
               : `Ch-${chamberName}`;
             const locationStr = `${chamberAbbrev}, FL-${lot.floor}, ${lot.position}`;
+            const sales = salesByLot?.[lot.id] || [];
+            const rowCount = Math.max(1, sales.length);
+
+            // Build the right-half cells for a given sale (or empty placeholder
+            // when the lot has no sales).
+            const renderRightCells = (sale: SaleSummary | undefined, rowKey: string) => (
+              <>
+                <span
+                  className={`${RIGHT_HALF_START} text-right tabular-nums`}
+                  data-testid={`cell-exited-sold-${lot.id}-${rowKey}`}
+                >
+                  {sale ? `${sale.totalExited} / ${sale.quantitySold}` : "-"}
+                </span>
+                <span
+                  className="truncate"
+                  title={sale ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ") : ""}
+                  data-testid={`cell-exit-dates-${lot.id}-${rowKey}`}
+                >
+                  {sale && sale.exits.length > 0
+                    ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ")
+                    : "-"}
+                </span>
+                <span
+                  className="truncate font-mono"
+                  title={sale ? sale.exits.map(e => `#${e.billNumber}`).join(", ") : ""}
+                  data-testid={`cell-exit-bills-${lot.id}-${rowKey}`}
+                >
+                  {sale && sale.exits.length > 0
+                    ? sale.exits.map(e => `#${e.billNumber}`).join(", ")
+                    : "-"}
+                </span>
+                <span
+                  className="text-right font-mono tabular-nums"
+                  data-testid={`cell-cold-bill-${lot.id}-${rowKey}`}
+                >
+                  {sale && sale.coldStorageBillNumber != null ? `#${sale.coldStorageBillNumber}` : "-"}
+                </span>
+              </>
+            );
 
             return (
               <div key={lot.id}>
-                {/* Compact row */}
+                {/* First row — left lot identity + first sale on right.
+                    Click anywhere on the row toggles expansion. */}
                 <button
                   type="button"
                   onClick={() => toggleExpand(lot.id)}
-                  className={`${ROW_GRID} md:max-w-[50%] w-full px-2 py-2 text-sm hover-elevate text-left min-w-[600px] md:min-w-0 ${
+                  className={`${FULL_ROW_GRID} w-full px-2 py-2 text-sm hover-elevate text-left ${
                     isExpanded ? "bg-muted/40" : ""
                   }`}
                   data-testid={`row-lot-${lot.id}`}
@@ -224,7 +303,28 @@ export function FarmerLotGroup({
                   <span className="text-right font-bold text-chart-1" data-testid={`cell-remaining-${lot.id}`}>
                     {lot.remainingSize}
                   </span>
+                  {renderRightCells(sales[0], "0")}
                 </button>
+
+                {/* Continuation rows — one per additional sale. Left half
+                    is intentionally blank; right half shows the next sale.
+                    Not a button: doesn't toggle expansion (chevron already
+                    sits on the first row only). */}
+                {rowCount > 1 && Array.from({ length: rowCount - 1 }).map((_, i) => {
+                  const idx = i + 1;
+                  return (
+                    <div
+                      key={`${lot.id}-sale-${idx}`}
+                      className={`${FULL_ROW_GRID} px-2 py-2 text-sm border-t border-border/40 ${
+                        isExpanded ? "bg-muted/40" : ""
+                      }`}
+                      data-testid={`row-lot-${lot.id}-sale-${idx}`}
+                    >
+                      <span /><span /><span /><span /><span /><span /><span /><span />
+                      {renderRightCells(sales[idx], String(idx))}
+                    </div>
+                  );
+                })}
 
                 {/* Expanded details — ALWAYS rendered for searchability; hidden via CSS when collapsed.
                     Spans the FULL row width (compact rows above are constrained to the left half). */}

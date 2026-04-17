@@ -74,6 +74,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       setPendingPrint(true);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "exits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/years"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/exits-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });

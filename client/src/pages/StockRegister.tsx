@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { FarmerLotGroup, type LotWithCharges } from "@/components/FarmerLotGroup";
+import { FarmerLotGroup, type LotWithCharges, type SaleSummary } from "@/components/FarmerLotGroup";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { SaleDialog } from "@/components/SaleDialog";
@@ -325,6 +325,26 @@ export default function StockRegister() {
   // Fetch all sales to calculate charges from sales history (same as Analytics)
   const { data: allSalesHistory } = useQuery<SalesHistory[]>({
     queryKey: ["/api/sales-history"],
+  });
+
+  // Batch sales-and-exits summary keyed by the IDs of the lots actually
+  // rendered (search results when a search is active, otherwise the
+  // paginated displayed set). Drives the right-hand "Exited / Sold" /
+  // "Exit Dates" / "Exit Bills" / "Cold Bill No" columns inside
+  // FarmerLotGroup.
+  const renderedLotIds = (hasSearched ? searchResults : displayedLots).map(l => l.id);
+  const renderedLotIdsKey = [...renderedLotIds].sort().join(",");
+  const { data: salesByLot } = useQuery<Record<string, SaleSummary[]>>({
+    queryKey: ["/api/lots/sales-summary", renderedLotIdsKey],
+    queryFn: async () => {
+      if (!renderedLotIdsKey) return {};
+      const response = await authFetch(
+        `/api/lots/sales-summary?lotIds=${encodeURIComponent(renderedLotIdsKey)}`,
+      );
+      if (!response.ok) throw new Error("Failed to fetch sales summary");
+      return response.json();
+    },
+    enabled: renderedLotIds.length > 0,
   });
 
   // Fetch summary totals for ALL lots (with optional bag type and year filter)
@@ -1148,6 +1168,7 @@ export default function StockRegister() {
     },
     onSuccess: async (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
@@ -1906,6 +1927,7 @@ export default function StockRegister() {
                   contactNumber={group.contactNumber}
                   lots={group.items}
                   chamberMap={chamberMap}
+                  salesByLot={salesByLot}
                   onEdit={handleEditClick}
                   onToggleSale={handleToggleSale}
                   onPrintReceipt={(lot) => {
@@ -2354,6 +2376,7 @@ export default function StockRegister() {
                     }
                   }
                   queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+                  queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
                   queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
                   handleSearch();
                 } catch (error: any) {

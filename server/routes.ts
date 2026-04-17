@@ -812,6 +812,29 @@ export async function registerRoutes(
     }
   });
 
+  // Batch sales-and-exits summary for a set of lots — used by Stock Register
+  // to populate the right-hand sale columns without an N+1 of per-sale calls.
+  // Registered BEFORE `/api/lots/:id` so Express doesn't shadow it.
+  app.get("/api/lots/sales-summary", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const raw = (req.query.lotIds as string) || "";
+      const lotIds = raw.split(",").map(s => s.trim()).filter(Boolean);
+      if (lotIds.length === 0) return res.json({});
+      // Reject (don't silently truncate) overly large requests so the
+      // client surface stays consistent. The Stock Register page paginates
+      // displayed lots, so this should rarely be hit in practice.
+      if (lotIds.length > 1000) {
+        return res.status(400).json({ error: "Too many lotIds (max 1000)" });
+      }
+      const summary = await storage.getSalesWithExitsByLotIds(coldStorageId, lotIds);
+      res.json(summary);
+    } catch (error) {
+      console.error("sales-summary error:", error);
+      res.status(500).json({ error: "Failed to fetch sales summary" });
+    }
+  });
+
   app.get("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -1287,7 +1310,7 @@ export async function registerRoutes(
       }
       
       // Create permanent sales history record
-      await storage.createSalesHistory({
+      const createdSale = await storage.createSalesHistory({
         coldStorageId: lot.coldStorageId,
         farmerName: lot.farmerName,
         village: lot.village,
@@ -1341,6 +1364,16 @@ export async function registerRoutes(
         buyerLedgerId: buyerEntry?.id || null,
         buyerId: buyerEntry?.buyerId || null,
       });
+
+      // Auto-assign the cold-storage deduction bill number at sale-creation
+      // time so it's never null for newly recorded sales. Reuses the same
+      // counter and idempotent assignment logic that the print-bill flow uses.
+      try {
+        await storage.assignBillNumber(createdSale.id, "coldStorage");
+      } catch (e) {
+        console.error("Failed to auto-assign cold storage bill number:", e);
+        // Non-fatal: the sale itself succeeded; the print path will assign later.
+      }
 
       // If adj amount was applied, trigger farmer FIFO recomputation to allocate across buckets
       if (!isSelfSale && adjReceivableSelfDueAmount > 0 && lot.farmerName && lot.contactNumber && lot.village) {

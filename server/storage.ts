@@ -245,6 +245,14 @@ export interface IStorage {
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
   getTotalBagsExited(coldStorageId: string, year?: number): Promise<number>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
+  getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
+    saleId: string;
+    soldAt: Date;
+    quantitySold: number;
+    coldStorageBillNumber: number | null;
+    totalExited: number;
+    exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
+  }>>>;
   // Cash Receipts
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
   getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
@@ -2021,6 +2029,88 @@ export class DatabaseStorage implements IStorage {
         eq(exitHistory.isReversed, 0)
       ));
     return exits.reduce((sum, exit) => sum + exit.bagsExited, 0);
+  }
+
+  async getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
+    saleId: string;
+    soldAt: Date;
+    quantitySold: number;
+    coldStorageBillNumber: number | null;
+    totalExited: number;
+    exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
+  }>>> {
+    const result: Record<string, Array<{
+      saleId: string;
+      soldAt: Date;
+      quantitySold: number;
+      coldStorageBillNumber: number | null;
+      totalExited: number;
+      exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
+    }>> = {};
+    if (lotIds.length === 0) return result;
+
+    // Fetch all sales for the given lots, tenanted by coldStorageId.
+    const sales = await db.select({
+      id: salesHistory.id,
+      lotId: salesHistory.lotId,
+      soldAt: salesHistory.soldAt,
+      quantitySold: salesHistory.quantitySold,
+      coldStorageBillNumber: salesHistory.coldStorageBillNumber,
+    })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        inArray(salesHistory.lotId, lotIds),
+      ))
+      .orderBy(asc(salesHistory.soldAt));
+
+    if (sales.length === 0) {
+      // Pre-populate empty arrays for each requested lot so the client
+      // can distinguish "no sales" from "lot not present".
+      for (const lotId of lotIds) result[lotId] = [];
+      return result;
+    }
+
+    // Fetch all active (non-reversed) exits for those sales in one go.
+    const saleIds = sales.map(s => s.id);
+    const exits = await db.select({
+      salesHistoryId: exitHistory.salesHistoryId,
+      exitDate: exitHistory.exitDate,
+      billNumber: exitHistory.billNumber,
+      bagsExited: exitHistory.bagsExited,
+    })
+      .from(exitHistory)
+      .where(and(
+        eq(exitHistory.coldStorageId, coldStorageId),
+        inArray(exitHistory.salesHistoryId, saleIds),
+        eq(exitHistory.isReversed, 0),
+      ))
+      .orderBy(asc(exitHistory.exitDate));
+
+    const exitsBySale: Record<string, Array<{ exitDate: Date; billNumber: number; bagsExited: number }>> = {};
+    for (const ex of exits) {
+      if (!exitsBySale[ex.salesHistoryId]) exitsBySale[ex.salesHistoryId] = [];
+      exitsBySale[ex.salesHistoryId].push({
+        exitDate: ex.exitDate,
+        billNumber: ex.billNumber,
+        bagsExited: ex.bagsExited,
+      });
+    }
+
+    for (const lotId of lotIds) result[lotId] = [];
+    for (const s of sales) {
+      const saleExits = exitsBySale[s.id] || [];
+      const totalExited = saleExits.reduce((sum, e) => sum + e.bagsExited, 0);
+      result[s.lotId].push({
+        saleId: s.id,
+        soldAt: s.soldAt,
+        quantitySold: s.quantitySold,
+        coldStorageBillNumber: s.coldStorageBillNumber,
+        totalExited,
+        exits: saleExits,
+      });
+    }
+    return result;
   }
 
   async getTotalBagsExited(coldStorageId: string, year?: number): Promise<number> {
