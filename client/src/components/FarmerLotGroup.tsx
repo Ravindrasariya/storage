@@ -336,7 +336,7 @@ export function FarmerLotGroup({
                           )}
                           {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onSale && canEdit && (
                             <Button
-                              variant="default"
+                              variant="outline"
                               size="sm"
                               onClick={() => onSale(lot)}
                               className="gap-2"

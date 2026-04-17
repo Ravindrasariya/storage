@@ -739,9 +739,9 @@ export async function registerRoutes(
         lots = lots.filter((lot) => lot.totalDueCharge && lot.totalDueCharge > 0);
       }
 
-      // Apply up-for-sale filter (lots flagged for sale and not yet sold)
+      // Apply up-for-sale filter (lots flagged as up-for-sale)
       if (upForSale === "true") {
-        lots = lots.filter((lot) => lot.upForSale === 1 && lot.saleStatus !== "sold" && lot.remainingSize > 0);
+        lots = lots.filter((lot) => lot.upForSale === 1);
       }
       
       // Sort by lot number in ascending order

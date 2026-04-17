@@ -1056,11 +1056,12 @@ export default function StockRegister() {
         if (selectedFarmerMobile) {
           url += `&contactNumber=${encodeURIComponent(selectedFarmerMobile)}`;
         }
-        if (upForSaleOnly) {
-          url += `&upForSale=true`;
-        }
       } else {
         url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}&year=${selectedYear}`;
+      }
+      // Apply Up-for-Sale filter to ALL search modes when checked
+      if (upForSaleOnly) {
+        url += `&upForSale=true`;
       }
       
       if (qualityFilter && qualityFilter !== "all") {
