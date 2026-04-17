@@ -1050,11 +1050,17 @@ export default function StockRegister() {
         url = `/api/lots/search?type=lotNoSize&lotNoFrom=${encodeURIComponent(lotNoFrom)}&lotNoTo=${encodeURIComponent(lotNoTo)}&size=${encodeURIComponent(sizeQuery)}&year=${selectedYear}`;
       } else if (searchType === "farmerName") {
         url = `/api/lots/search?type=farmerName&query=${encodeURIComponent(farmerNameQuery)}&year=${selectedYear}`;
-        if (selectedFarmerVillage) {
-          url += `&village=${encodeURIComponent(selectedFarmerVillage)}`;
-        }
-        if (selectedFarmerMobile) {
-          url += `&contactNumber=${encodeURIComponent(selectedFarmerMobile)}`;
+        // Village / contactNumber filters are contextual to a farmer-name query.
+        // When the farmer name is empty (e.g. Up-for-Sale-only search), do NOT
+        // apply them — they may be stale values left in sessionStorage from a
+        // previous farmer-name search and would silently zero out results.
+        if (farmerNameQuery.trim()) {
+          if (selectedFarmerVillage) {
+            url += `&village=${encodeURIComponent(selectedFarmerVillage)}`;
+          }
+          if (selectedFarmerMobile) {
+            url += `&contactNumber=${encodeURIComponent(selectedFarmerMobile)}`;
+          }
         }
       } else {
         url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}&year=${selectedYear}`;
