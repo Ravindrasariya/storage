@@ -263,18 +263,30 @@ export default function StockRegister() {
     }
   }, [hasSearched, displayedLots.length, totalLotCount, lotsFilterParams]);
 
-  // Auto-fetch when all currently-loaded lots belong to a single farmer that
-  // would otherwise be entirely held back by the group-boundary safety logic.
+  // Keep loading more pages whenever the rendered content doesn't fill (or scroll)
+  // the container — covers two cases where the user can't scroll to trigger
+  // `loadMoreLots` themselves:
+  //   1. All currently-loaded lots belong to a single farmer (held back by the
+  //      group-boundary safety logic, so 0 visible groups).
+  //   2. After holding back the last group, remaining visible groups don't
+  //      overflow the scroll container.
   useEffect(() => {
     if (hasSearched || isLoadingMore) return;
     if (displayedLots.length === 0 || displayedLots.length >= totalLotCount) return;
-    const firstKey = `${displayedLots[0].contactNumber || ""}|${displayedLots[0].farmerName || ""}`;
-    const allSameFarmer = displayedLots.every(
-      (l) => `${l.contactNumber || ""}|${l.farmerName || ""}` === firstKey,
-    );
-    if (allSameFarmer) {
-      loadMoreLots();
-    }
+    // Defer to next frame so DOM has laid out after the latest render.
+    const timer = window.setTimeout(() => {
+      const container = scrollContainerRef.current;
+      if (!container) {
+        // Container not mounted yet; safest is to keep fetching.
+        loadMoreLots();
+        return;
+      }
+      // If content doesn't overflow, the user cannot scroll to trigger more loads.
+      if (container.scrollHeight <= container.clientHeight + 1) {
+        loadMoreLots();
+      }
+    }, 50);
+    return () => window.clearTimeout(timer);
   }, [displayedLots, totalLotCount, hasSearched, isLoadingMore, loadMoreLots]);
 
   // Scroll handler for infinite scroll — triggers load when near bottom of container
