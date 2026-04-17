@@ -146,7 +146,13 @@ function FarmerDetailedLedger({
       case 'farmer_loan_payment': return `${t("farmerLoanPayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})${loanSuffix(m)}`;
       case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
       case 'discount': return `${t("discountEntry")} - ${m.transactionId}`;
-      case 'sale_adj': return `${t("saleAdjustment")} - ${t("lotHash")}${m.lotNo}, ${m.buyerName}`;
+      case 'sale_adj': {
+        const parts = [`${t("saleAdjustment")} - ${t("lotHash")}${m.lotNo}`];
+        if (m.marka)      parts.push(`${t("marka")}: ${m.marka}`);
+        if (m.coldBillNo) parts.push(`${t("coldBillNo")}: ${m.coldBillNo}`);
+        parts.push(m.buyerName);
+        return parts.join(', ');
+      }
       default: return txn.type;
     }
   }, [t, loanSuffix]);

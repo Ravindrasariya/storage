@@ -9659,7 +9659,12 @@ export class DatabaseStorage implements IStorage {
       transactions.push({
         type: 'sale_adj',
         date: toISTDateString(s.soldAt),
-        meta: { lotNo: String(s.lotNo), buyerName: s.buyerName || '' },
+        meta: {
+          lotNo: String(s.lotNo),
+          buyerName: s.buyerName || '',
+          marka: s.marka || '',
+          coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
+        },
         debit: 0,
         credit: roundAmount(s.adjReceivableSelfDueAmount || 0),
         refId: s.id,
