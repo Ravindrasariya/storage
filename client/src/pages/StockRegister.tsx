@@ -33,7 +33,7 @@ import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { SaleDialog } from "@/components/SaleDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, User, ArrowUpDown, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -83,8 +83,10 @@ export default function StockRegister() {
     ? Array.from(new Set([...availableYears, currentYear])).sort((a, b) => b - a)
     : [currentYear];
 
-  const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "filter" | "farmerName">(
-    savedState?.searchType || "farmerName"
+  const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "farmerName">(
+    savedState?.searchType && savedState.searchType !== "filter"
+      ? savedState.searchType
+      : "farmerName"
   );
   const [farmerNameQuery, setFarmerNameQuery] = useState(savedState?.farmerNameQuery || "");
   const [selectedFarmerVillage, setSelectedFarmerVillage] = useState(savedState?.selectedFarmerVillage || "");
@@ -408,12 +410,19 @@ export default function StockRegister() {
       clearTimeout(searchTimeoutRef.current);
     }
     
-    // Check if we have enough input to search
-    const hasInput = 
+    // Filters AND with the active tab's primary input. Setting any filter
+    // alone (no primary query) is also a valid search across all tabs.
+    const hasFilterSet =
+      qualityFilter !== "all" ||
+      potatoTypeFilter !== "all" ||
+      paymentDueFilter ||
+      !!filterEntryDate ||
+      upForSaleOnly;
+    const hasPrimaryInput =
       (searchType === "phone" && searchQuery.trim().length >= 3) ||
-      (searchType === "farmerName" && (farmerNameQuery.trim().length >= 2 || upForSaleOnly)) ||
-      (searchType === "lotNoSize" && (lotNoFrom.trim() || lotNoTo.trim() || sizeQuery.trim())) ||
-      (searchType === "filter" && (qualityFilter !== "all" || potatoTypeFilter !== "all" || paymentDueFilter || !!filterEntryDate));
+      (searchType === "farmerName" && farmerNameQuery.trim().length >= 2) ||
+      (searchType === "lotNoSize" && (!!lotNoFrom.trim() || !!lotNoTo.trim() || !!sizeQuery.trim()));
+    const hasInput = hasPrimaryInput || hasFilterSet;
     
     if (hasInput) {
       // Debounce search by 300ms
@@ -460,12 +469,20 @@ export default function StockRegister() {
       // Use savedState directly to avoid closure issues
       const saved = getSavedSearchState();
       if (saved) {
-        const hasValidQuery = 
+        // Filters AND with the active tab; either a primary input or any
+        // filter is enough to trigger the saved search on remount.
+        const savedHasFilter =
+          saved.qualityFilter !== "all" ||
+          saved.potatoTypeFilter !== "all" ||
+          saved.paymentDueFilter ||
+          !!saved.filterEntryDate ||
+          saved.upForSaleOnly;
+        const savedHasPrimary =
           (saved.searchType === "phone" && saved.searchQuery?.trim().length >= 3) ||
-          (saved.searchType === "farmerName" && (saved.farmerNameQuery?.trim().length >= 2 || saved.upForSaleOnly)) ||
-          (saved.searchType === "lotNoSize" && (saved.lotNoFrom?.trim() || saved.lotNoTo?.trim() || saved.sizeQuery?.trim())) ||
-          (saved.searchType === "filter" && (saved.qualityFilter !== "all" || saved.potatoTypeFilter !== "all" || saved.paymentDueFilter || !!saved.filterEntryDate));
-        
+          (saved.searchType === "farmerName" && saved.farmerNameQuery?.trim().length >= 2) ||
+          (saved.searchType === "lotNoSize" && (saved.lotNoFrom?.trim() || saved.lotNoTo?.trim() || saved.sizeQuery?.trim()));
+        const hasValidQuery = savedHasPrimary || savedHasFilter;
+
         if (hasValidQuery) {
           // Trigger search with saved state - use setTimeout to ensure state is fully initialized
           setTimeout(() => handleSearch(), 0);
@@ -487,12 +504,18 @@ export default function StockRegister() {
   // Reset to initial view when search inputs are cleared
   useEffect(() => {
     if (hasSearched) {
-      const inputEmpty = 
+      const noFilters =
+        qualityFilter === "all" &&
+        potatoTypeFilter === "all" &&
+        !paymentDueFilter &&
+        !filterEntryDate &&
+        !upForSaleOnly;
+      const noPrimary =
         (searchType === "phone" && !searchQuery.trim()) ||
-        (searchType === "farmerName" && !farmerNameQuery.trim() && !upForSaleOnly) ||
-        (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim()) ||
-        (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter && !filterEntryDate);
-      
+        (searchType === "farmerName" && !farmerNameQuery.trim()) ||
+        (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim());
+      const inputEmpty = noPrimary && noFilters;
+
       if (inputEmpty) {
         setHasSearched(false);
         setSearchResults([]);
@@ -508,7 +531,7 @@ export default function StockRegister() {
         }
       }
     }
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, paymentDueFilter, upForSaleOnly, searchType, hasSearched]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, upForSaleOnly, searchType, hasSearched]);
 
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
@@ -1248,17 +1271,29 @@ export default function StockRegister() {
   };
 
   const handleSearch = async () => {
-    if (searchType === "phone" && !searchQuery.trim()) return;
-    if (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim()) return;
-    if (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter && !filterEntryDate) return;
-    if (searchType === "farmerName" && !farmerNameQuery.trim() && !upForSaleOnly) return;
-    
+    const hasFilterSet =
+      qualityFilter !== "all" ||
+      potatoTypeFilter !== "all" ||
+      paymentDueFilter ||
+      !!filterEntryDate ||
+      upForSaleOnly;
+    const hasPrimary =
+      (searchType === "phone" && !!searchQuery.trim()) ||
+      (searchType === "lotNoSize" && (!!lotNoFrom.trim() || !!lotNoTo.trim() || !!sizeQuery.trim())) ||
+      (searchType === "farmerName" && !!farmerNameQuery.trim());
+    // Allow filter-only searches on any tab; otherwise need a primary input.
+    if (!hasPrimary && !hasFilterSet) return;
+
     setIsSearching(true);
     setHasSearched(true);
-    
+
     try {
       let url: string;
-      if (searchType === "filter") {
+      // No primary input on the active tab → run a filter-only search.
+      // (The "filter" type is no longer a tab, but the server endpoint
+      // still supports it as the canonical "all lots, narrowed by filters"
+      // mode used here and on remount.)
+      if (!hasPrimary) {
         url = `/api/lots/search?type=filter&year=${selectedYear}`;
       } else if (searchType === "lotNoSize") {
         url = `/api/lots/search?type=lotNoSize&lotNoFrom=${encodeURIComponent(lotNoFrom)}&lotNoTo=${encodeURIComponent(lotNoTo)}&size=${encodeURIComponent(sizeQuery)}&year=${selectedYear}`;
@@ -1521,7 +1556,7 @@ export default function StockRegister() {
 
       <Card className="p-4 sm:p-6">
         <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)}>
-          <TabsList className="grid w-full grid-cols-4 mb-4">
+          <TabsList className="grid w-full grid-cols-3 mb-4">
             <TabsTrigger value="farmerName" className="gap-2" data-testid="tab-search-farmer">
               <User className="h-4 w-4" />
               <span className="hidden sm:inline">{t("farmerName")}</span>
@@ -1534,99 +1569,45 @@ export default function StockRegister() {
               <Package className="h-4 w-4" />
               <span className="hidden sm:inline">{t("lotNumber")} x {t("size")}</span>
             </TabsTrigger>
-            <TabsTrigger value="filter" className="gap-2" data-testid="tab-search-filter">
-              <Filter className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("filters")}</span>
-            </TabsTrigger>
           </TabsList>
 
           {searchType === "phone" ? (
-            <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3">
-              <div className="flex gap-2 flex-1">
-                <div className="relative flex-1">
-                  <Input
-                    placeholder="Enter phone number..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value.replace(/\D/g, ""));
-                      setShowPhoneSuggestions(true);
-                    }}
-                    onFocus={() => { setShowPhoneSuggestions(true); phoneNav.resetActive(); }}
-                    onBlur={() => setTimeout(() => { setShowPhoneSuggestions(false); phoneNav.resetActive(); }, 200)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && phoneNav.activeIndex < 0) { handleSearch(); return; }
-                      phoneNav.handleKeyDown(e, getPhoneSuggestions.length, (i) => { selectPhoneSuggestion(getPhoneSuggestions[i]); setShowPhoneSuggestions(false); }, () => setShowPhoneSuggestions(false));
-                    }}
-                    autoComplete="off"
-                    data-testid="input-search-phone"
-                  />
-                  {showPhoneSuggestions && getPhoneSuggestions.length > 0 && searchQuery && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                      {getPhoneSuggestions.map((farmer, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${phoneNav.activeIndex === idx ? "bg-accent" : ""}`}
-                          onClick={() => selectPhoneSuggestion(farmer)}
-                          data-testid={`suggestion-phone-${idx}`}
-                        >
-                          <span className="font-medium">{farmer.contactNumber}</span>
-                          <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
-              </div>
-              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
-                <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
-                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                  <SelectTrigger className="w-36" data-testid="select-sort-by">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
-                    <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
-                    <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleExportCSV}
-                  title={t("download") || "Download CSV"}
-                  data-testid="button-export-csv"
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-                {isFilterActive && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        title={t("print") || "Print"}
-                        data-testid="button-print-filtered"
-                        disabled={isSharingReport}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  placeholder="Enter phone number..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value.replace(/\D/g, ""));
+                    setShowPhoneSuggestions(true);
+                  }}
+                  onFocus={() => { setShowPhoneSuggestions(true); phoneNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowPhoneSuggestions(false); phoneNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && phoneNav.activeIndex < 0) { handleSearch(); return; }
+                    phoneNav.handleKeyDown(e, getPhoneSuggestions.length, (i) => { selectPhoneSuggestion(getPhoneSuggestions[i]); setShowPhoneSuggestions(false); }, () => setShowPhoneSuggestions(false));
+                  }}
+                  autoComplete="off"
+                  data-testid="input-search-phone"
+                />
+                {showPhoneSuggestions && getPhoneSuggestions.length > 0 && searchQuery && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {getPhoneSuggestions.map((farmer, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${phoneNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onClick={() => selectPhoneSuggestion(farmer)}
+                        data-testid={`suggestion-phone-${idx}`}
                       >
-                        {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
-                        <Printer className="h-4 w-4 mr-2" />
-                        {t("print")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
-                        <Share2 className="h-4 w-4 mr-2 text-green-600" />
-                        {t("share")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        <span className="font-medium">{farmer.contactNumber}</span>
+                        <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
+              {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
             </div>
           ) : searchType === "farmerName" ? (
             <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3">
@@ -1688,7 +1669,129 @@ export default function StockRegister() {
                   </Button>
                 </div>
               )}
-              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                placeholder={`${t("fromLotNo")}`}
+                value={lotNoFrom}
+                onChange={(e) => setLotNoFrom(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="w-20"
+                data-testid="input-search-lotno-from"
+              />
+              <span className="text-sm font-medium text-muted-foreground">–</span>
+              <Input
+                placeholder={`${t("toLotNo")}`}
+                value={lotNoTo}
+                onChange={(e) => setLotNoTo(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="w-20"
+                data-testid="input-search-lotno-to"
+              />
+              <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
+              <Input
+                placeholder={`${t("size")}`}
+                value={sizeQuery}
+                onChange={(e) => setSizeQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="w-36"
+                data-testid="input-search-size"
+              />
+              <span className="text-sm font-medium text-muted-foreground">|</span>
+              <Select value={chamberFilter} onValueChange={(val) => { setChamberFilter(val); setFloorFilter("all"); }}>
+                <SelectTrigger className="w-[130px] h-9" data-testid="select-chamber-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="select-chamber-all">{t("allChambers") || "All Chambers"}</SelectItem>
+                  <SelectItem value="blank" data-testid="select-chamber-blank">{t("blank") || "Blank"}</SelectItem>
+                  {chambers?.map(ch => (
+                    <SelectItem key={ch.id} value={ch.id} data-testid={`select-chamber-${ch.id}`}>{ch.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {chamberFilter !== "all" && (
+                <Select value={floorFilter} onValueChange={setFloorFilter}>
+                  <SelectTrigger className="w-[110px] h-9" data-testid="select-floor-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" data-testid="select-floor-all">{t("allFloors") || "All Floors"}</SelectItem>
+                    <SelectItem value="blank" data-testid="select-floor-blank">{t("blank") || "Blank"}</SelectItem>
+                    {floorOptions.map(fn => (
+                      <SelectItem key={fn} value={fn.toString()} data-testid={`select-floor-${fn}`}>{t("floor") || "Floor"} {fn}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
+            </div>
+          )}
+
+          {/* Shared filter + actions row — always visible across tabs so
+              filters AND with the active tab's primary search. */}
+          <div className="mt-3 pt-3 border-t flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3 sm:items-center">
+            <div className="flex flex-wrap items-center gap-3 flex-1">
+              <div className="flex items-center gap-1">
+                <Label className="text-sm">{t("quality")}:</Label>
+                <Select value={qualityFilter} onValueChange={setQualityFilter}>
+                  <SelectTrigger className="w-28" data-testid="select-quality-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("all")}</SelectItem>
+                    <SelectItem value="poor">{t("poor")}</SelectItem>
+                    <SelectItem value="medium">{t("medium")}</SelectItem>
+                    <SelectItem value="good">{t("good")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-sm">{t("type")}:</Label>
+                <Select value={potatoTypeFilter} onValueChange={setPotatoTypeFilter}>
+                  <SelectTrigger className="w-28" data-testid="select-potato-type-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("all")}</SelectItem>
+                    {uniquePotatoTypes.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-1">
+                <Checkbox
+                  id="payment-due-filter-main"
+                  checked={paymentDueFilter}
+                  onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
+                  data-testid="checkbox-payment-due-main"
+                />
+                <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer whitespace-nowrap">
+                  {t("coldChargesDue")}
+                </Label>
+              </div>
+              <div className="flex items-center gap-1">
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={filterEntryDate}
+                  onChange={(e) => setFilterEntryDate(e.target.value)}
+                  className="w-36 h-8 text-sm"
+                  data-testid="input-filter-entry-date"
+                />
+                {filterEntryDate && (
+                  <button
+                    onClick={() => setFilterEntryDate("")}
+                    className="text-muted-foreground hover:text-foreground"
+                    data-testid="btn-clear-entry-date"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
                 <Checkbox
                   id="checkbox-up-for-sale-only"
                   checked={upForSaleOnly}
@@ -1703,275 +1806,56 @@ export default function StockRegister() {
                   {t("upForSale")}
                 </Label>
               </div>
-              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
-                <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
-                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                  <SelectTrigger className="w-36" data-testid="select-sort-by">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
-                    <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
-                    <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleExportCSV}
-                  title={t("download") || "Download CSV"}
-                  data-testid="button-export-csv"
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-                {isFilterActive && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        title={t("print") || "Print"}
-                        data-testid="button-print-filtered"
-                        disabled={isSharingReport}
-                      >
-                        {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
-                        <Printer className="h-4 w-4 mr-2" />
-                        {t("print")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
-                        <Share2 className="h-4 w-4 mr-2 text-green-600" />
-                        {t("share")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
             </div>
-          ) : searchType === "lotNoSize" ? (
-            <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3">
-              <div className="flex flex-wrap items-center gap-2 flex-1">
-                <Input
-                  placeholder={`${t("fromLotNo")}`}
-                  value={lotNoFrom}
-                  onChange={(e) => setLotNoFrom(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="w-20"
-                  data-testid="input-search-lotno-from"
-                />
-                <span className="text-sm font-medium text-muted-foreground">–</span>
-                <Input
-                  placeholder={`${t("toLotNo")}`}
-                  value={lotNoTo}
-                  onChange={(e) => setLotNoTo(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="w-20"
-                  data-testid="input-search-lotno-to"
-                />
-                <span className="text-sm font-medium text-muted-foreground">{t("or") || "or"}</span>
-                <Input
-                  placeholder={`${t("size")}`}
-                  value={sizeQuery}
-                  onChange={(e) => setSizeQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="w-36"
-                  data-testid="input-search-size"
-                />
-                <span className="text-sm font-medium text-muted-foreground">|</span>
-                <Select value={chamberFilter} onValueChange={(val) => { setChamberFilter(val); setFloorFilter("all"); }}>
-                  <SelectTrigger className="w-[130px] h-9" data-testid="select-chamber-filter">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" data-testid="select-chamber-all">{t("allChambers") || "All Chambers"}</SelectItem>
-                    <SelectItem value="blank" data-testid="select-chamber-blank">{t("blank") || "Blank"}</SelectItem>
-                    {chambers?.map(ch => (
-                      <SelectItem key={ch.id} value={ch.id} data-testid={`select-chamber-${ch.id}`}>{ch.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {chamberFilter !== "all" && (
-                  <Select value={floorFilter} onValueChange={setFloorFilter}>
-                    <SelectTrigger className="w-[110px] h-9" data-testid="select-floor-filter">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" data-testid="select-floor-all">{t("allFloors") || "All Floors"}</SelectItem>
-                      <SelectItem value="blank" data-testid="select-floor-blank">{t("blank") || "Blank"}</SelectItem>
-                      {floorOptions.map(fn => (
-                        <SelectItem key={fn} value={fn.toString()} data-testid={`select-floor-${fn}`}>{t("floor") || "Floor"} {fn}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
-              </div>
-              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
-                <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
-                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                  <SelectTrigger className="w-36" data-testid="select-sort-by">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
-                    <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
-                    <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleExportCSV}
-                  title={t("download") || "Download CSV"}
-                  data-testid="button-export-csv"
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-                {isFilterActive && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        title={t("print") || "Print"}
-                        data-testid="button-print-filtered"
-                        disabled={isSharingReport}
-                      >
-                        {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
-                        <Printer className="h-4 w-4 mr-2" />
-                        {t("print")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
-                        <Share2 className="h-4 w-4 mr-2 text-green-600" />
-                        {t("share")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3 sm:items-center">
-              <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 flex-1">
-                <div className="flex items-center gap-1">
-                  <Label className="text-sm">{t("quality")}:</Label>
-                  <Select value={qualityFilter} onValueChange={setQualityFilter}>
-                    <SelectTrigger className="w-28" data-testid="select-quality-filter">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t("all")}</SelectItem>
-                      <SelectItem value="poor">{t("poor")}</SelectItem>
-                      <SelectItem value="medium">{t("medium")}</SelectItem>
-                      <SelectItem value="good">{t("good")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Label className="text-sm">{t("type")}:</Label>
-                  <Select value={potatoTypeFilter} onValueChange={setPotatoTypeFilter}>
-                    <SelectTrigger className="w-28" data-testid="select-potato-type-filter">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t("all")}</SelectItem>
-                      {uniquePotatoTypes.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Checkbox
-                    id="payment-due-filter-main"
-                    checked={paymentDueFilter}
-                    onCheckedChange={(checked) => setPaymentDueFilter(checked === true)}
-                    data-testid="checkbox-payment-due-main"
-                  />
-                  <Label htmlFor="payment-due-filter-main" className="text-sm cursor-pointer whitespace-nowrap">
-                    {t("coldChargesDue")}
-                  </Label>
-                </div>
-                <div className="flex items-center gap-1">
-                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    value={filterEntryDate}
-                    onChange={(e) => setFilterEntryDate(e.target.value)}
-                    className="w-36 h-8 text-sm"
-                    data-testid="input-filter-entry-date"
-                  />
-                  {filterEntryDate && (
-                    <button
-                      onClick={() => setFilterEntryDate("")}
-                      className="text-muted-foreground hover:text-foreground"
-                      data-testid="btn-clear-entry-date"
+            <div className="flex items-center gap-2 sm:border-l sm:pl-2">
+              <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
+                <SelectTrigger className="w-36" data-testid="select-sort-by">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
+                  <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
+                  <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleExportCSV}
+                title={t("download") || "Download CSV"}
+                data-testid="button-export-csv"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+              {isFilterActive && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      title={t("print") || "Print"}
+                      data-testid="button-print-filtered"
+                      disabled={isSharingReport}
                     >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-                {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
-              </div>
-              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
-                <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
-                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
-                  <SelectTrigger className="w-36" data-testid="select-sort-by">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
-                    <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
-                    <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleExportCSV}
-                  title={t("download") || "Download CSV"}
-                  data-testid="button-export-csv"
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-                {isFilterActive && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        title={t("print") || "Print"}
-                        data-testid="button-print-filtered"
-                        disabled={isSharingReport}
-                      >
-                        {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
-                        <Printer className="h-4 w-4 mr-2" />
-                        {t("print")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
-                        <Share2 className="h-4 w-4 mr-2 text-green-600" />
-                        {t("share")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
+                      {isSharingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handlePrintFiltered} data-testid="menu-print">
+                      <Printer className="h-4 w-4 mr-2" />
+                      {t("print")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareFiltered} data-testid="menu-share">
+                      <Share2 className="h-4 w-4 mr-2 text-green-600" />
+                      {t("share")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
-          )}
+          </div>
         </Tabs>
       </Card>
 
