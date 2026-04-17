@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { LotCard } from "@/components/LotCard";
+import { FarmerLotGroup, type LotWithCharges } from "@/components/FarmerLotGroup";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
@@ -1789,26 +1789,57 @@ export default function StockRegister() {
             ) : null;
           }
           
+          // Group lots by farmer (contactNumber + farmerName) preserving order
+          const farmerGroups: Array<{
+            key: string;
+            farmerName: string;
+            village: string;
+            tehsil?: string;
+            district?: string;
+            contactNumber: string;
+            items: LotWithCharges[];
+          }> = [];
+          const groupIndex: Record<string, number> = {};
+          for (const item of sortedLots) {
+            const key = `${item.lot.contactNumber || ""}|${item.lot.farmerName || ""}`;
+            if (groupIndex[key] === undefined) {
+              groupIndex[key] = farmerGroups.length;
+              farmerGroups.push({
+                key,
+                farmerName: item.lot.farmerName,
+                village: item.lot.village,
+                tehsil: item.lot.tehsil,
+                district: item.lot.district,
+                contactNumber: item.lot.contactNumber,
+                items: [item],
+              });
+            } else {
+              farmerGroups[groupIndex[key]].items.push(item);
+            }
+          }
+
           return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto" ref={scrollContainerRef} onScroll={handleScroll}>
-              {sortedLots.map(({ lot, lotPaidCharge, lotDueCharge, expectedColdCharge }) => (
-                  <LotCard
-                    key={lot.id}
-                    lot={lot}
-                    chamberName={chamberMap[lot.chamberId] || "Unknown"}
-                    onEdit={handleEditClick}
-                    onToggleSale={handleToggleSale}
-                    onPrintReceipt={(lot) => {
-                      setPrintReceiptLot(lot);
-                      setPrintReceiptDialogOpen(true);
-                    }}
-                    calculatedPaidCharge={lotPaidCharge}
-                    calculatedDueCharge={lotDueCharge}
-                    expectedColdCharge={expectedColdCharge}
-                    canEdit={canEdit}
-                    chargeUnit={coldStorage?.chargeUnit}
-                  />
-                ))}
+              {farmerGroups.map((group) => (
+                <FarmerLotGroup
+                  key={group.key}
+                  farmerName={group.farmerName}
+                  village={group.village}
+                  tehsil={group.tehsil}
+                  district={group.district}
+                  contactNumber={group.contactNumber}
+                  lots={group.items}
+                  chamberMap={chamberMap}
+                  onEdit={handleEditClick}
+                  onToggleSale={handleToggleSale}
+                  onPrintReceipt={(lot) => {
+                    setPrintReceiptLot(lot);
+                    setPrintReceiptDialogOpen(true);
+                  }}
+                  canEdit={canEdit}
+                  chargeUnit={coldStorage?.chargeUnit}
+                />
+              ))}
               {/* Infinite scroll loader */}
               {!hasSearched && displayedLots.length < totalLotCount && (
                 <div className="flex items-center justify-center py-4">
