@@ -155,7 +155,7 @@ const translations: Translations = {
   pricePerBag: { en: "Price per Bag", hi: "प्रति बैग मूल्य" },
   totalPrice: { en: "Total Price", hi: "कुल मूल्य" },
   remaining: { en: "Remaining", hi: "शेष" },
-  originalSize: { en: "Original Size", hi: "मूल आकार" },
+  originalSize: { en: "Bags No.", hi: "बैग नं." },
   exitedSold: { en: "Exited / Sold", hi: "निकाला / बिका" },
   exitDates: { en: "Exit Dates", hi: "निकासी तिथि" },
   exitBills: { en: "Exit Bill No(s)", hi: "निकासी बिल नं." },

@@ -759,7 +759,7 @@ export default function StockRegister() {
         "Bag type",
         "Quality",
         "Potato Size",
-        "Original Size",
+        "Bags No.",
         "Initial Net Weight (Kg)",
         "Remaining Size",
         "Sale Status",
@@ -959,7 +959,7 @@ export default function StockRegister() {
               ${lot.potatoType ? `<span class="label">Potato Type:</span><span class="value" style="text-transform:capitalize">${lot.potatoType}</span>` : `<span></span><span></span>`}
             </div>` : ''}
             <div class="detail-row">
-              <span class="label">Original Size:</span>
+              <span class="label">Bags No.:</span>
               <span class="value">${lot.size} bags</span>
               <span class="label">Remaining:</span>
               <span class="value">${lot.remainingSize} bags</span>
