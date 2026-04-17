@@ -234,7 +234,7 @@ export function FarmerLotGroup({
                     className={`${RIGHT_HALF_START} text-right tabular-nums`}
                     data-testid={`cell-exited-sold-${tid}`}
                   >
-                    {sale ? `${sale.totalExited} / ${sale.quantitySold}` : "-"}
+                    {sale ? `${sale.totalExited} / ${sale.quantitySold}` : "—"}
                   </span>
                   <span
                     className="truncate"
@@ -243,22 +243,22 @@ export function FarmerLotGroup({
                   >
                     {sale && sale.exits.length > 0
                       ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ")
-                      : "-"}
+                      : "—"}
                   </span>
                   <span
                     className="truncate font-mono"
-                    title={sale ? sale.exits.map(e => `#${e.billNumber}`).join(", ") : ""}
+                    title={sale ? sale.exits.map(e => String(e.billNumber)).join(", ") : ""}
                     data-testid={`cell-exit-bills-${tid}`}
                   >
                     {sale && sale.exits.length > 0
-                      ? sale.exits.map(e => `#${e.billNumber}`).join(", ")
-                      : "-"}
+                      ? sale.exits.map(e => String(e.billNumber)).join(", ")
+                      : "—"}
                   </span>
                   <span
                     className="text-right font-mono tabular-nums"
                     data-testid={`cell-cold-bill-${tid}`}
                   >
-                    {sale && sale.coldStorageBillNumber != null ? `#${sale.coldStorageBillNumber}` : "-"}
+                    {sale && sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—"}
                   </span>
                 </>
               );
