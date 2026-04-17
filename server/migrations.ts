@@ -253,6 +253,51 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    name: "2026-04-17_backfill_cold_storage_bill_numbers",
+    up: async () => {
+      // Assign coldStorageBillNumber to every existing salesHistory row that
+      // doesn't already have one. Numbers are assigned per cold storage in
+      // chronological (sold_at, id tiebreaker) order, continuing from the
+      // current next_cold_storage_bill_number counter on cold_storages.
+      await db.execute(sql`
+        WITH ranked AS (
+          SELECT
+            sh.id,
+            cs.next_cold_storage_bill_number
+              + ROW_NUMBER() OVER (
+                  PARTITION BY sh.cold_storage_id
+                  ORDER BY sh.sold_at, sh.id
+                )
+              - 1 AS new_bill
+          FROM sales_history sh
+          JOIN cold_storages cs ON cs.id = sh.cold_storage_id
+          WHERE sh.cold_storage_bill_number IS NULL
+        )
+        UPDATE sales_history sh
+        SET cold_storage_bill_number = ranked.new_bill
+        FROM ranked
+        WHERE sh.id = ranked.id
+      `);
+
+      // Bump each cold storage's counter past the highest assigned number so
+      // future sales don't collide. Only updates when needed → idempotent.
+      await db.execute(sql`
+        UPDATE cold_storages cs
+        SET next_cold_storage_bill_number = sub.next_val
+        FROM (
+          SELECT
+            cold_storage_id,
+            MAX(cold_storage_bill_number) + 1 AS next_val
+          FROM sales_history
+          WHERE cold_storage_bill_number IS NOT NULL
+          GROUP BY cold_storage_id
+        ) sub
+        WHERE cs.id = sub.cold_storage_id
+          AND sub.next_val > cs.next_cold_storage_bill_number
+      `);
+    },
+  },
+  {
     name: "2026-04-04_add_base_hammali_amount",
     up: async () => {
       await db.execute(sql`
