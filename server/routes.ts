@@ -263,19 +263,32 @@ export async function registerRoutes(
       }
       
       const totalCount = lots.length;
-      
+
       // Apply offset if requested (for pagination)
       const offset = parseInt(req.query.offset as string, 10);
-      if (!isNaN(offset) && offset > 0) {
-        lots = lots.slice(offset);
-      }
-      
+      const startIdx = !isNaN(offset) && offset > 0 ? offset : 0;
+
       // Limit results if requested
       const limit = parseInt(req.query.limit as string, 10);
-      if (!isNaN(limit) && limit > 0) {
-        lots = lots.slice(0, limit);
+      let endIdx = !isNaN(limit) && limit > 0 ? startIdx + limit : totalCount;
+      if (endIdx > totalCount) endIdx = totalCount;
+
+      // Optionally extend the page so that the farmer at the tail of the page
+      // is fully included — keeps grouped views from ever showing a partial
+      // farmer group at the loaded/unloaded boundary while scrolling.
+      if (req.query.completeLastFarmer === "true" && endIdx > startIdx && endIdx < totalCount) {
+        const boundary = lots[endIdx - 1];
+        const boundaryKey = `${boundary.contactNumber || ""}|${boundary.farmerName || ""}`;
+        while (endIdx < totalCount) {
+          const next = lots[endIdx];
+          const nextKey = `${next.contactNumber || ""}|${next.farmerName || ""}`;
+          if (nextKey !== boundaryKey) break;
+          endIdx++;
+        }
       }
-      
+
+      lots = lots.slice(startIdx, endIdx);
+
       // Return with total count for pagination
       res.json({ lots, totalCount });
     } catch (error) {

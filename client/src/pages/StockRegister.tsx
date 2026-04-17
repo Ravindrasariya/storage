@@ -224,11 +224,14 @@ export default function StockRegister() {
     return params.toString();
   }, [chamberFilter, floorFilter]);
 
-  // Fetch initial lots sorted by lot number for display before any search
+  // Fetch initial lots sorted by lot number for display before any search.
+  // `completeLastFarmer=true` makes the server extend the page so the farmer
+  // at the boundary is fully included — prevents the grouped view from ever
+  // showing a partial farmer group while more pages are still pending.
   const { data: initialLotsData, isLoading: isLoadingInitial } = useQuery<{ lots: Lot[], totalCount: number }>({
-    queryKey: ["/api/lots", { sort: "lotNo", limit: PAGE_SIZE, offset: 0, chamber: chamberFilter, floor: floorFilter }],
+    queryKey: ["/api/lots", { sort: "lotNo", limit: PAGE_SIZE, offset: 0, chamber: chamberFilter, floor: floorFilter, completeLastFarmer: true }],
     queryFn: async () => {
-      const response = await authFetch(`/api/lots?${lotsFilterParams}&limit=${PAGE_SIZE}&offset=0`);
+      const response = await authFetch(`/api/lots?${lotsFilterParams}&limit=${PAGE_SIZE}&offset=0&completeLastFarmer=true`);
       if (!response.ok) throw new Error("Failed to fetch initial lots");
       return response.json();
     },
@@ -250,7 +253,7 @@ export default function StockRegister() {
     setIsLoadingMore(true);
     try {
       const offset = displayedLots.length;
-      const response = await authFetch(`/api/lots?${lotsFilterParams}&limit=${PAGE_SIZE}&offset=${offset}`);
+      const response = await authFetch(`/api/lots?${lotsFilterParams}&limit=${PAGE_SIZE}&offset=${offset}&completeLastFarmer=true`);
       if (!response.ok) throw new Error("Failed to fetch more lots");
       const data: { lots: Lot[], totalCount: number } = await response.json();
       setDisplayedLots(prev => [...prev, ...data.lots]);
@@ -263,13 +266,10 @@ export default function StockRegister() {
     }
   }, [hasSearched, displayedLots.length, totalLotCount, lotsFilterParams]);
 
-  // Keep loading more pages whenever the rendered content doesn't fill (or scroll)
-  // the container — covers two cases where the user can't scroll to trigger
-  // `loadMoreLots` themselves:
-  //   1. All currently-loaded lots belong to a single farmer (held back by the
-  //      group-boundary safety logic, so 0 visible groups).
-  //   2. After holding back the last group, remaining visible groups don't
-  //      overflow the scroll container.
+  // Keep loading more pages whenever the rendered content doesn't fill (or
+  // scroll) the container — without this, if the loaded farmer groups don't
+  // overflow the scroll container, the user can't scroll to trigger
+  // `loadMoreLots` themselves and pagination would stall.
   useEffect(() => {
     if (hasSearched || isLoadingMore) return;
     if (displayedLots.length === 0 || displayedLots.length >= totalLotCount) return;
@@ -1843,14 +1843,13 @@ export default function StockRegister() {
             }
           }
 
-          // Hold back the last farmer group while more pages may extend it,
-          // so a farmer's lots are never split across the loaded/unloaded boundary.
-          const moreToLoad = !hasSearched && displayedLots.length < totalLotCount;
-          const visibleGroups = moreToLoad ? farmerGroups.slice(0, -1) : farmerGroups;
-
+          // No need to hide the last group: the server's `completeLastFarmer`
+          // option guarantees that the farmer at the page boundary is fully
+          // included in the loaded set, so a farmer's lots are never split
+          // across the loaded/unloaded boundary while paginating.
           return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto" ref={scrollContainerRef} onScroll={handleScroll}>
-              {visibleGroups.map((group) => (
+              {farmerGroups.map((group) => (
                 <FarmerLotGroup
                   key={group.key}
                   farmerName={group.farmerName}
