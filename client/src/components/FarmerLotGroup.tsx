@@ -284,7 +284,7 @@ export function FarmerLotGroup({
                     {sale ? `${sale.totalExited} / ${sale.quantitySold}` : "—"}
                   </span>
                   <span
-                    className="text-center truncate"
+                    className="text-center truncate text-xs tabular-nums"
                     title={sale ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ") : ""}
                     data-testid={`cell-exit-dates-${tid}`}
                   >
@@ -293,7 +293,7 @@ export function FarmerLotGroup({
                       : "—"}
                   </span>
                   <span
-                    className="text-center truncate font-mono"
+                    className="text-center truncate font-mono text-xs tabular-nums tracking-tight"
                     title={sale ? sale.exits.map(e => String(e.billNumber)).join(", ") : ""}
                     data-testid={`cell-exit-bills-${tid}`}
                   >
