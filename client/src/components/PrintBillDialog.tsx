@@ -287,10 +287,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             <span className="info-label">गाँव:</span>
             <span className="info-value">{sale.village}</span>
           </div>
-          <div className="info-row">
-            <span className="info-label">जिला:</span>
-            <span className="info-value">{sale.district}, {sale.state}</span>
-          </div>
         </div>
 
         <div className="section">
@@ -300,8 +296,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             <span className="info-value">{format(new Date(sale.soldAt), "dd/MM/yyyy")}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">लॉट नं. / बोरी:</span>
-            <span className="info-value">{sale.lotNo} ({sale.originalLotSize} बोरी)</span>
+            <span className="info-label">रसीद नं. / Receipt #:</span>
+            <span className="info-value">{sale.lotNo}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">लॉट नं. / Lot #:</span>
+            <span className="info-value">{sale.marka || "—"}</span>
           </div>
           <div className="info-row">
             <span className="info-label">बेची गई:</span>
@@ -466,10 +466,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             <span className="info-label">गाँव:</span>
             <span className="info-value">{sale.village}</span>
           </div>
-          <div className="info-row">
-            <span className="info-label">जिला:</span>
-            <span className="info-value">{sale.district}, {sale.state}</span>
-          </div>
         </div>
 
         <div className="section">
@@ -479,8 +475,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             <span className="info-value">{format(new Date(sale.soldAt), "dd/MM/yyyy")}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">लॉट नं. / बोरी:</span>
-            <span className="info-value">{sale.lotNo} ({sale.originalLotSize} बोरी)</span>
+            <span className="info-label">रसीद नं. / Receipt #:</span>
+            <span className="info-value">{sale.lotNo}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">लॉट नं. / Lot #:</span>
+            <span className="info-value">{sale.marka || "—"}</span>
           </div>
           <div className="info-row">
             <span className="info-label">बेची गई:</span>

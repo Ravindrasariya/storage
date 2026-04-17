@@ -361,12 +361,22 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                 </div>
                 <div className="details-row-double">
                   <div>
-                    <span className="details-label">लॉट नंबर / Lot:</span>
+                    <span className="details-label">रसीद नं. / Receipt #:</span>
                     <span className="details-value">{sale.lotNo}</span>
                   </div>
                   <div>
                     <span className="details-label">आलू / Potato:</span>
                     <span className="details-value">{sale.potatoType}</span>
+                  </div>
+                </div>
+                <div className="details-row-double">
+                  <div>
+                    <span className="details-label">लॉट नं. / Lot #:</span>
+                    <span className="details-value">{sale.marka || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="details-label"></span>
+                    <span className="details-value"></span>
                   </div>
                 </div>
                 <div className="details-row">

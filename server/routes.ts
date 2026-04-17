@@ -1319,6 +1319,7 @@ export async function registerRoutes(
         state: lot.state,
         contactNumber: lot.contactNumber,
         lotNo: lot.lotNo,
+        marka: lot.marka || null,
         lotId: lot.id,
         chamberName: chamber?.name || "Unknown",
         floor: lot.floor,

@@ -137,6 +137,7 @@ export const salesHistory = pgTable("sales_history", {
   state: text("state").notNull(),
   contactNumber: text("contact_number").notNull(),
   lotNo: text("lot_no").notNull(),
+  marka: text("marka"), // Optional marka/mark label snapshotted from lot at sale time
   lotId: varchar("lot_id").notNull(),
   chamberName: text("chamber_name").notNull(),
   floor: integer("floor").notNull(),
