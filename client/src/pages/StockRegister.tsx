@@ -1821,8 +1821,12 @@ export default function StockRegister() {
           // Hold back the last farmer group while more pages may extend it,
           // so a farmer's lots are never split across the loaded/unloaded boundary.
           const moreToLoad = !hasSearched && displayedLots.length < totalLotCount;
-          const visibleGroups =
-            moreToLoad && farmerGroups.length > 1 ? farmerGroups.slice(0, -1) : farmerGroups;
+          const visibleGroups = moreToLoad ? farmerGroups.slice(0, -1) : farmerGroups;
+          // If the only loaded group is being held back, immediately fetch the next page
+          // so the user is not stuck looking at an empty list. Defer to avoid setState in render.
+          if (moreToLoad && visibleGroups.length === 0 && !isLoadingMore) {
+            setTimeout(() => loadMoreLots(), 0);
+          }
 
           return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto" ref={scrollContainerRef} onScroll={handleScroll}>
@@ -1837,6 +1841,13 @@ export default function StockRegister() {
                   lots={group.items}
                   chamberMap={chamberMap}
                   onEdit={handleEditClick}
+                  onPartialSale={(lot) => {
+                    toast({
+                      title: t("partialSale"),
+                      description: `Opening ${t("upForSale")} for ${lot.lotNo}`,
+                    });
+                    navigate("/");
+                  }}
                   onToggleSale={handleToggleSale}
                   onPrintReceipt={(lot) => {
                     setPrintReceiptLot(lot);
