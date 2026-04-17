@@ -239,28 +239,6 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
     }
   };
 
-  // Auto-open the partial-sale dialog when navigated here with a lot id
-  // (e.g., from the Stock Register Partial Sale action). If the lot can't be
-  // found in the loaded saleLots (e.g., year filter mismatch on the dashboard,
-  // or an empty Up For Sale list), surface a clear toast instead of silently
-  // doing nothing. Always clear the query param afterwards.
-  useEffect(() => {
-    if (!autoOpenLotId) return;
-    const target = saleLots.find((l) => l.id === autoOpenLotId);
-    if (target) {
-      openSaleDialog(target);
-    } else {
-      toast({
-        title: t("partialSale"),
-        description: t("lotNotInUpForSale"),
-        variant: "destructive",
-      });
-    }
-    onAutoOpenHandled?.();
-    // openSaleDialog/toast/t are stable in scope; intentionally not in deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoOpenLotId, saleLots]);
-
   const removeFromSaleMutation = useMutation({
     mutationFn: async (lotId: string) => {
       return apiRequest("PATCH", `/api/lots/${lotId}`, { upForSale: 0 });
