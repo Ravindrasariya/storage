@@ -5,7 +5,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
 import { ChamberChart } from "@/components/ChamberChart";
 import { RatesCard } from "@/components/RatesCard";
-import { UpForSaleList } from "@/components/UpForSaleList";
 import { Warehouse, BarChart3, Users, Package, Boxes } from "lucide-react";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import {
@@ -164,7 +163,6 @@ export default function Dashboard() {
         />
       </div>
 
-      <UpForSaleList saleLots={stats?.saleLots || []} />
     </div>
   );
 }

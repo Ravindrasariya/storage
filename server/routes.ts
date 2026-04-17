@@ -631,10 +631,23 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/lots/:id/sale-info", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const info = await storage.getSaleLotInfo(coldStorageId, req.params.id);
+      if (!info) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+      res.json(info);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sale info" });
+    }
+  });
+
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { type, query, size, quality, paymentDue, potatoType, year, entryDate } = req.query;
+      const { type, query, size, quality, paymentDue, potatoType, year, entryDate, upForSale } = req.query;
       const filterYear = year ? parseInt(year as string, 10) : undefined;
       
       const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
@@ -655,17 +668,30 @@ export async function registerRoutes(
           coldStorageId
         );
       } else if (type === "farmerName") {
-        if (!query) {
-          return res.status(400).json({ error: "Missing query parameter" });
-        }
         const village = req.query.village as string | undefined;
         const contactNumber = req.query.contactNumber as string | undefined;
-        lots = await storage.searchLotsByFarmerName(
-          query as string,
-          coldStorageId,
-          village,
-          contactNumber
-        );
+        const queryStr = (query as string) || "";
+        // Allow empty query when upForSale=true so users can search by Up-for-Sale alone
+        if (!queryStr.trim() && upForSale !== "true") {
+          return res.status(400).json({ error: "Missing query parameter" });
+        }
+        if (!queryStr.trim()) {
+          // Up-for-sale-only search: start from all lots, then apply optional village/contact filters
+          lots = await storage.getAllLots(coldStorageId);
+          if (village) {
+            lots = lots.filter((l) => l.village === village);
+          }
+          if (contactNumber) {
+            lots = lots.filter((l) => l.contactNumber === contactNumber);
+          }
+        } else {
+          lots = await storage.searchLotsByFarmerName(
+            queryStr,
+            coldStorageId,
+            village,
+            contactNumber
+          );
+        }
       } else {
         if (!query) {
           return res.status(400).json({ error: "Missing query parameter" });
@@ -711,6 +737,11 @@ export async function registerRoutes(
       // Apply payment due filter (lots that have cold storage charges due)
       if (paymentDue === "true") {
         lots = lots.filter((lot) => lot.totalDueCharge && lot.totalDueCharge > 0);
+      }
+
+      // Apply up-for-sale filter (lots flagged for sale and not yet sold)
+      if (upForSale === "true") {
+        lots = lots.filter((lot) => lot.upForSale === 1 && lot.saleStatus !== "sold" && lot.remainingSize > 0);
       }
       
       // Sort by lot number in ascending order

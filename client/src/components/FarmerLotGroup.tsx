@@ -38,6 +38,7 @@ interface FarmerLotGroupProps {
   onEdit: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
+  onSale?: (lot: Lot) => void;
   canEdit?: boolean;
   chargeUnit?: "bag" | "quintal";
 }
@@ -73,6 +74,7 @@ export function FarmerLotGroup({
   onEdit,
   onToggleSale,
   onPrintReceipt,
+  onSale,
   canEdit = true,
   chargeUnit,
 }: FarmerLotGroupProps) {
@@ -280,16 +282,6 @@ export function FarmerLotGroup({
                             )}
                           </Badge>
                         )}
-                        {lot.upForSale === 1 && lot.saleStatus !== "sold" && (
-                          <Badge
-                            variant="outline"
-                            className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-400"
-                            data-testid={`badge-up-for-sale-${lot.id}`}
-                          >
-                            <ShoppingCart className="h-3 w-3 mr-1" />
-                            {t("upForSale")}
-                          </Badge>
-                        )}
                         {lot.baseColdChargesBilled === 1 && (
                           <Badge
                             variant="outline"
@@ -340,6 +332,18 @@ export function FarmerLotGroup({
                             >
                               <Printer className="h-4 w-4" />
                               {t("print")}
+                            </Button>
+                          )}
+                          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onSale && canEdit && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => onSale(lot)}
+                              className="gap-2"
+                              data-testid={`button-sale-lot-${lot.id}`}
+                            >
+                              <ShoppingCart className="h-4 w-4" />
+                              {t("sale")}
                             </Button>
                           )}
                         </div>

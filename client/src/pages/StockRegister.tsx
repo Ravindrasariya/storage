@@ -30,9 +30,10 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { FarmerLotGroup, type LotWithCharges } from "@/components/FarmerLotGroup";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
+import { SaleDialog } from "@/components/SaleDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer, CalendarDays, Pencil, Share2 } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, Filter, User, ArrowUpDown, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -42,7 +43,7 @@ import {
 import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Lot, Chamber, LotEditHistory, SalesHistory } from "@shared/schema";
+import type { Lot, Chamber, LotEditHistory, SalesHistory, SaleLotInfo } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency } from "@/components/Currency";
@@ -97,6 +98,7 @@ export default function StockRegister() {
   const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
+  const [upForSaleOnly, setUpForSaleOnly] = useState<boolean>(savedState?.upForSaleOnly || false);
   const [filterEntryDate, setFilterEntryDate] = useState<string>(savedState?.filterEntryDate || "");
   const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "ration_seed">(savedState?.bagTypeFilter || "all");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
@@ -109,6 +111,25 @@ export default function StockRegister() {
   const [editHistory, setEditHistory] = useState<LotEditHistory[]>([]);
   const [printReceiptDialogOpen, setPrintReceiptDialogOpen] = useState(false);
   const [printReceiptLot, setPrintReceiptLot] = useState<Lot | null>(null);
+  const [saleDialogOpen, setSaleDialogOpen] = useState(false);
+  const [saleLotInfo, setSaleLotInfo] = useState<SaleLotInfo | null>(null);
+  const [isFetchingSaleInfo, setIsFetchingSaleInfo] = useState(false);
+
+  const handleOpenSale = async (lot: Lot) => {
+    if (isFetchingSaleInfo) return;
+    setIsFetchingSaleInfo(true);
+    try {
+      const res = await authFetch(`/api/lots/${lot.id}/sale-info`);
+      if (!res.ok) throw new Error("Failed to fetch sale info");
+      const info: SaleLotInfo = await res.json();
+      setSaleLotInfo(info);
+      setSaleDialogOpen(true);
+    } catch (e) {
+      toast({ title: t("error"), description: "Failed to load sale details", variant: "destructive" });
+    } finally {
+      setIsFetchingSaleInfo(false);
+    }
+  };
 
   const [editForm, setEditForm] = useState<{
     chamberId: string;
@@ -370,7 +391,7 @@ export default function StockRegister() {
     // Check if we have enough input to search
     const hasInput = 
       (searchType === "phone" && searchQuery.trim().length >= 3) ||
-      (searchType === "farmerName" && farmerNameQuery.trim().length >= 2) ||
+      (searchType === "farmerName" && (farmerNameQuery.trim().length >= 2 || upForSaleOnly)) ||
       (searchType === "lotNoSize" && (lotNoFrom.trim() || lotNoTo.trim() || sizeQuery.trim())) ||
       (searchType === "filter" && (qualityFilter !== "all" || potatoTypeFilter !== "all" || paymentDueFilter || !!filterEntryDate));
     
@@ -386,7 +407,7 @@ export default function StockRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, selectedYear]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, upForSaleOnly, filterEntryDate, selectedYear]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
@@ -402,12 +423,13 @@ export default function StockRegister() {
       qualityFilter,
       potatoTypeFilter,
       paymentDueFilter,
+      upForSaleOnly,
       filterEntryDate,
       bagTypeFilter,
       selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, upForSaleOnly, filterEntryDate, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -420,7 +442,7 @@ export default function StockRegister() {
       if (saved) {
         const hasValidQuery = 
           (saved.searchType === "phone" && saved.searchQuery?.trim().length >= 3) ||
-          (saved.searchType === "farmerName" && saved.farmerNameQuery?.trim().length >= 2) ||
+          (saved.searchType === "farmerName" && (saved.farmerNameQuery?.trim().length >= 2 || saved.upForSaleOnly)) ||
           (saved.searchType === "lotNoSize" && (saved.lotNoFrom?.trim() || saved.lotNoTo?.trim() || saved.sizeQuery?.trim())) ||
           (saved.searchType === "filter" && (saved.qualityFilter !== "all" || saved.potatoTypeFilter !== "all" || saved.paymentDueFilter || !!saved.filterEntryDate));
         
@@ -437,7 +459,7 @@ export default function StockRegister() {
     if (hasSearched) {
       const inputEmpty = 
         (searchType === "phone" && !searchQuery.trim()) ||
-        (searchType === "farmerName" && !farmerNameQuery.trim()) ||
+        (searchType === "farmerName" && !farmerNameQuery.trim() && !upForSaleOnly) ||
         (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim()) ||
         (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter && !filterEntryDate);
       
@@ -456,7 +478,7 @@ export default function StockRegister() {
         }
       }
     }
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, paymentDueFilter, searchType, hasSearched]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, paymentDueFilter, upForSaleOnly, searchType, hasSearched]);
 
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
@@ -1015,7 +1037,7 @@ export default function StockRegister() {
     if (searchType === "phone" && !searchQuery.trim()) return;
     if (searchType === "lotNoSize" && !lotNoFrom.trim() && !lotNoTo.trim() && !sizeQuery.trim()) return;
     if (searchType === "filter" && qualityFilter === "all" && potatoTypeFilter === "all" && !paymentDueFilter && !filterEntryDate) return;
-    if (searchType === "farmerName" && !farmerNameQuery.trim()) return;
+    if (searchType === "farmerName" && !farmerNameQuery.trim() && !upForSaleOnly) return;
     
     setIsSearching(true);
     setHasSearched(true);
@@ -1033,6 +1055,9 @@ export default function StockRegister() {
         }
         if (selectedFarmerMobile) {
           url += `&contactNumber=${encodeURIComponent(selectedFarmerMobile)}`;
+        }
+        if (upForSaleOnly) {
+          url += `&upForSale=true`;
         }
       } else {
         url = `/api/lots/search?type=${searchType}&query=${encodeURIComponent(searchQuery)}&year=${selectedYear}`;
@@ -1441,6 +1466,21 @@ export default function StockRegister() {
                   </Button>
                 </div>
               )}
+              <div className="flex items-center gap-2 sm:border-l sm:pl-2">
+                <Checkbox
+                  id="checkbox-up-for-sale-only"
+                  checked={upForSaleOnly}
+                  onCheckedChange={(checked) => setUpForSaleOnly(!!checked)}
+                  data-testid="checkbox-up-for-sale-only"
+                />
+                <Label
+                  htmlFor="checkbox-up-for-sale-only"
+                  className="text-sm whitespace-nowrap cursor-pointer flex items-center gap-1"
+                >
+                  <ShoppingCart className="h-3 w-3" />
+                  {t("upForSale")}
+                </Label>
+              </div>
               <div className="flex items-center gap-2 sm:border-l sm:pl-2">
                 <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
@@ -1865,6 +1905,7 @@ export default function StockRegister() {
                     setPrintReceiptLot(lot);
                     setPrintReceiptDialogOpen(true);
                   }}
+                  onSale={handleOpenSale}
                   canEdit={canEdit}
                   chargeUnit={coldStorage?.chargeUnit}
                 />
@@ -2331,6 +2372,15 @@ export default function StockRegister() {
           }}
         />
       )}
+
+      <SaleDialog
+        lot={saleLotInfo}
+        open={saleDialogOpen}
+        onOpenChange={(open) => {
+          setSaleDialogOpen(open);
+          if (!open) setSaleLotInfo(null);
+        }}
+      />
     </div>
   );
 }

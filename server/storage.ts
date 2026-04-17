@@ -195,6 +195,7 @@ export interface IStorage {
   getLotHistory(lotId: string): Promise<LotEditHistory[]>;
   deleteEditHistory(historyId: string): Promise<void>;
   getDashboardStats(coldStorageId: string, year?: number): Promise<DashboardStats>;
+  getSaleLotInfo(coldStorageId: string, lotId: string): Promise<import("@shared/schema").SaleLotInfo | undefined>;
   getQualityStats(coldStorageId: string, year?: number): Promise<QualityStats>;
   getPaymentStats(coldStorageId: string, year?: number): Promise<PaymentStats>;
   getMerchantStats(coldStorageId: string, year?: number): Promise<MerchantStats>;
@@ -764,6 +765,50 @@ export class DatabaseStorage implements IStorage {
   async getLot(id: string): Promise<Lot | undefined> {
     const [result] = await db.select().from(lots).where(eq(lots.id, id));
     return result;
+  }
+
+  async getSaleLotInfo(coldStorageId: string, lotId: string): Promise<import("@shared/schema").SaleLotInfo | undefined> {
+    const lot = await this.getLot(lotId);
+    if (!lot || lot.coldStorageId !== coldStorageId) return undefined;
+    const coldStorage = await this.getColdStorage(coldStorageId);
+    const chamber = await this.getChamber(lot.chamberId);
+    const farmerRecords = await this.getFarmerRecords(coldStorageId, undefined, true);
+    const farmer = lot.farmerLedgerId ? farmerRecords.find(f => f.farmerLedgerId === lot.farmerLedgerId) : undefined;
+    const useWaferRates = lot.bagType === "wafer";
+    const globalColdCharge = useWaferRates
+      ? (coldStorage?.waferColdCharge || coldStorage?.waferRate || 0)
+      : (coldStorage?.seedColdCharge || coldStorage?.seedRate || 0);
+    const globalHammali = useWaferRates
+      ? (coldStorage?.waferHammali || 0)
+      : (coldStorage?.seedHammali || 0);
+    const isCompany = farmer?.entityType === "company";
+    const effectiveChargeUnit = isCompany ? "quintal" : (coldStorage?.chargeUnit || "bag");
+    const coldCharge = farmer?.customColdChargeRate ?? globalColdCharge;
+    const hammali = farmer?.customHammaliRate ?? globalHammali;
+    const rate = coldCharge + hammali;
+    return {
+      id: lot.id,
+      lotNo: lot.lotNo,
+      farmerName: lot.farmerName,
+      contactNumber: lot.contactNumber,
+      village: lot.village,
+      farmerLedgerId: lot.farmerLedgerId || null,
+      chamberName: chamber?.name || "Unknown",
+      floor: lot.floor,
+      position: lot.position,
+      originalSize: lot.size,
+      remainingSize: lot.remainingSize,
+      bagType: lot.bagType,
+      type: lot.type,
+      quality: lot.quality,
+      potatoSize: lot.potatoSize,
+      rate,
+      coldCharge,
+      hammali,
+      netWeight: lot.netWeight,
+      chargeUnit: effectiveChargeUnit,
+      baseColdChargesBilled: lot.baseColdChargesBilled || 0,
+    };
   }
 
   async updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined> {
