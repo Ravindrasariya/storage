@@ -119,15 +119,16 @@ export function FarmerLotGroup({
         </div>
       </div>
 
-      {/* Lot table — left half on desktop */}
-      <div className="md:max-w-[50%] overflow-x-auto">
+      {/* Lot table — compact rows fill the LEFT HALF on desktop; expanded
+          detail panels span the FULL width so dense action UI is not crowded. */}
+      <div className="overflow-x-auto">
         {/* Column headers */}
-        <div className={`${ROW_GRID} px-2 py-2 text-xs font-medium text-muted-foreground border-b min-w-[600px] md:min-w-0`}>
+        <div className={`${ROW_GRID} md:max-w-[50%] px-2 py-2 text-xs font-medium text-muted-foreground border-b min-w-[600px] md:min-w-0`}>
           <span></span>
           <span>{t("receiptNo") || "Receipt No"}</span>
           <span>{t("marka") || "Marka"}</span>
-          <span>{t("type") || "Type"}</span>
-          <span>{t("variety") || "Variety"}</span>
+          <span>{t("potatoType") || "Potato Type"}</span>
+          <span>{t("potatoVariety") || "Potato Variety"}</span>
           <span>{t("location") || "Location"}</span>
           <span className="text-right">{t("originalSize") || "Original"}</span>
           <span className="text-right">{t("remaining") || "Remaining"}</span>
@@ -148,7 +149,7 @@ export function FarmerLotGroup({
                 <button
                   type="button"
                   onClick={() => toggleExpand(lot.id)}
-                  className={`${ROW_GRID} w-full px-2 py-2 text-sm hover-elevate text-left min-w-[600px] md:min-w-0 ${
+                  className={`${ROW_GRID} md:max-w-[50%] w-full px-2 py-2 text-sm hover-elevate text-left min-w-[600px] md:min-w-0 ${
                     isExpanded ? "bg-muted/40" : ""
                   }`}
                   data-testid={`row-lot-${lot.id}`}
