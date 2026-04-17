@@ -276,11 +276,10 @@ export default function StockRegister() {
     // Defer to next frame so DOM has laid out after the latest render.
     const timer = window.setTimeout(() => {
       const container = scrollContainerRef.current;
-      if (!container) {
-        // Container not mounted yet; safest is to keep fetching.
-        loadMoreLots();
-        return;
-      }
+      // No container means the grouped list isn't currently rendered (e.g.,
+      // active filters produced an empty visible result). Don't auto-fetch in
+      // that case — wait for the user to clear filters before paging.
+      if (!container) return;
       // If content doesn't overflow, the user cannot scroll to trigger more loads.
       if (container.scrollHeight <= container.clientHeight + 1) {
         loadMoreLots();
@@ -1866,8 +1865,10 @@ export default function StockRegister() {
                     if (lot.upForSale !== 1) {
                       toast({
                         title: t("partialSale"),
-                        description: `${lot.lotNo}: ${t("upForSale")}`,
+                        description: `${lot.lotNo}: ${t("upForSale")} — toggle Up For Sale first.`,
+                        variant: "destructive",
                       });
+                      return;
                     }
                     navigate(`/?openPartialSale=${encodeURIComponent(lot.id)}`);
                   }}
