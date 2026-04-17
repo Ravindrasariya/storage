@@ -15,6 +15,7 @@ import {
   CheckCircle,
   Clock,
   Printer,
+  LogOut,
   Truck,
 } from "lucide-react";
 import type { Lot } from "@shared/schema";
@@ -49,6 +50,8 @@ interface FarmerLotGroupProps {
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
   onSale?: (lot: Lot) => void;
+  onExitSale?: (saleId: string) => void;
+  onPrintSale?: (saleId: string) => void;
   canEdit?: boolean;
   chargeUnit?: "bag" | "quintal";
 }
@@ -57,7 +60,7 @@ interface FarmerLotGroupProps {
 // columns. Left fr-total ≈ right fr-total so the divider lands near 50/50
 // on wide screens. On mobile the row scrolls horizontally via min-width.
 const FULL_ROW_GRID =
-  "grid grid-cols-[24px_minmax(70px,0.9fr)_minmax(70px,0.9fr)_minmax(70px,0.8fr)_minmax(70px,0.9fr)_minmax(140px,1.6fr)_minmax(70px,0.7fr)_minmax(80px,0.8fr)_minmax(80px,1.5fr)_minmax(140px,2fr)_minmax(90px,1.7fr)_minmax(70px,1.4fr)] gap-x-2 items-center min-w-[1000px] md:min-w-0";
+  "grid grid-cols-[24px_minmax(70px,0.9fr)_minmax(70px,0.9fr)_minmax(70px,0.8fr)_minmax(70px,0.9fr)_minmax(140px,1.6fr)_minmax(70px,0.7fr)_minmax(80px,0.8fr)_minmax(80px,1.5fr)_minmax(140px,2fr)_minmax(90px,1.7fr)_minmax(70px,1.4fr)_minmax(80px,auto)] gap-x-2 items-center min-w-[1080px] md:min-w-0";
 
 // Tailwind class added to every column that belongs to the right (sale)
 // half — used by both the header and the per-row cells so the visual
@@ -236,6 +239,7 @@ export function FarmerLotGroup({
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
+            <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
           </div>
 
           {/* Foreground rows — sit on top of the background bands. */}
@@ -254,6 +258,7 @@ export function FarmerLotGroup({
           <span className="text-center">{t("exitDates")}</span>
           <span className="text-center">{t("exitBills")}</span>
           <span className="text-center">{t("coldBillNo")}</span>
+          <span className="text-center"></span>
         </div>
 
         {/* Lot rows */}
@@ -306,6 +311,42 @@ export function FarmerLotGroup({
                     data-testid={`cell-cold-bill-${tid}`}
                   >
                     {sale && sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—"}
+                  </span>
+                  <span className="flex items-center justify-center gap-1">
+                    {sale && onExitSale && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onExitSale(sale.saleId);
+                        }}
+                        className="h-7 w-7 bg-yellow-200 hover:bg-yellow-300 text-yellow-900 border-yellow-300 dark:bg-yellow-700/40 dark:hover:bg-yellow-700/60 dark:text-yellow-100 dark:border-yellow-700"
+                        aria-label={t("exit")}
+                        title={t("exit")}
+                        data-testid={`button-exit-sale-${sale.saleId}`}
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {sale && onPrintSale && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPrintSale(sale.saleId);
+                        }}
+                        className="h-7 w-7 bg-yellow-200 hover:bg-yellow-300 text-yellow-900 border-yellow-300 dark:bg-yellow-700/40 dark:hover:bg-yellow-700/60 dark:text-yellow-100 dark:border-yellow-700"
+                        aria-label={t("print")}
+                        title={t("print")}
+                        data-testid={`button-print-sale-${sale.saleId}`}
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </span>
                 </>
               );

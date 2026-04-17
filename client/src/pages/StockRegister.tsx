@@ -31,6 +31,8 @@ import { FarmerLotGroup, type LotWithCharges, type SaleSummary } from "@/compone
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { SaleDialog } from "@/components/SaleDialog";
+import { ExitDialog } from "@/components/ExitDialog";
+import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { ArrowLeft, Search, Phone, Package, User, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
@@ -117,6 +119,10 @@ export default function StockRegister() {
   const [editHistory, setEditHistory] = useState<LotEditHistory[]>([]);
   const [printReceiptDialogOpen, setPrintReceiptDialogOpen] = useState(false);
   const [printReceiptLot, setPrintReceiptLot] = useState<Lot | null>(null);
+  const [exitingSale, setExitingSale] = useState<SalesHistory | null>(null);
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  const [printingSale, setPrintingSale] = useState<SalesHistory | null>(null);
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
   const [saleLotInfo, setSaleLotInfo] = useState<SaleLotInfo | null>(null);
   const [isFetchingSaleInfo, setIsFetchingSaleInfo] = useState(false);
@@ -1466,6 +1472,25 @@ export default function StockRegister() {
     });
   };
 
+  const salesById = useMemo(
+    () => Object.fromEntries((allSalesHistory ?? []).map((s) => [s.id, s])),
+    [allSalesHistory],
+  );
+
+  const handleExitSale = (saleId: string) => {
+    const s = salesById[saleId];
+    if (!s) return;
+    setExitingSale(s);
+    setExitDialogOpen(true);
+  };
+
+  const handlePrintSale = (saleId: string) => {
+    const s = salesById[saleId];
+    if (!s) return;
+    setPrintingSale(s);
+    setPrintDialogOpen(true);
+  };
+
   const handleEditSubmit = async () => {
     if (!selectedLot || !editForm) return;
     
@@ -2144,6 +2169,8 @@ export default function StockRegister() {
                     setPrintReceiptDialogOpen(true);
                   }}
                   onSale={handleOpenSale}
+                  onExitSale={handleExitSale}
+                  onPrintSale={handlePrintSale}
                   canEdit={canEdit}
                   chargeUnit={coldStorage?.chargeUnit}
                 />
@@ -2620,6 +2647,26 @@ export default function StockRegister() {
           if (!open) setSaleLotInfo(null);
         }}
       />
+
+      <ExitDialog
+        sale={exitingSale}
+        open={exitDialogOpen}
+        onOpenChange={(open) => {
+          setExitDialogOpen(open);
+          if (!open) setExitingSale(null);
+        }}
+      />
+
+      {printingSale && (
+        <PrintBillDialog
+          sale={printingSale}
+          open={printDialogOpen}
+          onOpenChange={(open) => {
+            setPrintDialogOpen(open);
+            if (!open) setPrintingSale(null);
+          }}
+        />
+      )}
     </div>
   );
 }
