@@ -36,7 +36,6 @@ interface FarmerLotGroupProps {
   lots: LotWithCharges[];
   chamberMap: Record<string, string>;
   onEdit: (lot: Lot) => void;
-  onPartialSale?: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
   canEdit?: boolean;
@@ -72,7 +71,6 @@ export function FarmerLotGroup({
   lots,
   chamberMap,
   onEdit,
-  onPartialSale,
   onToggleSale,
   onPrintReceipt,
   canEdit = true,
@@ -125,7 +123,7 @@ export function FarmerLotGroup({
         {/* Column headers */}
         <div className={`${ROW_GRID} md:max-w-[50%] px-2 py-2 text-xs font-medium text-muted-foreground border-b min-w-[600px] md:min-w-0`}>
           <span></span>
-          <span>{t("receiptNo") || "Receipt No"}</span>
+          <span>{t("lotNo")}</span>
           <span>{t("marka") || "Marka"}</span>
           <span>{t("potatoType") || "Potato Type"}</span>
           <span>{t("potatoVariety") || "Potato Variety"}</span>
@@ -267,9 +265,6 @@ export function FarmerLotGroup({
 
                       {/* Lot meta */}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                        <span>
-                          {t("lotNo")}: <span className="font-mono font-medium text-foreground">{lot.lotNo}</span>
-                        </span>
                         {lot.rstNo && (
                           <span>
                             {t("rstNo")}: <span className="font-medium text-foreground">{lot.rstNo}</span>
@@ -374,17 +369,6 @@ export function FarmerLotGroup({
                         >
                           <Printer className="h-4 w-4" />
                           {t("print")}
-                        </Button>
-                      )}
-                      {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onPartialSale && canEdit && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => onPartialSale(lot)}
-                          className="gap-2"
-                          data-testid={`button-partial-sale-${lot.id}`}
-                        >
-                          {t("partialSale")}
                         </Button>
                       )}
                     </div>

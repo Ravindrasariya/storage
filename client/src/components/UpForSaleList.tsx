@@ -32,11 +32,9 @@ import { Currency } from "@/components/Currency";
 
 interface UpForSaleListProps {
   saleLots: SaleLotInfo[];
-  autoOpenLotId?: string;
-  onAutoOpenHandled?: () => void;
 }
 
-export function UpForSaleList({ saleLots, autoOpenLotId, onAutoOpenHandled }: UpForSaleListProps) {
+export function UpForSaleList({ saleLots }: UpForSaleListProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const [selectedLot, setSelectedLot] = useState<SaleLotInfo | null>(null);

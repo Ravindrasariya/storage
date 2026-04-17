@@ -1860,17 +1860,6 @@ export default function StockRegister() {
                   lots={group.items}
                   chamberMap={chamberMap}
                   onEdit={handleEditClick}
-                  onPartialSale={(lot) => {
-                    if (lot.upForSale !== 1) {
-                      toast({
-                        title: t("partialSale"),
-                        description: `${lot.lotNo}: ${t("upForSaleToggleFirst")}`,
-                        variant: "destructive",
-                      });
-                      return;
-                    }
-                    navigate(`/?openPartialSale=${encodeURIComponent(lot.id)}`);
-                  }}
                   onToggleSale={handleToggleSale}
                   onPrintReceipt={(lot) => {
                     setPrintReceiptLot(lot);
