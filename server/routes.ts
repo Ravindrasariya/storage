@@ -959,14 +959,17 @@ export async function registerRoutes(
       }
 
       // Tag fully-depleted lots as sold so they don't leak into Up-for-Sale.
-      // If this update causes remainingSize to land at 0 (or below), mark the
-      // lot sold and clear its up-for-sale flag — mirroring what the Sale
-      // endpoint does when a sale brings remaining to 0.
+      // If this update causes remainingSize to land at 0 (or below), clear
+      // the up-for-sale flag unconditionally, and (if not already sold)
+      // mark the lot sold — mirroring what the Sale endpoint does when a
+      // sale brings remaining to 0.
       const effectiveRemaining = updateData.remainingSize ?? lot.remainingSize;
-      if (effectiveRemaining <= 0 && lot.saleStatus !== "sold") {
-        updateData.saleStatus = "sold";
-        updateData.soldAt = new Date();
+      if (effectiveRemaining <= 0) {
         updateData.upForSale = 0;
+        if (lot.saleStatus !== "sold") {
+          updateData.saleStatus = "sold";
+          updateData.soldAt = new Date();
+        }
       }
 
       const updatedLot = await storage.updateLot(req.params.id, updateData);
