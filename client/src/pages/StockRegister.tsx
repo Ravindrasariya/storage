@@ -33,7 +33,7 @@ import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { SaleDialog } from "@/components/SaleDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, User, ArrowUpDown, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, User, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
