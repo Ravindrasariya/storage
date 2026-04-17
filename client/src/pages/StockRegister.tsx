@@ -474,6 +474,16 @@ export default function StockRegister() {
     }
   }, []);
 
+  // Clear village & mobile filters whenever the farmer name input becomes empty,
+  // regardless of whether Up-for-Sale is on. This prevents stale filters from
+  // silently re-applying on a later search.
+  useEffect(() => {
+    if (searchType === "farmerName" && !farmerNameQuery.trim()) {
+      if (selectedFarmerVillage) setSelectedFarmerVillage("");
+      if (selectedFarmerMobile) setSelectedFarmerMobile("");
+    }
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile]);
+
   // Reset to initial view when search inputs are cleared
   useEffect(() => {
     if (hasSearched) {
