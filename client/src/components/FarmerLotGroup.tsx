@@ -67,8 +67,8 @@ const RIGHT_HALF_START = "border-l border-border/60 pl-2 md:pl-3";
 // Subtle background tints distinguishing the two halves. Negative
 // horizontal margin + matching padding closes the grid `gap-x-2` so the
 // tint reads as a continuous band rather than per-cell stripes.
-const LEFT_TINT  = "bg-green-50/70 dark:bg-green-950/25 -mx-1 px-1";
-const RIGHT_TINT = "bg-orange-50/70 dark:bg-orange-950/25 -mx-1 px-1";
+const LEFT_TINT  = "bg-green-100/70 dark:bg-green-900/30 -mx-1 px-1";
+const RIGHT_TINT = "bg-orange-100/70 dark:bg-orange-900/30 -mx-1 px-1";
 
 // Format an exit date as IST `dd-mm-yyyy` (matches the rest of CSM,
 // which standardises on Asia/Kolkata for all human-facing dates).
@@ -197,8 +197,11 @@ export function FarmerLotGroup({
 
       {/* Lot table — full-width row combining LEFT (lot identity) and
           RIGHT (per-sale exit info) halves. Expanded detail panels span
-          the FULL width so dense action UI is not crowded. */}
-      <div className="overflow-x-auto">
+          the FULL width so dense action UI is not crowded.
+          The table area sits on a white surface (slightly lighter than
+          the card in dark mode) to sharpen contrast against the
+          green/orange half tints, while the surrounding card stays grey. */}
+      <div className="overflow-x-auto bg-white dark:bg-zinc-800 rounded-md border border-border/60">
         {/* Column headers */}
         <div className={`${FULL_ROW_GRID} px-2 py-2 text-xs font-medium text-muted-foreground border-b`}>
           <span className={LEFT_TINT}></span>
