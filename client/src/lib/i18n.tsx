@@ -329,6 +329,7 @@ const translations: Translations = {
   noSalesHistory: { en: "No sales history found", hi: "कोई बिक्री इतिहास नहीं मिला" },
   potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },
   potatoVariety: { en: "Variety", hi: "किस्म" },
+  location: { en: "Location", hi: "स्थान" },
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
   
