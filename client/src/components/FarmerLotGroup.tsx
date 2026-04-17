@@ -36,7 +36,6 @@ interface FarmerLotGroupProps {
   lots: LotWithCharges[];
   chamberMap: Record<string, string>;
   onEdit: (lot: Lot) => void;
-  onPartialSale?: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
   canEdit?: boolean;
@@ -72,7 +71,6 @@ export function FarmerLotGroup({
   lots,
   chamberMap,
   onEdit,
-  onPartialSale,
   onToggleSale,
   onPrintReceipt,
   canEdit = true,
@@ -241,6 +239,16 @@ export function FarmerLotGroup({
                             )}
                           </Badge>
                         )}
+                        {lot.upForSale === 1 && lot.saleStatus !== "sold" && (
+                          <Badge
+                            variant="outline"
+                            className="bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-400"
+                            data-testid={`badge-up-for-sale-${lot.id}`}
+                          >
+                            <ShoppingCart className="h-3 w-3 mr-1" />
+                            {t("upForSale")}
+                          </Badge>
+                        )}
                         {lot.baseColdChargesBilled === 1 && (
                           <Badge
                             variant="outline"
@@ -362,17 +370,6 @@ export function FarmerLotGroup({
                         >
                           <Printer className="h-4 w-4" />
                           {t("print")}
-                        </Button>
-                      )}
-                      {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onPartialSale && canEdit && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => onPartialSale(lot)}
-                          className="gap-2"
-                          data-testid={`button-partial-sale-${lot.id}`}
-                        >
-                          {t("partialSale")}
                         </Button>
                       )}
                     </div>

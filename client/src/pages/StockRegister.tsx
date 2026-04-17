@@ -1818,9 +1818,15 @@ export default function StockRegister() {
             }
           }
 
+          // Hold back the last farmer group while more pages may extend it,
+          // so a farmer's lots are never split across the loaded/unloaded boundary.
+          const moreToLoad = !hasSearched && displayedLots.length < totalLotCount;
+          const visibleGroups =
+            moreToLoad && farmerGroups.length > 1 ? farmerGroups.slice(0, -1) : farmerGroups;
+
           return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto" ref={scrollContainerRef} onScroll={handleScroll}>
-              {farmerGroups.map((group) => (
+              {visibleGroups.map((group) => (
                 <FarmerLotGroup
                   key={group.key}
                   farmerName={group.farmerName}
