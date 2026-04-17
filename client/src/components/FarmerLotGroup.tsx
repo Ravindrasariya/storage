@@ -233,9 +233,9 @@ export function FarmerLotGroup({
                   aria-hidden={!isExpanded}
                   data-testid={`expanded-lot-${lot.id}`}
                 >
-                  <div className="flex flex-col lg:flex-row gap-4">
-                    <div className="flex-1 min-w-0 space-y-3">
-                      {/* Status badges */}
+                  <div className="space-y-3">
+                    <div className="min-w-0 space-y-3">
+                      {/* Status badges + inline action buttons */}
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className={getQualityColor(lot.quality)}>
                           {t(lot.quality)}
@@ -300,6 +300,49 @@ export function FarmerLotGroup({
                             {t("baseColdChargesBilled")}
                           </Badge>
                         )}
+
+                        {/* Inline action buttons pushed to the right */}
+                        <div className="flex flex-wrap items-center gap-2 ml-auto">
+                          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onToggleSale && canEdit && (
+                            <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
+                              <Switch
+                                id={`sale-toggle-${lot.id}`}
+                                checked={lot.upForSale === 1}
+                                onCheckedChange={(checked) => onToggleSale(lot, checked)}
+                                data-testid={`switch-sale-${lot.id}`}
+                              />
+                              <Label
+                                htmlFor={`sale-toggle-${lot.id}`}
+                                className="text-xs flex items-center gap-1 cursor-pointer"
+                              >
+                                <ShoppingCart className="h-3 w-3" />
+                                {t("upForSale")}
+                              </Label>
+                            </div>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onEdit(lot)}
+                            className="gap-2"
+                            data-testid={`button-edit-lot-${lot.id}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                            {canEdit ? t("edit") : t("view") || "View"}
+                          </Button>
+                          {lot.entrySequence && onPrintReceipt && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onPrintReceipt(lot)}
+                              className="gap-2"
+                              data-testid={`button-print-lot-${lot.id}`}
+                            >
+                              <Printer className="h-4 w-4" />
+                              {t("print")}
+                            </Button>
+                          )}
+                        </div>
                       </div>
 
                       {/* Lot meta */}
@@ -333,49 +376,6 @@ export function FarmerLotGroup({
 
                       {lot.remarks && (
                         <p className="text-sm text-muted-foreground italic">"{lot.remarks}"</p>
-                      )}
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex flex-wrap lg:flex-col gap-2 shrink-0">
-                      {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onToggleSale && canEdit && (
-                        <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
-                          <Switch
-                            id={`sale-toggle-${lot.id}`}
-                            checked={lot.upForSale === 1}
-                            onCheckedChange={(checked) => onToggleSale(lot, checked)}
-                            data-testid={`switch-sale-${lot.id}`}
-                          />
-                          <Label
-                            htmlFor={`sale-toggle-${lot.id}`}
-                            className="text-xs flex items-center gap-1 cursor-pointer"
-                          >
-                            <ShoppingCart className="h-3 w-3" />
-                            {t("upForSale")}
-                          </Label>
-                        </div>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onEdit(lot)}
-                        className="gap-2"
-                        data-testid={`button-edit-lot-${lot.id}`}
-                      >
-                        <Edit className="h-4 w-4" />
-                        {canEdit ? t("edit") : t("view") || "View"}
-                      </Button>
-                      {lot.entrySequence && onPrintReceipt && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onPrintReceipt(lot)}
-                          className="gap-2"
-                          data-testid={`button-print-lot-${lot.id}`}
-                        >
-                          <Printer className="h-4 w-4" />
-                          {t("print")}
-                        </Button>
                       )}
                     </div>
                   </div>
