@@ -970,9 +970,22 @@ export default function StockRegister() {
       return { lot, lotPaidCharge, lotDueCharge, expectedColdCharge };
     });
 
+    // Apply the same active sort as the on-screen view so the printed
+    // PDF mirrors the order the user is currently looking at.
+    computed.sort((a, b) => {
+      if (sortBy === "chargeDue") {
+        return b.lotDueCharge - a.lotDueCharge;
+      } else if (sortBy === "remainingBags") {
+        return b.lot.remainingSize - a.lot.remainingSize;
+      }
+      const lotNoA = parseInt(a.lot.lotNo, 10) || 0;
+      const lotNoB = parseInt(b.lot.lotNo, 10) || 0;
+      return lotNoA - lotNoB;
+    });
+
     // Group by farmer (contactNumber|farmerName), preserving the
-    // server-provided order. Same key as the on-screen view so the
-    // print mirrors the rendered grouping.
+    // sorted order. Same key as the on-screen view so the print
+    // mirrors the rendered grouping.
     type GroupItem = typeof computed[number];
     const farmerGroups: Array<{
       key: string;
