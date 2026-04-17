@@ -97,7 +97,11 @@ export default function StockRegister() {
   const [sizeQuery, setSizeQuery] = useState(savedState?.sizeQuery || "");
   const [chamberFilter, setChamberFilter] = useState("all");
   const [floorFilter, setFloorFilter] = useState("all");
-  const [qualityFilter, setQualityFilter] = useState<string>(savedState?.qualityFilter || "all");
+  const [qualityFilter, setQualityFilter] = useState<string>(() => {
+    const allowed = new Set(["all", "poor", "medium", "good"]);
+    const saved = savedState?.qualityFilter;
+    return saved && allowed.has(saved) ? saved : "all";
+  });
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
   const [upForSaleOnly, setUpForSaleOnly] = useState<boolean>(savedState?.upForSaleOnly || false);
@@ -548,6 +552,17 @@ export default function StockRegister() {
     }
     return Array.from(types).sort();
   }, [initialLots]);
+
+  // Reset a stale potato variety filter once we know the real list of types.
+  // A value persisted in sessionStorage from a prior session can otherwise
+  // silently zero search results while rendering as a blank dropdown.
+  useEffect(() => {
+    if (!initialLots) return;
+    if (potatoTypeFilter === "all") return;
+    if (!uniquePotatoTypes.includes(potatoTypeFilter)) {
+      setPotatoTypeFilter("all");
+    }
+  }, [initialLots, uniquePotatoTypes, potatoTypeFilter]);
 
   // Filtered suggestions for phone number search
   const getPhoneSuggestions = useMemo(() => {
@@ -1737,7 +1752,7 @@ export default function StockRegister() {
                 <Label className="text-sm">{t("quality")}:</Label>
                 <Select value={qualityFilter} onValueChange={setQualityFilter}>
                   <SelectTrigger className="w-28" data-testid="select-quality-filter">
-                    <SelectValue />
+                    <SelectValue placeholder={t("all")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t("all")}</SelectItem>
@@ -1751,7 +1766,7 @@ export default function StockRegister() {
                 <Label className="text-sm">{t("type")}:</Label>
                 <Select value={potatoTypeFilter} onValueChange={setPotatoTypeFilter}>
                   <SelectTrigger className="w-28" data-testid="select-potato-type-filter">
-                    <SelectValue />
+                    <SelectValue placeholder={t("all")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t("all")}</SelectItem>
@@ -1896,6 +1911,29 @@ export default function StockRegister() {
             onClear: () => setUpForSaleOnly(false),
           });
         }
+        if (chamberFilter !== "all") {
+          const chamberLabel =
+            chamberFilter === "blank"
+              ? (t("blank") || "Blank")
+              : (chamberMap[chamberFilter] || chamberFilter);
+          activeChips.push({
+            key: "chamber",
+            label: `${t("chamber") || "Chamber"}: ${chamberLabel}`,
+            onClear: () => {
+              setChamberFilter("all");
+              setFloorFilter("all");
+            },
+          });
+        }
+        if (floorFilter !== "all") {
+          const floorLabel =
+            floorFilter === "blank" ? (t("blank") || "Blank") : floorFilter;
+          activeChips.push({
+            key: "floor",
+            label: `${t("floor") || "Floor"}: ${floorLabel}`,
+            onClear: () => setFloorFilter("all"),
+          });
+        }
         if (activeChips.length === 0) return null;
         const clearAll = () => {
           setQualityFilter("all");
@@ -1903,6 +1941,8 @@ export default function StockRegister() {
           setPaymentDueFilter(false);
           setFilterEntryDate("");
           setUpForSaleOnly(false);
+          setChamberFilter("all");
+          setFloorFilter("all");
         };
         return (
           <div
