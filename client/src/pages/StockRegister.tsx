@@ -1859,6 +1859,88 @@ export default function StockRegister() {
         </Tabs>
       </Card>
 
+      {(() => {
+        const activeChips: { key: string; label: string; onClear: () => void }[] = [];
+        if (qualityFilter !== "all") {
+          activeChips.push({
+            key: "quality",
+            label: `${t("quality")}: ${t(qualityFilter) || capitalizeFirstLetter(qualityFilter)}`,
+            onClear: () => setQualityFilter("all"),
+          });
+        }
+        if (potatoTypeFilter !== "all") {
+          activeChips.push({
+            key: "potatoType",
+            label: `${t("variety")}: ${potatoTypeFilter}`,
+            onClear: () => setPotatoTypeFilter("all"),
+          });
+        }
+        if (paymentDueFilter) {
+          activeChips.push({
+            key: "paymentDue",
+            label: t("coldChargesDue"),
+            onClear: () => setPaymentDueFilter(false),
+          });
+        }
+        if (filterEntryDate) {
+          activeChips.push({
+            key: "entryDate",
+            label: `${t("date") || "Date"}: ${filterEntryDate}`,
+            onClear: () => setFilterEntryDate(""),
+          });
+        }
+        if (upForSaleOnly) {
+          activeChips.push({
+            key: "upForSale",
+            label: t("upForSale"),
+            onClear: () => setUpForSaleOnly(false),
+          });
+        }
+        if (activeChips.length === 0) return null;
+        const clearAll = () => {
+          setQualityFilter("all");
+          setPotatoTypeFilter("all");
+          setPaymentDueFilter(false);
+          setFilterEntryDate("");
+          setUpForSaleOnly(false);
+        };
+        return (
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-testid="active-filter-chips"
+          >
+            {activeChips.map((chip) => (
+              <Badge
+                key={chip.key}
+                variant="secondary"
+                className="gap-1 pr-1 py-1"
+                data-testid={`chip-filter-${chip.key}`}
+              >
+                <span>{chip.label}</span>
+                <button
+                  type="button"
+                  onClick={chip.onClear}
+                  className="ml-0.5 rounded-sm p-0.5 hover-elevate active-elevate-2"
+                  aria-label={`Clear ${chip.label}`}
+                  data-testid={`button-clear-chip-${chip.key}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={clearAll}
+              data-testid="button-clear-all-filters"
+            >
+              {t("clearFilters") || "Clear filters"}
+            </Button>
+          </div>
+        );
+      })()}
+
       {summaryTotals && (
         <Card className="p-3 bg-muted/50">
           <div className="flex flex-col gap-2">
