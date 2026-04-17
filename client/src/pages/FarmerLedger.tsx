@@ -136,7 +136,7 @@ function FarmerDetailedLedger({
       case 'self_sale': {
         const parts = [`${t("selfSaleEntry")} - ${t("lotHash")}${m.lotNo}`];
         if (m.marka)      parts.push(`${t("marka")}: ${m.marka}`);
-        if (m.coldBillNo) parts.push(`${t("coldBillNo")}${m.coldBillNo}`);
+        if (m.coldBillNo) parts.push(`${t("coldBillNo")}: ${m.coldBillNo}`);
         parts.push(m.buyerName);
         parts.push(`${m.bags} ${t("bagsLabel")}`);
         return parts.join(', ');
