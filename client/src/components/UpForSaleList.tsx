@@ -32,9 +32,11 @@ import { Currency } from "@/components/Currency";
 
 interface UpForSaleListProps {
   saleLots: SaleLotInfo[];
+  autoOpenLotId?: string;
+  onAutoOpenHandled?: () => void;
 }
 
-export function UpForSaleList({ saleLots }: UpForSaleListProps) {
+export function UpForSaleList({ saleLots, autoOpenLotId, onAutoOpenHandled }: UpForSaleListProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const [selectedLot, setSelectedLot] = useState<SaleLotInfo | null>(null);
@@ -238,6 +240,19 @@ export function UpForSaleList({ saleLots }: UpForSaleListProps) {
       setChargeBasis("actual");
     }
   };
+
+  // Auto-open the partial-sale dialog when navigated here with a lot id
+  // (e.g., from the Stock Register Partial Sale action).
+  useEffect(() => {
+    if (!autoOpenLotId || saleLots.length === 0) return;
+    const target = saleLots.find((l) => l.id === autoOpenLotId);
+    if (target) {
+      openSaleDialog(target);
+      onAutoOpenHandled?.();
+    }
+    // openSaleDialog is stable in this component scope; intentionally not in deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenLotId, saleLots]);
 
   const removeFromSaleMutation = useMutation({
     mutationFn: async (lotId: string) => {

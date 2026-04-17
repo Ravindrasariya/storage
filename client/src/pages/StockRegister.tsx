@@ -1851,11 +1851,13 @@ export default function StockRegister() {
                   chamberMap={chamberMap}
                   onEdit={handleEditClick}
                   onPartialSale={(lot) => {
-                    toast({
-                      title: t("partialSale"),
-                      description: `Opening ${t("upForSale")} for ${lot.lotNo}`,
-                    });
-                    navigate("/");
+                    if (lot.upForSale !== 1) {
+                      toast({
+                        title: t("partialSale"),
+                        description: `${lot.lotNo}: ${t("upForSale")}`,
+                      });
+                    }
+                    navigate(`/?openPartialSale=${encodeURIComponent(lot.id)}`);
                   }}
                   onToggleSale={handleToggleSale}
                   onPrintReceipt={(lot) => {

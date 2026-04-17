@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,12 @@ import {
 import type { DashboardStats, ColdStorage } from "@shared/schema";
 
 export default function Dashboard() {
+  const [, navigate] = useLocation();
+  // Wouter's location string omits the query string, so read it from window.location.
+  const autoOpenLotId =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("openPartialSale") || undefined
+      : undefined;
   const { t } = useI18n();
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
@@ -164,7 +171,11 @@ export default function Dashboard() {
         />
       </div>
 
-      <UpForSaleList saleLots={stats?.saleLots || []} />
+      <UpForSaleList
+        saleLots={stats?.saleLots || []}
+        autoOpenLotId={autoOpenLotId}
+        onAutoOpenHandled={() => navigate("/", { replace: true })}
+      />
     </div>
   );
 }
