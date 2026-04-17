@@ -122,6 +122,8 @@ export function FarmerLotGroup({
   onToggleSale,
   onPrintReceipt,
   onSale,
+  onExitSale,
+  onPrintSale,
   canEdit = true,
   chargeUnit,
 }: FarmerLotGroupProps) {
