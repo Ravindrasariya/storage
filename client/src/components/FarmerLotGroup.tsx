@@ -213,7 +213,7 @@ export function FarmerLotGroup({
       <div className="overflow-x-auto bg-white dark:bg-zinc-800 rounded-md border border-border/60">
         {/* Inner relative wrapper carries the scroll min-width and hosts
             the two-tone background layer that sits behind all rows. */}
-        <div className="relative min-w-[1000px] md:min-w-0">
+        <div className="relative min-w-[1080px] md:min-w-0">
           {/* Background bands — same 12-col grid template as the rows so
               the green/orange divider lines up exactly with the
               Remaining ↔ Exited/Sold column boundary. `-mx-1` on each
