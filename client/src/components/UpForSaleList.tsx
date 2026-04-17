@@ -243,10 +243,11 @@ export function UpForSaleList({ saleLots, autoOpenLotId, onAutoOpenHandled }: Up
 
   // Auto-open the partial-sale dialog when navigated here with a lot id
   // (e.g., from the Stock Register Partial Sale action). If the lot can't be
-  // found in the currently-loaded saleLots (e.g., year filter mismatch on
-  // dashboard), surface a clear toast instead of silently doing nothing.
+  // found in the loaded saleLots (e.g., year filter mismatch on the dashboard,
+  // or an empty Up For Sale list), surface a clear toast instead of silently
+  // doing nothing. Always clear the query param afterwards.
   useEffect(() => {
-    if (!autoOpenLotId || saleLots.length === 0) return;
+    if (!autoOpenLotId) return;
     const target = saleLots.find((l) => l.id === autoOpenLotId);
     if (target) {
       openSaleDialog(target);
