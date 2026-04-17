@@ -90,6 +90,9 @@ export function FarmerLotGroup({
 
   const totalBags = lots.reduce((s, l) => s + (l.lot.size || 0), 0);
   const remainingBags = lots.reduce((s, l) => s + (l.lot.remainingSize || 0), 0);
+  const totalExpected = lots.reduce((s, l) => s + (l.expectedColdCharge || 0), 0);
+  const totalPaid = lots.reduce((s, l) => s + (l.lotPaidCharge || 0), 0);
+  const totalDue = lots.reduce((s, l) => s + (l.lotDueCharge || 0), 0);
   const farmerKey = `${contactNumber}-${farmerName}`.replace(/\s+/g, "_");
   const addressLine = [village, tehsil, district].filter(Boolean).join(", ");
 
@@ -114,6 +117,39 @@ export function FarmerLotGroup({
         </div>
         <div className="text-xs text-muted-foreground ml-auto" data-testid={`text-farmer-summary-${farmerKey}`}>
           {lots.length} {lots.length === 1 ? t("lot") : t("lots")} · {remainingBags}/{totalBags} {t("bags") || "bags"}
+        </div>
+      </div>
+
+      {/* Aggregated charges across all of this farmer's lots */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm mb-3 pb-3 border-b">
+        {totalExpected > 0 && (
+          <div>
+            <span className="text-muted-foreground">{t("expectedColdCharges")}: </span>
+            <span
+              className="font-bold text-blue-600 dark:text-blue-400"
+              data-testid={`text-farmer-expected-${farmerKey}`}
+            >
+              <Currency amount={totalExpected} />
+            </span>
+          </div>
+        )}
+        <div>
+          <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
+          <span
+            className="font-bold text-green-600 dark:text-green-400"
+            data-testid={`text-farmer-paid-${farmerKey}`}
+          >
+            <Currency amount={totalPaid} />
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">{t("coldChargesDue")}: </span>
+          <span
+            className="font-bold text-amber-600 dark:text-amber-400"
+            data-testid={`text-farmer-due-${farmerKey}`}
+          >
+            <Currency amount={totalDue} />
+          </span>
         </div>
       </div>
 
@@ -290,39 +326,6 @@ export function FarmerLotGroup({
                             </span>
                           </span>
                         )}
-                      </div>
-
-                      {/* Charges */}
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-                        {expectedColdCharge !== undefined && expectedColdCharge > 0 && (
-                          <div>
-                            <span className="text-muted-foreground">{t("expectedColdCharges")}: </span>
-                            <span
-                              className="font-bold text-blue-600 dark:text-blue-400"
-                              data-testid={`text-expected-${lot.id}`}
-                            >
-                              <Currency amount={expectedColdCharge} />
-                            </span>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-muted-foreground">{t("coldChargesPaid")}: </span>
-                          <span
-                            className="font-bold text-green-600 dark:text-green-400"
-                            data-testid={`text-paid-${lot.id}`}
-                          >
-                            <Currency amount={paidCharge} />
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">{t("coldChargesDue")}: </span>
-                          <span
-                            className="font-bold text-amber-600 dark:text-amber-400"
-                            data-testid={`text-due-${lot.id}`}
-                          >
-                            <Currency amount={dueCharge} />
-                          </span>
-                        </div>
                       </div>
 
                       {lot.remarks && (
