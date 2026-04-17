@@ -64,11 +64,13 @@ const FULL_ROW_GRID =
 // dividing line between halves is consistent.
 const RIGHT_HALF_START = "border-l border-border/60 pl-2 md:pl-3";
 
-// Subtle background tints distinguishing the two halves. Negative
-// horizontal margin + matching padding closes the grid `gap-x-2` so the
-// tint reads as a continuous band rather than per-cell stripes.
-const LEFT_TINT  = "bg-green-100/70 dark:bg-green-900/30 -mx-1 px-1";
-const RIGHT_TINT = "bg-orange-100/70 dark:bg-orange-900/30 -mx-1 px-1";
+// Two-tone background bands sit BEHIND every row of the table area so
+// the LEFT half reads as one continuous green band and the RIGHT half
+// as one continuous orange band, instead of per-cell rectangles. The
+// `-mx-1` on each background cell closes the grid `gap-x-2` so the
+// bands have no white slivers between cells.
+const LEFT_BAND_BG  = "bg-green-100/70 dark:bg-green-900/30";
+const RIGHT_BAND_BG = "bg-orange-100/70 dark:bg-orange-900/30";
 
 // Format an exit date as IST `dd-mm-yyyy` (matches the rest of CSM,
 // which standardises on Asia/Kolkata for all human-facing dates).
@@ -202,20 +204,47 @@ export function FarmerLotGroup({
           the card in dark mode) to sharpen contrast against the
           green/orange half tints, while the surrounding card stays grey. */}
       <div className="overflow-x-auto bg-white dark:bg-zinc-800 rounded-md border border-border/60">
+        {/* Inner relative wrapper carries the scroll min-width and hosts
+            the two-tone background layer that sits behind all rows. */}
+        <div className="relative min-w-[1000px] md:min-w-0">
+          {/* Background bands — same 12-col grid template as the rows so
+              the green/orange divider lines up exactly with the
+              Remaining ↔ Exited/Sold column boundary. `-mx-1` on each
+              cell closes the `gap-x-2` so each band reads as solid. */}
+          <div
+            className={`${FULL_ROW_GRID} absolute inset-0 pointer-events-none`}
+            aria-hidden="true"
+          >
+            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
+            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
+            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
+            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
+            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
+            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
+            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
+            <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
+            <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
+            <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
+            <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
+            <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
+          </div>
+
+          {/* Foreground rows — sit on top of the background bands. */}
+          <div className="relative">
         {/* Column headers */}
         <div className={`${FULL_ROW_GRID} px-2 py-2 text-xs font-medium text-muted-foreground border-b`}>
-          <span className={LEFT_TINT}></span>
-          <span className={LEFT_TINT}>{t("lotNo")}</span>
-          <span className={LEFT_TINT}>{t("marka") || "Marka"}</span>
-          <span className={LEFT_TINT}>{t("potatoType") || "Potato Type"}</span>
-          <span className={LEFT_TINT}>{t("potatoVariety") || "Variety"}</span>
-          <span className={LEFT_TINT}>{t("location") || "Location"}</span>
-          <span className={`${LEFT_TINT} text-right`}>{t("originalSize") || "Bags No."}</span>
-          <span className={`${LEFT_TINT} text-right`}>{t("remaining") || "Remaining"}</span>
-          <span className={`${RIGHT_HALF_START} ${RIGHT_TINT} text-center`}>{t("exitedSold")}</span>
-          <span className={`${RIGHT_TINT} text-center`}>{t("exitDates")}</span>
-          <span className={`${RIGHT_TINT} text-center`}>{t("exitBills")}</span>
-          <span className={`${RIGHT_TINT} text-center`}>{t("coldBillNo")}</span>
+          <span></span>
+          <span>{t("lotNo")}</span>
+          <span>{t("marka") || "Marka"}</span>
+          <span>{t("potatoType") || "Potato Type"}</span>
+          <span>{t("potatoVariety") || "Variety"}</span>
+          <span>{t("location") || "Location"}</span>
+          <span className="text-right">{t("originalSize") || "Bags No."}</span>
+          <span className="text-right">{t("remaining") || "Remaining"}</span>
+          <span className={`${RIGHT_HALF_START} text-center`}>{t("exitedSold")}</span>
+          <span className="text-center">{t("exitDates")}</span>
+          <span className="text-center">{t("exitBills")}</span>
+          <span className="text-center">{t("coldBillNo")}</span>
         </div>
 
         {/* Lot rows */}
@@ -240,13 +269,13 @@ export function FarmerLotGroup({
               return (
                 <>
                   <span
-                    className={`${RIGHT_HALF_START} ${RIGHT_TINT} text-center tabular-nums`}
+                    className={`${RIGHT_HALF_START} text-center tabular-nums`}
                     data-testid={`cell-exited-sold-${tid}`}
                   >
                     {sale ? `${sale.totalExited} / ${sale.quantitySold}` : "—"}
                   </span>
                   <span
-                    className={`${RIGHT_TINT} text-center truncate`}
+                    className="text-center truncate"
                     title={sale ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ") : ""}
                     data-testid={`cell-exit-dates-${tid}`}
                   >
@@ -255,7 +284,7 @@ export function FarmerLotGroup({
                       : "—"}
                   </span>
                   <span
-                    className={`${RIGHT_TINT} text-center truncate font-mono`}
+                    className="text-center truncate font-mono"
                     title={sale ? sale.exits.map(e => String(e.billNumber)).join(", ") : ""}
                     data-testid={`cell-exit-bills-${tid}`}
                   >
@@ -264,7 +293,7 @@ export function FarmerLotGroup({
                       : "—"}
                   </span>
                   <span
-                    className={`${RIGHT_TINT} text-center font-mono tabular-nums`}
+                    className="text-center font-mono tabular-nums"
                     data-testid={`cell-cold-bill-${tid}`}
                   >
                     {sale && sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—"}
@@ -286,34 +315,34 @@ export function FarmerLotGroup({
                   data-testid={`row-lot-${lot.id}`}
                   aria-expanded={isExpanded}
                 >
-                  <span className={`${LEFT_TINT} flex justify-center text-muted-foreground`}>
+                  <span className="flex justify-center text-muted-foreground">
                     {isExpanded ? (
                       <ChevronDown className="h-4 w-4" />
                     ) : (
                       <ChevronRight className="h-4 w-4" />
                     )}
                   </span>
-                  <span className={`${LEFT_TINT} font-mono truncate`} data-testid={`cell-receipt-${lot.id}`}>
+                  <span className="font-mono truncate" data-testid={`cell-receipt-${lot.id}`}>
                     {lot.lotNo || "-"}
                   </span>
-                  <span className={`${LEFT_TINT} truncate`} data-testid={`cell-marka-${lot.id}`}>
+                  <span className="truncate" data-testid={`cell-marka-${lot.id}`}>
                     {lot.marka || "-"}
                   </span>
-                  <span className={`${LEFT_TINT} truncate`} data-testid={`cell-bagtype-${lot.id}`}>
+                  <span className="truncate" data-testid={`cell-bagtype-${lot.id}`}>
                     <Badge variant="outline" className={`${getBagTypeColor(lot.bagType)} text-xs`}>
                       {t(lot.bagType) || lot.bagType}
                     </Badge>
                   </span>
-                  <span className={`${LEFT_TINT} truncate`} data-testid={`cell-variety-${lot.id}`}>
+                  <span className="truncate" data-testid={`cell-variety-${lot.id}`}>
                     {lot.type}
                   </span>
-                  <span className={`${LEFT_TINT} whitespace-nowrap`} data-testid={`cell-location-${lot.id}`}>
+                  <span className="whitespace-nowrap" data-testid={`cell-location-${lot.id}`}>
                     {locationStr}
                   </span>
-                  <span className={`${LEFT_TINT} text-right`} data-testid={`cell-originalsize-${lot.id}`}>
+                  <span className="text-right" data-testid={`cell-originalsize-${lot.id}`}>
                     {lot.size}
                   </span>
-                  <span className={`${LEFT_TINT} text-right font-bold text-chart-1`} data-testid={`cell-remaining-${lot.id}`}>
+                  <span className="text-right font-bold text-chart-1" data-testid={`cell-remaining-${lot.id}`}>
                     {lot.remainingSize}
                   </span>
                   {renderRightCells(sales[0])}
@@ -333,14 +362,7 @@ export function FarmerLotGroup({
                       }`}
                       data-testid={`row-lot-${lot.id}-sale-${idx}`}
                     >
-                      <span className={LEFT_TINT} />
-                      <span className={LEFT_TINT} />
-                      <span className={LEFT_TINT} />
-                      <span className={LEFT_TINT} />
-                      <span className={LEFT_TINT} />
-                      <span className={LEFT_TINT} />
-                      <span className={LEFT_TINT} />
-                      <span className={LEFT_TINT} />
+                      <span /><span /><span /><span /><span /><span /><span /><span />
                       {renderRightCells(sales[idx])}
                     </div>
                   );
@@ -507,6 +529,8 @@ export function FarmerLotGroup({
               </div>
             );
           })}
+        </div>
+          </div>
         </div>
       </div>
     </Card>
