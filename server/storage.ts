@@ -3373,11 +3373,8 @@ export class DatabaseStorage implements IStorage {
     if (expense.expenseType === "farmer_loan") {
       const [linkedLoan] = await db.select().from(farmerLoan)
         .where(eq(farmerLoan.expenseId, expenseId));
-      if (linkedLoan) {
-        await db.update(farmerLoan)
-          .set({ isReversed: 1, reversedAt: new Date() })
-          .where(eq(farmerLoan.id, linkedLoan.id));
-        await this.recomputeFarmerLoanPayments(linkedLoan.coldStorageId, linkedLoan.farmerLedgerId);
+      if (linkedLoan && linkedLoan.isReversed !== 1) {
+        await this.reverseFarmerLoan(linkedLoan.coldStorageId, linkedLoan.id);
       }
     }
 

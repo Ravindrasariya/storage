@@ -2203,6 +2203,16 @@ export async function registerRoutes(
 
       const uniqueLoanIds = [...new Set(data.selectedLoanIds)];
 
+      // Validate amount does not exceed total outstanding due across selected loans
+      const outstandingLoans = await storage.getOutstandingLoansForFarmer(coldStorageId, data.farmerLedgerId);
+      const selectedDueTotal = outstandingLoans
+        .filter((l: any) => uniqueLoanIds.includes(l.id))
+        .reduce((sum: number, l: any) => sum + (l.dueAmount || 0), 0);
+      const epsilon = 0.01;
+      if (data.amount > selectedDueTotal + epsilon) {
+        return res.status(400).json({ error: `Payment amount (${data.amount}) exceeds outstanding due (${selectedDueTotal}) for selected loans` });
+      }
+
       const transactionId = await generateSequentialId('cash_flow', coldStorageId);
 
       const receipt = await storage.createFarmerLoanReceipt({
