@@ -388,7 +388,7 @@ export function FarmerLotGroup({
                   <span className="truncate" data-testid={`cell-variety-${lot.id}`}>
                     {lot.type}
                   </span>
-                  <span className="break-words leading-tight pr-3" data-testid={`cell-location-${lot.id}`}>
+                  <span className="break-words leading-tight pr-1" data-testid={`cell-location-${lot.id}`}>
                     {locationStr}
                   </span>
                   <span className="text-right" data-testid={`cell-originalsize-${lot.id}`}>
