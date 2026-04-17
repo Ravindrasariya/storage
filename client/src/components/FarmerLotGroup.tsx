@@ -212,7 +212,7 @@ export function FarmerLotGroup({
               Remaining ↔ Exited/Sold column boundary. `-mx-1` on each
               cell closes the `gap-x-2` so each band reads as solid. */}
           <div
-            className={`${FULL_ROW_GRID} absolute inset-0 pointer-events-none`}
+            className={`${FULL_ROW_GRID} absolute inset-0 px-2 pointer-events-none`}
             aria-hidden="true"
           >
             <span className={`${LEFT_BAND_BG} h-full -mx-1`} />
@@ -371,7 +371,7 @@ export function FarmerLotGroup({
                 {/* Expanded details — ALWAYS rendered for searchability; hidden via CSS when collapsed.
                     Spans the FULL row width (compact rows above are constrained to the left half). */}
                 <div
-                  className={`w-full bg-muted/20 border-l-2 border-primary/30 transition-all overflow-hidden ${
+                  className={`relative w-full bg-card border-l-2 border-primary/30 transition-all overflow-hidden ${
                     isExpanded ? "max-h-[1000px] py-3 px-3" : "max-h-0 py-0 px-3 opacity-0"
                   }`}
                   aria-hidden={!isExpanded}
