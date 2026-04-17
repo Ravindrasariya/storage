@@ -254,7 +254,7 @@ export function UpForSaleList({ saleLots, autoOpenLotId, onAutoOpenHandled }: Up
     } else {
       toast({
         title: t("partialSale"),
-        description: "This lot is not in the current Up For Sale list. Adjust filters and try again.",
+        description: t("lotNotInUpForSale"),
         variant: "destructive",
       });
     }

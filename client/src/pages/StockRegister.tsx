@@ -1865,7 +1865,7 @@ export default function StockRegister() {
                     if (lot.upForSale !== 1) {
                       toast({
                         title: t("partialSale"),
-                        description: `${lot.lotNo}: ${t("upForSale")} — toggle Up For Sale first.`,
+                        description: `${lot.lotNo}: ${t("upForSaleToggleFirst")}`,
                         variant: "destructive",
                       });
                       return;

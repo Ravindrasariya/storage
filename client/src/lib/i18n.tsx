@@ -328,6 +328,9 @@ const translations: Translations = {
   filterByPayment: { en: "Filter by Payment", hi: "भुगतान के अनुसार फ़िल्टर करें" },
   noSalesHistory: { en: "No sales history found", hi: "कोई बिक्री इतिहास नहीं मिला" },
   potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },
+  potatoVariety: { en: "Potato Variety", hi: "आलू की किस्म" },
+  lotNotInUpForSale: { en: "This lot is not in the current Up For Sale list. Adjust filters and try again.", hi: "यह लॉट वर्तमान बिक्री सूची में नहीं है। फ़िल्टर बदलें और पुनः प्रयास करें।" },
+  upForSaleToggleFirst: { en: "Toggle Up For Sale first.", hi: "पहले 'बिक्री हेतु' चालू करें।" },
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
   
