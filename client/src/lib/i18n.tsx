@@ -328,7 +328,7 @@ const translations: Translations = {
   filterByPayment: { en: "Filter by Payment", hi: "भुगतान के अनुसार फ़िल्टर करें" },
   noSalesHistory: { en: "No sales history found", hi: "कोई बिक्री इतिहास नहीं मिला" },
   potatoType: { en: "Potato Type", hi: "आलू का प्रकार" },
-  potatoVariety: { en: "Potato Variety", hi: "आलू की किस्म" },
+  potatoVariety: { en: "Variety", hi: "किस्म" },
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
   

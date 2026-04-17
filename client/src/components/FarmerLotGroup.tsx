@@ -162,7 +162,7 @@ export function FarmerLotGroup({
           <span>{t("lotNo")}</span>
           <span>{t("marka") || "Marka"}</span>
           <span>{t("potatoType") || "Potato Type"}</span>
-          <span>{t("potatoVariety") || "Potato Variety"}</span>
+          <span>{t("potatoVariety") || "Variety"}</span>
           <span>{t("location") || "Location"}</span>
           <span className="text-right">{t("originalSize") || "Original"}</span>
           <span className="text-right">{t("remaining") || "Remaining"}</span>
@@ -175,7 +175,10 @@ export function FarmerLotGroup({
             const paidCharge = lotPaidCharge;
             const dueCharge = lotDueCharge;
             const chamberName = chamberMap[lot.chamberId] || "Unknown";
-            const locationStr = `${chamberName} - ${t("floor") || "Floor"} ${lot.floor}, ${t("position")} ${lot.position}`;
+            const chamberAbbrev = /chamber/i.test(chamberName)
+              ? chamberName.replace(/chamber\s*/i, "Ch-")
+              : `Ch-${chamberName}`;
+            const locationStr = `${chamberAbbrev}, FL-${lot.floor}, ${lot.position}`;
 
             return (
               <div key={lot.id}>
@@ -210,7 +213,7 @@ export function FarmerLotGroup({
                   <span className="truncate" data-testid={`cell-variety-${lot.id}`}>
                     {lot.type}
                   </span>
-                  <span className="truncate" data-testid={`cell-location-${lot.id}`}>
+                  <span className="whitespace-nowrap" data-testid={`cell-location-${lot.id}`}>
                     {locationStr}
                   </span>
                   <span className="text-right" data-testid={`cell-originalsize-${lot.id}`}>
