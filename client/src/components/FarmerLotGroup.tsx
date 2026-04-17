@@ -115,7 +115,7 @@ export function FarmerLotGroup({
           </span>
         </div>
         <div className="text-xs text-muted-foreground ml-auto" data-testid={`text-farmer-summary-${farmerKey}`}>
-          {lots.length} {lots.length === 1 ? "lot" : "lots"} · {remainingBags}/{totalBags} {t("bags") || "bags"}
+          {lots.length} {lots.length === 1 ? t("lot") : t("lots")} · {remainingBags}/{totalBags} {t("bags") || "bags"}
         </div>
       </div>
 
@@ -141,7 +141,7 @@ export function FarmerLotGroup({
             const paidCharge = lotPaidCharge;
             const dueCharge = lotDueCharge;
             const chamberName = chamberMap[lot.chamberId] || "Unknown";
-            const locationStr = `${chamberName} - ${t("floor") || "Floor"} ${lot.floor}, Pos ${lot.position}`;
+            const locationStr = `${chamberName} - ${t("floor") || "Floor"} ${lot.floor}, ${t("position")} ${lot.position}`;
 
             return (
               <div key={lot.id}>
