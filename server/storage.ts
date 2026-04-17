@@ -4006,53 +4006,73 @@ export class DatabaseStorage implements IStorage {
   }
 
   async assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number> {
-    // Get the sale to find its coldStorageId
-    const [sale] = await db.select()
-      .from(salesHistory)
-      .where(eq(salesHistory.id, saleId));
-    
-    if (!sale) {
-      throw new Error("Sale not found");
-    }
-    
-    // Check if bill number already assigned
-    const existingBillNumber = billType === "coldStorage" 
-      ? sale.coldStorageBillNumber 
-      : sale.salesBillNumber;
-    
-    if (existingBillNumber) {
-      return existingBillNumber;
-    }
-    
-    // Get the current bill number (before incrementing)
-    const coldStorage = await this.getColdStorage(sale.coldStorageId);
-    if (!coldStorage) {
-      throw new Error("Cold storage not found");
-    }
-    
-    const billNumber = billType === "coldStorage" 
-      ? (coldStorage.nextColdStorageBillNumber ?? 1)
-      : (coldStorage.nextSalesBillNumber ?? 1);
-    
-    // Increment the counter for the next assignment
-    await db.update(coldStorages)
-      .set(
-        billType === "coldStorage" 
-          ? { nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 0) + 1` }
-          : { nextSalesBillNumber: sql`COALESCE(${coldStorages.nextSalesBillNumber}, 0) + 1` }
-      )
-      .where(eq(coldStorages.id, sale.coldStorageId));
-    
-    // Update the sale with the assigned bill number
-    await db.update(salesHistory)
-      .set(
-        billType === "coldStorage" 
-          ? { coldStorageBillNumber: billNumber }
-          : { salesBillNumber: billNumber }
-      )
-      .where(eq(salesHistory.id, saleId));
-    
-    return billNumber;
+    // Concurrency-safe assignment: wraps the (read existing → atomically
+    // bump counter → conditionally write back) trio in a single
+    // transaction. The counter increment uses UPDATE … RETURNING so two
+    // concurrent calls cannot both read the same value and produce
+    // duplicate bill numbers across different sales.
+    return await db.transaction(async (tx) => {
+      const [sale] = await tx.select()
+        .from(salesHistory)
+        .where(eq(salesHistory.id, saleId));
+      if (!sale) {
+        throw new Error("Sale not found");
+      }
+
+      const existingBillNumber = billType === "coldStorage"
+        ? sale.coldStorageBillNumber
+        : sale.salesBillNumber;
+      if (existingBillNumber) {
+        return existingBillNumber;
+      }
+
+      // Atomic increment — returns the post-increment counter value.
+      // Postgres serialises updates on the same row, so concurrent
+      // callers each receive a unique value here.
+      const counterRow = billType === "coldStorage"
+        ? await tx.update(coldStorages)
+            .set({ nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 1) + 1` })
+            .where(eq(coldStorages.id, sale.coldStorageId))
+            .returning({ next: coldStorages.nextColdStorageBillNumber })
+        : await tx.update(coldStorages)
+            .set({ nextSalesBillNumber: sql`COALESCE(${coldStorages.nextSalesBillNumber}, 1) + 1` })
+            .where(eq(coldStorages.id, sale.coldStorageId))
+            .returning({ next: coldStorages.nextSalesBillNumber });
+
+      if (counterRow.length === 0 || counterRow[0].next == null) {
+        throw new Error("Cold storage not found");
+      }
+      const billNumber = (counterRow[0].next as number) - 1;
+
+      // Conditional write — only assign if still null. If two callers
+      // race for the SAME saleId, the loser's increment is wasted (a
+      // skipped number) but no duplicate bill is ever assigned.
+      const wrote = billType === "coldStorage"
+        ? await tx.update(salesHistory)
+            .set({ coldStorageBillNumber: billNumber })
+            .where(and(eq(salesHistory.id, saleId), isNull(salesHistory.coldStorageBillNumber)))
+            .returning({ id: salesHistory.id })
+        : await tx.update(salesHistory)
+            .set({ salesBillNumber: billNumber })
+            .where(and(eq(salesHistory.id, saleId), isNull(salesHistory.salesBillNumber)))
+            .returning({ id: salesHistory.id });
+
+      if (wrote.length > 0) {
+        return billNumber;
+      }
+
+      // Lost the race — re-read and return whichever number won.
+      const [refetched] = await tx.select()
+        .from(salesHistory)
+        .where(eq(salesHistory.id, saleId));
+      const winner = billType === "coldStorage"
+        ? refetched?.coldStorageBillNumber
+        : refetched?.salesBillNumber;
+      if (winner == null) {
+        throw new Error("Bill number assignment failed");
+      }
+      return winner;
+    });
   }
 
   async assignLotBillNumber(lotId: string): Promise<number> {

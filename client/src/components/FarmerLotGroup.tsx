@@ -224,41 +224,45 @@ export function FarmerLotGroup({
             const rowCount = Math.max(1, sales.length);
 
             // Build the right-half cells for a given sale (or empty placeholder
-            // when the lot has no sales).
-            const renderRightCells = (sale: SaleSummary | undefined, rowKey: string) => (
-              <>
-                <span
-                  className={`${RIGHT_HALF_START} text-right tabular-nums`}
-                  data-testid={`cell-exited-sold-${lot.id}-${rowKey}`}
-                >
-                  {sale ? `${sale.totalExited} / ${sale.quantitySold}` : "-"}
-                </span>
-                <span
-                  className="truncate"
-                  title={sale ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ") : ""}
-                  data-testid={`cell-exit-dates-${lot.id}-${rowKey}`}
-                >
-                  {sale && sale.exits.length > 0
-                    ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ")
-                    : "-"}
-                </span>
-                <span
-                  className="truncate font-mono"
-                  title={sale ? sale.exits.map(e => `#${e.billNumber}`).join(", ") : ""}
-                  data-testid={`cell-exit-bills-${lot.id}-${rowKey}`}
-                >
-                  {sale && sale.exits.length > 0
-                    ? sale.exits.map(e => `#${e.billNumber}`).join(", ")
-                    : "-"}
-                </span>
-                <span
-                  className="text-right font-mono tabular-nums"
-                  data-testid={`cell-cold-bill-${lot.id}-${rowKey}`}
-                >
-                  {sale && sale.coldStorageBillNumber != null ? `#${sale.coldStorageBillNumber}` : "-"}
-                </span>
-              </>
-            );
+            // when the lot has no sales). Test IDs key off `saleId` per spec;
+            // empty placeholder rows fall back to `empty-${lot.id}`.
+            const renderRightCells = (sale: SaleSummary | undefined) => {
+              const tid = sale ? sale.saleId : `empty-${lot.id}`;
+              return (
+                <>
+                  <span
+                    className={`${RIGHT_HALF_START} text-right tabular-nums`}
+                    data-testid={`cell-exited-sold-${tid}`}
+                  >
+                    {sale ? `${sale.totalExited} / ${sale.quantitySold}` : "-"}
+                  </span>
+                  <span
+                    className="truncate"
+                    title={sale ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ") : ""}
+                    data-testid={`cell-exit-dates-${tid}`}
+                  >
+                    {sale && sale.exits.length > 0
+                      ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ")
+                      : "-"}
+                  </span>
+                  <span
+                    className="truncate font-mono"
+                    title={sale ? sale.exits.map(e => `#${e.billNumber}`).join(", ") : ""}
+                    data-testid={`cell-exit-bills-${tid}`}
+                  >
+                    {sale && sale.exits.length > 0
+                      ? sale.exits.map(e => `#${e.billNumber}`).join(", ")
+                      : "-"}
+                  </span>
+                  <span
+                    className="text-right font-mono tabular-nums"
+                    data-testid={`cell-cold-bill-${tid}`}
+                  >
+                    {sale && sale.coldStorageBillNumber != null ? `#${sale.coldStorageBillNumber}` : "-"}
+                  </span>
+                </>
+              );
+            };
 
             return (
               <div key={lot.id}>
@@ -303,7 +307,7 @@ export function FarmerLotGroup({
                   <span className="text-right font-bold text-chart-1" data-testid={`cell-remaining-${lot.id}`}>
                     {lot.remainingSize}
                   </span>
-                  {renderRightCells(sales[0], "0")}
+                  {renderRightCells(sales[0])}
                 </button>
 
                 {/* Continuation rows — one per additional sale. Left half
@@ -321,7 +325,7 @@ export function FarmerLotGroup({
                       data-testid={`row-lot-${lot.id}-sale-${idx}`}
                     >
                       <span /><span /><span /><span /><span /><span /><span /><span />
-                      {renderRightCells(sales[idx], String(idx))}
+                      {renderRightCells(sales[idx])}
                     </div>
                   );
                 })}
