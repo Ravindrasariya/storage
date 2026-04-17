@@ -263,6 +263,20 @@ export default function StockRegister() {
     }
   }, [hasSearched, displayedLots.length, totalLotCount, lotsFilterParams]);
 
+  // Auto-fetch when all currently-loaded lots belong to a single farmer that
+  // would otherwise be entirely held back by the group-boundary safety logic.
+  useEffect(() => {
+    if (hasSearched || isLoadingMore) return;
+    if (displayedLots.length === 0 || displayedLots.length >= totalLotCount) return;
+    const firstKey = `${displayedLots[0].contactNumber || ""}|${displayedLots[0].farmerName || ""}`;
+    const allSameFarmer = displayedLots.every(
+      (l) => `${l.contactNumber || ""}|${l.farmerName || ""}` === firstKey,
+    );
+    if (allSameFarmer) {
+      loadMoreLots();
+    }
+  }, [displayedLots, totalLotCount, hasSearched, isLoadingMore, loadMoreLots]);
+
   // Scroll handler for infinite scroll — triggers load when near bottom of container
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -1822,11 +1836,6 @@ export default function StockRegister() {
           // so a farmer's lots are never split across the loaded/unloaded boundary.
           const moreToLoad = !hasSearched && displayedLots.length < totalLotCount;
           const visibleGroups = moreToLoad ? farmerGroups.slice(0, -1) : farmerGroups;
-          // If the only loaded group is being held back, immediately fetch the next page
-          // so the user is not stuck looking at an empty list. Defer to avoid setState in render.
-          if (moreToLoad && visibleGroups.length === 0 && !isLoadingMore) {
-            setTimeout(() => loadMoreLots(), 0);
-          }
 
           return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto" ref={scrollContainerRef} onScroll={handleScroll}>
