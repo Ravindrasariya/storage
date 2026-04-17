@@ -163,7 +163,7 @@ export function FarmerLotGroup({
                     )}
                   </span>
                   <span className="font-mono truncate" data-testid={`cell-receipt-${lot.id}`}>
-                    {lot.entryBillNumber || "-"}
+                    {lot.lotNo || "-"}
                   </span>
                   <span className="truncate" data-testid={`cell-marka-${lot.id}`}>
                     {lot.marka || "-"}
@@ -187,9 +187,10 @@ export function FarmerLotGroup({
                   </span>
                 </button>
 
-                {/* Expanded details — ALWAYS rendered for searchability; hidden via CSS when collapsed */}
+                {/* Expanded details — ALWAYS rendered for searchability; hidden via CSS when collapsed.
+                    Spans the FULL row width (compact rows above are constrained to the left half). */}
                 <div
-                  className={`bg-muted/20 border-l-2 border-primary/30 transition-all overflow-hidden ${
+                  className={`w-full bg-muted/20 border-l-2 border-primary/30 transition-all overflow-hidden ${
                     isExpanded ? "max-h-[1000px] py-3 px-3" : "max-h-0 py-0 px-3 opacity-0"
                   }`}
                   aria-hidden={!isExpanded}
