@@ -1587,7 +1587,7 @@ export default function StockRegister() {
           </TabsList>
 
           {searchType === "phone" ? (
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <div className="relative flex-1">
                 <Input
                   placeholder="Enter phone number..."
@@ -1623,6 +1623,21 @@ export default function StockRegister() {
                 )}
               </div>
               {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
+              <div className="flex items-center gap-1 sm:ml-auto">
+                <Checkbox
+                  id="checkbox-up-for-sale-phone"
+                  checked={upForSaleOnly}
+                  onCheckedChange={(checked) => setUpForSaleOnly(!!checked)}
+                  data-testid="checkbox-up-for-sale-only-phone"
+                />
+                <Label
+                  htmlFor="checkbox-up-for-sale-phone"
+                  className="text-sm whitespace-nowrap cursor-pointer flex items-center gap-1"
+                >
+                  <ShoppingCart className="h-3 w-3" />
+                  {t("upForSale")}
+                </Label>
+              </div>
             </div>
           ) : searchType === "farmerName" ? (
             <div className="flex flex-col sm:flex-row sm:flex-nowrap gap-2 sm:gap-3">
@@ -1684,6 +1699,21 @@ export default function StockRegister() {
                   </Button>
                 </div>
               )}
+              <div className="flex items-center gap-1 sm:ml-auto">
+                <Checkbox
+                  id="checkbox-up-for-sale-farmer"
+                  checked={upForSaleOnly}
+                  onCheckedChange={(checked) => setUpForSaleOnly(!!checked)}
+                  data-testid="checkbox-up-for-sale-only-farmer"
+                />
+                <Label
+                  htmlFor="checkbox-up-for-sale-farmer"
+                  className="text-sm whitespace-nowrap cursor-pointer flex items-center gap-1"
+                >
+                  <ShoppingCart className="h-3 w-3" />
+                  {t("upForSale")}
+                </Label>
+              </div>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
@@ -1741,6 +1771,21 @@ export default function StockRegister() {
                 </Select>
               )}
               {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
+              <div className="flex items-center gap-1 sm:ml-auto">
+                <Checkbox
+                  id="checkbox-up-for-sale-lot"
+                  checked={upForSaleOnly}
+                  onCheckedChange={(checked) => setUpForSaleOnly(!!checked)}
+                  data-testid="checkbox-up-for-sale-only-lot"
+                />
+                <Label
+                  htmlFor="checkbox-up-for-sale-lot"
+                  className="text-sm whitespace-nowrap cursor-pointer flex items-center gap-1"
+                >
+                  <ShoppingCart className="h-3 w-3" />
+                  {t("upForSale")}
+                </Label>
+              </div>
             </div>
           )}
 
@@ -1793,7 +1838,7 @@ export default function StockRegister() {
                   type="date"
                   value={filterEntryDate}
                   onChange={(e) => setFilterEntryDate(e.target.value)}
-                  className="w-36 h-8 text-sm"
+                  className="w-32 h-8 text-sm"
                   data-testid="input-filter-entry-date"
                 />
                 {filterEntryDate && (
@@ -1806,24 +1851,8 @@ export default function StockRegister() {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-1">
-                <Checkbox
-                  id="checkbox-up-for-sale-only"
-                  checked={upForSaleOnly}
-                  onCheckedChange={(checked) => setUpForSaleOnly(!!checked)}
-                  data-testid="checkbox-up-for-sale-only"
-                />
-                <Label
-                  htmlFor="checkbox-up-for-sale-only"
-                  className="text-sm whitespace-nowrap cursor-pointer flex items-center gap-1"
-                >
-                  <ShoppingCart className="h-3 w-3" />
-                  {t("upForSale")}
-                </Label>
-              </div>
             </div>
-            <div className="flex items-center gap-2 sm:border-l sm:pl-2">
-              <ArrowUpDown className="h-4 w-4 text-muted-foreground hidden sm:block" />
+            <div className="flex items-center gap-1.5 sm:border-l sm:pl-2">
               <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
               <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
                 <SelectTrigger className="w-36" data-testid="select-sort-by">
