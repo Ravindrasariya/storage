@@ -293,7 +293,7 @@ export function FarmerLotGroup({
                       : "—"}
                   </span>
                   <span
-                    className="text-center truncate font-mono text-xs tabular-nums tracking-tight"
+                    className="text-center truncate font-mono tabular-nums tracking-tight"
                     title={sale ? sale.exits.map(e => String(e.billNumber)).join(", ") : ""}
                     data-testid={`cell-exit-bills-${tid}`}
                   >
