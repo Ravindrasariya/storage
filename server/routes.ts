@@ -739,9 +739,18 @@ export async function registerRoutes(
         lots = lots.filter((lot) => lot.totalDueCharge && lot.totalDueCharge > 0);
       }
 
-      // Apply up-for-sale filter (lots flagged as up-for-sale)
+      // Apply up-for-sale filter (lots flagged as up-for-sale).
+      // Mirror the canonical filter used by getUpForSaleLots: also exclude
+      // lots whose remaining bags is 0 or whose status is already "sold",
+      // so any future write path that misses the invariant cannot leak
+      // ghost lots into this search.
       if (upForSale === "true") {
-        lots = lots.filter((lot) => lot.upForSale === 1);
+        lots = lots.filter(
+          (lot) =>
+            lot.upForSale === 1 &&
+            lot.remainingSize > 0 &&
+            lot.saleStatus !== "sold",
+        );
       }
       
       // Sort by lot number in ascending order
@@ -933,7 +942,12 @@ export async function registerRoutes(
       }
 
       // Update the lot (including lotNo and entrySequence if changed)
-      const updateData: Partial<typeof validated & { entrySequence?: number; remainingSize?: number }> = { ...validated };
+      const updateData: Partial<typeof validated & {
+        entrySequence?: number;
+        remainingSize?: number;
+        saleStatus?: string;
+        soldAt?: Date;
+      }> = { ...validated };
 
       // Adjust remainingSize by the same delta when size changes
       if (validated.size !== undefined && validated.size !== lot.size) {
@@ -943,7 +957,18 @@ export async function registerRoutes(
       if (validated.lotNo && validated.lotNo !== lot.lotNo) {
         updateData.entrySequence = parseInt(validated.lotNo, 10);
       }
-      
+
+      // Tag fully-depleted lots as sold so they don't leak into Up-for-Sale.
+      // If this update causes remainingSize to land at 0 (or below), mark the
+      // lot sold and clear its up-for-sale flag — mirroring what the Sale
+      // endpoint does when a sale brings remaining to 0.
+      const effectiveRemaining = updateData.remainingSize ?? lot.remainingSize;
+      if (effectiveRemaining <= 0 && lot.saleStatus !== "sold") {
+        updateData.saleStatus = "sold";
+        updateData.soldAt = new Date();
+        updateData.upForSale = 0;
+      }
+
       const updatedLot = await storage.updateLot(req.params.id, updateData);
 
       // If farmer details changed, update all related salesHistory entries
