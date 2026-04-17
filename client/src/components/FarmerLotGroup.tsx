@@ -241,7 +241,7 @@ export function FarmerLotGroup({
           {/* Foreground rows — sit on top of the background bands. */}
           <div className="relative">
         {/* Column headers */}
-        <div className={`${FULL_ROW_GRID} px-2 py-2 text-xs font-medium text-muted-foreground border-b`}>
+        <div className={`${FULL_ROW_GRID} px-2 py-2 text-xs font-bold text-muted-foreground border-b`}>
           <span></span>
           <span>{t("lotNo")}</span>
           <span>{t("marka") || "Marka"}</span>
