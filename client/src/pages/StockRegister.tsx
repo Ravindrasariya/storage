@@ -836,7 +836,10 @@ export default function StockRegister() {
 
   const STOCK_REPORT_CSS = `
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+    body {
+      font-family: Arial, sans-serif; padding: 20px; color: #333;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
     .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
     .main-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
     .sub-title { font-size: 16px; color: #666; }
@@ -850,28 +853,74 @@ export default function StockRegister() {
     .blue { color: #2563eb; }
     .green { color: #16a34a; }
     .red { color: #dc2626; }
-    .lot-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; page-break-inside: avoid; }
-    .lot-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
-    .farmer-name { font-size: 16px; font-weight: bold; }
-    .lot-badges { display: flex; gap: 5px; }
-    .badge { background: #e5e7eb; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: capitalize; }
-    .quality-good { background: #dcfce7; color: #166534; }
-    .quality-medium { background: #fef3c7; color: #92400e; }
-    .quality-poor { background: #fee2e2; color: #991b1b; }
-    .lot-details { font-size: 13px; }
-    .detail-row { display: grid; grid-template-columns: 100px 1fr 100px 1fr; gap: 5px; margin-bottom: 5px; }
-    .label { color: #666; }
-    .value { font-weight: 500; }
-    .charges-row { display: flex; gap: 20px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; font-size: 13px; }
-    .receipt-badge { font-size: 11px; color: #555; background: #f0f0f0; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
-    .badge-sold { background: #f3e8ff; color: #6b21a8; }
-    .badge-paid { background: #dcfce7; color: #166534; }
-    .badge-due { background: #fef3c7; color: #92400e; }
-    .badge-base-billed { background: #ccfbf1; color: #115e59; }
-    .remarks-row { margin-top: 6px; font-size: 12px; color: #666; font-style: italic; }
+    /* Per-farmer card */
+    .farmer-card {
+      border: 1px solid #ddd; border-radius: 8px; padding: 12px;
+      margin-bottom: 14px; page-break-inside: avoid; break-inside: avoid;
+    }
+    .farmer-header {
+      display: flex; flex-wrap: wrap; align-items: center;
+      gap: 4px 20px; margin-bottom: 8px; padding-bottom: 8px;
+      border-bottom: 1px solid #eee;
+    }
+    .farmer-name { font-size: 15px; font-weight: bold; }
+    .farmer-meta { font-size: 12px; color: #555; }
+    .farmer-meta-mono { font-family: monospace; }
+    .farmer-summary { font-size: 11px; color: #666; margin-left: auto; }
+    .farmer-charges {
+      display: flex; flex-wrap: wrap; gap: 6px 20px;
+      margin-bottom: 8px; padding-bottom: 8px;
+      border-bottom: 1px solid #eee; font-size: 12px;
+    }
+    .farmer-charges .ch-label { color: #666; }
+    .farmer-charges .ch-blue { font-weight: bold; color: #2563eb; }
+    .farmer-charges .ch-green { font-weight: bold; color: #16a34a; }
+    .farmer-charges .ch-red { font-weight: bold; color: #dc2626; }
+    /* 11-column lot table */
+    .lot-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 11px; table-layout: fixed;
+    }
+    .lot-table th, .lot-table td {
+      padding: 5px 4px; vertical-align: middle;
+      border-bottom: 1px solid #eee; overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .lot-table th {
+      font-weight: bold; color: #333; font-size: 10px;
+      text-align: left; border-bottom: 1px solid #bbb;
+    }
+    .lot-table th.t-right { text-align: right; }
+    .lot-table th.t-center { text-align: center; }
+    /* Two-tone half-bands. !important + print-color-adjust ensure
+       browsers do not strip these background colours when printing. */
+    .lh {
+      background-color: #e0f2fe !important;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .rh {
+      background-color: #fef3c7 !important;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .t-right { text-align: right; }
+    .t-center { text-align: center; }
+    .mono { font-family: monospace; }
+    .tnum { font-variant-numeric: tabular-nums; }
+    .bold { font-weight: bold; }
+    .small { font-size: 10px; }
+    .tight { letter-spacing: -0.02em; }
+    .col-remaining { color: #ea580c; font-weight: bold; }
+    .pill {
+      display: inline-block; padding: 1px 6px; border-radius: 10px;
+      font-size: 10px; text-transform: capitalize;
+      background: #e5e7eb; color: #374151;
+    }
+    .pill-wafer  { background: #dbeafe; color: #1e40af; }
+    .pill-seed   { background: #dcfce7; color: #166534; }
+    .pill-ration { background: #fce7f3; color: #9d174d; }
     @media print {
       body { padding: 10px; }
-      .lot-card { break-inside: avoid; }
+      .farmer-card { break-inside: avoid; page-break-inside: avoid; }
     }
   `;
 
@@ -880,16 +929,26 @@ export default function StockRegister() {
     if (lots.length === 0 || !summaryTotals) return null;
 
     const coldStoreName = coldStorage?.name || "Cold Storage";
-    const effChargeUnit = coldStorage?.chargeUnit || "bag";
     const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-    const formatDate = (d: string | Date | null | undefined) => {
-      if (!d) return "";
-      const dt = new Date(d);
-      if (isNaN(dt.getTime())) return "";
-      return `${dt.getDate().toString().padStart(2, '0')}/${(dt.getMonth() + 1).toString().padStart(2, '0')}/${dt.getFullYear()}`;
+
+    // Format an exit date as IST `dd-mm-yyyy` (matches FarmerLotGroup).
+    const fmtDateShort = (d: string | Date | null | undefined) => {
+      if (!d) return "—";
+      const dt = typeof d === "string" ? new Date(d) : d;
+      if (isNaN(dt.getTime())) return "—";
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).formatToParts(dt);
+      const get = (tp: string) => parts.find(p => p.type === tp)?.value || "";
+      return `${get("day")}-${get("month")}-${get("year")}`;
     };
 
-    const lotCards = lots.map((lot) => {
+    // Pre-compute per-lot paid/due/expected so we can both group and
+    // aggregate without re-walking allSalesHistory twice.
+    const computed = lots.map((lot) => {
       let lotPaidCharge = 0;
       let lotDueCharge = 0;
       if (allSalesHistory) {
@@ -908,75 +967,187 @@ export default function StockRegister() {
         }
       }
       const expectedColdCharge = calcExpectedCharge(lot);
-      const chamberName = chamberMap[lot.chamberId] || "Unknown";
+      return { lot, lotPaidCharge, lotDueCharge, expectedColdCharge };
+    });
 
-      const receiptHtml = lot.entryBillNumber ? `<span class="receipt-badge">Receipt #${lot.entryBillNumber}</span>` : '';
-      const soldBadge = lot.saleStatus === "sold" ? `<span class="badge badge-sold">Sold</span>` : '';
-      const paidDueBadge = (lotPaidCharge > 0 || lotDueCharge > 0)
-        ? (lotPaidCharge > 0 && lotDueCharge === 0)
-          ? `<span class="badge badge-paid">Paid</span>`
-          : `<span class="badge badge-due">Due</span>`
-        : '';
-      const baseBilledBadge = lot.baseColdChargesBilled === 1 ? `<span class="badge badge-base-billed">Base Charges Billed</span>` : '';
-      const markaHtml = lot.marka ? ` &nbsp; Marka: <strong>${lot.marka}</strong>` : '';
-      const hasNetWeight = effChargeUnit === "quintal" && lot.netWeight && lot.netWeight > 0;
-      const entryDateStr = formatDate(lot.entryDate);
-      const remarksHtml = lot.remarks ? `<div class="remarks-row">"${lot.remarks}"</div>` : '';
+    // Group by farmer (contactNumber|farmerName), preserving the
+    // server-provided order. Same key as the on-screen view so the
+    // print mirrors the rendered grouping.
+    type GroupItem = typeof computed[number];
+    const farmerGroups: Array<{
+      key: string;
+      farmerName: string;
+      village: string;
+      tehsil?: string;
+      district?: string;
+      contactNumber: string;
+      items: GroupItem[];
+    }> = [];
+    const groupIndex: Record<string, number> = {};
+    for (const item of computed) {
+      const k = `${item.lot.contactNumber || ""}|${item.lot.farmerName || ""}`;
+      if (groupIndex[k] === undefined) {
+        groupIndex[k] = farmerGroups.length;
+        farmerGroups.push({
+          key: k,
+          farmerName: item.lot.farmerName,
+          village: item.lot.village,
+          tehsil: item.lot.tehsil,
+          district: item.lot.district,
+          contactNumber: item.lot.contactNumber,
+          items: [item],
+        });
+      } else {
+        farmerGroups[groupIndex[k]].items.push(item);
+      }
+    }
 
-      return `
-        <div class="lot-card">
-          ${receiptHtml ? `<div style="text-align:right;margin-bottom:4px">${receiptHtml}</div>` : ''}
-          <div class="lot-header">
-            <span class="farmer-name">${lot.farmerName}</span>
-            <span class="lot-badges">
-              ${lot.quality ? `<span class="badge quality-${lot.quality}">${t(lot.quality) || lot.quality}</span>` : ''}
-              ${lot.bagType ? `<span class="badge">${lot.bagTypeLabel || t(lot.bagType) || lot.bagType}</span>` : ''}
-              ${lot.potatoSize ? `<span class="badge">${t(lot.potatoSize) || lot.potatoSize}</span>` : ''}
-              ${soldBadge}${paidDueBadge}${baseBilledBadge}
-            </span>
+    const escapeHtml = (s: unknown) => String(s ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+    const bagTypePill = (bagType: string) => {
+      const cls = bagType === "wafer"
+        ? "pill-wafer"
+        : bagType === "seed"
+          ? "pill-seed"
+          : bagType === "Ration"
+            ? "pill-ration"
+            : "";
+      const label = t(bagType) || bagType;
+      return `<span class="pill ${cls}">${escapeHtml(label)}</span>`;
+    };
+
+    const farmerCards = farmerGroups.map((group) => {
+      const totalBags = group.items.reduce((s, x) => s + (x.lot.size || 0), 0);
+      const remainingBags = group.items.reduce((s, x) => s + (x.lot.remainingSize || 0), 0);
+      const totalExpected = group.items.reduce((s, x) => s + (x.expectedColdCharge || 0), 0);
+      const totalPaid = group.items.reduce((s, x) => s + (x.lotPaidCharge || 0), 0);
+      const totalDue = group.items.reduce((s, x) => s + (x.lotDueCharge || 0), 0);
+      const addressLine = [group.village, group.tehsil, group.district].filter(Boolean).join(", ");
+      const lotWord = group.items.length === 1 ? (t("lot") || "lot") : (t("lots") || "lots");
+
+      const headerHtml = `
+        <div class="farmer-header">
+          <span class="farmer-name">${escapeHtml(group.farmerName)}</span>
+          ${addressLine ? `<span class="farmer-meta">${escapeHtml(addressLine)}</span>` : ''}
+          ${group.contactNumber ? `<span class="farmer-meta farmer-meta-mono">${escapeHtml(group.contactNumber)}</span>` : ''}
+          <span class="farmer-summary">
+            ${group.items.length} ${escapeHtml(lotWord)} · ${remainingBags}/${totalBags} ${escapeHtml(t("bags") || "bags")}
+          </span>
+        </div>
+      `;
+
+      const chargesHtml = `
+        <div class="farmer-charges">
+          ${totalExpected > 0 ? `<div>
+            <span class="ch-label">${escapeHtml(t("expectedColdCharges") || "Expected Billed Charges")}:</span>
+            <span class="ch-blue">${formatCurrency(totalExpected)}</span>
+          </div>` : ''}
+          <div>
+            <span class="ch-label">${escapeHtml(t("coldChargesPaid") || "Cold Charges Paid")}:</span>
+            <span class="ch-green">${formatCurrency(totalPaid)}</span>
           </div>
-          <div class="lot-details">
-            <div class="detail-row">
-              <span class="label">Lot No:</span>
-              <span class="value">${lot.lotNo}${markaHtml}</span>
-              <span class="label">Phone:</span>
-              <span class="value">${lot.contactNumber || "-"}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Village:</span>
-              <span class="value">${lot.village || "-"}</span>
-              <span class="label">Chamber:</span>
-              <span class="value">${chamberName} - Floor ${lot.floor}, Pos ${lot.position}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Potato Variety:</span>
-              <span class="value">${lot.type || "-"}</span>
-              <span class="label">Bag Type:</span>
-              <span class="value">${lot.bagTypeLabel || lot.bagType || "-"}</span>
-            </div>
-            ${(entryDateStr || lot.potatoType) ? `<div class="detail-row">
-              ${entryDateStr ? `<span class="label">Entry Date:</span><span class="value">${entryDateStr}</span>` : `<span></span><span></span>`}
-              ${lot.potatoType ? `<span class="label">Potato Type:</span><span class="value" style="text-transform:capitalize">${lot.potatoType}</span>` : `<span></span><span></span>`}
-            </div>` : ''}
-            <div class="detail-row">
-              <span class="label">Bags No.:</span>
-              <span class="value">${lot.size} bags</span>
-              <span class="label">Remaining:</span>
-              <span class="value">${lot.remainingSize} bags</span>
-            </div>
-            ${hasNetWeight ? `<div class="detail-row">
-              <span class="label">Net Weight:</span><span class="value">${lot.netWeight} Kg</span>
-              <span></span><span></span>
-            </div>` : ''}
-            <div class="charges-row">
-              <span><strong>Expected Charges:</strong> <span class="blue">${formatCurrency(expectedColdCharge)}</span></span>
-              <span><strong>Paid:</strong> <span class="green">${formatCurrency(lotPaidCharge)}</span></span>
-              <span><strong>Due:</strong> <span class="red">${formatCurrency(lotDueCharge)}</span></span>
-            </div>
-            ${remarksHtml}
+          <div>
+            <span class="ch-label">${escapeHtml(t("coldChargesDue") || "Cold Charges Due")}:</span>
+            <span class="ch-red">${formatCurrency(totalDue)}</span>
           </div>
         </div>
       `;
+
+      // 11-column lot table. LEFT 7 columns share `.lh` (sky-blue),
+      // RIGHT 4 columns share `.rh` (amber). Multi-sale lots use
+      // `rowspan` on the LEFT cells; lots with no sales render the
+      // RIGHT cells once with em-dashes.
+      const lotRows = group.items.map(({ lot }) => {
+        const chamberName = chamberMap[lot.chamberId] || "Unknown";
+        const chamberAbbrev = /chamber/i.test(chamberName)
+          ? chamberName.replace(/chamber\s*/i, "Ch-")
+          : `Ch-${chamberName}`;
+        const locationStr = `${chamberAbbrev}, FL-${lot.floor}, ${lot.position}`;
+        const sales = (salesByLot && salesByLot[lot.id]) || [];
+        const rowCount = Math.max(1, sales.length);
+        const rs = rowCount > 1 ? ` rowspan="${rowCount}"` : '';
+
+        const renderRightCells = (sale: SaleSummary | undefined) => {
+          if (!sale) {
+            return `
+              <td class="rh t-center tnum">—</td>
+              <td class="rh t-center small tnum">—</td>
+              <td class="rh t-center mono tnum tight">—</td>
+              <td class="rh t-center mono tnum">—</td>
+            `;
+          }
+          const exitDates = sale.exits.length > 0
+            ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ")
+            : "—";
+          const exitBills = sale.exits.length > 0
+            ? sale.exits.map(e => String(e.billNumber)).join(", ")
+            : "—";
+          const coldBill = sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—";
+          return `
+            <td class="rh t-center tnum">${sale.totalExited} / ${sale.quantitySold}</td>
+            <td class="rh t-center small tnum">${escapeHtml(exitDates)}</td>
+            <td class="rh t-center mono tnum tight">${escapeHtml(exitBills)}</td>
+            <td class="rh t-center mono tnum">${escapeHtml(coldBill)}</td>
+          `;
+        };
+
+        const firstRow = `
+          <tr>
+            <td class="lh mono"${rs}>${escapeHtml(lot.lotNo || "-")}</td>
+            <td class="lh"${rs}>${escapeHtml(lot.marka || "-")}</td>
+            <td class="lh"${rs}>${bagTypePill(lot.bagType)}</td>
+            <td class="lh"${rs}>${escapeHtml(lot.type || "-")}</td>
+            <td class="lh"${rs}>${escapeHtml(locationStr)}</td>
+            <td class="lh t-right tnum"${rs}>${lot.size}</td>
+            <td class="lh t-right col-remaining"${rs}>${lot.remainingSize}</td>
+            ${renderRightCells(sales[0])}
+          </tr>
+        `;
+        const extraRows = rowCount > 1
+          ? Array.from({ length: rowCount - 1 }).map((_, i) => `
+              <tr>${renderRightCells(sales[i + 1])}</tr>
+            `).join("")
+          : '';
+        return firstRow + extraRows;
+      }).join("");
+
+      const tableHtml = `
+        <table class="lot-table">
+          <colgroup>
+            <col style="width:8%"/>
+            <col style="width:8%"/>
+            <col style="width:8%"/>
+            <col style="width:8%"/>
+            <col style="width:13%"/>
+            <col style="width:6%"/>
+            <col style="width:6%"/>
+            <col style="width:8%"/>
+            <col style="width:13%"/>
+            <col style="width:14%"/>
+            <col style="width:8%"/>
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="lh">${escapeHtml(t("lotNo") || "Lot No")}</th>
+              <th class="lh">${escapeHtml(t("marka") || "Marka")}</th>
+              <th class="lh">${escapeHtml(t("potatoType") || "Potato Type")}</th>
+              <th class="lh">${escapeHtml(t("potatoVariety") || "Variety")}</th>
+              <th class="lh">${escapeHtml(t("location") || "Location")}</th>
+              <th class="lh t-right">${escapeHtml(t("originalSize") || "Bags No.")}</th>
+              <th class="lh t-right">${escapeHtml(t("remaining") || "Remaining")}</th>
+              <th class="rh t-center">${escapeHtml(t("exitedSold") || "Exited / Sold")}</th>
+              <th class="rh t-center">${escapeHtml(t("exitDates") || "Exit Dates")}</th>
+              <th class="rh t-center">${escapeHtml(t("exitBills") || "Exit Bill No(s)")}</th>
+              <th class="rh t-center">${escapeHtml(t("coldBillNo") || "Cold Bill No")}</th>
+            </tr>
+          </thead>
+          <tbody>${lotRows}</tbody>
+        </table>
+      `;
+
+      return `<div class="farmer-card">${headerHtml}${chargesHtml}${tableHtml}</div>`;
     }).join("");
 
     const bodyHtml = `
@@ -1011,7 +1182,7 @@ export default function StockRegister() {
         </div>
       </div>
       <div class="lots-container">
-        ${lotCards}
+        ${farmerCards}
       </div>
     `;
 
