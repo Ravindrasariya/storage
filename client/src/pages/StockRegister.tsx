@@ -1875,7 +1875,7 @@ export default function StockRegister() {
       </Card>
 
       {(() => {
-        const activeChips: { key: string; label: string; onClear: () => void }[] = [];
+        const activeChips: { key: string; label: string; onClear: () => void; extraTestId?: string; extraClearTestId?: string }[] = [];
         if (qualityFilter !== "all") {
           activeChips.push({
             key: "quality",
@@ -1923,6 +1923,8 @@ export default function StockRegister() {
               setChamberFilter("all");
               setFloorFilter("all");
             },
+            extraTestId: "chip-chamber-filter",
+            extraClearTestId: "btn-clear-chamber-filter",
           });
         }
         if (floorFilter !== "all") {
@@ -1932,6 +1934,8 @@ export default function StockRegister() {
             key: "floor",
             label: `${t("floor") || "Floor"}: ${floorLabel}`,
             onClear: () => setFloorFilter("all"),
+            extraTestId: "chip-floor-filter",
+            extraClearTestId: "btn-clear-floor-filter",
           });
         }
         if (activeChips.length === 0) return null;
@@ -1954,7 +1958,7 @@ export default function StockRegister() {
                 key={chip.key}
                 variant="secondary"
                 className="gap-1 pr-1 py-1"
-                data-testid={`chip-filter-${chip.key}`}
+                data-testid={chip.extraTestId || `chip-filter-${chip.key}`}
               >
                 <span>{chip.label}</span>
                 <button
@@ -1962,7 +1966,7 @@ export default function StockRegister() {
                   onClick={chip.onClear}
                   className="ml-0.5 rounded-sm p-0.5 hover-elevate active-elevate-2"
                   aria-label={`Clear ${chip.label}`}
-                  data-testid={`button-clear-chip-${chip.key}`}
+                  data-testid={chip.extraClearTestId || `button-clear-chip-${chip.key}`}
                 >
                   <X className="h-3 w-3" />
                 </button>
