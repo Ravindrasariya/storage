@@ -242,15 +242,23 @@ export function UpForSaleList({ saleLots, autoOpenLotId, onAutoOpenHandled }: Up
   };
 
   // Auto-open the partial-sale dialog when navigated here with a lot id
-  // (e.g., from the Stock Register Partial Sale action).
+  // (e.g., from the Stock Register Partial Sale action). If the lot can't be
+  // found in the currently-loaded saleLots (e.g., year filter mismatch on
+  // dashboard), surface a clear toast instead of silently doing nothing.
   useEffect(() => {
     if (!autoOpenLotId || saleLots.length === 0) return;
     const target = saleLots.find((l) => l.id === autoOpenLotId);
     if (target) {
       openSaleDialog(target);
-      onAutoOpenHandled?.();
+    } else {
+      toast({
+        title: t("partialSale"),
+        description: "This lot is not in the current Up For Sale list. Adjust filters and try again.",
+        variant: "destructive",
+      });
     }
-    // openSaleDialog is stable in this component scope; intentionally not in deps
+    onAutoOpenHandled?.();
+    // openSaleDialog/toast/t are stable in scope; intentionally not in deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenLotId, saleLots]);
 
