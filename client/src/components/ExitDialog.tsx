@@ -216,7 +216,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <LogOut className="h-5 w-5" />
@@ -225,7 +225,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs bg-muted/50 p-2 rounded-md">
+            <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-sm bg-muted/50 p-2 rounded-md">
               <div className="truncate">
                 <span className="text-muted-foreground">Receipt:</span> <span className="font-medium">{sale.lotNo}</span>
               </div>
@@ -275,34 +275,34 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
 
             {exits.length > 0 && (
               <div>
-                <h4 className="text-xs font-medium mb-1 text-muted-foreground">{t("exitHistory")}</h4>
-                <ScrollArea className="h-20">
+                <h4 className="text-sm font-medium mb-1 text-muted-foreground">{t("exitHistory")}</h4>
+                <ScrollArea className="h-28">
                   <div className="space-y-1">
                     {exits.map((exit) => (
                       <div
                         key={exit.id}
-                        className="flex items-center justify-between text-xs bg-muted/30 px-2 py-1 rounded"
+                        className="flex items-center justify-between text-sm bg-muted/30 px-2 py-1 rounded"
                       >
                         <span>
-                          <Badge variant="secondary" className="text-[10px] px-1 py-0 mr-1">
+                          <Badge variant="secondary" className="text-xs px-1 py-0 mr-1">
                             #{exit.billNumber || "-"}
                           </Badge>
                           <strong>{exit.bagsExited}</strong> bags - {format(new Date(exit.exitDate), "dd/MM HH:mm")}
                         </span>
                         <div className="flex items-center gap-1">
                           {exit.isReversed === 1 && (
-                            <Badge variant="outline" className="text-destructive text-[10px] px-1 py-0">
+                            <Badge variant="outline" className="text-destructive text-xs px-1 py-0">
                               Rev
                             </Badge>
                           )}
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6"
+                            className="h-7 w-7"
                             onClick={() => handleReprintExit(exit)}
                             data-testid={`button-print-exit-${exit.id}`}
                           >
-                            <Printer className="h-3 w-3" />
+                            <Printer className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </div>
