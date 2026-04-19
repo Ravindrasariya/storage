@@ -30,9 +30,10 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
     queryKey: ["/api/cold-storage"],
   });
 
-  const { data: farmerLedgerList } = useQuery<Array<{ id: string; entityType: string }>>({
+  const { data: farmerLedgerData } = useQuery<{ farmers: Array<{ id: string; entityType: string }> }>({
     queryKey: ["/api/farmer-ledger"],
   });
+  const farmerLedgerList = farmerLedgerData?.farmers;
 
   const { data: allLotsInBatch, isLoading } = useQuery<Lot[]>({
     queryKey: ["/api/lots/by-entry-sequence", lot.entrySequence],

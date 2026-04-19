@@ -70,10 +70,10 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     queryKey: ["/api/cold-storage"],
   });
 
-  const { data: farmerLedgerList } = useQuery<Array<{ id: string; entityType: string }>>({
+  const { data: farmerLedgerData } = useQuery<{ farmers: Array<{ id: string; entityType: string }> }>({
     queryKey: ["/api/farmer-ledger"],
   });
-  const isCompany = !!sale.farmerLedgerId && farmerLedgerList?.find(f => f.id === sale.farmerLedgerId)?.entityType === "company";
+  const isCompany = !!sale.farmerLedgerId && farmerLedgerData?.farmers?.find(f => f.id === sale.farmerLedgerId)?.entityType === "company";
   const partyDetailsLabel = isCompany ? "कंपनी विवरण" : "किसान विवरण";
 
   // Get discount allocated to this specific sale (tracked directly on salesHistory)
