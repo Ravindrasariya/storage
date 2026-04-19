@@ -250,7 +250,7 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
 
               {/* Farmer Details */}
               <div style={{ marginBottom: "10px" }}>
-                <div style={{ fontSize: "12px", fontWeight: "bold", background: "#f0f0f0", padding: "4px 8px", marginBottom: "6px", borderLeft: "3px solid #333" }}>
+                <div style={{ fontSize: "14px", fontWeight: "bold", background: "#f0f0f0", padding: "4px 8px", marginBottom: "6px", borderLeft: "3px solid #333" }}>
                   {partyLabel} विवरण
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 15px" }}>
@@ -287,10 +287,10 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
 
               {/* Lot Details Table */}
               <div style={{ marginBottom: "10px" }}>
-                <div style={{ fontSize: "12px", fontWeight: "bold", background: "#f0f0f0", padding: "4px 8px", marginBottom: "6px", borderLeft: "3px solid #333" }}>
+                <div style={{ fontSize: "14px", fontWeight: "bold", background: "#f0f0f0", padding: "4px 8px", marginBottom: "6px", borderLeft: "3px solid #333" }}>
                   लॉट विवरण
                 </div>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
                     <tr>
                       <th style={thStyle}>#</th>
