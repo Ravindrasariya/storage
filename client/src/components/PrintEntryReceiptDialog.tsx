@@ -30,6 +30,10 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
     queryKey: ["/api/cold-storage"],
   });
 
+  const { data: farmerLedgerList } = useQuery<Array<{ id: string; entityType: string }>>({
+    queryKey: ["/api/farmer-ledger"],
+  });
+
   const { data: allLotsInBatch, isLoading } = useQuery<Lot[]>({
     queryKey: ["/api/lots/by-entry-sequence", lot.entrySequence],
     queryFn: async () => {
@@ -207,6 +211,9 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
 
   const firstLot = lotsInBatch?.[0] || lot;
   const remarksLots = lotsInBatch?.filter(l => l.remarks && l.remarks.trim()) || [];
+  const isCompany = !!firstLot.farmerLedgerId && farmerLedgerList?.find(f => f.id === firstLot.farmerLedgerId)?.entityType === "company";
+  const partyLabel = isCompany ? "कंपनी" : "किसान";
+  const partyNameLabel = isCompany ? "कंपनी का नाम:" : "किसान का नाम:";
 
   const cellStyle = { border: "1px solid #ccc", padding: "4px 6px", textAlign: "left" as const };
   const numCellStyle = { ...cellStyle, textAlign: "right" as const };
@@ -243,11 +250,11 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
               {/* Farmer Details */}
               <div style={{ marginBottom: "10px" }}>
                 <div style={{ fontSize: "12px", fontWeight: "bold", background: "#f0f0f0", padding: "4px 8px", marginBottom: "6px", borderLeft: "3px solid #333" }}>
-                  किसान विवरण
+                  {partyLabel} विवरण
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 15px" }}>
                   <div style={{ display: "flex", gap: "5px" }}>
-                    <span style={{ fontWeight: 600, minWidth: "90px" }}>किसान का नाम:</span>
+                    <span style={{ fontWeight: 600, minWidth: "90px" }}>{partyNameLabel}</span>
                     <span>{firstLot.farmerName}</span>
                   </div>
                   <div style={{ display: "flex", gap: "5px" }}>

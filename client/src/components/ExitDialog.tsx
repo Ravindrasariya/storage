@@ -32,6 +32,12 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     queryKey: ["/api/cold-storage"],
   });
 
+  const { data: farmerLedgerList } = useQuery<Array<{ id: string; entityType: string }>>({
+    queryKey: ["/api/farmer-ledger"],
+  });
+  const isCompany = !!sale?.farmerLedgerId && farmerLedgerList?.find(f => f.id === sale.farmerLedgerId)?.entityType === "company";
+  const partyRowLabel = isCompany ? "कंपनी / Company:" : "किसान / Farmer:";
+
   const { data: exitData, refetch: refetchExits } = useQuery<{ exits: ExitHistory[]; totalExited: number }>({
     queryKey: ["/api/sales-history", sale?.id, "exits"],
     queryFn: async () => {
@@ -380,7 +386,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                   </div>
                 </div>
                 <div className="details-row">
-                  <span className="details-label">किसान / Farmer:</span>
+                  <span className="details-label">{partyRowLabel}</span>
                   <span className="details-value">{sale.farmerName}</span>
                 </div>
                 <div className="details-row">

@@ -70,6 +70,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     queryKey: ["/api/cold-storage"],
   });
 
+  const { data: farmerLedgerList } = useQuery<Array<{ id: string; entityType: string }>>({
+    queryKey: ["/api/farmer-ledger"],
+  });
+  const isCompany = !!sale.farmerLedgerId && farmerLedgerList?.find(f => f.id === sale.farmerLedgerId)?.entityType === "company";
+  const partyDetailsLabel = isCompany ? "कंपनी विवरण" : "किसान विवरण";
+
   // Get discount allocated to this specific sale (tracked directly on salesHistory)
   const discountAllocated = sale.discountAllocated || 0;
   // Actual cash paid = paidAmount - discountAllocated
@@ -274,7 +280,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
       <div className="two-column">
         <div className="section">
-          <div className="section-title">किसान विवरण</div>
+          <div className="section-title">{partyDetailsLabel}</div>
           <div className="info-row">
             <span className="info-label">नाम:</span>
             <span className="info-value">{sale.farmerName}</span>
@@ -453,7 +459,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
 
       <div className="two-column">
         <div className="section">
-          <div className="section-title">किसान विवरण</div>
+          <div className="section-title">{partyDetailsLabel}</div>
           <div className="info-row">
             <span className="info-label">नाम:</span>
             <span className="info-value">{sale.farmerName}</span>
