@@ -2335,77 +2335,6 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
-    // Round-off concession contribution.
-    // Round-off lives on cash_receipts (not per-sale) but reduces what the
-    // payer owes — same accounting effect as a discount. The payer dimension
-    // depends on the sale type:
-    //   - Self sale (isSelfSale=1): dues are tracked under the farmer →
-    //     attribute round-off via cash_receipts.farmer_id.
-    //   - Normal sale: dues are tracked under the buyer/cold_merchant →
-    //     attribute via cash_receipts.buyer_id.
-    // We then distribute each payer's total non-reversed round-off across
-    // that payer's visible sales of the matching dimension, prorated by
-    // paidShare. Round-off totals system-wide are very small (typically
-    // sub-rupee per receipt), so any drift from receipts that paid sales
-    // outside the current filter window stays comfortably within rounding
-    // tolerance for the Cash + Account + Discount ≈ ΣpaidShare invariant.
-    const farmerIds = new Set<string>();
-    const buyerIds = new Set<string>();
-    for (const r of enriched) {
-      if (r.isSelfSale === 1) {
-        if (r.farmerId) farmerIds.add(r.farmerId);
-      } else {
-        if (r.buyerId) buyerIds.add(r.buyerId);
-      }
-    }
-    const roundOffByFarmer = new Map<string, number>();
-    const roundOffByBuyer = new Map<string, number>();
-    if (farmerIds.size > 0 || buyerIds.size > 0) {
-      const orParts: SQL[] = [];
-      if (farmerIds.size > 0) {
-        orParts.push(sql`${cashReceipts.farmerId} IN (${sql.join(Array.from(farmerIds).map(id => sql`${id}`), sql`, `)})`);
-      }
-      if (buyerIds.size > 0) {
-        orParts.push(sql`${cashReceipts.buyerId} IN (${sql.join(Array.from(buyerIds).map(id => sql`${id}`), sql`, `)})`);
-      }
-      const receipts = await db
-        .select({
-          farmerId: cashReceipts.farmerId,
-          buyerId: cashReceipts.buyerId,
-          roundOff: cashReceipts.roundOff,
-        })
-        .from(cashReceipts)
-        .where(and(
-          eq(cashReceipts.coldStorageId, coldStorageId),
-          eq(cashReceipts.isReversed, 0),
-          sql`${cashReceipts.roundOff} > 0`,
-          sql`(${sql.join(orParts, sql` OR `)})`,
-        ));
-      for (const rec of receipts) {
-        const ro = rec.roundOff || 0;
-        if (rec.farmerId) {
-          roundOffByFarmer.set(rec.farmerId, (roundOffByFarmer.get(rec.farmerId) || 0) + ro);
-        } else if (rec.buyerId) {
-          roundOffByBuyer.set(rec.buyerId, (roundOffByBuyer.get(rec.buyerId) || 0) + ro);
-        }
-      }
-    }
-    // Group visible paidShare by payer dimension to allocate round-off
-    // proportionally. Same dimension selection rule as the receipts pull above.
-    const paidShareByFarmer = new Map<string, number>();
-    const paidShareByBuyer = new Map<string, number>();
-    for (const r of enriched) {
-      if (r.isSelfSale === 1) {
-        if (r.farmerId) {
-          paidShareByFarmer.set(r.farmerId, (paidShareByFarmer.get(r.farmerId) || 0) + r.paidShare);
-        }
-      } else {
-        if (r.buyerId) {
-          paidShareByBuyer.set(r.buyerId, (paidShareByBuyer.get(r.buyerId) || 0) + r.paidShare);
-        }
-      }
-    }
-
     // Cash vs account attribution.
     // Per-row decision:
     //   1) If the sale has non-zero per-sale counters (paid_cash / paid_account),
@@ -2443,24 +2372,17 @@ export class DatabaseStorage implements IStorage {
         accountReceived += r.paidShare;
       }
 
-      // Discount portion of paidShare (from discount_allocated, prorated).
+      // Discount portion of paidShare. Sourced exclusively from the
+      // per-sale `discount_allocated` field on sales_history (set when a
+      // discount is recorded against the sale through Cash Management →
+      // Expenses → Discounts). This is sale-linked and exact; we do not
+      // attribute receipt-level round-off concessions here because the
+      // data model does not store a per-sale round-off allocation, so any
+      // payer-level distribution would be a heuristic rather than a true
+      // reconciliation. Round-off totals are sub-rupee per receipt in
+      // practice; if/when they need to surface, store them per-sale at
+      // receipt-application time (see follow-up #139).
       discountReceived += r.discountShare;
-
-      // Round-off concession share for this row's payer (self → farmer,
-      // otherwise → buyer; matches the dimension selection used above).
-      const useFarmer = r.isSelfSale === 1;
-      const payerKey = useFarmer ? r.farmerId : r.buyerId;
-      if (payerKey) {
-        const payerRoundOff = useFarmer
-          ? (roundOffByFarmer.get(payerKey) || 0)
-          : (roundOffByBuyer.get(payerKey) || 0);
-        const payerPaidShare = useFarmer
-          ? (paidShareByFarmer.get(payerKey) || 0)
-          : (paidShareByBuyer.get(payerKey) || 0);
-        if (payerRoundOff > 0 && payerPaidShare > 0) {
-          discountReceived += payerRoundOff * (r.paidShare / payerPaidShare);
-        }
-      }
     }
 
     return {
