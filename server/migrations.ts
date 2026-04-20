@@ -298,6 +298,19 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    name: "2026-04-20_add_paid_cash_account_counters",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ADD COLUMN IF NOT EXISTS paid_cash REAL DEFAULT 0
+      `);
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ADD COLUMN IF NOT EXISTS paid_account REAL DEFAULT 0
+      `);
+    },
+  },
+  {
     name: "2026-04-04_add_base_hammali_amount",
     up: async () => {
       await db.execute(sql`

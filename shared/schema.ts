@@ -164,6 +164,8 @@ export const salesHistory = pgTable("sales_history", {
   paymentStatus: text("payment_status").notNull(), // 'paid', 'due', or 'partial'
   paymentMode: text("payment_mode"), // 'cash' or 'account' (only when paid/partial)
   paidAmount: real("paid_amount").default(0), // Amount paid for this sale (includes cash + discount)
+  paidCash: real("paid_cash").default(0), // Cumulative cash portion of paidAmount (incremented at every cash receipt application)
+  paidAccount: real("paid_account").default(0), // Cumulative account portion of paidAmount (incremented at every account receipt application)
   discountAllocated: real("discount_allocated").default(0), // Amount of discount allocated to this sale (actualCashPaid = paidAmount - discountAllocated)
   dueAmount: real("due_amount").default(0), // Amount due for this sale
   paidAt: timestamp("paid_at"), // When marked as paid

@@ -1547,9 +1547,23 @@ export class DatabaseStorage implements IStorage {
   // Sales History Methods
   async createSalesHistory(data: InsertSalesHistory): Promise<SalesHistory> {
     const id = await generateSequentialId('sales');
+    // Seed paidCash / paidAccount counters from inline payment, if any.
+    // Sales created with a non-zero paidAmount and an explicit paymentMode
+    // (e.g. "paid at sale time") get the whole paid portion credited to the
+    // matching bucket so the per-sale split is correct from day one.
+    const seedPaid = (data as any).paidAmount as number | undefined;
+    const seedMode = (data as any).paymentMode as string | undefined;
+    let seedCash = 0;
+    let seedAccount = 0;
+    if (seedPaid && seedPaid > 0) {
+      if (seedMode === "cash") seedCash = seedPaid;
+      else if (seedMode === "account") seedAccount = seedPaid;
+    }
     const [sale] = await db.insert(salesHistory).values({
       ...data,
       id,
+      paidCash: seedCash,
+      paidAccount: seedAccount,
     }).returning();
     return sale;
   }
@@ -1659,6 +1673,20 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.paidAmount !== undefined) {
       updateData.paidAmount = updates.paidAmount;
+      // Direct overwrite — credit the entire new paidAmount to the matching
+      // bucket based on the row's current paymentMode (or the explicit one
+      // being set in the same call). Better than leaving stale counters.
+      const newPaid = updates.paidAmount || 0;
+      const mode = updates.paymentStatus !== undefined && (updateData as any).paymentMode
+        ? (updateData as any).paymentMode as string
+        : null;
+      // Fall back to existing paymentMode by re-reading the sale row.
+      const [existing] = await db.select({ paymentMode: salesHistory.paymentMode })
+        .from(salesHistory)
+        .where(eq(salesHistory.id, saleId));
+      const effMode = mode || existing?.paymentMode || null;
+      updateData.paidCash = effMode === "cash" ? newPaid : 0;
+      updateData.paidAccount = effMode === "account" ? newPaid : 0;
     }
     if (updates.dueAmount !== undefined) {
       updateData.dueAmount = updates.dueAmount;
@@ -1769,6 +1797,14 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.paidAmount !== undefined) {
       updateData.paidAmount = updates.paidAmount;
+      // Snapshot the new paidAmount into the cash/account counters using
+      // the explicit paymentMode in this update, falling back to the row's
+      // existing paymentMode. Editing a sale directly is a manual override,
+      // so we treat the entire paid total as a single bucket.
+      const newPaid = updates.paidAmount || 0;
+      const effMode = updates.paymentMode || sale.paymentMode || null;
+      updateData.paidCash = effMode === "cash" ? newPaid : 0;
+      updateData.paidAccount = effMode === "account" ? newPaid : 0;
     }
     if (updates.dueAmount !== undefined) {
       updateData.dueAmount = updates.dueAmount;
@@ -2262,6 +2298,8 @@ export class DatabaseStorage implements IStorage {
         quantitySold: salesHistory.quantitySold,
         coldStorageCharge: salesHistory.coldStorageCharge,
         paidAmount: salesHistory.paidAmount,
+        paidCash: salesHistory.paidCash,
+        paidAccount: salesHistory.paidAccount,
         dueAmount: salesHistory.dueAmount,
       })
       .from(exitHistory)
@@ -2280,6 +2318,8 @@ export class DatabaseStorage implements IStorage {
         isTransferReversed: r.isTransferReversed ?? 0,
         isSelfSale: r.isSelfSale ?? 0,
         paidAmount: r.paidAmount ?? 0,
+        paidCash: r.paidCash ?? 0,
+        paidAccount: r.paidAccount ?? 0,
         dueAmount: r.dueAmount ?? 0,
         coldChargeShare,
         paidShare,
@@ -2287,11 +2327,16 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
-    // NOTE: cashReceived / accountReceived here use the sale's payment_mode
-    // field, which only remembers the LATEST receipt's mode. For sales paid
-    // partly by cash and partly by account, only one bucket gets credited,
-    // so Cash + Account may under-report vs. Σ Paid. A proper per-sale
-    // cash/account split is being added in a separate task.
+    // Cash vs account attribution.
+    // Per-row decision:
+    //   1) If the sale has non-zero per-sale counters (paid_cash / paid_account),
+    //      use them — prorated by bags_exited / quantity_sold like paidShare.
+    //      These are kept in lockstep with paid_amount at every receipt
+    //      application, so they're accurate for any payment recorded after
+    //      the per-sale-split feature shipped.
+    //   2) Otherwise (legacy rows whose counters are still zero), fall back
+    //      to the sale's payment_mode field, same as before. This preserves
+    //      historical reporting without requiring a backfill.
     const farmerSet = new Set<string>();
     let totalBagsExited = 0;
     let exitsWithDue = 0;
@@ -2305,8 +2350,18 @@ export class DatabaseStorage implements IStorage {
       if (r.dueShare > 0) exitsWithDue += 1;
       coldChargesTotal += r.coldChargeShare;
       amountDue += r.dueShare;
-      if (r.paymentMode === "cash") cashReceived += r.paidShare;
-      else if (r.paymentMode === "account") accountReceived += r.paidShare;
+
+      const qty = r.quantitySold || 0;
+      const share = qty > 0 ? r.bagsExited / qty : 0;
+      const counterTotal = (r.paidCash || 0) + (r.paidAccount || 0);
+      if (counterTotal > 0) {
+        cashReceived += (r.paidCash || 0) * share;
+        accountReceived += (r.paidAccount || 0) * share;
+      } else if (r.paymentMode === "cash") {
+        cashReceived += r.paidShare;
+      } else if (r.paymentMode === "account") {
+        accountReceived += r.paidShare;
+      }
     }
 
     return {
@@ -2690,12 +2745,18 @@ export class DatabaseStorage implements IStorage {
         const newDueAmount = roundAmount(dueAmount - applyToDue);
         const newExtraDue = roundAmount(extraDue - applyToExtra);
         const newPaidAmount = roundAmount((sale.paid_amount || 0) + applyToDue);
-        
+        // Credit cash/account counters by the actual increment to paid_amount
+        // (applyToDue only — extra_due_to_merchant doesn't flow into paid_amount).
+        const cashDelta = data.receiptType === "cash" ? applyToDue : 0;
+        const accountDelta = data.receiptType === "account" ? applyToDue : 0;
+
         await db.execute(sql`
           UPDATE sales_history
           SET 
             due_amount = (${newDueAmount})::real,
             paid_amount = (${newPaidAmount})::real,
+            paid_cash = COALESCE(paid_cash, 0) + (${cashDelta})::real,
+            paid_account = COALESCE(paid_account, 0) + (${accountDelta})::real,
             extra_due_to_merchant = (${newExtraDue})::real,
             payment_status = CASE 
               WHEN (${newDueAmount})::real + (${newExtraDue})::real < 1.0 THEN 'paid'
@@ -2852,11 +2913,16 @@ export class DatabaseStorage implements IStorage {
       if (saleDueAmount <= 0) continue;
 
       if (remainingAmount >= saleDueAmount) {
-        // Can fully pay this sale
+        // Can fully pay this sale — credit the cash/account counter by the
+        // increment we just added (saleDueAmount), not by the new total.
+        const cashDelta = paymentMode === "cash" ? saleDueAmount : 0;
+        const accountDelta = paymentMode === "account" ? saleDueAmount : 0;
         await db.update(salesHistory)
           .set({
             paymentStatus: "paid",
             paidAmount: totalCharges,
+            paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
+            paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
             dueAmount: 0,
             paymentMode: paymentMode,
             paidAt: data.receivedAt,
@@ -2870,6 +2936,8 @@ export class DatabaseStorage implements IStorage {
         // Can only partially pay this sale
         const newPaidAmount = roundAmount((sale.paidAmount || 0) + remainingAmount);
         const newDueAmount = roundAmount(totalCharges - newPaidAmount);
+        const cashDelta = paymentMode === "cash" ? remainingAmount : 0;
+        const accountDelta = paymentMode === "account" ? remainingAmount : 0;
         
         // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
         const paymentStatusToSet = newDueAmount < 1 ? "paid" : "partial";
@@ -2878,6 +2946,8 @@ export class DatabaseStorage implements IStorage {
           .set({
             paymentStatus: paymentStatusToSet,
             paidAmount: newPaidAmount,
+            paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
+            paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
             dueAmount: newDueAmount,
             paymentMode: paymentMode,
           })
@@ -3427,6 +3497,8 @@ export class DatabaseStorage implements IStorage {
       UPDATE sales_history
       SET 
         paid_amount = 0,
+        paid_cash = 0,
+        paid_account = 0,
         due_amount = cold_storage_charge,
         extra_due_to_merchant = COALESCE(extra_due_to_merchant_original, 0),
         payment_status = CASE 
@@ -3586,11 +3658,17 @@ export class DatabaseStorage implements IStorage {
           const newExtraDue = roundAmount(extraDue - applyToExtra);
           const newPaidAmount = roundAmount((sale.paidAmount || 0) + applyToDue + applyToExtra);
           const paymentStatus = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
+          // Bump the cash/account counter by the same delta added to paidAmount.
+          const paidDelta = applyToDue + applyToExtra;
+          const cashDelta = receipt.receiptType === "cash" ? paidDelta : 0;
+          const accountDelta = receipt.receiptType === "account" ? paidDelta : 0;
 
           await db.update(salesHistory)
             .set({
               dueAmount: newDueAmount,
               paidAmount: newPaidAmount,
+              paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
+              paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
               extraDueToMerchant: newExtraDue,
               paymentStatus
             })
@@ -3696,6 +3774,8 @@ export class DatabaseStorage implements IStorage {
         .set({
           paymentStatus: "due",
           paidAmount: 0,
+          paidCash: 0,
+          paidAccount: 0,
           dueAmount: totalCharges,
           discountAllocated: 0,
           paymentMode: null,
@@ -3914,10 +3994,14 @@ export class DatabaseStorage implements IStorage {
         if (saleDueAmount <= 0) continue;
 
         if (remainingAmount >= saleDueAmount) {
+          const cashDelta = paymentMode === "cash" ? saleDueAmount : 0;
+          const accountDelta = paymentMode === "account" ? saleDueAmount : 0;
           await db.update(salesHistory)
             .set({
               paymentStatus: "paid",
               paidAmount: totalCharges,
+              paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
+              paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
               dueAmount: 0,
               paymentMode: paymentMode,
               paidAt: receipt.receivedAt,
@@ -3929,6 +4013,8 @@ export class DatabaseStorage implements IStorage {
         } else {
           const newPaidAmount = roundAmount((sale.paidAmount || 0) + remainingAmount);
           const newDueAmount = roundAmount(totalCharges - newPaidAmount);
+          const cashDelta = paymentMode === "cash" ? remainingAmount : 0;
+          const accountDelta = paymentMode === "account" ? remainingAmount : 0;
           
           // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
           const paymentStatusToSet = newDueAmount < 1 ? "paid" : "partial";
@@ -3937,6 +4023,8 @@ export class DatabaseStorage implements IStorage {
             .set({
               paymentStatus: paymentStatusToSet,
               paidAmount: newPaidAmount,
+              paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
+              paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
               dueAmount: newDueAmount,
               paymentMode: paymentMode,
             })
@@ -4079,11 +4167,29 @@ export class DatabaseStorage implements IStorage {
       // Only update if values are different
       const currentTotal = (sale.paidAmount || 0) + (sale.dueAmount || 0);
       if (Math.abs(currentTotal - totalCharges) > 0.01) {
+        // Keep paid_cash / paid_account in sync with the new paidAmount.
+        // If the existing counters sum > 0, scale them proportionally so the
+        // cash:account ratio is preserved. If counters are zero (legacy rows),
+        // leave them at zero — the Exit Register fallback will use payment_mode.
+        const existingCash = sale.paidCash || 0;
+        const existingAccount = sale.paidAccount || 0;
+        const counterTotal = existingCash + existingAccount;
+        const setFields: Record<string, unknown> = {
+          paidAmount: newPaidAmount,
+          dueAmount: newDueAmount,
+        };
+        if (counterTotal > 0) {
+          if (newPaidAmount <= 0) {
+            setFields.paidCash = 0;
+            setFields.paidAccount = 0;
+          } else {
+            const scale = newPaidAmount / counterTotal;
+            setFields.paidCash = roundAmount(existingCash * scale);
+            setFields.paidAccount = roundAmount(existingAccount * scale);
+          }
+        }
         await db.update(salesHistory)
-          .set({
-            paidAmount: newPaidAmount,
-            dueAmount: newDueAmount,
-          })
+          .set(setFields)
           .where(eq(salesHistory.id, sale.id));
         updated++;
       }
@@ -5556,6 +5662,8 @@ export class DatabaseStorage implements IStorage {
       UPDATE sales_history
       SET 
         paid_amount = 0,
+        paid_cash = 0,
+        paid_account = 0,
         discount_allocated = 0,
         due_amount = cold_storage_charge,
         extra_due_to_merchant = COALESCE(extra_due_to_merchant_original, 0),
@@ -5831,11 +5939,17 @@ export class DatabaseStorage implements IStorage {
             const newExtraDue = roundAmount(extraDue - applyToExtra);
             const newPaidAmount = roundAmount((sale.paidAmount || 0) + applyToDue + applyToExtra);
             const paymentStatus = (newDueAmount + newExtraDue) < 1 ? "paid" : "partial";
+            // Bump the cash/account counter by the same delta added to paidAmount.
+            const paidDelta = applyToDue + applyToExtra;
+            const cashDelta = txn.data.receiptType === "cash" ? paidDelta : 0;
+            const accountDelta = txn.data.receiptType === "account" ? paidDelta : 0;
             
             await db.update(salesHistory)
               .set({
                 dueAmount: newDueAmount,
                 paidAmount: newPaidAmount,
+                paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
+                paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
                 extraDueToMerchant: newExtraDue,
                 paymentStatus
               })
