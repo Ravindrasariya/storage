@@ -462,6 +462,7 @@ const translations: Translations = {
   exitRegister: { en: "Exit Register (Nikasi)", hi: "निकासी रजिस्टर" },
   cashReceived: { en: "Cash Received", hi: "नकद प्राप्त" },
   accountReceived: { en: "Account Received", hi: "खाता प्राप्त" },
+  discountReceived: { en: "Discount", hi: "छूट" },
   numFarmers: { en: "# of Farmers", hi: "किसानों की संख्या" },
   exitsWithDue: { en: "# Exits with Due", hi: "बकाया वाली निकासी" },
   totalBagsExited: { en: "Total # Bags Exited", hi: "कुल निकाले गए बैग" },

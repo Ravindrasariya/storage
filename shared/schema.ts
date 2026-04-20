@@ -795,10 +795,16 @@ export type ExitRegisterRow = {
   quantitySold: number;
   coldStorageCharge: number;
   paidAmount: number;
+  paidCash: number;
+  paidAccount: number;
+  discountAllocated: number;
   dueAmount: number;
+  farmerId: string | null;
+  buyerId: string | null;
   coldChargeShare: number;
   paidShare: number;
   dueShare: number;
+  discountShare: number;
 };
 export type ExitRegisterSummary = {
   totalBagsExited: number;
@@ -807,6 +813,7 @@ export type ExitRegisterSummary = {
   coldChargesTotal: number;
   cashReceived: number;
   accountReceived: number;
+  discountReceived: number;
   amountDue: number;
 };
 export type ExitRegisterResponse = {

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1309,6 +1309,7 @@ function ExitRegister() {
         <div class="card"><div class="lbl">${escape(t("coldStorageCharges"))}</div><div class="val">${escape(fmtINR(summary.coldChargesTotal))}</div></div>
         <div class="card"><div class="lbl">${escape(t("cashReceived"))}</div><div class="val cash">${escape(fmtINR(summary.cashReceived))}</div></div>
         <div class="card"><div class="lbl">${escape(t("accountReceived"))}</div><div class="val acct">${escape(fmtINR(summary.accountReceived))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("discountReceived"))}</div><div class="val disc">${escape(fmtINR(summary.discountReceived))}</div></div>
         <div class="card"><div class="lbl">${escape(t("amountDue"))}</div><div class="val due">${escape(fmtINR(summary.amountDue))}</div></div>
       </div>
     `;
@@ -1340,18 +1341,18 @@ function ExitRegister() {
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:16px;color:#111;}
   h1{margin:0 0 4px 0;font-size:18px;}
   .meta{font-size:11px;color:#555;margin-bottom:12px;}
-  .cards{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:14px;}
+  .cards{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-bottom:14px;}
   .card{border:1px solid #d4d4d8;border-radius:6px;padding:6px 8px;}
   .lbl{font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.3px;}
   .val{font-size:13px;font-weight:700;margin-top:2px;}
-  .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.due{color:#be123c;}
+  .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.disc{color:#7c3aed;} .val.due{color:#be123c;}
   table{width:100%;border-collapse:collapse;font-size:11px;}
   th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;}
   th{background:#f4f4f5;font-weight:700;}
   td.r,th.r{text-align:right;}
   td.cash{color:#047857;} td.due{color:#be123c;}
   .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(7,1fr);}}
+  @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(8,1fr);}}
 </style></head><body>
   <h1>${escape(t("exitRegister"))}</h1>
   <div class="meta">${filterParts.map((p) => escape(p)).join(" &nbsp;|&nbsp; ")}</div>
@@ -1588,9 +1589,9 @@ function ExitRegister() {
         </CardContent>
       </Card>
 
-      {/* Summary cards: 1 stat-tiles + Cold Charges + Cash Received + Account Received + Amount Due */}
+      {/* Summary cards: 1 stat-tiles + Cold Charges + Cash Received + Account Received + Discount + Amount Due */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
           <Card data-testid="card-exit-stats">
             <CardContent className="p-4">
               <div className="grid grid-cols-3 gap-2">
@@ -1655,6 +1656,22 @@ function ExitRegister() {
                   <p className="text-xs text-muted-foreground">{t("accountReceived")}</p>
                   <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400 truncate" data-testid="stat-account">
                     <Currency amount={summary.accountReceived} />
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-exit-discount">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-violet-500/10">
+                  <BadgePercent className="h-5 w-5 text-violet-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("discountReceived")}</p>
+                  <p className="text-lg font-bold text-violet-700 dark:text-violet-400 truncate" data-testid="stat-discount">
+                    <Currency amount={summary.discountReceived} />
                   </p>
                 </div>
               </div>
