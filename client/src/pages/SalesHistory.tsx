@@ -1591,24 +1591,50 @@ function ExitRegister() {
 
       {/* Summary cards: 1 stat-tiles + Cold Charges + Cash Received + Account Received + Discount + Amount Due */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
-          <Card data-testid="card-exit-stats">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          <Card data-testid="card-exit-farmers">
             <CardContent className="p-4">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg bg-blue-500/10 p-2 text-center">
-                  <Users className="h-4 w-4 mx-auto text-blue-600 mb-1" />
-                  <div className="text-[10px] text-muted-foreground leading-tight">{t("numFarmers")}</div>
-                  <div className="text-lg font-bold text-blue-700 dark:text-blue-300" data-testid="stat-farmers">{summary.farmers}</div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <Users className="h-5 w-5 text-blue-600" />
                 </div>
-                <div className="rounded-lg bg-amber-500/10 p-2 text-center">
-                  <AlertTriangle className="h-4 w-4 mx-auto text-amber-600 mb-1" />
-                  <div className="text-[10px] text-muted-foreground leading-tight">{t("exitsWithDue")}</div>
-                  <div className="text-lg font-bold text-amber-700 dark:text-amber-300" data-testid="stat-exits-due">{summary.exitsWithDue}</div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("numFarmers")}</p>
+                  <p className="text-lg font-bold text-blue-700 dark:text-blue-300 truncate" data-testid="stat-farmers">
+                    {summary.farmers}
+                  </p>
                 </div>
-                <div className="rounded-lg bg-violet-500/10 p-2 text-center">
-                  <Package className="h-4 w-4 mx-auto text-violet-600 mb-1" />
-                  <div className="text-[10px] text-muted-foreground leading-tight">{t("totalBagsExited")}</div>
-                  <div className="text-lg font-bold text-violet-700 dark:text-violet-300" data-testid="stat-bags-exited">{summary.totalBagsExited.toLocaleString()}</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-exit-exits-due">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/10">
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("exitsWithDue")}</p>
+                  <p className="text-lg font-bold text-amber-700 dark:text-amber-300 truncate" data-testid="stat-exits-due">
+                    {summary.exitsWithDue}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-exit-bags-exited">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-violet-500/10">
+                  <Package className="h-5 w-5 text-violet-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("totalBagsExited")}</p>
+                  <p className="text-lg font-bold text-violet-700 dark:text-violet-300 truncate" data-testid="stat-bags-exited">
+                    {summary.totalBagsExited.toLocaleString()}
+                  </p>
                 </div>
               </div>
             </CardContent>
