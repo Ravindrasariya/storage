@@ -1244,6 +1244,31 @@ function ExitRegister() {
     return bagType;
   };
 
+  const bagTypeBadgeClass = (bagType: string | null | undefined): string => {
+    const norm = (bagType || "").toLowerCase();
+    if (norm === "wafer") return "bg-chart-1/10 text-chart-1";
+    if (norm === "seed") return "bg-chart-2/10 text-chart-2";
+    if (norm === "ration") return "bg-chart-3/10 text-chart-3";
+    return "";
+  };
+
+  const bagTypePrintStyle = (bagType: string | null | undefined): string => {
+    const norm = (bagType || "").toLowerCase();
+    if (norm === "wafer") return "background:rgba(59,130,246,0.10);color:#2563eb;";
+    if (norm === "seed") return "background:rgba(16,185,129,0.10);color:#059669;";
+    if (norm === "ration") return "background:rgba(249,115,22,0.10);color:#ea580c;";
+    return "";
+  };
+
+  const renderBagTypeBadge = (bagType: string | null | undefined) => {
+    if (!bagType) return <span className="text-muted-foreground">—</span>;
+    return (
+      <Badge variant="outline" className={bagTypeBadgeClass(bagType)}>
+        {formatBagType(bagType)}
+      </Badge>
+    );
+  };
+
   const renderBuyerText = (r: ExitRegisterRow): string => {
     if (Number(r.isSelfSale) === 1 && !r.transferToBuyerName) return t("self");
     if (r.transferToBuyerName && r.transferToBuyerName.trim() && Number(r.isTransferReversed) !== 1) {
@@ -1292,7 +1317,7 @@ function ExitRegister() {
           <td>${escape(r.village)}</td>
           <td>${escape(r.lotNo)}</td>
           <td>${escape(r.marka || "—")}</td>
-          <td>${escape(formatBagType(r.bagType))}</td>
+          <td>${r.bagType ? `<span class="bag-badge" style="${bagTypePrintStyle(r.bagType)}">${escape(formatBagType(r.bagType))}</span>` : "—"}</td>
           <td>${escape(r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—")}</td>
           <td class="r">${escape(r.bagsExited)}</td>
           <td>${escape(renderBuyerText(r))}</td>
@@ -1320,6 +1345,7 @@ function ExitRegister() {
   th{background:#f4f4f5;font-weight:700;}
   td.r,th.r{text-align:right;}
   td.cash{color:#047857;} td.due{color:#be123c;}
+  .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(7,1fr);}}
 </style></head><body>
   <h1>${escape(t("exitRegister"))}</h1>
@@ -1685,7 +1711,7 @@ function ExitRegister() {
                       <TableCell className="text-sm">{r.village}</TableCell>
                       <TableCell className="text-sm">{r.lotNo}</TableCell>
                       <TableCell className="text-sm">{r.marka || "—"}</TableCell>
-                      <TableCell className="text-sm whitespace-nowrap">{formatBagType(r.bagType)}</TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{renderBagTypeBadge(r.bagType)}</TableCell>
                       <TableCell className="text-sm">{r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—"}</TableCell>
                       <TableCell className="text-sm text-right">{r.bagsExited}</TableCell>
                       <TableCell className="text-sm">{renderBuyer(r)}</TableCell>
