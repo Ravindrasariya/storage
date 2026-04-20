@@ -11,7 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { EditSaleDialog } from "@/components/EditSaleDialog";
@@ -57,7 +60,9 @@ export default function SalesHistoryPage() {
   const [paymentFilter, setPaymentFilter] = useState<string>(savedFilters?.paymentFilter ?? "");
   const [buyerFilter, setBuyerFilter] = useState(savedFilters?.buyerFilter ?? "");
 
-  // Persist filters to localStorage whenever they change
+  const [activeTab, setActiveTab] = useState<"sales" | "tracker" | "exits">(savedFilters?.activeTab ?? "sales");
+
+  // Persist filters + active tab to localStorage whenever any change
   useEffect(() => {
     const filters = {
       yearFilter,
@@ -67,11 +72,10 @@ export default function SalesHistoryPage() {
       mobileFilter,
       paymentFilter,
       buyerFilter,
+      activeTab,
     };
     localStorage.setItem(SALES_FILTERS_KEY, JSON.stringify(filters));
-  }, [yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter]);
-
-  const [showTracker, setShowTracker] = useState(false);
+  }, [yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter, activeTab]);
   const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
@@ -287,21 +291,25 @@ export default function SalesHistoryPage() {
     <div className="p-4 md:p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-bold" data-testid="text-page-title">
-          {showTracker ? t("farmerPaymentTracker") : t("salesHistory")}
+          {activeTab === "tracker" ? t("farmerPaymentTracker") : activeTab === "exits" ? t("exitRegister") : t("salesHistory")}
         </h1>
-        <Button
-          variant={showTracker ? "default" : "outline"}
-          size="sm"
-          onClick={() => setShowTracker(!showTracker)}
-          data-testid="button-toggle-tracker"
-        >
-          <HandCoins className="h-4 w-4 mr-2" />
-          {showTracker ? t("salesHistory") : t("farmerPaymentTracker")}
-        </Button>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sales" | "tracker" | "exits")}>
+          <TabsList>
+            <TabsTrigger value="sales" data-testid="tab-sales">{t("salesHistory")}</TabsTrigger>
+            <TabsTrigger value="tracker" data-testid="tab-tracker">
+              <HandCoins className="h-4 w-4 mr-1" />{t("farmerPaymentTracker")}
+            </TabsTrigger>
+            <TabsTrigger value="exits" data-testid="tab-exits">
+              <LogOut className="h-4 w-4 mr-1" />{t("exitRegister")}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      {showTracker ? (
+      {activeTab === "tracker" ? (
         <FarmerPaymentTracker />
+      ) : activeTab === "exits" ? (
+        <ExitRegister />
       ) : (
       <>
       <Card>
@@ -1084,6 +1092,522 @@ function FarmerPaymentTracker() {
               {t("farmerUnpaid")}: {facilitatedSales.filter((s) => s.farmerPaymentStatus !== "paid").length}
             </span>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =====================
+// Exit / Nikasi Register
+// =====================
+
+type ExitRegisterRow = {
+  exitId: string;
+  exitDate: string;
+  billNumber: number;
+  bagsExited: number;
+  saleId: string;
+  farmerName: string;
+  village: string;
+  contactNumber: string;
+  lotNo: string;
+  marka: string | null;
+  coldStorageBillNumber: number | null;
+  potatoType: string;
+  buyerName: string | null;
+  transferToBuyerName: string | null;
+  isTransferReversed: number;
+  isSelfSale: number;
+  paymentStatus: string;
+  paymentMode: string | null;
+  quantitySold: number;
+  coldStorageCharge: number;
+  paidAmount: number;
+  dueAmount: number;
+  coldChargeShare: number;
+  paidShare: number;
+  dueShare: number;
+};
+
+type ExitRegisterResponse = {
+  rows: ExitRegisterRow[];
+  summary: {
+    totalBagsExited: number;
+    farmers: number;
+    exitsWithDue: number;
+    coldChargesTotal: number;
+    cashReceived: number;
+    accountReceived: number;
+    amountDue: number;
+  };
+};
+
+function ExitRegister() {
+  const { t } = useI18n();
+  const exitFarmerNav = useDropdownNavigation();
+  const exitBuyerNav = useDropdownNavigation();
+
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState<number | "all">(currentYear);
+  const [months, setMonths] = useState<number[]>([]);
+  const [days, setDays] = useState<number[]>([]);
+  const [farmerFilter, setFarmerFilter] = useState("");
+  const [farmerContact, setFarmerContact] = useState("");
+  const [buyerFilter, setBuyerFilter] = useState("");
+  const [showFarmerSug, setShowFarmerSug] = useState(false);
+  const [showBuyerSug, setShowBuyerSug] = useState(false);
+
+  const { data: years = [] } = useQuery<number[]>({
+    queryKey: ["/api/exit-register/years"],
+  });
+
+  const { data: farmerRecords } = useQuery<FarmerRecord[]>({
+    queryKey: ["/api/farmers/lookup"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: buyerRecords } = useQuery<{ buyerName: string }[]>({
+    queryKey: ["/api/buyers/lookup"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const farmerSug = useMemo(() => {
+    if (!farmerRecords || !farmerFilter.trim()) return [];
+    const q = farmerFilter.toLowerCase().trim();
+    return farmerRecords.filter(f => f.farmerName.toLowerCase().includes(q)).slice(0, 8);
+  }, [farmerRecords, farmerFilter]);
+
+  const buyerSug = useMemo(() => {
+    if (!buyerRecords || !buyerFilter.trim()) return [];
+    const q = buyerFilter.toLowerCase().trim();
+    return buyerRecords.filter(b => b.buyerName.toLowerCase().includes(q)).slice(0, 8);
+  }, [buyerRecords, buyerFilter]);
+
+  const queryString = useMemo(() => {
+    const p = new URLSearchParams();
+    if (year !== "all") p.append("year", String(year));
+    if (months.length) p.append("months", months.join(","));
+    if (days.length) p.append("days", days.join(","));
+    if (farmerFilter) p.append("farmerName", farmerFilter);
+    if (farmerContact) p.append("farmerContact", farmerContact);
+    if (buyerFilter) p.append("buyerName", buyerFilter);
+    return p.toString();
+  }, [year, months, days, farmerFilter, farmerContact, buyerFilter]);
+
+  const { data, isLoading } = useQuery<ExitRegisterResponse>({
+    queryKey: ["/api/exit-register", year, months.join(","), days.join(","), farmerFilter, farmerContact, buyerFilter],
+    queryFn: async () => {
+      const res = await authFetch(`/api/exit-register${queryString ? `?${queryString}` : ""}`);
+      if (!res.ok) throw new Error("Failed to fetch exit register");
+      return res.json();
+    },
+  });
+
+  const yearOptions = useMemo(() => {
+    const set = new Set<number>(years);
+    set.add(currentYear);
+    for (let y = currentYear - 4; y <= currentYear; y++) set.add(y);
+    return Array.from(set).sort((a, b) => b - a);
+  }, [years, currentYear]);
+
+  const monthShortNames = t("monthsShort").split(",");
+  const allMonths = months.length === 12;
+
+  const toggleMonth = (m: number) => {
+    setMonths(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m].sort((a, b) => a - b));
+  };
+  const toggleDay = (d: number) => {
+    setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b));
+  };
+
+  const monthLabel = months.length === 0
+    ? t("allMonths")
+    : months.length === 1
+      ? monthShortNames[months[0] - 1]
+      : `${months.length} ${t("monthsLabel")}`;
+
+  const dayLabel = days.length === 0
+    ? t("allDays")
+    : days.length === 1
+      ? String(days[0])
+      : `${days.length} ${t("daysLabel")}`;
+
+  const yearLabel = year === "all" ? t("allYears") : String(year);
+
+  const clearFilters = () => {
+    setYear(currentYear);
+    setMonths([]);
+    setDays([]);
+    setFarmerFilter("");
+    setFarmerContact("");
+    setBuyerFilter("");
+  };
+
+  const hasFilters = year !== currentYear || months.length || days.length || farmerFilter || farmerContact || buyerFilter;
+
+  const summary = data?.summary;
+  const rows = data?.rows ?? [];
+
+  const renderBuyer = (r: ExitRegisterRow) => {
+    if (Number(r.isSelfSale) === 1 && !r.transferToBuyerName) return t("self");
+    if (r.transferToBuyerName && r.transferToBuyerName.trim() && Number(r.isTransferReversed) !== 1) {
+      return (
+        <div className="flex flex-col">
+          <span className="line-through text-muted-foreground">{Number(r.isSelfSale) === 1 ? t("self") : (r.buyerName || "-")}</span>
+          <span className="text-purple-600 font-medium">{r.transferToBuyerName}</span>
+        </div>
+      );
+    }
+    return Number(r.isSelfSale) === 1 ? t("self") : (r.buyerName || "-");
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            {t("filters")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            {/* Year */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2" data-testid="trigger-year">
+                  {yearLabel}
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-1" align="start">
+                <button
+                  type="button"
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 hover-elevate ${year === "all" ? "bg-emerald-600 text-white" : ""}`}
+                  onClick={() => setYear("all")}
+                  data-testid="option-year-all"
+                >
+                  <Checkbox checked={year === "all"} className="pointer-events-none" />
+                  {t("allYears")}
+                </button>
+                {yearOptions.map((y) => (
+                  <button
+                    key={y}
+                    type="button"
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 hover-elevate ${year === y ? "bg-emerald-600 text-white" : ""}`}
+                    onClick={() => setYear(y)}
+                    data-testid={`option-year-${y}`}
+                  >
+                    <Checkbox checked={year === y} className="pointer-events-none" />
+                    {y}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+
+            {/* Month */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2" data-testid="trigger-month">
+                  {monthLabel}
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3" align="start">
+                <label className="flex items-center gap-2 pb-2 mb-2 border-b cursor-pointer">
+                  <Checkbox
+                    checked={allMonths}
+                    onCheckedChange={(v) => setMonths(v ? Array.from({ length: 12 }, (_, i) => i + 1) : [])}
+                    data-testid="checkbox-all-months"
+                  />
+                  <span className="text-sm font-medium">{t("allMonths")}</span>
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {monthShortNames.map((label, idx) => {
+                    const m = idx + 1;
+                    const selected = months.includes(m);
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        className={`px-2 py-2 rounded-md text-sm font-medium border ${selected ? "bg-emerald-600 text-white border-emerald-600" : "bg-background hover-elevate"}`}
+                        onClick={() => toggleMonth(m)}
+                        data-testid={`chip-month-${m}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Day */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2" data-testid="trigger-day">
+                  {dayLabel}
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-3" align="start">
+                <label className="flex items-center gap-2 pb-2 mb-2 border-b cursor-pointer">
+                  <Checkbox
+                    checked={days.length === 31}
+                    onCheckedChange={(v) => setDays(v ? Array.from({ length: 31 }, (_, i) => i + 1) : [])}
+                    data-testid="checkbox-all-days"
+                  />
+                  <span className="text-sm font-medium">{t("allDays")}</span>
+                </label>
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
+                    const selected = days.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`px-1 py-2 rounded-md text-sm font-medium border ${selected ? "bg-emerald-600 text-white border-emerald-600" : "bg-background hover-elevate"}`}
+                        onClick={() => toggleDay(d)}
+                        data-testid={`chip-day-${d}`}
+                      >
+                        {d}
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Farmer autocomplete */}
+            <div className="relative w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+              <Input
+                value={farmerFilter}
+                onChange={(e) => { setFarmerFilter(capitalizeFirstLetter(e.target.value)); setFarmerContact(""); setShowFarmerSug(true); }}
+                onFocus={() => { setShowFarmerSug(true); exitFarmerNav.resetActive(); }}
+                onBlur={() => setTimeout(() => { setShowFarmerSug(false); exitFarmerNav.resetActive(); }, 200)}
+                onKeyDown={(e) => exitFarmerNav.handleKeyDown(e, farmerSug.length, (i) => { const f = farmerSug[i]; setFarmerFilter(f.farmerName); setFarmerContact(f.contactNumber); setShowFarmerSug(false); }, () => setShowFarmerSug(false))}
+                placeholder={t("farmerName")}
+                className="pl-10 h-9"
+                autoComplete="off"
+                data-testid="input-exit-farmer"
+              />
+              {showFarmerSug && farmerSug.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                  {farmerSug.map((f, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${exitFarmerNav.activeIndex === idx ? "bg-accent" : ""}`}
+                      onClick={() => { setFarmerFilter(f.farmerName); setFarmerContact(f.contactNumber); setShowFarmerSug(false); }}
+                      data-testid={`exit-suggestion-farmer-${idx}`}
+                    >
+                      <span className="font-medium">{f.farmerName}</span>
+                      <span className="text-xs text-muted-foreground">{f.contactNumber} • {f.village}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Buyer autocomplete */}
+            <div className="relative w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+              <Input
+                value={buyerFilter}
+                onChange={(e) => { setBuyerFilter(capitalizeFirstLetter(e.target.value)); setShowBuyerSug(true); }}
+                onFocus={() => { setShowBuyerSug(true); exitBuyerNav.resetActive(); }}
+                onBlur={() => setTimeout(() => { setShowBuyerSug(false); exitBuyerNav.resetActive(); }, 200)}
+                onKeyDown={(e) => exitBuyerNav.handleKeyDown(e, buyerSug.length, (i) => { setBuyerFilter(buyerSug[i].buyerName); setShowBuyerSug(false); }, () => setShowBuyerSug(false))}
+                placeholder={t("buyerName")}
+                className="pl-10 h-9"
+                autoComplete="off"
+                data-testid="input-exit-buyer"
+              />
+              {showBuyerSug && buyerSug.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                  {buyerSug.map((b, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`w-full px-3 py-2 text-left hover-elevate text-sm ${exitBuyerNav.activeIndex === idx ? "bg-accent" : ""}`}
+                      onClick={() => { setBuyerFilter(b.buyerName); setShowBuyerSug(false); }}
+                      data-testid={`exit-suggestion-buyer-${idx}`}
+                    >
+                      {b.buyerName}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {hasFilters && (
+              <Button variant="outline" size="sm" onClick={clearFilters} data-testid="button-exit-clear-filters">
+                <X className="h-4 w-4 mr-1" /> {t("clearFilters")}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary cards */}
+      {summary && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <Card data-testid="card-exit-stats">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg bg-blue-500/10 p-2 text-center">
+                  <Users className="h-4 w-4 mx-auto text-blue-600 mb-1" />
+                  <div className="text-[10px] text-muted-foreground leading-tight">{t("numFarmers")}</div>
+                  <div className="text-lg font-bold text-blue-700 dark:text-blue-300" data-testid="stat-farmers">{summary.farmers}</div>
+                </div>
+                <div className="rounded-lg bg-amber-500/10 p-2 text-center">
+                  <AlertTriangle className="h-4 w-4 mx-auto text-amber-600 mb-1" />
+                  <div className="text-[10px] text-muted-foreground leading-tight">{t("exitsWithDue")}</div>
+                  <div className="text-lg font-bold text-amber-700 dark:text-amber-300" data-testid="stat-exits-due">{summary.exitsWithDue}</div>
+                </div>
+                <div className="rounded-lg bg-violet-500/10 p-2 text-center">
+                  <Package className="h-4 w-4 mx-auto text-violet-600 mb-1" />
+                  <div className="text-[10px] text-muted-foreground leading-tight">{t("totalBagsExited")}</div>
+                  <div className="text-lg font-bold text-violet-700 dark:text-violet-300" data-testid="stat-bags-exited">{summary.totalBagsExited.toLocaleString()}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-exit-cold">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-sky-500/10">
+                  <Warehouse className="h-5 w-5 text-sky-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("coldStorageCharges")}</p>
+                  <p className="text-lg font-bold text-sky-700 dark:text-sky-400 truncate" data-testid="stat-cold-charges">
+                    <Currency amount={summary.coldChargesTotal} />
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-exit-cash">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/10">
+                  <Banknote className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("cashReceived")}</p>
+                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400 truncate" data-testid="stat-cash">
+                    <Currency amount={summary.cashReceived} />
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-exit-account-due">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="p-2 rounded-lg bg-indigo-500/10">
+                    <CreditCard className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">{t("accountReceived")}</p>
+                    <p className="text-base font-bold text-indigo-700 dark:text-indigo-400 truncate" data-testid="stat-account">
+                      <Currency amount={summary.accountReceived} />
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("amountDue")}</p>
+                  <p className="text-base font-bold text-rose-700 dark:text-rose-400 truncate" data-testid="stat-due">
+                    <Currency amount={summary.amountDue} />
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground" data-testid="text-no-exits">
+              {t("noExits")}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("exitDate")}</TableHead>
+                    <TableHead className="text-xs font-semibold">{t("farmerName")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("village")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("marka")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("coldBillNo")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("bagsExited")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("potatoType")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("buyerName")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("coldStorageCharges")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("paid")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("due")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("paymentStatus")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((r) => (
+                    <TableRow key={r.exitId} data-testid={`row-exit-${r.exitId}`}>
+                      <TableCell className="text-xs whitespace-nowrap">{format(new Date(r.exitDate), "dd MMM yyyy")}</TableCell>
+                      <TableCell className="text-xs font-medium min-w-[120px]">{r.farmerName}</TableCell>
+                      <TableCell className="text-xs">{r.village}</TableCell>
+                      <TableCell className="text-xs">{r.lotNo}</TableCell>
+                      <TableCell className="text-xs">{r.marka || "—"}</TableCell>
+                      <TableCell className="text-xs">{r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—"}</TableCell>
+                      <TableCell className="text-xs text-right">{r.bagsExited}</TableCell>
+                      <TableCell className="text-xs">
+                        <Badge variant="outline" className="text-[10px]">{t(r.potatoType) || r.potatoType}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">{renderBuyer(r)}</TableCell>
+                      <TableCell className="text-xs text-right font-medium" data-testid={`cold-share-${r.exitId}`}>
+                        <Currency amount={r.coldChargeShare} />
+                      </TableCell>
+                      <TableCell className="text-xs text-right text-emerald-700 dark:text-emerald-400" data-testid={`paid-share-${r.exitId}`}>
+                        {r.paidShare > 0 ? <Currency amount={r.paidShare} /> : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-right text-rose-700 dark:text-rose-400" data-testid={`due-share-${r.exitId}`}>
+                        {r.dueShare > 0 ? <Currency amount={r.dueShare} /> : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={r.paymentStatus === "paid" ? "default" : r.paymentStatus === "partial" ? "secondary" : "destructive"}
+                          className={r.paymentStatus === "paid" ? "bg-green-600" : r.paymentStatus === "partial" ? "bg-amber-500 text-white" : ""}
+                          data-testid={`status-${r.exitId}`}
+                        >
+                          {t(r.paymentStatus)}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {rows.length > 0 && (
+        <div className="text-sm text-muted-foreground">
+          {rows.length} {rows.length === 1 ? "exit" : "exits"}
         </div>
       )}
     </div>

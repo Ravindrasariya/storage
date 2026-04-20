@@ -1575,6 +1575,39 @@ export async function registerRoutes(
     }
   });
 
+  // Exit / Nikasi Register — joined exit + sale rows with proportional money shares
+  app.get("/api/exit-register", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const { year, months, days, farmerName, farmerContact, buyerName } = req.query as Record<string, string | undefined>;
+      const parseCsvInts = (v?: string) => (v ? v.split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n)) : undefined);
+      const result = await storage.getExitRegister(coldStorageId, {
+        year: year && year !== "all" ? parseInt(year, 10) : undefined,
+        months: parseCsvInts(months),
+        days: parseCsvInts(days),
+        farmerName: farmerName?.trim() || undefined,
+        farmerContact: farmerContact?.trim() || undefined,
+        buyerName: buyerName?.trim() || undefined,
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to fetch exit register:", error);
+      res.status(500).json({ error: "Failed to fetch exit register" });
+    }
+  });
+
+  // Years available for the exit register filter (based on exit_history.exitDate)
+  app.get("/api/exit-register/years", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.getExitRegister(coldStorageId, {});
+      const years = Array.from(new Set(result.rows.map(r => new Date(r.exitDate).getFullYear()))).sort((a, b) => b - a);
+      res.json(years);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch exit register years" });
+    }
+  });
+
   // Get total bags exited (Nikasi) for a set of sales
   app.get("/api/sales-history/exits-summary", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {

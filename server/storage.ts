@@ -244,6 +244,19 @@ export interface IStorage {
   getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
   getTotalBagsExited(coldStorageId: string, year?: number): Promise<number>;
+  getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string }): Promise<{
+    rows: Array<{
+      exitId: string; exitDate: Date; billNumber: number; bagsExited: number;
+      saleId: string; farmerName: string; village: string; contactNumber: string;
+      lotNo: string; marka: string | null; coldStorageBillNumber: number | null;
+      potatoType: string; buyerName: string | null; transferToBuyerName: string | null;
+      isTransferReversed: number; isSelfSale: number;
+      paymentStatus: string; paymentMode: string | null;
+      quantitySold: number; coldStorageCharge: number; paidAmount: number; dueAmount: number;
+      coldChargeShare: number; paidShare: number; dueShare: number;
+    }>;
+    summary: { totalBagsExited: number; farmers: number; exitsWithDue: number; coldChargesTotal: number; cashReceived: number; accountReceived: number; amountDue: number };
+  }>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
   getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
     saleId: string;
@@ -2147,6 +2160,172 @@ export class DatabaseStorage implements IStorage {
       });
     }
     return result;
+  }
+
+  async getExitRegister(
+    coldStorageId: string,
+    filters: {
+      year?: number;
+      months?: number[]; // 1..12
+      days?: number[]; // 1..31
+      farmerName?: string;
+      farmerContact?: string;
+      buyerName?: string;
+    }
+  ): Promise<{
+    rows: Array<{
+      exitId: string;
+      exitDate: Date;
+      billNumber: number;
+      bagsExited: number;
+      saleId: string;
+      farmerName: string;
+      village: string;
+      contactNumber: string;
+      lotNo: string;
+      marka: string | null;
+      coldStorageBillNumber: number | null;
+      potatoType: string;
+      buyerName: string | null;
+      transferToBuyerName: string | null;
+      isTransferReversed: number;
+      isSelfSale: number;
+      paymentStatus: string;
+      paymentMode: string | null;
+      quantitySold: number;
+      coldStorageCharge: number;
+      paidAmount: number;
+      dueAmount: number;
+      coldChargeShare: number;
+      paidShare: number;
+      dueShare: number;
+    }>;
+    summary: {
+      totalBagsExited: number;
+      farmers: number;
+      exitsWithDue: number;
+      coldChargesTotal: number;
+      cashReceived: number;
+      accountReceived: number;
+      amountDue: number;
+    };
+  }> {
+    const where: SQL[] = [
+      eq(exitHistory.coldStorageId, coldStorageId),
+      eq(exitHistory.isReversed, 0),
+    ];
+
+    if (filters.year) {
+      where.push(sql`EXTRACT(YEAR FROM ${exitHistory.exitDate})::int = ${filters.year}`);
+    }
+    if (filters.months && filters.months.length > 0) {
+      where.push(sql`EXTRACT(MONTH FROM ${exitHistory.exitDate})::int IN (${sql.join(filters.months.map(m => sql`${m}`), sql`, `)})`);
+    }
+    if (filters.days && filters.days.length > 0) {
+      where.push(sql`EXTRACT(DAY FROM ${exitHistory.exitDate})::int IN (${sql.join(filters.days.map(d => sql`${d}`), sql`, `)})`);
+    }
+    if (filters.farmerName && filters.farmerName.trim()) {
+      where.push(ilike(salesHistory.farmerName, `%${filters.farmerName.trim()}%`));
+    }
+    if (filters.farmerContact && filters.farmerContact.trim()) {
+      where.push(eq(salesHistory.contactNumber, filters.farmerContact.trim()));
+    }
+    if (filters.buyerName && filters.buyerName.trim()) {
+      const b = filters.buyerName.trim();
+      // Effective buyer:
+      //   - if isTransferReversed=1 → original buyerName (or self)
+      //   - else if transferToBuyerName is non-empty → transferToBuyerName
+      //   - else → buyerName (or self if isSelfSale)
+      const effectiveBuyer = sql`CASE
+        WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName}
+        WHEN ${salesHistory.transferToBuyerName} IS NOT NULL AND ${salesHistory.transferToBuyerName} <> '' THEN ${salesHistory.transferToBuyerName}
+        ELSE ${salesHistory.buyerName}
+      END`;
+      if (b.toLowerCase() === "self") {
+        // Self only when self-sale AND no active transfer to a different buyer
+        where.push(sql`${salesHistory.isSelfSale} = 1 AND (${salesHistory.transferToBuyerName} IS NULL OR ${salesHistory.transferToBuyerName} = '' OR ${salesHistory.isTransferReversed} = 1)`);
+      } else {
+        where.push(sql`${effectiveBuyer} ILIKE ${`%${b}%`}`);
+      }
+    }
+
+    const rows = await db
+      .select({
+        exitId: exitHistory.id,
+        exitDate: exitHistory.exitDate,
+        billNumber: exitHistory.billNumber,
+        bagsExited: exitHistory.bagsExited,
+        saleId: salesHistory.id,
+        farmerName: salesHistory.farmerName,
+        village: salesHistory.village,
+        contactNumber: salesHistory.contactNumber,
+        lotNo: salesHistory.lotNo,
+        marka: salesHistory.marka,
+        coldStorageBillNumber: salesHistory.coldStorageBillNumber,
+        potatoType: salesHistory.potatoType,
+        buyerName: salesHistory.buyerName,
+        transferToBuyerName: salesHistory.transferToBuyerName,
+        isTransferReversed: salesHistory.isTransferReversed,
+        isSelfSale: salesHistory.isSelfSale,
+        paymentStatus: salesHistory.paymentStatus,
+        paymentMode: salesHistory.paymentMode,
+        quantitySold: salesHistory.quantitySold,
+        coldStorageCharge: salesHistory.coldStorageCharge,
+        paidAmount: salesHistory.paidAmount,
+        dueAmount: salesHistory.dueAmount,
+      })
+      .from(exitHistory)
+      .innerJoin(salesHistory, eq(salesHistory.id, exitHistory.salesHistoryId))
+      .where(and(...where))
+      .orderBy(desc(exitHistory.exitDate), desc(exitHistory.billNumber));
+
+    const enriched = rows.map((r) => {
+      const qty = r.quantitySold || 0;
+      const share = qty > 0 ? r.bagsExited / qty : 0;
+      const coldChargeShare = (r.coldStorageCharge || 0) * share;
+      const paidShare = (r.paidAmount || 0) * share;
+      const dueShare = (r.dueAmount || 0) * share;
+      return {
+        ...r,
+        isTransferReversed: r.isTransferReversed ?? 0,
+        isSelfSale: r.isSelfSale ?? 0,
+        paidAmount: r.paidAmount ?? 0,
+        dueAmount: r.dueAmount ?? 0,
+        coldChargeShare,
+        paidShare,
+        dueShare,
+      };
+    });
+
+    const farmerSet = new Set<string>();
+    let totalBagsExited = 0;
+    let exitsWithDue = 0;
+    let coldChargesTotal = 0;
+    let cashReceived = 0;
+    let accountReceived = 0;
+    let amountDue = 0;
+    for (const r of enriched) {
+      farmerSet.add(r.contactNumber);
+      totalBagsExited += r.bagsExited;
+      if (r.dueShare > 0) exitsWithDue += 1;
+      coldChargesTotal += r.coldChargeShare;
+      amountDue += r.dueShare;
+      if (r.paymentMode === "cash") cashReceived += r.paidShare;
+      else if (r.paymentMode === "account") accountReceived += r.paidShare;
+    }
+
+    return {
+      rows: enriched,
+      summary: {
+        totalBagsExited,
+        farmers: farmerSet.size,
+        exitsWithDue,
+        coldChargesTotal: roundAmount(coldChargesTotal),
+        cashReceived: roundAmount(cashReceived),
+        accountReceived: roundAmount(accountReceived),
+        amountDue: roundAmount(amountDue),
+      },
+    };
   }
 
   async getTotalBagsExited(coldStorageId: string, year?: number): Promise<number> {
