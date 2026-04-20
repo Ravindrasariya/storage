@@ -2563,93 +2563,11 @@ export class DatabaseStorage implements IStorage {
     return { receipt, salesUpdated: recordsUpdated };
   }
 
-  async getCashReceipts(coldStorageId: string): Promise<(CashReceipt & { advanceRateOfInterest?: number; advanceEffectiveDate?: Date | null })[]> {
-    const receiptList = await db.select()
+  async getCashReceipts(coldStorageId: string): Promise<CashReceipt[]> {
+    return await db.select()
       .from(cashReceipts)
       .where(eq(cashReceipts.coldStorageId, coldStorageId))
       .orderBy(desc(cashReceipts.receivedAt));
-
-    const merchantBuyerIds = [...new Set(
-      receiptList.filter(r => (r.payerType === "cold_merchant_advance" || r.payerType === "cold_merchant") && r.buyerLedgerId)
-        .map(r => r.buyerLedgerId!)
-    )];
-    const farmerIds = [...new Set(
-      receiptList.filter(r => r.payerType === "farmer" && r.farmerLedgerId)
-        .map(r => r.farmerLedgerId!)
-    )];
-
-    if (merchantBuyerIds.length === 0 && farmerIds.length === 0) {
-      return receiptList;
-    }
-
-    const merchantAdvMap = new Map<string, { roi: number; effDate: Date }>();
-    const receivableMap = new Map<string, { roi: number; effDate: Date | null }>();
-    const farmerAdvMap = new Map<string, { roi: number; effDate: Date }>();
-
-    if (merchantBuyerIds.length > 0) {
-      const mRows = await db.select({
-        buyerLedgerId: merchantAdvance.buyerLedgerId,
-        rateOfInterest: merchantAdvance.rateOfInterest,
-        effectiveDate: merchantAdvance.effectiveDate,
-      }).from(merchantAdvance)
-        .where(and(
-          eq(merchantAdvance.coldStorageId, coldStorageId),
-          inArray(merchantAdvance.buyerLedgerId, merchantBuyerIds),
-          eq(merchantAdvance.isReversed, 0)
-        ));
-      for (const r of mRows) {
-        if (!merchantAdvMap.has(r.buyerLedgerId) || r.rateOfInterest > 0) {
-          merchantAdvMap.set(r.buyerLedgerId, { roi: r.rateOfInterest, effDate: r.effectiveDate });
-        }
-      }
-
-      const oRows = await db.select({
-        buyerLedgerId: openingReceivables.buyerLedgerId,
-        rateOfInterest: openingReceivables.rateOfInterest,
-        effectiveDate: openingReceivables.effectiveDate,
-      }).from(openingReceivables)
-        .where(and(
-          eq(openingReceivables.coldStorageId, coldStorageId),
-          inArray(openingReceivables.buyerLedgerId!, merchantBuyerIds),
-          eq(openingReceivables.payerType, "cold_merchant")
-        ));
-      for (const r of oRows) {
-        if (r.buyerLedgerId && (!receivableMap.has(r.buyerLedgerId) || r.rateOfInterest > 0)) {
-          receivableMap.set(r.buyerLedgerId, { roi: r.rateOfInterest, effDate: r.effectiveDate ?? null });
-        }
-      }
-    }
-
-    if (farmerIds.length > 0) {
-      const fRows = await db.select({
-        farmerLedgerId: farmerAdvanceFreight.farmerLedgerId,
-        rateOfInterest: farmerAdvanceFreight.rateOfInterest,
-        effectiveDate: farmerAdvanceFreight.effectiveDate,
-      }).from(farmerAdvanceFreight)
-        .where(and(
-          eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
-          inArray(farmerAdvanceFreight.farmerLedgerId, farmerIds),
-          eq(farmerAdvanceFreight.isReversed, 0)
-        ));
-      for (const r of fRows) {
-        if (!farmerAdvMap.has(r.farmerLedgerId) || r.rateOfInterest > 0) {
-          farmerAdvMap.set(r.farmerLedgerId, { roi: r.rateOfInterest, effDate: r.effectiveDate });
-        }
-      }
-    }
-
-    return receiptList.map(r => {
-      let meta: { roi: number; effDate: Date | null } | undefined;
-      if (r.payerType === "cold_merchant_advance" && r.buyerLedgerId) {
-        meta = merchantAdvMap.get(r.buyerLedgerId);
-      } else if (r.payerType === "cold_merchant" && r.buyerLedgerId) {
-        meta = receivableMap.get(r.buyerLedgerId);
-      } else if (r.payerType === "farmer" && r.farmerLedgerId) {
-        meta = farmerAdvMap.get(r.farmerLedgerId);
-      }
-      if (!meta || meta.roi === 0) return r;
-      return { ...r, advanceRateOfInterest: meta.roi, advanceEffectiveDate: meta.effDate };
-    });
   }
 
   async getSalesGoodsBuyers(coldStorageId: string): Promise<string[]> {
