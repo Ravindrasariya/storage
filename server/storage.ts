@@ -256,7 +256,7 @@ export interface IStorage {
   // Cash Receipts
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
   getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
-  createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerLedgerId: string | null; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
+  createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerLedgerId: string | null; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
   getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
   getSalesGoodsBuyers(coldStorageId: string): Promise<string[]>;
   createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
@@ -2289,7 +2289,7 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => a.farmerName.toLowerCase().localeCompare(b.farmerName.toLowerCase()));
   }
 
-  async createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerLedgerId: string | null; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
+  async createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerLedgerId: string | null; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
     if (!data.farmerDetails) {
       throw new Error("Farmer details are required for farmer payments");
     }
@@ -2550,6 +2550,7 @@ export class DatabaseStorage implements IStorage {
         accountType: data.accountType,
         accountId: data.accountId,
         amount: data.amount,
+        roundOff: data.roundOff || 0,
         receivedAt: data.receivedAt,
         notes: data.notes,
         transactionId,
@@ -6330,7 +6331,7 @@ export class DatabaseStorage implements IStorage {
     return { totalApplied: Math.round(totalApplied * 100) / 100, recordsUpdated };
   }
 
-  async createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<CashReceipt> {
+  async createMerchantAdvanceReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; buyerName: string; buyerLedgerId: string; buyerId: string; receiptType: string; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedAdvanceIds?: string[] }): Promise<CashReceipt> {
     const [receipt] = await db.insert(cashReceipts)
       .values({
         id: randomUUID(),
@@ -6343,6 +6344,7 @@ export class DatabaseStorage implements IStorage {
         receiptType: data.receiptType,
         accountId: data.accountId,
         amount: data.amount,
+        roundOff: data.roundOff || 0,
         receivedAt: data.receivedAt,
         notes: data.notes,
         appliedAmount: data.appliedAmount ?? data.amount,
@@ -7133,7 +7135,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async createFarmerLoanReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; farmerName: string; farmerLedgerId: string; farmerId: string; receiptType: string; accountId: string | null; amount: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedLoanIds?: string[] }): Promise<CashReceipt> {
+  async createFarmerLoanReceipt(data: { coldStorageId: string; transactionId: string; payerType: string; farmerName: string; farmerLedgerId: string; farmerId: string; receiptType: string; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null; appliedAmount?: number; unappliedAmount?: number; appliedLoanIds?: string[] }): Promise<CashReceipt> {
     const [receipt] = await db.insert(cashReceipts)
       .values({
         id: randomUUID(),
@@ -7146,6 +7148,7 @@ export class DatabaseStorage implements IStorage {
         receiptType: data.receiptType,
         accountId: data.accountId,
         amount: data.amount,
+        roundOff: data.roundOff || 0,
         receivedAt: data.receivedAt,
         notes: data.notes,
         appliedAmount: data.appliedAmount ?? data.amount,

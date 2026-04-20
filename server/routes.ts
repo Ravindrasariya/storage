@@ -2093,13 +2093,17 @@ export async function registerRoutes(
         buyerLedgerId: z.string(),
         buyerId: z.string(),
         buyerName: z.string(),
-        amount: z.number().positive(),
+        amount: z.number().min(0),
+        roundOff: z.number().min(0).optional(),
         receivedAt: z.string(),
         remarks: z.string().optional(),
         receiptType: z.enum(["cash", "account"]),
         accountId: z.string().optional(),
         selectedAdvanceIds: z.array(z.string()).min(1),
-      });
+      }).refine(
+        (d) => (d.amount + (d.roundOff || 0)) > 0,
+        { message: "Amount + Round-off must be greater than zero", path: ["amount"] }
+      );
       const data = schema.parse(req.body);
 
       const uniqueAdvanceIds = [...new Set(data.selectedAdvanceIds)];
@@ -2116,6 +2120,7 @@ export async function registerRoutes(
         receiptType: data.receiptType,
         accountId: data.accountId || null,
         amount: data.amount,
+        roundOff: data.roundOff || 0,
         receivedAt: new Date(data.receivedAt),
         notes: data.remarks || null,
         appliedAmount: data.amount,
@@ -2285,13 +2290,17 @@ export async function registerRoutes(
         farmerLedgerId: z.string(),
         farmerId: z.string(),
         farmerName: z.string(),
-        amount: z.number().positive(),
+        amount: z.number().min(0),
+        roundOff: z.number().min(0).optional(),
         receivedAt: z.string(),
         remarks: z.string().optional(),
         receiptType: z.enum(["cash", "account"]),
         accountId: z.string().optional(),
         selectedLoanIds: z.array(z.string()).min(1),
-      });
+      }).refine(
+        (d) => (d.amount + (d.roundOff || 0)) > 0,
+        { message: "Amount + Round-off must be greater than zero", path: ["amount"] }
+      );
       const data = schema.parse(req.body);
 
       const uniqueLoanIds = [...new Set(data.selectedLoanIds)];
@@ -2308,6 +2317,7 @@ export async function registerRoutes(
         receiptType: data.receiptType,
         accountId: data.accountId || null,
         amount: data.amount,
+        roundOff: data.roundOff || 0,
         receivedAt: new Date(data.receivedAt),
         notes: data.remarks || null,
         appliedAmount: data.amount,
@@ -2666,10 +2676,14 @@ export async function registerRoutes(
     receiptType: z.enum(["cash", "account"]),
     accountType: z.enum(["limit", "current"]).optional(),
     accountId: z.string().optional(),
-    amount: z.number().positive(),
+    amount: z.number().min(0),
+    roundOff: z.number().min(0).optional(),
     receivedAt: z.string().transform((val) => new Date(val)),
     notes: z.string().optional(),
   }).refine(
+    (data) => (data.amount + (data.roundOff || 0)) > 0,
+    { message: "Amount + Round-off must be greater than zero", path: ["amount"] }
+  ).refine(
     (data) => data.receiptType !== "account" || data.accountId !== undefined || data.accountType !== undefined,
     { message: "Account is required when receipt type is account", path: ["accountId"] }
   ).refine(
@@ -2701,6 +2715,7 @@ export async function registerRoutes(
             accountType: validatedData.accountType || null,
             accountId: validatedData.accountId || null,
             amount: validatedData.amount,
+            roundOff: validatedData.roundOff || 0,
             receivedAt: validatedData.receivedAt,
             notes: validatedData.notes || null,
           });
@@ -2719,6 +2734,7 @@ export async function registerRoutes(
         accountType: validatedData.accountType || null,
         accountId: validatedData.accountId || null,
         amount: validatedData.amount,
+        roundOff: validatedData.roundOff || 0,
         receivedAt: validatedData.receivedAt,
         notes: validatedData.notes || null,
       });
@@ -5412,7 +5428,18 @@ export async function registerRoutes(
       ));
       const interestExpense = Number(interestPaid[0]?.total) || 0;
 
-      const totalExpenses = totalRevenueExpenses + depreciationExpense + interestExpense;
+      // Round-off concessions on inward cash receipts (expense to the storage)
+      const roundOffSum = await db.select({
+        total: sql<number>`COALESCE(SUM(${cashReceiptsTable.roundOff}), 0)`,
+      }).from(cashReceiptsTable).where(and(
+        eq(cashReceiptsTable.coldStorageId, coldStorageId),
+        gte(cashReceiptsTable.receivedAt, fyStart),
+        lte(cashReceiptsTable.receivedAt, fyEnd),
+        eq(cashReceiptsTable.isReversed, 0),
+      ));
+      const roundOffExpense = Number(roundOffSum[0]?.total) || 0;
+
+      const totalExpenses = totalRevenueExpenses + depreciationExpense + interestExpense + roundOffExpense;
       const netProfitOrLoss = totalIncome - totalExpenses;
 
       const result = {
@@ -5430,6 +5457,7 @@ export async function registerRoutes(
           totalRevenue: totalRevenueExpenses,
           depreciation: depreciationExpense,
           interestOnLiabilities: interestExpense,
+          roundOff: roundOffExpense,
           total: totalExpenses,
         },
         netProfitOrLoss,
@@ -5451,6 +5479,7 @@ export async function registerRoutes(
           ...Object.entries(expenseByType).map(([type, val]) => [`  ${type}`, String(val)]),
           ['Depreciation', String(depreciationExpense)],
           ['Interest on Liabilities', String(interestExpense)],
+          ...(roundOffExpense > 0 ? [['Round-off (Inward Concessions)', String(roundOffExpense)]] : []),
           ['Total Expenses', String(totalExpenses)],
           [],
           [netProfitOrLoss >= 0 ? 'Net Profit' : 'Net Loss', String(Math.abs(netProfitOrLoss))],

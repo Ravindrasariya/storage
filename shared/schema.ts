@@ -290,6 +290,7 @@ export const cashReceipts = pgTable("cash_receipts", {
   accountType: text("account_type"), // DEPRECATED: Use accountId instead. Legacy values: 'limit' or 'current'
   accountId: varchar("account_id"), // Reference to bankAccounts table - new dynamic account system
   amount: real("amount").notNull(),
+  roundOff: real("round_off").notNull().default(0), // Round-off concession given by storage; included in `amount` (gross) but excluded from cash/account balance accumulation
   receivedAt: timestamp("received_at").notNull(),
   appliedAmount: real("applied_amount").notNull().default(0), // Amount applied to sales
   unappliedAmount: real("unapplied_amount").notNull().default(0), // Remaining amount not yet applied

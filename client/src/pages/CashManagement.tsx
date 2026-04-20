@@ -49,6 +49,7 @@ interface PersistedFormState {
   receiptType: string;
   accountId: string;
   inwardAmount: string;
+  inwardRoundOff: string;
   receivedDate: string;
   inwardRemarks: string;
   expenseType: string;
@@ -190,6 +191,7 @@ export default function CashManagement() {
   const [receiptType, setReceiptType] = useState<"cash" | "account">((persistedState?.receiptType as "cash" | "account") || "cash");
   const [accountId, setAccountId] = useState<string>(persistedState?.accountId || "");
   const [inwardAmount, setInwardAmount] = useState(persistedState?.inwardAmount || "");
+  const [inwardRoundOff, setInwardRoundOff] = useState(persistedState?.inwardRoundOff || "");
   const [receivedDate, setReceivedDate] = useState(persistedState?.receivedDate || todayDate);
   const [inwardRemarks, setInwardRemarks] = useState(persistedState?.inwardRemarks || "");
 
@@ -331,6 +333,7 @@ export default function CashManagement() {
       receiptType,
       accountId,
       inwardAmount,
+      inwardRoundOff,
       receivedDate,
       inwardRemarks,
       expenseType,
@@ -356,7 +359,7 @@ export default function CashManagement() {
     sessionStorage.setItem(getStateKey(coldStorageId), JSON.stringify(stateToSave));
   }, [
     coldStorageId, activeTab, payerType, buyerName, customBuyerName, salesGoodsBuyerName, receiptType, accountId,
-    inwardAmount, receivedDate, inwardRemarks, expenseType, expenseReceiverName, expensePaymentMode,
+    inwardAmount, inwardRoundOff, receivedDate, inwardRemarks, expenseType, expenseReceiverName, expensePaymentMode,
     expenseAccountId, expenseAmount, expenseDate, expenseRemarks, transferFromAccount, transferToAccount,
     transferAmount, transferDate, transferRemarks, transferTypeMode, buyerTransferFrom, buyerTransferTo,
     selectedSaleId, buyerTransferAmount, buyerTransferDate, buyerTransferRemarks,
@@ -383,6 +386,7 @@ export default function CashManagement() {
         if (loaded.receiptType) setReceiptType(loaded.receiptType as "cash" | "account");
         if (loaded.accountId) setAccountId(loaded.accountId);
         if (loaded.inwardAmount) setInwardAmount(loaded.inwardAmount);
+        if (loaded.inwardRoundOff) setInwardRoundOff(loaded.inwardRoundOff);
         if (loaded.receivedDate) setReceivedDate(loaded.receivedDate);
         if (loaded.inwardRemarks) setInwardRemarks(loaded.inwardRemarks);
         if (loaded.expenseType) setExpenseType(loaded.expenseType);
@@ -750,7 +754,7 @@ export default function CashManagement() {
   });
 
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; farmerLedgerId?: string | null; farmerDetails?: { farmerName: string; contactNumber: string; village: string }; receiptType: string; accountId?: string; amount: number; receivedAt: string; notes?: string }) => {
+    mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; farmerLedgerId?: string | null; farmerDetails?: { farmerName: string; contactNumber: string; village: string }; receiptType: string; accountId?: string; amount: number; roundOff?: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -794,7 +798,7 @@ export default function CashManagement() {
   });
 
   const payMerchantAdvanceMutation = useMutation({
-    mutationFn: async (data: { buyerLedgerId: string; buyerId: string; buyerName: string; amount: number; receivedAt: string; remarks?: string; receiptType: string; accountId?: string; selectedAdvanceIds: string[] }) => {
+    mutationFn: async (data: { buyerLedgerId: string; buyerId: string; buyerName: string; amount: number; roundOff?: number; receivedAt: string; remarks?: string; receiptType: string; accountId?: string; selectedAdvanceIds: string[] }) => {
       const response = await apiRequest("POST", "/api/merchant-advances/pay", data);
       return response.json();
     },
@@ -825,7 +829,7 @@ export default function CashManagement() {
   });
 
   const payFarmerLoanMutation = useMutation({
-    mutationFn: async (data: { farmerLedgerId: string; farmerId: string; farmerName: string; amount: number; receivedAt: string; remarks?: string; receiptType: string; accountId?: string; selectedLoanIds: string[] }) => {
+    mutationFn: async (data: { farmerLedgerId: string; farmerId: string; farmerName: string; amount: number; roundOff?: number; receivedAt: string; remarks?: string; receiptType: string; accountId?: string; selectedLoanIds: string[] }) => {
       const response = await apiRequest("POST", "/api/farmer-loans/pay", data);
       return response.json();
     },
@@ -1414,6 +1418,10 @@ export default function CashManagement() {
   });
 
   const handleInwardSubmit = () => {
+    const roundOffNum = parseFloat(inwardRoundOff) || 0;
+    const actualPaidNum = parseFloat(inwardAmount) || 0;
+    const grossAmount = actualPaidNum + roundOffNum;
+
     if (payerType === "cold_merchant_advance") {
       if (!advanceBuyerLedgerId) {
         toast({ title: t("error"), description: t("selectMerchant"), variant: "destructive" });
@@ -1423,18 +1431,18 @@ export default function CashManagement() {
         toast({ title: t("error"), description: t("selectAdvancesToPay"), variant: "destructive" });
         return;
       }
-      if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
+      if (grossAmount <= 0 || actualPaidNum < 0 || roundOffNum < 0) {
         toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
         return;
       }
       const selectedDueTotal = outstandingAdvances
         .filter(a => selectedAdvanceIds.includes(a.id))
         .reduce((sum, a) => sum + a.remainingDue, 0);
-      if (parseFloat(inwardAmount) > selectedDueTotal) {
+      if (grossAmount > selectedDueTotal) {
         toast({ title: t("error"), description: `${t("amountExceedsDue")} (₹${formatCurrency(selectedDueTotal)})`, variant: "destructive" });
         return;
       }
-      if (receiptType === "account" && !accountId) {
+      if (actualPaidNum > 0 && receiptType === "account" && !accountId) {
         toast({ title: t("error"), description: t("selectBankAccount"), variant: "destructive" });
         return;
       }
@@ -1442,7 +1450,8 @@ export default function CashManagement() {
         buyerLedgerId: advanceBuyerLedgerId,
         buyerId: advanceBuyerId,
         buyerName: advanceBuyerName,
-        amount: parseFloat(inwardAmount),
+        amount: actualPaidNum,
+        roundOff: roundOffNum,
         receivedAt: new Date(receivedDate).toISOString(),
         remarks: inwardRemarks || undefined,
         receiptType,
@@ -1461,18 +1470,18 @@ export default function CashManagement() {
         toast({ title: t("error"), description: t("selectLoansToPay"), variant: "destructive" });
         return;
       }
-      if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
+      if (grossAmount <= 0 || actualPaidNum < 0 || roundOffNum < 0) {
         toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
         return;
       }
       const selectedDueTotal = outstandingLoans
         .filter(a => selectedLoanIds.includes(a.id))
         .reduce((sum, a) => sum + a.remainingDue, 0);
-      if (parseFloat(inwardAmount) > selectedDueTotal) {
+      if (grossAmount > selectedDueTotal) {
         toast({ title: t("error"), description: `${t("amountExceedsDue")} (₹${formatCurrency(selectedDueTotal)})`, variant: "destructive" });
         return;
       }
-      if (receiptType === "account" && !accountId) {
+      if (actualPaidNum > 0 && receiptType === "account" && !accountId) {
         toast({ title: t("error"), description: t("selectBankAccount"), variant: "destructive" });
         return;
       }
@@ -1480,7 +1489,8 @@ export default function CashManagement() {
         farmerLedgerId: loanFarmerLedgerId,
         farmerId: loanFarmerId,
         farmerName: loanFarmerName,
-        amount: parseFloat(inwardAmount),
+        amount: actualPaidNum,
+        roundOff: roundOffNum,
         receivedAt: new Date(receivedDate).toISOString(),
         remarks: inwardRemarks || undefined,
         receiptType,
@@ -1491,11 +1501,11 @@ export default function CashManagement() {
     }
 
     if (payerType === "kata") {
-      if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
+      if (grossAmount <= 0 || actualPaidNum < 0 || roundOffNum < 0) {
         toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
         return;
       }
-      if (receiptType === "account" && !accountId) {
+      if (actualPaidNum > 0 && receiptType === "account" && !accountId) {
         toast({ title: t("error"), description: t("selectBankAccount"), variant: "destructive" });
         return;
       }
@@ -1505,7 +1515,8 @@ export default function CashManagement() {
         farmerReceivableId: undefined,
         receiptType,
         accountId: receiptType === "account" ? accountId : undefined,
-        amount: parseFloat(inwardAmount),
+        amount: actualPaidNum,
+        roundOff: roundOffNum,
         receivedAt: new Date(receivedDate).toISOString(),
         notes: inwardRemarks || undefined,
       });
@@ -1535,26 +1546,26 @@ export default function CashManagement() {
       return;
     }
     
-    if (!inwardAmount || parseFloat(inwardAmount) <= 0) {
+    if (grossAmount <= 0 || actualPaidNum < 0 || roundOffNum < 0) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
 
-    if (payerType === "cold_merchant" && selectedBuyerDue > 0 && parseFloat(inwardAmount) > selectedBuyerDue) {
+    if (payerType === "cold_merchant" && selectedBuyerDue > 0 && grossAmount > selectedBuyerDue) {
       toast({ title: t("error"), description: `${t("amountExceedsDue")} (₹${formatCurrency(selectedBuyerDue)})`, variant: "destructive" });
       return;
     }
 
     if (payerType === "farmer" && farmerReceivableId) {
       const farmerDue = farmerLedgerDues.find(f => f.id === farmerReceivableId)?.totalDue || 0;
-      if (farmerDue > 0 && parseFloat(inwardAmount) > farmerDue) {
+      if (farmerDue > 0 && grossAmount > farmerDue) {
         toast({ title: t("error"), description: `${t("amountExceedsDue")} (₹${formatCurrency(farmerDue)})`, variant: "destructive" });
         return;
       }
     }
     
-    // Validate bank account selection when payment mode is "account"
-    if (receiptType === "account" && !accountId) {
+    // Validate bank account selection when payment mode is "account" (skip if round-off only)
+    if (actualPaidNum > 0 && receiptType === "account" && !accountId) {
       toast({ title: t("error"), description: t("selectBankAccount") || "Please select a bank account", variant: "destructive" });
       return;
     }
@@ -1574,7 +1585,8 @@ export default function CashManagement() {
       } : undefined,
       receiptType,
       accountId: receiptType === "account" ? accountId : undefined,
-      amount: parseFloat(inwardAmount),
+      amount: actualPaidNum,
+      roundOff: roundOffNum,
       receivedAt: new Date(receivedDate).toISOString(),
       notes: inwardRemarks || undefined,
     });
@@ -1893,12 +1905,17 @@ export default function CashManagement() {
         const dueAfterStr = r.payerType === "cold_merchant" && r.dueBalanceAfter !== null && r.dueBalanceAfter !== undefined 
           ? r.dueBalanceAfter.toString() 
           : "";
+        const roundOffVal = Number(r.roundOff) || 0;
+        const actualPaid = (Number(r.amount) || 0) - roundOffVal;
+        const amountStr = roundOffVal > 0
+          ? `${r.amount} (${t("actualPaid")}: ${actualPaid}, ${t("roundOff")}: ${roundOffVal})`
+          : r.amount.toString();
         return [
           r.transactionId || "",
           dateStr,
           t("inflow"),
           r.buyerName || getPayerTypeLabel(r.payerType),
-          r.amount.toString(),
+          amountStr,
           r.receiptType === "cash" ? t("cash") : t("account"),
           r.receiptType === "account" ? getAccountLabel(r.accountId || r.accountType) : "",
           getPayerTypeLabel(r.payerType),
@@ -2468,7 +2485,7 @@ export default function CashManagement() {
 
     const totalCashReceived = activeReceipts
       .filter(r => r.receiptType === "cash")
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+      .reduce((sum, r) => sum + (Number(r.amount) || 0) - (Number(r.roundOff) || 0), 0);
     
     // totalAccountReceived computed later from per-account breakdown + unassigned
     
@@ -2547,12 +2564,13 @@ export default function CashManagement() {
     // Compute receipts per account (track unassigned separately)
     let unassignedReceived = 0;
     activeReceipts.filter(r => r.receiptType === "account").forEach(r => {
+      const netAmount = (Number(r.amount) || 0) - (Number(r.roundOff) || 0);
       const accId = getReceiptAccountId(r);
       if (accId && accountBalances[accId]) {
-        accountBalances[accId].received += Number(r.amount) || 0;
+        accountBalances[accId].received += netAmount;
       } else {
         // Receipt doesn't match any existing bank account
-        unassignedReceived += Number(r.amount) || 0;
+        unassignedReceived += netAmount;
       }
     });
 
@@ -3763,16 +3781,31 @@ export default function CashManagement() {
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <Label>{t("amount")} (₹) *</Label>
-                  <Input
-                    type="number"
-                    value={inwardAmount}
-                    onChange={(e) => setInwardAmount(e.target.value)}
-                    placeholder="0"
-                    min={1}
-                    data-testid="input-inward-amount"
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <Label>{t("actualPaid")} (₹) *</Label>
+                    <Input
+                      type="number"
+                      value={inwardAmount}
+                      onChange={(e) => setInwardAmount(e.target.value)}
+                      placeholder="0"
+                      min={0}
+                      step="0.01"
+                      data-testid="input-inward-amount"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("roundOff")} (₹)</Label>
+                    <Input
+                      type="number"
+                      value={inwardRoundOff}
+                      onChange={(e) => setInwardRoundOff(e.target.value)}
+                      placeholder="0"
+                      min={0}
+                      step="0.01"
+                      data-testid="input-inward-round-off"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -3802,7 +3835,7 @@ export default function CashManagement() {
                   onClick={handleInwardSubmit}
                   disabled={
                     !canEdit || 
-                    !inwardAmount || 
+                    ((parseFloat(inwardAmount) || 0) + (parseFloat(inwardRoundOff) || 0) <= 0) || 
                     createReceiptMutation.isPending ||
                     payMerchantAdvanceMutation.isPending ||
                     payFarmerLoanMutation.isPending ||
@@ -4983,6 +5016,12 @@ export default function CashManagement() {
                               {(transaction.data as Discount).village}
                             </span>
                           )}
+                          {/* Round-off indicator on inward receipts */}
+                          {transaction.type === "inflow" && (Number((transaction.data as CashReceipt).roundOff) || 0) > 0 && (
+                            <Badge variant="outline" className="text-xs py-0 h-5 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300" data-testid={`badge-round-off-${index}`}>
+                              {t("roundOff")}: ₹{formatCurrency(Number((transaction.data as CashReceipt).roundOff) || 0)}
+                            </Badge>
+                          )}
                           {/* Due After for cold_merchant receipts and discounts */}
                           {transaction.type === "inflow" && (transaction.data as CashReceipt).payerType === "cold_merchant" && (transaction.data as CashReceipt).dueBalanceAfter !== null && (transaction.data as CashReceipt).dueBalanceAfter !== undefined && (
                             <Badge variant="outline" className="text-xs py-0 h-5 ml-auto bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300">
@@ -5098,6 +5137,18 @@ export default function CashManagement() {
                       <span className="text-muted-foreground">{t("amount")}:</span>
                       <span className="font-bold text-green-600">₹{selectedTransaction.data.amount.toLocaleString()}</span>
                     </div>
+                    {(Number((selectedTransaction.data as CashReceipt).roundOff) || 0) > 0 && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("actualPaid")}:</span>
+                          <span className="font-medium text-green-700">₹{((Number(selectedTransaction.data.amount) || 0) - (Number((selectedTransaction.data as CashReceipt).roundOff) || 0)).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("roundOff")}:</span>
+                          <span className="font-medium text-amber-600" data-testid="text-receipt-round-off">₹{(Number((selectedTransaction.data as CashReceipt).roundOff) || 0).toLocaleString()}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("paymentMode")}:</span>
                       <Badge variant="outline">

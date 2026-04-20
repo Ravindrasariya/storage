@@ -24,6 +24,7 @@ interface PnLData {
     totalRevenue: number;
     depreciation: number;
     interestOnLiabilities: number;
+    roundOff?: number;
     total: number;
   };
   netProfitOrLoss: number;
@@ -202,6 +203,12 @@ export default function ProfitAndLoss() {
                 <div className="flex justify-between items-center py-2 px-3 rounded bg-muted/30" data-testid="row-expense-interest">
                   <span className="text-sm">{t("interestOnLiabilities")}</span>
                   <span className="text-sm font-medium">{formatCurrency(data.expenses.interestOnLiabilities)}</span>
+                </div>
+              )}
+              {(data.expenses.roundOff || 0) > 0 && (
+                <div className="flex justify-between items-center py-2 px-3 rounded bg-muted/30" data-testid="row-expense-round-off">
+                  <span className="text-sm">{t("roundOff")}</span>
+                  <span className="text-sm font-medium">{formatCurrency(data.expenses.roundOff || 0)}</span>
                 </div>
               )}
               <Separator />

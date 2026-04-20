@@ -810,6 +810,8 @@ const translations: Translations = {
   totalIncome: { en: "Total Income", hi: "कुल आय" },
   expenses: { en: "Expenses", hi: "व्यय" },
   interestOnLiabilities: { en: "Interest on Liabilities", hi: "देनदारियों पर ब्याज" },
+  roundOff: { en: "Round-off", hi: "राउंड-ऑफ" },
+  actualPaid: { en: "Actual Paid", hi: "वास्तविक भुगतान" },
   totalExpenses: { en: "Total Expenses", hi: "कुल व्यय" },
   netProfit: { en: "Net Profit", hi: "शुद्ध लाभ" },
   netLoss: { en: "Net Loss", hi: "शुद्ध हानि" },
