@@ -2105,6 +2105,7 @@ export async function registerRoutes(
         { message: "Amount + Round-off must be greater than zero", path: ["amount"] }
       );
       const data = schema.parse(req.body);
+      const grossAmount = (data.amount || 0) + (data.roundOff || 0);
 
       const uniqueAdvanceIds = [...new Set(data.selectedAdvanceIds)];
 
@@ -2119,16 +2120,16 @@ export async function registerRoutes(
         buyerId: data.buyerId,
         receiptType: data.receiptType,
         accountId: data.accountId || null,
-        amount: data.amount,
+        amount: grossAmount,
         roundOff: data.roundOff || 0,
         receivedAt: new Date(data.receivedAt),
         notes: data.remarks || null,
-        appliedAmount: data.amount,
+        appliedAmount: grossAmount,
         unappliedAmount: 0,
         appliedAdvanceIds: uniqueAdvanceIds,
       });
 
-      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, data.amount, uniqueAdvanceIds, receipt.id, new Date(data.receivedAt));
+      const payResult = await storage.payMerchantAdvanceSelected(coldStorageId, data.buyerLedgerId, grossAmount, uniqueAdvanceIds, receipt.id, new Date(data.receivedAt));
 
       if (payResult.totalApplied <= 0) {
         await storage.deleteMerchantAdvanceReceipt(receipt.id);
@@ -2302,6 +2303,7 @@ export async function registerRoutes(
         { message: "Amount + Round-off must be greater than zero", path: ["amount"] }
       );
       const data = schema.parse(req.body);
+      const grossAmount = (data.amount || 0) + (data.roundOff || 0);
 
       const uniqueLoanIds = [...new Set(data.selectedLoanIds)];
 
@@ -2316,16 +2318,16 @@ export async function registerRoutes(
         farmerId: data.farmerId,
         receiptType: data.receiptType,
         accountId: data.accountId || null,
-        amount: data.amount,
+        amount: grossAmount,
         roundOff: data.roundOff || 0,
         receivedAt: new Date(data.receivedAt),
         notes: data.remarks || null,
-        appliedAmount: data.amount,
+        appliedAmount: grossAmount,
         unappliedAmount: 0,
         appliedLoanIds: uniqueLoanIds,
       });
 
-      const payResult = await storage.payFarmerLoanSelected(coldStorageId, data.farmerLedgerId, data.amount, uniqueLoanIds, receipt.id, new Date(data.receivedAt));
+      const payResult = await storage.payFarmerLoanSelected(coldStorageId, data.farmerLedgerId, grossAmount, uniqueLoanIds, receipt.id, new Date(data.receivedAt));
 
       if (payResult.totalApplied <= 0) {
         await storage.deleteFarmerLoanReceipt(receipt.id);
@@ -2698,6 +2700,7 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = createCashReceiptSchema.parse(req.body);
+      const grossAmount = (validatedData.amount || 0) + (validatedData.roundOff || 0);
       
       // For farmer payer type, handle payment allocation to farmer receivable
       if (validatedData.payerType === "farmer" && validatedData.farmerReceivableId) {
@@ -2714,7 +2717,7 @@ export async function registerRoutes(
             receiptType: validatedData.receiptType,
             accountType: validatedData.accountType || null,
             accountId: validatedData.accountId || null,
-            amount: validatedData.amount,
+            amount: grossAmount,
             roundOff: validatedData.roundOff || 0,
             receivedAt: validatedData.receivedAt,
             notes: validatedData.notes || null,
@@ -2733,7 +2736,7 @@ export async function registerRoutes(
         receiptType: validatedData.receiptType,
         accountType: validatedData.accountType || null,
         accountId: validatedData.accountId || null,
-        amount: validatedData.amount,
+        amount: grossAmount,
         roundOff: validatedData.roundOff || 0,
         receivedAt: validatedData.receivedAt,
         notes: validatedData.notes || null,

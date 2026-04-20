@@ -771,7 +771,7 @@ export default function CashManagement() {
       setSelectedFarmerReceivableId("");
       setReceiptType("cash");
       setAccountId("");
-      setInwardAmount("");
+      setInwardAmount(""); setInwardRoundOff("");
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
       setInwardRemarks("");
       clearPersistedState(coldStorageId);
@@ -804,7 +804,7 @@ export default function CashManagement() {
     },
     onSuccess: () => {
       toast({ title: t("success"), description: t("paymentRecorded"), variant: "success" });
-      setInwardAmount("");
+      setInwardAmount(""); setInwardRoundOff("");
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
       setInwardRemarks("");
       setAdvanceBuyerLedgerId("");
@@ -835,7 +835,7 @@ export default function CashManagement() {
     },
     onSuccess: () => {
       toast({ title: t("success"), description: t("paymentRecorded"), variant: "success" });
-      setInwardAmount("");
+      setInwardAmount(""); setInwardRoundOff("");
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
       setInwardRemarks("");
       setLoanFarmerLedgerId("");
@@ -1883,6 +1883,8 @@ export default function CashManagement() {
       "Type",
       "Name/Description",
       "Amount",
+      "Actual Paid (₹)",
+      "Round-off (₹)",
       "Payment Mode",
       "Account Type",
       "Payer Type",
@@ -1907,15 +1909,14 @@ export default function CashManagement() {
           : "";
         const roundOffVal = Number(r.roundOff) || 0;
         const actualPaid = (Number(r.amount) || 0) - roundOffVal;
-        const amountStr = roundOffVal > 0
-          ? `${r.amount} (${t("actualPaid")}: ${actualPaid}, ${t("roundOff")}: ${roundOffVal})`
-          : r.amount.toString();
         return [
           r.transactionId || "",
           dateStr,
           t("inflow"),
           r.buyerName || getPayerTypeLabel(r.payerType),
-          amountStr,
+          r.amount.toString(),
+          actualPaid.toString(),
+          roundOffVal.toString(),
           r.receiptType === "cash" ? t("cash") : t("account"),
           r.receiptType === "account" ? getAccountLabel(r.accountId || r.accountType) : "",
           getPayerTypeLabel(r.payerType),
@@ -1934,6 +1935,8 @@ export default function CashManagement() {
           t("outflow"),
           getExpenseTypeLabel(e.expenseType) + (e.receiverName ? ` - ${e.receiverName}` : ""),
           e.amount.toString(),
+          "",
+          "",
           e.paymentMode === "cash" ? t("cash") : t("account"),
           e.paymentMode === "account" ? getAccountLabel(e.accountId || e.accountType) : "",
           "",
@@ -1952,6 +1955,8 @@ export default function CashManagement() {
           t("transfer"),
           `${getAccountLabel(tr.fromAccountType)} → ${getAccountLabel(tr.toAccountType)}`,
           tr.amount.toString(),
+          "",
+          "",
           t("transfer"),
           "",
           "",
@@ -1980,6 +1985,8 @@ export default function CashManagement() {
           t("discount"),
           `${d.farmerName} - ${d.village}`,
           d.totalAmount.toString(),
+          "",
+          "",
           t("discount"),
           "",
           "",
@@ -1999,6 +2006,8 @@ export default function CashManagement() {
           t("buyerToBuyer"),
           `${bt.buyerName} → ${bt.transferToBuyerName}`,
           (bt.transferAmount || bt.dueAmount || 0).toString(),
+          "",
+          "",
           t("liabilityTransfer"),
           "",
           "",
@@ -3783,7 +3792,7 @@ export default function CashManagement() {
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-2">
-                    <Label>{t("actualPaid")} (₹) *</Label>
+                    <Label>{t("amount")} (₹) *</Label>
                     <Input
                       type="number"
                       value={inwardAmount}
@@ -5016,11 +5025,16 @@ export default function CashManagement() {
                               {(transaction.data as Discount).village}
                             </span>
                           )}
-                          {/* Round-off indicator on inward receipts */}
+                          {/* Round-off + actual paid breakdown on inward receipts */}
                           {transaction.type === "inflow" && (Number((transaction.data as CashReceipt).roundOff) || 0) > 0 && (
-                            <Badge variant="outline" className="text-xs py-0 h-5 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300" data-testid={`badge-round-off-${index}`}>
-                              {t("roundOff")}: ₹{formatCurrency(Number((transaction.data as CashReceipt).roundOff) || 0)}
-                            </Badge>
+                            <>
+                              <Badge variant="outline" className="text-xs py-0 h-5 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300" data-testid={`badge-actual-paid-${index}`}>
+                                {t("actualPaid")}: ₹{formatCurrency((Number((transaction.data as CashReceipt).amount) || 0) - (Number((transaction.data as CashReceipt).roundOff) || 0))}
+                              </Badge>
+                              <Badge variant="outline" className="text-xs py-0 h-5 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300" data-testid={`badge-round-off-${index}`}>
+                                {t("roundOff")}: ₹{formatCurrency(Number((transaction.data as CashReceipt).roundOff) || 0)}
+                              </Badge>
+                            </>
                           )}
                           {/* Due After for cold_merchant receipts and discounts */}
                           {transaction.type === "inflow" && (transaction.data as CashReceipt).payerType === "cold_merchant" && (transaction.data as CashReceipt).dueBalanceAfter !== null && (transaction.data as CashReceipt).dueBalanceAfter !== undefined && (
