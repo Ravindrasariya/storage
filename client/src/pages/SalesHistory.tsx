@@ -1260,8 +1260,13 @@ function ExitRegister() {
     return "";
   };
 
+  const isKnownBagType = (bagType: string | null | undefined): boolean => {
+    const norm = (bagType || "").toLowerCase();
+    return norm === "wafer" || norm === "seed" || norm === "ration";
+  };
+
   const renderBagTypeBadge = (bagType: string | null | undefined) => {
-    if (!bagType) return <span className="text-muted-foreground">—</span>;
+    if (!isKnownBagType(bagType)) return <span className="text-muted-foreground">—</span>;
     return (
       <Badge variant="outline" className={bagTypeBadgeClass(bagType)}>
         {formatBagType(bagType)}
@@ -1317,7 +1322,7 @@ function ExitRegister() {
           <td>${escape(r.village)}</td>
           <td>${escape(r.lotNo)}</td>
           <td>${escape(r.marka || "—")}</td>
-          <td>${r.bagType ? `<span class="bag-badge" style="${bagTypePrintStyle(r.bagType)}">${escape(formatBagType(r.bagType))}</span>` : "—"}</td>
+          <td>${isKnownBagType(r.bagType) ? `<span class="bag-badge" style="${bagTypePrintStyle(r.bagType)}">${escape(formatBagType(r.bagType))}</span>` : "—"}</td>
           <td>${escape(r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—")}</td>
           <td class="r">${escape(r.bagsExited)}</td>
           <td>${escape(renderBuyerText(r))}</td>
