@@ -1600,8 +1600,7 @@ export async function registerRoutes(
   app.get("/api/exit-register/years", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const result = await storage.getExitRegister(coldStorageId, {});
-      const years = Array.from(new Set(result.rows.map(r => new Date(r.exitDate).getFullYear()))).sort((a, b) => b - a);
+      const years = await storage.getExitRegisterYears(coldStorageId);
       res.json(years);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch exit register years" });

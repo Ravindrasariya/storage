@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { EditSaleDialog } from "@/components/EditSaleDialog";
-import type { SalesHistory } from "@shared/schema";
+import type { SalesHistory, ExitRegisterResponse, ExitRegisterRow } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency } from "@/components/Currency";
@@ -1101,47 +1101,6 @@ function FarmerPaymentTracker() {
 // =====================
 // Exit / Nikasi Register
 // =====================
-
-type ExitRegisterRow = {
-  exitId: string;
-  exitDate: string;
-  billNumber: number;
-  bagsExited: number;
-  saleId: string;
-  farmerName: string;
-  village: string;
-  contactNumber: string;
-  lotNo: string;
-  marka: string | null;
-  coldStorageBillNumber: number | null;
-  potatoType: string;
-  buyerName: string | null;
-  transferToBuyerName: string | null;
-  isTransferReversed: number;
-  isSelfSale: number;
-  paymentStatus: string;
-  paymentMode: string | null;
-  quantitySold: number;
-  coldStorageCharge: number;
-  paidAmount: number;
-  dueAmount: number;
-  coldChargeShare: number;
-  paidShare: number;
-  dueShare: number;
-};
-
-type ExitRegisterResponse = {
-  rows: ExitRegisterRow[];
-  summary: {
-    totalBagsExited: number;
-    farmers: number;
-    exitsWithDue: number;
-    coldChargesTotal: number;
-    cashReceived: number;
-    accountReceived: number;
-    amountDue: number;
-  };
-};
 
 function ExitRegister() {
   const { t } = useI18n();

@@ -101,6 +101,7 @@ import {
   type QualityStats,
   type PaymentStats,
   type MerchantStats,
+  type ExitRegisterResponse,
 } from "@shared/schema";
 
 // Entity type prefixes for sequential IDs
@@ -244,19 +245,8 @@ export interface IStorage {
   getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
   getTotalBagsExited(coldStorageId: string, year?: number): Promise<number>;
-  getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string }): Promise<{
-    rows: Array<{
-      exitId: string; exitDate: Date; billNumber: number; bagsExited: number;
-      saleId: string; farmerName: string; village: string; contactNumber: string;
-      lotNo: string; marka: string | null; coldStorageBillNumber: number | null;
-      potatoType: string; buyerName: string | null; transferToBuyerName: string | null;
-      isTransferReversed: number; isSelfSale: number;
-      paymentStatus: string; paymentMode: string | null;
-      quantitySold: number; coldStorageCharge: number; paidAmount: number; dueAmount: number;
-      coldChargeShare: number; paidShare: number; dueShare: number;
-    }>;
-    summary: { totalBagsExited: number; farmers: number; exitsWithDue: number; coldChargesTotal: number; cashReceived: number; accountReceived: number; amountDue: number };
-  }>;
+  getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string }): Promise<ExitRegisterResponse>;
+  getExitRegisterYears(coldStorageId: string): Promise<number[]>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
   getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
     saleId: string;
@@ -2326,6 +2316,16 @@ export class DatabaseStorage implements IStorage {
         amountDue: roundAmount(amountDue),
       },
     };
+  }
+
+  async getExitRegisterYears(coldStorageId: string): Promise<number[]> {
+    const rows = await db.execute<{ year: number }>(sql`
+      SELECT DISTINCT EXTRACT(YEAR FROM ${exitHistory.exitDate})::int AS year
+      FROM ${exitHistory}
+      WHERE ${exitHistory.coldStorageId} = ${coldStorageId} AND ${exitHistory.isReversed} = 0
+      ORDER BY year DESC
+    `);
+    return (rows.rows as Array<{ year: number }>).map(r => Number(r.year)).filter(n => Number.isFinite(n));
   }
 
   async getTotalBagsExited(coldStorageId: string, year?: number): Promise<number> {

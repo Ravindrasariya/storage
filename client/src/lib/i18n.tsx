@@ -483,8 +483,6 @@ const translations: Translations = {
   searchByNamePhoneVillage: { en: "Search by name, phone, village...", hi: "नाम, फ़ोन, गाँव से खोजें..." },
   noFarmersWithDues: { en: "No farmers with pending dues", hi: "कोई बकाया वाले किसान नहीं" },
   receiptType: { en: "Receipt Type", hi: "रसीद प्रकार" },
-  cashReceived: { en: "Cash Received", hi: "नकद प्राप्त" },
-  accountReceived: { en: "Account Received", hi: "खाते में प्राप्त" },
   accountType: { en: "Account Type", hi: "खाता प्रकार" },
   limitAccount: { en: "Limit Account", hi: "लिमिट खाता" },
   currentAccount: { en: "Current Account", hi: "चालू खाता" },

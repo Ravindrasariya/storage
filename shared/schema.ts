@@ -768,6 +768,48 @@ export type LotEditHistory = typeof lotEditHistory.$inferSelect;
 export type InsertLotEditHistory = z.infer<typeof insertLotEditHistorySchema>;
 export type SalesHistory = typeof salesHistory.$inferSelect;
 export type InsertSalesHistory = z.infer<typeof insertSalesHistorySchema>;
+
+// Exit / Nikasi Register response types (joined exit_history + sales_history with proportional money shares)
+export type ExitRegisterRow = {
+  exitId: string;
+  exitDate: string;
+  billNumber: number;
+  bagsExited: number;
+  saleId: string;
+  farmerName: string;
+  village: string;
+  contactNumber: string;
+  lotNo: string;
+  marka: string | null;
+  coldStorageBillNumber: number | null;
+  potatoType: string;
+  buyerName: string | null;
+  transferToBuyerName: string | null;
+  isTransferReversed: number;
+  isSelfSale: number;
+  paymentStatus: string;
+  paymentMode: string | null;
+  quantitySold: number;
+  coldStorageCharge: number;
+  paidAmount: number;
+  dueAmount: number;
+  coldChargeShare: number;
+  paidShare: number;
+  dueShare: number;
+};
+export type ExitRegisterSummary = {
+  totalBagsExited: number;
+  farmers: number;
+  exitsWithDue: number;
+  coldChargesTotal: number;
+  cashReceived: number;
+  accountReceived: number;
+  amountDue: number;
+};
+export type ExitRegisterResponse = {
+  rows: ExitRegisterRow[];
+  summary: ExitRegisterSummary;
+};
 export type SaleEditHistory = typeof saleEditHistory.$inferSelect;
 export type InsertSaleEditHistory = z.infer<typeof insertSaleEditHistorySchema>;
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
