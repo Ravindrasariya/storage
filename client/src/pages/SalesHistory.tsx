@@ -618,8 +618,10 @@ export default function SalesHistoryPage() {
                   <TableRow>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("saleDate")}</TableHead>
                     <TableHead className="text-xs font-semibold">{t("farmerName")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("contactNumber")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("village")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("marka") || "Marka"}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("coldBillNo") || "Cold Bill No."}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("originalBags")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("bagType")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("quantitySold")}</TableHead>
@@ -637,8 +639,10 @@ export default function SalesHistoryPage() {
                         {format(new Date(sale.soldAt), "dd MMM yyyy")}
                       </TableCell>
                       <TableCell className="text-xs font-medium min-w-[120px]">{sale.farmerName}</TableCell>
-                      <TableCell className="text-xs">{sale.contactNumber}</TableCell>
+                      <TableCell className="text-xs">{sale.village}</TableCell>
                       <TableCell>{sale.lotNo}</TableCell>
+                      <TableCell className="text-xs" data-testid={`cell-marka-${sale.id}`}>{sale.marka || "—"}</TableCell>
+                      <TableCell className="text-xs" data-testid={`cell-cold-bill-${sale.id}`}>{sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—"}</TableCell>
                       <TableCell className="text-right">{sale.originalLotSize}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={sale.bagType === "wafer" ? "bg-chart-1/10 text-chart-1" : "bg-chart-2/10 text-chart-2"}>
