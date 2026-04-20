@@ -620,8 +620,8 @@ export default function SalesHistoryPage() {
                     <TableHead className="text-xs font-semibold">{t("farmerName")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("village")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("marka") || "Marka"}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("coldBillNo") || "Cold Bill No."}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("marka")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("coldBillNo")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("originalBags")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("bagType")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("quantitySold")}</TableHead>
