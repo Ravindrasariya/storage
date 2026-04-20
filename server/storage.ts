@@ -2289,6 +2289,7 @@ export class DatabaseStorage implements IStorage {
         marka: salesHistory.marka,
         coldStorageBillNumber: salesHistory.coldStorageBillNumber,
         potatoType: salesHistory.potatoType,
+        bagType: salesHistory.bagType,
         buyerName: salesHistory.buyerName,
         transferToBuyerName: salesHistory.transferToBuyerName,
         isTransferReversed: salesHistory.isTransferReversed,

@@ -319,6 +319,8 @@ const translations: Translations = {
   
   // Sales History
   salesHistory: { en: "Sales History", hi: "बिक्री का इतिहास" },
+  billsHistory: { en: "Bills History", hi: "बिल इतिहास" },
+  printPdf: { en: "Print PDF", hi: "पीडीएफ प्रिंट" },
   date: { en: "Date", hi: "तिथि" },
   entryDate: { en: "Entry Date", hi: "प्रवेश तिथि" },
   saleDate: { en: "Sale Date", hi: "बिक्री तिथि" },

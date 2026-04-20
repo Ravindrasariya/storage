@@ -785,6 +785,7 @@ export type ExitRegisterRow = {
   marka: string | null;
   coldStorageBillNumber: number | null;
   potatoType: string;
+  bagType: string;
   buyerName: string | null;
   transferToBuyerName: string | null;
   isTransferReversed: number;

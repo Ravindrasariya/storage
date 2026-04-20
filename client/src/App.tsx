@@ -61,7 +61,7 @@ function Navigation() {
     { href: "/new-lot", label: t("newLot"), icon: PlusCircle },
     { href: "/stock-register", label: t("stockRegister"), icon: Search },
     { href: "/analytics", label: t("analytics"), icon: BarChart3 },
-    { href: "/sales-history", label: t("salesHistory"), icon: History },
+    { href: "/sales-history", label: t("billsHistory"), icon: History },
     { href: "/cash-management", label: t("cashManagement"), icon: Banknote },
     { href: "/farmer-ledger", label: t("farmerLedger"), icon: Users },
     { href: "/buyer-ledger", label: t("buyerLedger"), icon: ShoppingCart },

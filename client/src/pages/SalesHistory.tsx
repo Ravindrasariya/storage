@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote } from "lucide-react";
+import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -295,12 +295,26 @@ export default function SalesHistoryPage() {
         </h1>
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sales" | "tracker" | "exits")}>
           <TabsList>
-            <TabsTrigger value="sales" data-testid="tab-sales">{t("salesHistory")}</TabsTrigger>
-            <TabsTrigger value="tracker" data-testid="tab-tracker">
-              <HandCoins className="h-4 w-4 mr-1" />{t("farmerPaymentTracker")}
-            </TabsTrigger>
-            <TabsTrigger value="exits" data-testid="tab-exits">
+            <TabsTrigger
+              value="exits"
+              data-testid="tab-exits"
+              className="data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
+            >
               <LogOut className="h-4 w-4 mr-1" />{t("exitRegister")}
+            </TabsTrigger>
+            <TabsTrigger
+              value="sales"
+              data-testid="tab-sales"
+              className="data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
+            >
+              {t("salesHistory")}
+            </TabsTrigger>
+            <TabsTrigger
+              value="tracker"
+              data-testid="tab-tracker"
+              className="data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
+            >
+              <HandCoins className="h-4 w-4 mr-1" />{t("farmerPaymentTracker")}
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -1221,6 +1235,129 @@ function ExitRegister() {
     return Number(r.isSelfSale) === 1 ? t("self") : (r.buyerName || "-");
   };
 
+  const formatBagType = (bagType: string | null | undefined): string => {
+    if (!bagType) return "—";
+    const norm = bagType.toLowerCase();
+    if (norm === "wafer") return t("wafer");
+    if (norm === "seed") return t("seed");
+    if (norm === "ration") return t("ration");
+    return bagType;
+  };
+
+  const renderBuyerText = (r: ExitRegisterRow): string => {
+    if (Number(r.isSelfSale) === 1 && !r.transferToBuyerName) return t("self");
+    if (r.transferToBuyerName && r.transferToBuyerName.trim() && Number(r.isTransferReversed) !== 1) {
+      return r.transferToBuyerName;
+    }
+    return Number(r.isSelfSale) === 1 ? t("self") : (r.buyerName || "-");
+  };
+
+  const fmtINR = (n: number): string =>
+    `\u20B9${(Math.round(n * 100) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+
+  const handlePrint = () => {
+    if (!summary || rows.length === 0) return;
+
+    const filterParts: string[] = [];
+    filterParts.push(`${t("year")}: ${yearLabel}`);
+    if (months.length) filterParts.push(`${t("monthsLabel")}: ${months.map((m) => monthShortNames[m - 1]).join(", ")}`);
+    if (days.length) filterParts.push(`${t("daysLabel")}: ${days.join(", ")}`);
+    if (farmerFilter) filterParts.push(`${t("farmerName")}: ${farmerFilter}`);
+    if (buyerFilter) filterParts.push(`${t("buyerName")}: ${buyerFilter}`);
+
+    const escape = (s: string | number | null | undefined): string =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    const summaryCardsHtml = `
+      <div class="cards">
+        <div class="card"><div class="lbl">${escape(t("numFarmers"))}</div><div class="val">${summary.farmers}</div></div>
+        <div class="card"><div class="lbl">${escape(t("exitsWithDue"))}</div><div class="val">${summary.exitsWithDue}</div></div>
+        <div class="card"><div class="lbl">${escape(t("totalBagsExited"))}</div><div class="val">${summary.totalBagsExited.toLocaleString()}</div></div>
+        <div class="card"><div class="lbl">${escape(t("coldStorageCharges"))}</div><div class="val">${escape(fmtINR(summary.coldChargesTotal))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("cashReceived"))}</div><div class="val cash">${escape(fmtINR(summary.cashReceived))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("accountReceived"))}</div><div class="val acct">${escape(fmtINR(summary.accountReceived))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("amountDue"))}</div><div class="val due">${escape(fmtINR(summary.amountDue))}</div></div>
+      </div>
+    `;
+
+    const rowsHtml = rows
+      .map(
+        (r) => `
+        <tr>
+          <td>${escape(format(new Date(r.exitDate), "dd MMM yyyy"))}</td>
+          <td>${escape(r.farmerName)}</td>
+          <td>${escape(r.village)}</td>
+          <td>${escape(r.lotNo)}</td>
+          <td>${escape(r.marka || "—")}</td>
+          <td>${escape(formatBagType(r.bagType))}</td>
+          <td>${escape(r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—")}</td>
+          <td class="r">${escape(r.bagsExited)}</td>
+          <td>${escape(renderBuyerText(r))}</td>
+          <td class="r">${escape(fmtINR(r.coldChargeShare))}</td>
+          <td class="r cash">${r.paidShare > 0 ? escape(fmtINR(r.paidShare)) : "—"}</td>
+          <td class="r due">${r.dueShare > 0 ? escape(fmtINR(r.dueShare)) : "—"}</td>
+        </tr>
+      `,
+      )
+      .join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escape(t("exitRegister"))}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:16px;color:#111;}
+  h1{margin:0 0 4px 0;font-size:18px;}
+  .meta{font-size:11px;color:#555;margin-bottom:12px;}
+  .cards{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:14px;}
+  .card{border:1px solid #d4d4d8;border-radius:6px;padding:6px 8px;}
+  .lbl{font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.3px;}
+  .val{font-size:13px;font-weight:700;margin-top:2px;}
+  .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.due{color:#be123c;}
+  table{width:100%;border-collapse:collapse;font-size:11px;}
+  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;}
+  th{background:#f4f4f5;font-weight:700;}
+  td.r,th.r{text-align:right;}
+  td.cash{color:#047857;} td.due{color:#be123c;}
+  @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(7,1fr);}}
+</style></head><body>
+  <h1>${escape(t("exitRegister"))}</h1>
+  <div class="meta">${filterParts.map((p) => escape(p)).join(" &nbsp;|&nbsp; ")}</div>
+  ${summaryCardsHtml}
+  <table>
+    <thead><tr>
+      <th>${escape(t("exitDate"))}</th>
+      <th>${escape(t("farmerName"))}</th>
+      <th>${escape(t("village"))}</th>
+      <th>${escape(t("lotNo"))}</th>
+      <th>${escape(t("marka"))}</th>
+      <th>${escape(t("potatoType"))}</th>
+      <th>${escape(t("coldBillNo"))}</th>
+      <th class="r">${escape(t("bagsExited"))}</th>
+      <th>${escape(t("buyerName"))}</th>
+      <th class="r">${escape(t("coldStorageCharges"))}</th>
+      <th class="r">${escape(t("paid"))}</th>
+      <th class="r">${escape(t("due"))}</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <script>window.onload=function(){window.print();}<\/script>
+</body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast({
+        title: t("error"),
+        description: "Pop-up blocked. Please allow pop-ups for this site to print.",
+        variant: "destructive",
+      });
+      return;
+    }
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -1406,6 +1543,16 @@ function ExitRegister() {
                 <X className="h-4 w-4 mr-1" /> {t("clearFilters")}
               </Button>
             )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrint}
+              disabled={!summary || rows.length === 0}
+              data-testid="button-exit-print"
+            >
+              <Printer className="h-4 w-4 mr-1" /> {t("printPdf")}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -1521,6 +1668,7 @@ function ExitRegister() {
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("village")}</TableHead>
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("marka")}</TableHead>
+                    <TableHead className="text-sm font-semibold whitespace-nowrap">{t("potatoType")}</TableHead>
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("coldBillNo")}</TableHead>
                     <TableHead className="text-sm font-semibold text-right whitespace-nowrap">{t("bagsExited")}</TableHead>
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("buyerName")}</TableHead>
@@ -1537,6 +1685,7 @@ function ExitRegister() {
                       <TableCell className="text-sm">{r.village}</TableCell>
                       <TableCell className="text-sm">{r.lotNo}</TableCell>
                       <TableCell className="text-sm">{r.marka || "—"}</TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{formatBagType(r.bagType)}</TableCell>
                       <TableCell className="text-sm">{r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—"}</TableCell>
                       <TableCell className="text-sm text-right">{r.bagsExited}</TableCell>
                       <TableCell className="text-sm">{renderBuyer(r)}</TableCell>
