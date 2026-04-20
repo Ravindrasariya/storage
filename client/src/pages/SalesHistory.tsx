@@ -1451,9 +1451,9 @@ function ExitRegister() {
         </CardContent>
       </Card>
 
-      {/* Summary cards */}
+      {/* Summary cards: 1 stat-tiles + Cold Charges + Cash Received + Account Received + Amount Due */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
           <Card data-testid="card-exit-stats">
             <CardContent className="p-4">
               <div className="grid grid-cols-3 gap-2">
@@ -1508,23 +1508,31 @@ function ExitRegister() {
             </CardContent>
           </Card>
 
-          <Card data-testid="card-exit-account-due">
+          <Card data-testid="card-exit-account">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="p-2 rounded-lg bg-indigo-500/10">
-                    <CreditCard className="h-5 w-5 text-indigo-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">{t("accountReceived")}</p>
-                    <p className="text-base font-bold text-indigo-700 dark:text-indigo-400 truncate" data-testid="stat-account">
-                      <Currency amount={summary.accountReceived} />
-                    </p>
-                  </div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-500/10">
+                  <CreditCard className="h-5 w-5 text-indigo-600" />
                 </div>
-                <div className="text-right min-w-0">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("accountReceived")}</p>
+                  <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400 truncate" data-testid="stat-account">
+                    <Currency amount={summary.accountReceived} />
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-exit-due">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-rose-500/10">
+                  <AlertTriangle className="h-5 w-5 text-rose-600" />
+                </div>
+                <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">{t("amountDue")}</p>
-                  <p className="text-base font-bold text-rose-700 dark:text-rose-400 truncate" data-testid="stat-due">
+                  <p className="text-lg font-bold text-rose-700 dark:text-rose-400 truncate" data-testid="stat-due">
                     <Currency amount={summary.amountDue} />
                   </p>
                 </div>
