@@ -2287,34 +2287,52 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
-    // For sales with paidShare > 0 but no usable paymentMode (e.g. legacy rows
-    // where receipts overwrote each other oddly, or null values), derive the
-    // cash:account split from the buyer's actual cash_receipts so that
-    // Cash + Account == Σ Paid column. Self-sales have no real receipts and
-    // are treated as internal cash settlements.
-    const ambiguousBuyerNames = new Set<string>();
+    // Cash vs account attribution.
+    //
+    // Data-model constraint: cash_receipts are applied FIFO at the BUYER level
+    // (see createCashReceiptWithFIFO) — there is no junction table linking a
+    // specific receipt to a specific sale. The only per-sale signal is
+    // sales_history.payment_mode, which is OVERWRITTEN by each successive
+    // receipt that touches the sale, so it can be silently stale (e.g. a
+    // partial-paid sale that received both a cash and an account receipt
+    // will only remember the latest one).
+    //
+    // To get a faithful cash/account split for the Paid column we therefore:
+    //   1) Aggregate non-reversed cash_receipts (excluding round-off) per
+    //      buyer × receiptType, restricted to the payer types that actually
+    //      flow into sales_history (cold_merchant, sales_goods).
+    //   2) For each row with paidShare > 0, prefer the buyer's actual
+    //      cash:account ratio from those receipts. This corrects stale
+    //      payment_mode values.
+    //   3) Fall back to payment_mode only when the buyer has zero linked
+    //      receipts (e.g. sales fully paid at creation time before any
+    //      cash receipt was ever recorded).
+    //   4) Self-sales are internal settlements with no external receipt;
+    //      they are bucketed as cash to keep the reconciliation
+    //      cash + account = Σ paidShare intact.
+    const candidateBuyerNames = new Set<string>();
     for (const r of enriched) {
-      if (r.paidShare > 0 && r.paymentMode !== "cash" && r.paymentMode !== "account" && r.isSelfSale !== 1) {
-        const effBuyer = (r.isTransferReversed === 1
-          ? r.buyerName
-          : (r.transferToBuyerName && r.transferToBuyerName.trim() ? r.transferToBuyerName : r.buyerName)) || "";
-        if (effBuyer) ambiguousBuyerNames.add(effBuyer.trim().toLowerCase());
-      }
+      if (r.paidShare <= 0 || r.isSelfSale === 1) continue;
+      const effBuyer = (r.isTransferReversed === 1
+        ? r.buyerName
+        : (r.transferToBuyerName && r.transferToBuyerName.trim() ? r.transferToBuyerName : r.buyerName)) || "";
+      if (effBuyer) candidateBuyerNames.add(effBuyer.trim().toLowerCase());
     }
 
     const buyerSplit = new Map<string, { cash: number; account: number }>();
-    if (ambiguousBuyerNames.size > 0) {
-      const names = Array.from(ambiguousBuyerNames);
+    if (candidateBuyerNames.size > 0) {
+      const names = Array.from(candidateBuyerNames);
       const splitRows = await db
         .select({
           buyerKey: sql<string>`LOWER(TRIM(${cashReceipts.buyerName}))`,
           receiptType: cashReceipts.receiptType,
-          total: sql<number>`COALESCE(SUM(${cashReceipts.appliedAmount} - COALESCE(${cashReceipts.roundOff}, 0)), 0)`,
+          total: sql<number>`COALESCE(SUM(GREATEST(${cashReceipts.appliedAmount} - COALESCE(${cashReceipts.roundOff}, 0), 0)), 0)`,
         })
         .from(cashReceipts)
         .where(and(
           eq(cashReceipts.coldStorageId, coldStorageId),
           eq(cashReceipts.isReversed, 0),
+          sql`${cashReceipts.payerType} IN ('cold_merchant', 'sales_goods')`,
           sql`${cashReceipts.buyerName} IS NOT NULL`,
           sql`LOWER(TRIM(${cashReceipts.buyerName})) IN (${sql.join(names.map(n => sql`${n}`), sql`, `)})`,
         ))
@@ -2344,26 +2362,30 @@ export class DatabaseStorage implements IStorage {
 
       if (r.paidShare <= 0) continue;
 
-      if (r.paymentMode === "cash") {
+      // Self-sale → internal cash settlement (no external receipt exists).
+      if (r.isSelfSale === 1) {
+        cashReceived += r.paidShare;
+        continue;
+      }
+
+      const effBuyer = (r.isTransferReversed === 1
+        ? r.buyerName
+        : (r.transferToBuyerName && r.transferToBuyerName.trim() ? r.transferToBuyerName : r.buyerName)) || "";
+      const split = buyerSplit.get(effBuyer.trim().toLowerCase());
+      const totalSplit = split ? split.cash + split.account : 0;
+
+      if (split && totalSplit > 0) {
+        // Buyer has real receipts — attribute by their actual cash/account ratio.
+        cashReceived += r.paidShare * (split.cash / totalSplit);
+        accountReceived += r.paidShare * (split.account / totalSplit);
+      } else if (r.paymentMode === "cash") {
         cashReceived += r.paidShare;
       } else if (r.paymentMode === "account") {
         accountReceived += r.paidShare;
-      } else if (r.isSelfSale === 1) {
-        // Self-sale: no external receipt, treat as internal cash settlement
-        cashReceived += r.paidShare;
       } else {
-        const effBuyer = (r.isTransferReversed === 1
-          ? r.buyerName
-          : (r.transferToBuyerName && r.transferToBuyerName.trim() ? r.transferToBuyerName : r.buyerName)) || "";
-        const split = buyerSplit.get(effBuyer.trim().toLowerCase());
-        const totalSplit = split ? split.cash + split.account : 0;
-        if (split && totalSplit > 0) {
-          cashReceived += r.paidShare * (split.cash / totalSplit);
-          accountReceived += r.paidShare * (split.account / totalSplit);
-        } else {
-          // No receipts found for this buyer; default to cash so reconciliation holds
-          cashReceived += r.paidShare;
-        }
+        // No receipts and no payment_mode: default to cash so the summary
+        // reconciles with the Paid column (Cash + Account = Σ Paid).
+        cashReceived += r.paidShare;
       }
     }
 
