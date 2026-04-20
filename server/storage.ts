@@ -2287,6 +2287,47 @@ export class DatabaseStorage implements IStorage {
       };
     });
 
+    // For sales with paidShare > 0 but no usable paymentMode (e.g. legacy rows
+    // where receipts overwrote each other oddly, or null values), derive the
+    // cash:account split from the buyer's actual cash_receipts so that
+    // Cash + Account == Σ Paid column. Self-sales have no real receipts and
+    // are treated as internal cash settlements.
+    const ambiguousBuyerNames = new Set<string>();
+    for (const r of enriched) {
+      if (r.paidShare > 0 && r.paymentMode !== "cash" && r.paymentMode !== "account" && r.isSelfSale !== 1) {
+        const effBuyer = (r.isTransferReversed === 1
+          ? r.buyerName
+          : (r.transferToBuyerName && r.transferToBuyerName.trim() ? r.transferToBuyerName : r.buyerName)) || "";
+        if (effBuyer) ambiguousBuyerNames.add(effBuyer.trim().toLowerCase());
+      }
+    }
+
+    const buyerSplit = new Map<string, { cash: number; account: number }>();
+    if (ambiguousBuyerNames.size > 0) {
+      const names = Array.from(ambiguousBuyerNames);
+      const splitRows = await db
+        .select({
+          buyerKey: sql<string>`LOWER(TRIM(${cashReceipts.buyerName}))`,
+          receiptType: cashReceipts.receiptType,
+          total: sql<number>`COALESCE(SUM(${cashReceipts.appliedAmount} - COALESCE(${cashReceipts.roundOff}, 0)), 0)`,
+        })
+        .from(cashReceipts)
+        .where(and(
+          eq(cashReceipts.coldStorageId, coldStorageId),
+          eq(cashReceipts.isReversed, 0),
+          sql`${cashReceipts.buyerName} IS NOT NULL`,
+          sql`LOWER(TRIM(${cashReceipts.buyerName})) IN (${sql.join(names.map(n => sql`${n}`), sql`, `)})`,
+        ))
+        .groupBy(sql`LOWER(TRIM(${cashReceipts.buyerName}))`, cashReceipts.receiptType);
+
+      for (const sr of splitRows) {
+        const cur = buyerSplit.get(sr.buyerKey) || { cash: 0, account: 0 };
+        if (sr.receiptType === "cash") cur.cash += Number(sr.total) || 0;
+        else if (sr.receiptType === "account") cur.account += Number(sr.total) || 0;
+        buyerSplit.set(sr.buyerKey, cur);
+      }
+    }
+
     const farmerSet = new Set<string>();
     let totalBagsExited = 0;
     let exitsWithDue = 0;
@@ -2300,8 +2341,30 @@ export class DatabaseStorage implements IStorage {
       if (r.dueShare > 0) exitsWithDue += 1;
       coldChargesTotal += r.coldChargeShare;
       amountDue += r.dueShare;
-      if (r.paymentMode === "cash") cashReceived += r.paidShare;
-      else if (r.paymentMode === "account") accountReceived += r.paidShare;
+
+      if (r.paidShare <= 0) continue;
+
+      if (r.paymentMode === "cash") {
+        cashReceived += r.paidShare;
+      } else if (r.paymentMode === "account") {
+        accountReceived += r.paidShare;
+      } else if (r.isSelfSale === 1) {
+        // Self-sale: no external receipt, treat as internal cash settlement
+        cashReceived += r.paidShare;
+      } else {
+        const effBuyer = (r.isTransferReversed === 1
+          ? r.buyerName
+          : (r.transferToBuyerName && r.transferToBuyerName.trim() ? r.transferToBuyerName : r.buyerName)) || "";
+        const split = buyerSplit.get(effBuyer.trim().toLowerCase());
+        const totalSplit = split ? split.cash + split.account : 0;
+        if (split && totalSplit > 0) {
+          cashReceived += r.paidShare * (split.cash / totalSplit);
+          accountReceived += r.paidShare * (split.account / totalSplit);
+        } else {
+          // No receipts found for this buyer; default to cash so reconciliation holds
+          cashReceived += r.paidShare;
+        }
+      }
     }
 
     return {

@@ -1516,52 +1516,38 @@ function ExitRegister() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("exitDate")}</TableHead>
-                    <TableHead className="text-xs font-semibold">{t("farmerName")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("village")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("marka")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("coldBillNo")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("bagsExited")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("potatoType")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("buyerName")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("coldStorageCharges")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("paid")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("due")}</TableHead>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("paymentStatus")}</TableHead>
+                    <TableHead className="text-sm font-semibold whitespace-nowrap">{t("exitDate")}</TableHead>
+                    <TableHead className="text-sm font-semibold">{t("farmerName")}</TableHead>
+                    <TableHead className="text-sm font-semibold whitespace-nowrap">{t("village")}</TableHead>
+                    <TableHead className="text-sm font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
+                    <TableHead className="text-sm font-semibold whitespace-nowrap">{t("marka")}</TableHead>
+                    <TableHead className="text-sm font-semibold whitespace-nowrap">{t("coldBillNo")}</TableHead>
+                    <TableHead className="text-sm font-semibold text-right whitespace-nowrap">{t("bagsExited")}</TableHead>
+                    <TableHead className="text-sm font-semibold whitespace-nowrap">{t("buyerName")}</TableHead>
+                    <TableHead className="text-sm font-semibold text-right whitespace-nowrap">{t("coldStorageCharges")}</TableHead>
+                    <TableHead className="text-sm font-semibold text-right whitespace-nowrap">{t("paid")}</TableHead>
+                    <TableHead className="text-sm font-semibold text-right whitespace-nowrap">{t("due")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((r) => (
                     <TableRow key={r.exitId} data-testid={`row-exit-${r.exitId}`}>
-                      <TableCell className="text-xs whitespace-nowrap">{format(new Date(r.exitDate), "dd MMM yyyy")}</TableCell>
-                      <TableCell className="text-xs font-medium min-w-[120px]">{r.farmerName}</TableCell>
-                      <TableCell className="text-xs">{r.village}</TableCell>
-                      <TableCell className="text-xs">{r.lotNo}</TableCell>
-                      <TableCell className="text-xs">{r.marka || "—"}</TableCell>
-                      <TableCell className="text-xs">{r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—"}</TableCell>
-                      <TableCell className="text-xs text-right">{r.bagsExited}</TableCell>
-                      <TableCell className="text-xs">
-                        <Badge variant="outline" className="text-[10px]">{t(r.potatoType) || r.potatoType}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">{renderBuyer(r)}</TableCell>
-                      <TableCell className="text-xs text-right font-medium" data-testid={`cold-share-${r.exitId}`}>
+                      <TableCell className="text-sm whitespace-nowrap">{format(new Date(r.exitDate), "dd MMM yyyy")}</TableCell>
+                      <TableCell className="text-sm font-medium min-w-[120px]">{r.farmerName}</TableCell>
+                      <TableCell className="text-sm">{r.village}</TableCell>
+                      <TableCell className="text-sm">{r.lotNo}</TableCell>
+                      <TableCell className="text-sm">{r.marka || "—"}</TableCell>
+                      <TableCell className="text-sm">{r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—"}</TableCell>
+                      <TableCell className="text-sm text-right">{r.bagsExited}</TableCell>
+                      <TableCell className="text-sm">{renderBuyer(r)}</TableCell>
+                      <TableCell className="text-sm text-right font-medium" data-testid={`cold-share-${r.exitId}`}>
                         <Currency amount={r.coldChargeShare} />
                       </TableCell>
-                      <TableCell className="text-xs text-right text-emerald-700 dark:text-emerald-400" data-testid={`paid-share-${r.exitId}`}>
+                      <TableCell className="text-sm text-right text-emerald-700 dark:text-emerald-400" data-testid={`paid-share-${r.exitId}`}>
                         {r.paidShare > 0 ? <Currency amount={r.paidShare} /> : "—"}
                       </TableCell>
-                      <TableCell className="text-xs text-right text-rose-700 dark:text-rose-400" data-testid={`due-share-${r.exitId}`}>
+                      <TableCell className="text-sm text-right text-rose-700 dark:text-rose-400" data-testid={`due-share-${r.exitId}`}>
                         {r.dueShare > 0 ? <Currency amount={r.dueShare} /> : "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={r.paymentStatus === "paid" ? "default" : r.paymentStatus === "partial" ? "secondary" : "destructive"}
-                          className={r.paymentStatus === "paid" ? "bg-green-600" : r.paymentStatus === "partial" ? "bg-amber-500 text-white" : ""}
-                          data-testid={`status-${r.exitId}`}
-                        >
-                          {t(r.paymentStatus)}
-                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
