@@ -2138,11 +2138,11 @@ export async function registerRoutes(
 
       await storage.updateMerchantAdvanceReceipt(receipt.id, {
         appliedAmount: payResult.totalApplied,
-        unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100,
+        unappliedAmount: Math.round((grossAmount - payResult.totalApplied) * 100) / 100,
         appliedAdvanceIds: payResult.appliedAdvanceIds,
       });
 
-      res.json({ receipt: { ...receipt, appliedAmount: payResult.totalApplied, unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100, appliedAdvanceIds: payResult.appliedAdvanceIds }, ...payResult });
+      res.json({ receipt: { ...receipt, appliedAmount: payResult.totalApplied, unappliedAmount: Math.round((grossAmount - payResult.totalApplied) * 100) / 100, appliedAdvanceIds: payResult.appliedAdvanceIds }, ...payResult });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid payment data", details: error.errors });
@@ -2336,11 +2336,11 @@ export async function registerRoutes(
 
       await storage.updateFarmerLoanReceipt(receipt.id, {
         appliedAmount: payResult.totalApplied,
-        unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100,
+        unappliedAmount: Math.round((grossAmount - payResult.totalApplied) * 100) / 100,
         appliedLoanIds: payResult.appliedLoanIds,
       });
 
-      res.json({ receipt: { ...receipt, appliedAmount: payResult.totalApplied, unappliedAmount: Math.round((data.amount - payResult.totalApplied) * 100) / 100, appliedLoanIds: payResult.appliedLoanIds }, ...payResult });
+      res.json({ receipt: { ...receipt, appliedAmount: payResult.totalApplied, unappliedAmount: Math.round((grossAmount - payResult.totalApplied) * 100) / 100, appliedLoanIds: payResult.appliedLoanIds }, ...payResult });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid payment data", details: error.errors });
@@ -2686,7 +2686,7 @@ export async function registerRoutes(
     (data) => (data.amount + (data.roundOff || 0)) > 0,
     { message: "Amount + Round-off must be greater than zero", path: ["amount"] }
   ).refine(
-    (data) => data.receiptType !== "account" || data.accountId !== undefined || data.accountType !== undefined,
+    (data) => data.receiptType !== "account" || data.amount === 0 || data.accountId !== undefined || data.accountType !== undefined,
     { message: "Account is required when receipt type is account", path: ["accountId"] }
   ).refine(
     (data) => data.payerType === "kata" || data.payerType === "farmer" || (data.buyerName && data.buyerName.trim().length > 0),
