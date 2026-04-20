@@ -5482,7 +5482,7 @@ export async function registerRoutes(
           ...Object.entries(expenseByType).map(([type, val]) => [`  ${type}`, String(val)]),
           ['Depreciation', String(depreciationExpense)],
           ['Interest on Liabilities', String(interestExpense)],
-          ...(roundOffExpense > 0 ? [['Round-off (Inward Concessions)', String(roundOffExpense)]] : []),
+          ...(roundOffExpense > 0 ? [['Round-off', String(roundOffExpense)]] : []),
           ['Total Expenses', String(totalExpenses)],
           [],
           [netProfitOrLoss >= 0 ? 'Net Profit' : 'Net Loss', String(Math.abs(netProfitOrLoss))],
