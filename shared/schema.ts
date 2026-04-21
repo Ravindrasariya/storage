@@ -854,6 +854,7 @@ export type ExitRegisterSummary = {
   accountReceived: number;
   discountReceived: number;
   roundOffReceived: number;
+  receivableAdjReceived: number;
   amountDue: number;
 };
 export type ExitRegisterResponse = {

@@ -2295,6 +2295,7 @@ export class DatabaseStorage implements IStorage {
       accountReceived: number;
       discountReceived: number;
       roundOffReceived: number;
+      receivableAdjReceived: number;
       amountDue: number;
     };
   }> {
@@ -2364,6 +2365,10 @@ export class DatabaseStorage implements IStorage {
         paidCash: salesHistory.paidCash,
         paidAccount: salesHistory.paidAccount,
         discountAllocated: salesHistory.discountAllocated,
+        adjPyReceivables: salesHistory.adjPyReceivables,
+        adjAdvance: salesHistory.adjAdvance,
+        adjFreight: salesHistory.adjFreight,
+        adjSelfDue: salesHistory.adjSelfDue,
         dueAmount: salesHistory.dueAmount,
         farmerId: salesHistory.farmerId,
         buyerId: salesHistory.buyerId,
@@ -2388,6 +2393,10 @@ export class DatabaseStorage implements IStorage {
         paidCash: r.paidCash ?? 0,
         paidAccount: r.paidAccount ?? 0,
         discountAllocated: r.discountAllocated ?? 0,
+        adjPyReceivables: r.adjPyReceivables ?? 0,
+        adjAdvance: r.adjAdvance ?? 0,
+        adjFreight: r.adjFreight ?? 0,
+        adjSelfDue: r.adjSelfDue ?? 0,
         dueAmount: r.dueAmount ?? 0,
         coldChargeShare,
         paidShare,
@@ -2458,6 +2467,10 @@ export class DatabaseStorage implements IStorage {
     let discountReceived = 0;
     let roundOffCashTotal = 0;
     let roundOffAccountTotal = 0;
+    let receivableAdjTotal = 0;
+    let cashSelfDueNet = 0;
+    let accountSelfDueNet = 0;
+    let adjSelfDueTotal = 0;
     let amountDue = 0;
     for (const r of enriched) {
       farmerSet.add(r.contactNumber);
@@ -2488,14 +2501,48 @@ export class DatabaseStorage implements IStorage {
       discountReceived += r.discountShare;
       roundOffCashTotal += (roundOffCashBySale.get(r.saleId) || 0) * share;
       roundOffAccountTotal += (roundOffAccountBySale.get(r.saleId) || 0) * share;
+
+      // Receivable adjustments: FIFO allocations of this sale's payments to
+      // other receivables (PY receivables / advance / freight) and self-sale
+      // due transfers. All four feed the informational "Receivable Adj" card.
+      // Only adjSelfDue inflates this sale's paid_amount AND coldStorageCharge
+      // (the self-due transfer is paid here and re-billed on the other side),
+      // so net it out of cash/account and cold-charges to keep the invariant
+      // cash + account + discount + due == coldCharges intact.
+      const adjPyShare = (r.adjPyReceivables || 0) * share;
+      const adjAdvanceShare = (r.adjAdvance || 0) * share;
+      const adjFreightShare = (r.adjFreight || 0) * share;
+      const adjSelfDueShare = (r.adjSelfDue || 0) * share;
+      receivableAdjTotal += adjPyShare + adjAdvanceShare + adjFreightShare + adjSelfDueShare;
+      // Match the cash/account attribution branches above so the self-due
+      // net-out only fires for rows whose paid amount actually flowed into a
+      // bucket — legacy rows with no counters and no paymentMode contribute
+      // nothing to cash/account and must contribute nothing here either,
+      // otherwise the invariant cash + account + discount + due == coldCharges
+      // breaks for those rows. coldCharges is still reduced by adjSelfDue
+      // only for rows whose adjSelfDue actually landed somewhere.
+      let netted = false;
+      if (counterTotal > 0) {
+        cashSelfDueNet += adjSelfDueShare * ((r.paidCash || 0) / counterTotal);
+        accountSelfDueNet += adjSelfDueShare * ((r.paidAccount || 0) / counterTotal);
+        netted = true;
+      } else if (r.paymentMode === "cash") {
+        cashSelfDueNet += adjSelfDueShare;
+        netted = true;
+      } else if (r.paymentMode === "account") {
+        accountSelfDueNet += adjSelfDueShare;
+        netted = true;
+      }
+      if (netted) adjSelfDueTotal += adjSelfDueShare;
     }
 
     const roundOffTotal = roundOffCashTotal + roundOffAccountTotal;
     // Subtract each receipt-type's round-off slice from its matching bucket
     // and roll the combined amount into discount. This keeps the invariant
     // cash + account + discount + due == coldCharges (modulo rounding).
-    const cashNet = cashReceived - roundOffCashTotal;
-    const accountNet = accountReceived - roundOffAccountTotal;
+    const cashNet = Math.max(0, cashReceived - roundOffCashTotal - cashSelfDueNet);
+    const accountNet = Math.max(0, accountReceived - roundOffAccountTotal - accountSelfDueNet);
+    const coldChargesNet = Math.max(0, coldChargesTotal - adjSelfDueTotal);
     const discountWithRoundOff = discountReceived + roundOffTotal;
 
     return {
@@ -2504,11 +2551,12 @@ export class DatabaseStorage implements IStorage {
         totalBagsExited,
         farmers: farmerSet.size,
         exitsWithDue,
-        coldChargesTotal: roundAmount(coldChargesTotal),
+        coldChargesTotal: roundAmount(coldChargesNet),
         cashReceived: roundAmount(cashNet),
         accountReceived: roundAmount(accountNet),
         discountReceived: roundAmount(discountWithRoundOff),
         roundOffReceived: roundAmount(roundOffTotal),
+        receivableAdjReceived: roundAmount(receivableAdjTotal),
         amountDue: roundAmount(amountDue),
       },
     };

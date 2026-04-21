@@ -1302,14 +1302,14 @@ function ExitRegister() {
 
     const summaryCardsHtml = `
       <div class="cards">
-        <div class="card"><div class="lbl">${escape(t("numFarmers"))}</div><div class="val">${summary.farmers}</div></div>
-        <div class="card"><div class="lbl">${escape(t("exitsWithDue"))}</div><div class="val">${summary.exitsWithDue}</div></div>
+        <div class="card"><div class="lbl">${escape(t("numFarmers"))}</div><div class="val">${summary.farmers}<br/><small>${escape(t("exitsWithDue"))}: ${summary.exitsWithDue}</small></div></div>
         <div class="card"><div class="lbl">${escape(t("totalBagsExited"))}</div><div class="val">${summary.totalBagsExited.toLocaleString()}</div></div>
         <div class="card"><div class="lbl">${escape(t("coldStorageCharges"))}</div><div class="val">${escape(fmtINR(summary.coldChargesTotal))}</div></div>
         <div class="card"><div class="lbl">${escape(t("cashReceived"))}</div><div class="val cash">${escape(fmtINR(summary.cashReceived))}</div></div>
         <div class="card"><div class="lbl">${escape(t("accountReceived"))}</div><div class="val acct">${escape(fmtINR(summary.accountReceived))}</div></div>
         <div class="card"><div class="lbl">${escape(t("discountReceived"))}</div><div class="val disc">${escape(fmtINR(summary.discountReceived))}</div></div>
         <div class="card"><div class="lbl">${escape(t("amountDue"))}</div><div class="val due">${escape(fmtINR(summary.amountDue))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("receivableAdjustments"))}</div><div class="val">${escape(fmtINR(summary.receivableAdjReceived))}</div></div>
       </div>
     `;
 
@@ -1499,33 +1499,25 @@ function ExitRegister() {
       {/* Summary cards: 1 stat-tiles + Cold Charges + Cash Received + Account Received + Discount + Amount Due */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-          <Card data-testid="card-exit-farmers">
+          <Card data-testid="card-exit-farmers-due">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-blue-500/10">
                   <Users className="h-5 w-5 text-blue-600" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">{t("numFarmers")}</p>
-                  <p className="text-lg font-bold text-blue-700 dark:text-blue-300 truncate" data-testid="stat-farmers">
-                    {summary.farmers}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-exit-exits-due">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10">
-                  <AlertTriangle className="h-5 w-5 text-amber-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">{t("exitsWithDue")}</p>
-                  <p className="text-lg font-bold text-amber-700 dark:text-amber-300 truncate" data-testid="stat-exits-due">
-                    {summary.exitsWithDue}
-                  </p>
+                <div className="min-w-0 space-y-1">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("numFarmers")}</p>
+                    <p className="text-base font-bold text-blue-700 dark:text-blue-300 truncate" data-testid="stat-farmers">
+                      {summary.farmers}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("exitsWithDue")}</p>
+                    <p className="text-base font-bold text-amber-700 dark:text-amber-300 truncate" data-testid="stat-exits-due">
+                      {summary.exitsWithDue}
+                    </p>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -1626,6 +1618,22 @@ function ExitRegister() {
                   <p className="text-xs text-muted-foreground">{t("amountDue")}</p>
                   <p className="text-lg font-bold text-rose-700 dark:text-rose-400 truncate" data-testid="stat-due">
                     <Currency amount={summary.amountDue} />
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-exit-receivable-adj">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <FileCheck className="h-5 w-5 text-orange-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("receivableAdjustments")}</p>
+                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400 truncate" data-testid="stat-receivable-adj">
+                    <Currency amount={summary.receivableAdjReceived} />
                   </p>
                 </div>
               </div>
