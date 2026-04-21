@@ -2707,7 +2707,7 @@ export default function CashManagement() {
   }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterFarmer, filterExpenseType, filterRemarks, filterYear, filterMonths, filterDays]);
 
   return (
-    <div className="container mx-auto p-4 max-w-4xl overflow-x-hidden">
+    <div className="container mx-auto p-4 max-w-[calc(56rem+50mm)] overflow-x-hidden">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Banknote className="h-6 w-6" />
