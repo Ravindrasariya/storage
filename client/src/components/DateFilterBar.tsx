@@ -253,7 +253,7 @@ export function dateMatchesFilter(
 
   if (typeof value === "string") {
     // Prefer deterministic parsing for YYYY-MM-DD prefixed strings
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (match) {
       y = parseInt(match[1], 10);
       m = parseInt(match[2], 10);
