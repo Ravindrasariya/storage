@@ -1160,17 +1160,21 @@ function getTodayIST() {
   };
 }
 
-function initExitDateFilters() {
+function initExitDateFilters(): { year: string; months: number[]; days: number[] } {
   const today = getTodayIST();
   try {
     const raw = localStorage.getItem(EXIT_DATE_FILTERS_KEY);
     if (raw) {
       const saved = JSON.parse(raw);
-      const yearOk   = typeof saved.year === "string" && saved.year.length > 0;
-      const monthsOk = Array.isArray(saved.months) && saved.months.every((m: unknown) => typeof m === "number");
-      const daysOk   = Array.isArray(saved.days)   && saved.days.every((d: unknown) => typeof d === "number");
+      const isValidMonth = (m: unknown): m is number =>
+        typeof m === "number" && m >= 1 && m <= 12;
+      const isValidDay = (d: unknown): d is number =>
+        typeof d === "number" && d >= 1 && d <= 31;
+      const yearOk   = typeof saved.year === "string" && /^\d{4}$/.test(saved.year);
+      const monthsOk = Array.isArray(saved.months) && saved.months.every(isValidMonth);
+      const daysOk   = Array.isArray(saved.days)   && saved.days.every(isValidDay);
       if (yearOk && monthsOk && daysOk && saved.savedDate === today.dateStr) {
-        return { year: saved.year as string, months: saved.months as number[], days: saved.days as number[] };
+        return { year: saved.year as string, months: saved.months, days: saved.days };
       }
     }
   } catch {}
@@ -1183,10 +1187,9 @@ function ExitRegister() {
   const exitVillageNav = useDropdownNavigation();
   const exitBuyerNav = useDropdownNavigation();
 
-  const [{ year: _initYear, months: _initMonths, days: _initDays }] = useState(initExitDateFilters);
-  const [year, setYear] = useState<string>(_initYear);
-  const [months, setMonths] = useState<number[]>(_initMonths);
-  const [days, setDays] = useState<number[]>(_initDays);
+  const [year,   setYear]   = useState<string>  (() => initExitDateFilters().year);
+  const [months, setMonths] = useState<number[]>(() => initExitDateFilters().months);
+  const [days,   setDays]   = useState<number[]>(() => initExitDateFilters().days);
   const [farmerFilter, setFarmerFilter] = useState("");
   const [farmerContact, setFarmerContact] = useState("");
   const [villageFilter, setVillageFilter] = useState("");
