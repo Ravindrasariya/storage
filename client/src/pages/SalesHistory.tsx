@@ -21,7 +21,7 @@ import { EditSaleDialog } from "@/components/EditSaleDialog";
 import type { SalesHistory, ExitRegisterResponse, ExitRegisterRow } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
-import { Currency } from "@/components/Currency";
+import { Currency, formatCurrency } from "@/components/Currency";
 import { DateFilterBar, dateMatchesFilter } from "@/components/DateFilterBar";
 
 type FarmerRecord = {
@@ -1501,11 +1501,11 @@ function ExitRegister() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           <Card data-testid="card-exit-farmers-due">
             <CardContent className="p-4">
-              <div className="flex flex-col gap-2">
-                <div className="p-2 rounded-lg bg-blue-500/10 self-start">
-                  <Users className="h-5 w-5 text-blue-600" />
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-blue-500/10 shrink-0">
+                  <Users className="h-4 w-4 text-blue-600" />
                 </div>
-                <div className="space-y-1 min-w-0">
+                <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="text-xs text-muted-foreground truncate">{t("numFarmers")}</p>
                     <p className="text-base font-bold text-blue-700 dark:text-blue-300" data-testid="stat-farmers">
@@ -1599,8 +1599,8 @@ function ExitRegister() {
                     <Currency amount={summary.discountReceived} />
                   </p>
                   {summary.roundOffReceived > 0 && (
-                    <p className="text-[10px] text-muted-foreground truncate" data-testid="stat-discount-roundoff">
-                      {t("roundOffShort")}: <Currency amount={summary.roundOffReceived} />
+                    <p className="text-[10px] text-muted-foreground" data-testid="stat-discount-roundoff">
+                      {t("roundOffShort")}: ₹{formatCurrency(summary.roundOffReceived)}
                     </p>
                   )}
                 </div>
