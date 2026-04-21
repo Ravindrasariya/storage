@@ -1187,9 +1187,12 @@ function ExitRegister() {
   const exitVillageNav = useDropdownNavigation();
   const exitBuyerNav = useDropdownNavigation();
 
-  const [year,   setYear]   = useState<string>  (() => initExitDateFilters().year);
-  const [months, setMonths] = useState<number[]>(() => initExitDateFilters().months);
-  const [days,   setDays]   = useState<number[]>(() => initExitDateFilters().days);
+  // initExitDateFilters reads localStorage — compute once and share across the three state calls
+  const _initDatesRef = useRef<ReturnType<typeof initExitDateFilters> | null>(null);
+  if (!_initDatesRef.current) _initDatesRef.current = initExitDateFilters();
+  const [year,   setYear]   = useState<string>  (_initDatesRef.current.year);
+  const [months, setMonths] = useState<number[]>(_initDatesRef.current.months);
+  const [days,   setDays]   = useState<number[]>(_initDatesRef.current.days);
   const [farmerFilter, setFarmerFilter] = useState("");
   const [farmerContact, setFarmerContact] = useState("");
   const [villageFilter, setVillageFilter] = useState("");
