@@ -465,6 +465,18 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         ) : null;
       })()}
 
+      {sale.paymentStatus === "partial" && sale.payments && sale.payments.length > 0 && (
+        <div className="section" style={{ marginTop: "8px" }} data-testid="section-partial-payment-history">
+          <div className="section-title">भुगतान का विवरण</div>
+          {sale.payments.map((p, idx) => (
+            <div className="info-row" key={p.receiptId} data-testid={`row-payment-${p.receiptId}`}>
+              <span className="info-label">{idx + 1}. {format(new Date(p.receivedAt), "dd/MM/yyyy")}:</span>
+              <span className="info-value">रु. {formatAmount(p.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="footer-note">
         यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
       </div>

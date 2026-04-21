@@ -311,6 +311,25 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    name: "2026-04-21_create_cash_receipt_applications",
+    up: async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS cash_receipt_applications (
+          id VARCHAR PRIMARY KEY,
+          cold_storage_id VARCHAR NOT NULL,
+          cash_receipt_id VARCHAR NOT NULL,
+          sales_history_id VARCHAR NOT NULL,
+          amount_applied REAL NOT NULL,
+          applied_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS cra_receipt_idx ON cash_receipt_applications(cash_receipt_id)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS cra_sale_idx ON cash_receipt_applications(sales_history_id)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS cra_cs_idx ON cash_receipt_applications(cold_storage_id)`);
+    },
+  },
+  {
     name: "2026-04-04_add_base_hammali_amount",
     up: async () => {
       await db.execute(sql`

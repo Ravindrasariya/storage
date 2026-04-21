@@ -14,6 +14,7 @@ import {
   maintenanceRecords,
   exitHistory,
   cashReceipts,
+  cashReceiptApplications,
   expenses,
   cashTransfers,
   cashOpeningBalances,
@@ -46,6 +47,8 @@ import {
   type InsertExitHistory,
   type CashReceipt,
   type InsertCashReceipt,
+  type CashReceiptApplication,
+  type SalePayment,
   type Expense,
   type InsertExpense,
   type CashTransfer,
@@ -1613,149 +1616,57 @@ export class DatabaseStorage implements IStorage {
 
     if (sales.length === 0) return [];
 
-    // Enrich each sale with `lastPaymentAt` — the most recent non-reversed
-    // cash receipt that *actually contributed* to this sale's paid amount.
-    // Used for showing the latest payment date on partial-pay cold storage
-    // bills. We do not have a per-sale receipt-application junction table,
-    // so we replay FIFO (oldest soldAt first, oldest receivedAt first) per
-    // payer group, capping each sale's intake at its current paidAmount.
-    const receipts = await db.select({
-      id: cashReceipts.id,
-      buyerName: cashReceipts.buyerName,
-      farmerLedgerId: cashReceipts.farmerLedgerId,
-      appliesToSaleId: cashReceipts.appliesToSaleId,
+    // Enrich each sale with `lastPaymentAt` and a `payments` list — derived
+    // from the cash_receipt_applications junction table. Each row records a
+    // (cash_receipt → sales_history, amount_applied) allocation; reversal &
+    // recompute paths delete/re-insert so this is always in sync with the
+    // current set of non-reversed receipts.
+    const saleIds = sales.map(s => s.id);
+    const appRows = await db.select({
+      saleId: cashReceiptApplications.salesHistoryId,
+      receiptId: cashReceiptApplications.cashReceiptId,
+      amountApplied: cashReceiptApplications.amountApplied,
+      appliedAt: cashReceiptApplications.appliedAt,
       receivedAt: cashReceipts.receivedAt,
-      payerType: cashReceipts.payerType,
-      appliedAmount: cashReceipts.appliedAmount,
+      receiptType: cashReceipts.receiptType,
+      transactionId: cashReceipts.transactionId,
     })
-      .from(cashReceipts)
+      .from(cashReceiptApplications)
+      .innerJoin(cashReceipts, eq(cashReceiptApplications.cashReceiptId, cashReceipts.id))
       .where(and(
-        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceiptApplications.coldStorageId, coldStorageId),
         eq(cashReceipts.isReversed, 0),
-        sql`${cashReceipts.appliedAmount} > 0`,
+        inArray(cashReceiptApplications.salesHistoryId, saleIds),
       ));
 
-    const norm = (v: string | null | undefined) => (v || "").trim().toLowerCase();
-    const toMs = (d: Date | string | null | undefined) =>
-      d ? new Date(d as unknown as string).getTime() : 0;
-
+    const paymentsBySale = new Map<string, SalePayment[]>();
     const lastPaymentBySale = new Map<string, Date>();
-    const noteContribution = (saleId: string, when: Date) => {
-      const cur = lastPaymentBySale.get(saleId);
-      if (!cur || when > cur) lastPaymentBySale.set(saleId, when);
-    };
-
-    // Step 1: precise per-sale contributions (manual single-sale closures).
-    // These receipts are excluded from the buyer FIFO pool by design — the
-    // sale they target is stamped fifoExclusion=1 in the existing flow.
-    for (const r of receipts) {
-      if (!r.appliesToSaleId) continue;
-      const when = r.receivedAt ? new Date(r.receivedAt as unknown as string) : null;
-      if (when) noteContribution(r.appliesToSaleId, when);
-    }
-
-    // Step 2: FIFO simulation per payer group.
-    // - non-self sales: group by CurrentDueBuyerName, pool buyer's cash
-    //   receipts (payerType excludes farmer/farmer_loan, buyerName matches).
-    // - self sales: group by farmerLedgerId, pool the farmer's payments.
-    type SaleLite = {
-      id: string;
-      soldAtMs: number;
-      paidAmount: number;
-      fifoExclusion: number;
-    };
-    type ReceiptLite = {
-      receivedAt: Date;
-      receivedAtMs: number;
-      remaining: number;
-    };
-
-    const buyerSales = new Map<string, SaleLite[]>();
-    const farmerSales = new Map<string, SaleLite[]>();
-    for (const sale of sales) {
-      const lite: SaleLite = {
-        id: sale.id,
-        soldAtMs: toMs(sale.soldAt as unknown as Date | string | null),
-        paidAmount: Number(sale.paidAmount || 0),
-        fifoExclusion: Number(sale.fifoExclusion || 0),
-      };
-      // Manual single-sale-closed rows skip FIFO simulation.
-      if (lite.fifoExclusion !== 0) continue;
-      if (sale.isSelfSale === 1) {
-        if (!sale.farmerLedgerId) continue;
-        const key = sale.farmerLedgerId;
-        if (!farmerSales.has(key)) farmerSales.set(key, []);
-        farmerSales.get(key)!.push(lite);
-      } else {
-        const currentDueBuyer = sale.isTransferReversed === 1
-          ? sale.buyerName
-          : (sale.transferToBuyerName?.trim() || sale.buyerName);
-        const key = norm(currentDueBuyer);
-        if (!key) continue;
-        if (!buyerSales.has(key)) buyerSales.set(key, []);
-        buyerSales.get(key)!.push(lite);
-      }
-    }
-
-    const buyerReceipts = new Map<string, ReceiptLite[]>();
-    const farmerReceipts = new Map<string, ReceiptLite[]>();
-    for (const r of receipts) {
-      if (r.appliesToSaleId) continue; // handled in Step 1
-      const when = r.receivedAt ? new Date(r.receivedAt as unknown as string) : null;
+    for (const row of appRows) {
+      const when = (row.receivedAt ?? row.appliedAt) as Date | null;
       if (!when) continue;
-      const lite: ReceiptLite = {
-        receivedAt: when,
-        receivedAtMs: when.getTime(),
-        remaining: Number(r.appliedAmount || 0),
-      };
-      if (r.payerType === "farmer") {
-        if (!r.farmerLedgerId) continue;
-        if (!farmerReceipts.has(r.farmerLedgerId)) farmerReceipts.set(r.farmerLedgerId, []);
-        farmerReceipts.get(r.farmerLedgerId)!.push(lite);
-      } else if (r.payerType === "farmer_loan") {
-        // Farmer loan repayments do not pay down cold-storage sales.
-        continue;
-      } else {
-        const key = norm(r.buyerName);
-        if (!key) continue;
-        if (!buyerReceipts.has(key)) buyerReceipts.set(key, []);
-        buyerReceipts.get(key)!.push(lite);
-      }
+      const whenDate = new Date(when as unknown as string);
+      const list = paymentsBySale.get(row.saleId) ?? [];
+      list.push({
+        receiptId: row.receiptId,
+        transactionId: row.transactionId ?? null,
+        receivedAt: whenDate,
+        amount: Number(row.amountApplied || 0),
+        receiptType: row.receiptType ?? null,
+      });
+      paymentsBySale.set(row.saleId, list);
+      const cur = lastPaymentBySale.get(row.saleId);
+      if (!cur || whenDate > cur) lastPaymentBySale.set(row.saleId, whenDate);
     }
 
-    const simulate = (
-      salesGroup: Map<string, SaleLite[]>,
-      receiptsGroup: Map<string, ReceiptLite[]>,
-    ) => {
-      Array.from(salesGroup.entries()).forEach(([key, group]) => {
-        const pool = receiptsGroup.get(key);
-        if (!pool || pool.length === 0) return;
-        group.sort((a: SaleLite, b: SaleLite) => a.soldAtMs - b.soldAtMs || a.id.localeCompare(b.id));
-        pool.sort((a: ReceiptLite, b: ReceiptLite) => a.receivedAtMs - b.receivedAtMs);
-        for (const sale of group) {
-          let remainingPaid = sale.paidAmount;
-          if (remainingPaid <= 0) continue;
-          for (const r of pool) {
-            if (remainingPaid <= 0) break;
-            if (r.remaining <= 0) continue;
-            // A receipt can only have applied to this sale if the sale
-            // already existed when the receipt was recorded.
-            if (r.receivedAtMs < sale.soldAtMs) continue;
-            const take = Math.min(remainingPaid, r.remaining);
-            r.remaining -= take;
-            remainingPaid -= take;
-            noteContribution(sale.id, r.receivedAt);
-          }
-        }
-      });
-    };
-
-    simulate(buyerSales, buyerReceipts);
-    simulate(farmerSales, farmerReceipts);
+    // Sort each sale's payments oldest → newest for stable display.
+    Array.from(paymentsBySale.values()).forEach(list => {
+      list.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
+    });
 
     return sales.map((sale): SalesHistoryWithLastPayment => ({
       ...sale,
       lastPaymentAt: lastPaymentBySale.get(sale.id) ?? null,
+      payments: paymentsBySale.get(sale.id),
     }));
   }
 
@@ -2803,6 +2714,9 @@ export class DatabaseStorage implements IStorage {
     let remainingAmount = data.amount;
     let recordsUpdated = 0;
     let totalApplied = 0;
+    // Self-sale applications get inserted into cash_receipt_applications
+    // after the receipt id is generated below.
+    const pendingSelfSaleApplications: { saleId: string; amount: number }[] = [];
     
     // First apply to receivables (if any)
     for (const receivable of allFarmerReceivables) {
@@ -2934,6 +2848,11 @@ export class DatabaseStorage implements IStorage {
           WHERE id = ${sale.id}
         `);
         
+        // Only the portion that flowed into paid_amount counts as a sale-payment
+        // application (extra_due_to_merchant doesn't go into paid_amount).
+        if (applyToDue > 0) {
+          pendingSelfSaleApplications.push({ saleId: sale.id, amount: applyToDue });
+        }
         remainingAmount = roundAmount(remainingAmount - amountToApply);
         totalApplied = roundAmount(totalApplied + amountToApply);
         recordsUpdated++;
@@ -2972,7 +2891,17 @@ export class DatabaseStorage implements IStorage {
         farmerId: farmerEntry.farmerId,
       })
       .returning();
-    
+
+    for (const app of pendingSelfSaleApplications) {
+      await this.recordReceiptApplication(
+        data.coldStorageId,
+        receipt.id,
+        app.saleId,
+        app.amount,
+        data.receivedAt,
+      );
+    }
+
     return { receipt, salesUpdated: recordsUpdated };
   }
 
@@ -3096,6 +3025,15 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
 
+    // Persist the application row for this manual single-sale payment.
+    await this.recordReceiptApplication(
+      data.coldStorageId,
+      receipt.id,
+      data.saleId,
+      gross,
+      data.receivedAt,
+    );
+
     // Suppress unused var lint — billedAmount kept for clarity / future use
     void billedAmount;
 
@@ -3135,12 +3073,82 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
+  // ---- Cash Receipt Application helpers ----------------------------------
+  // The cash_receipt_applications table records each (cash_receipt → sales_history,
+  // amount_applied) pair as receipts are applied. Reversal & recompute paths
+  // delete and re-insert so the table always reflects active allocations.
+  private async recordReceiptApplication(
+    coldStorageId: string,
+    cashReceiptId: string,
+    salesHistoryId: string,
+    amountApplied: number,
+    appliedAt?: Date | null,
+  ): Promise<void> {
+    const amt = roundAmount(amountApplied || 0);
+    if (amt <= 0) return;
+    await db.insert(cashReceiptApplications).values({
+      id: randomUUID(),
+      coldStorageId,
+      cashReceiptId,
+      salesHistoryId,
+      amountApplied: amt,
+      ...(appliedAt ? { appliedAt } : {}),
+    });
+  }
+
+  private async clearApplicationsForReceipt(receiptId: string): Promise<void> {
+    await db.delete(cashReceiptApplications)
+      .where(eq(cashReceiptApplications.cashReceiptId, receiptId));
+  }
+
+  // Clear applications for any receipt belonging to a buyer in a given cs.
+  // Called at the start of recomputeBuyerPayments so the subsequent FIFO
+  // replay can re-create the rows from scratch.
+  private async clearApplicationsForBuyer(coldStorageId: string, buyerName: string): Promise<void> {
+    const receiptIds = await db.select({ id: cashReceipts.id })
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerName}))`,
+      ));
+    if (receiptIds.length === 0) return;
+    await db.delete(cashReceiptApplications)
+      .where(inArray(cashReceiptApplications.cashReceiptId, receiptIds.map(r => r.id)));
+  }
+
+  // Clear applications for farmer receipts matching this farmer identity.
+  // Called at the start of recomputeFarmerPayments / WithDiscounts.
+  private async clearApplicationsForFarmer(
+    coldStorageId: string,
+    farmerLedgerId: string | null,
+    farmerName: string,
+    village: string,
+  ): Promise<void> {
+    const buyerDisplayName = `${farmerName.trim()} (${village.trim()})`;
+    const receiptIds = await db.select({ id: cashReceipts.id })
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.payerType, "farmer"),
+        sql`(
+          (${cashReceipts.farmerLedgerId} IS NOT NULL AND ${cashReceipts.farmerLedgerId} = ${farmerLedgerId})
+          OR (${cashReceipts.farmerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName})))
+        )`,
+      ));
+    if (receiptIds.length === 0) return;
+    await db.delete(cashReceiptApplications)
+      .where(inArray(cashReceiptApplications.cashReceiptId, receiptIds.map(r => r.id)));
+  }
+
   async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
     let remainingAmount = data.amount;
     let appliedAmount = 0;
     let salesUpdated = 0;
     const paymentMode = data.receiptType as "cash" | "account";
     const currentYear = new Date().getFullYear();
+    // Track per-sale paidAmount contributions so we can write
+    // cash_receipt_applications rows after the receipt id is created.
+    const pendingApplications: { saleId: string; amount: number }[] = [];
 
     // PASS 0: Apply to opening receivables first (FIFO by createdAt)
     // These are prior year balances that should be settled before current year charges
@@ -3224,6 +3232,7 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(salesHistory.id, sale.id));
         
+        pendingApplications.push({ saleId: sale.id, amount: saleDueAmount });
         remainingAmount = roundAmount(remainingAmount - saleDueAmount);
         appliedAmount = roundAmount(appliedAmount + saleDueAmount);
         salesUpdated++;
@@ -3248,6 +3257,7 @@ export class DatabaseStorage implements IStorage {
           })
           .where(eq(salesHistory.id, sale.id));
         
+        pendingApplications.push({ saleId: sale.id, amount: remainingAmount });
         appliedAmount = roundAmount(appliedAmount + remainingAmount);
         remainingAmount = 0;
         salesUpdated++;
@@ -3328,6 +3338,18 @@ export class DatabaseStorage implements IStorage {
         buyerId,
       })
       .returning();
+
+    // Persist per-sale application rows so reports/bills can show exactly
+    // which payment closed which sale.
+    for (const app of pendingApplications) {
+      await this.recordReceiptApplication(
+        data.coldStorageId,
+        receipt.id,
+        app.saleId,
+        app.amount,
+        data.receivedAt,
+      );
+    }
 
     // Update lot totals for all affected lots
     const affectedLotIds = Array.from(new Set(sales.map(s => s.lotId)));
@@ -3574,6 +3596,11 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(cashReceipts.id, receiptId));
 
+    // Drop any application rows that pointed sales at this receipt; if a
+    // recompute path runs below it will reinsert fresh rows for the surviving
+    // (still non-reversed) receipts in the buyer/farmer pool.
+    await this.clearApplicationsForReceipt(receiptId);
+
     // ---- Manual single-sale closure receipts: reverse only the targeted sale (no FIFO replay) ----
     if (receipt.appliesToSaleId && receipt.coldStorageId) {
       const [sale] = await db.select().from(salesHistory)
@@ -3788,6 +3815,10 @@ export class DatabaseStorage implements IStorage {
     }
 
     const selfSalePattern = `${farmerName.trim()} - ${contactNumber.trim()} - ${village.trim()}`;
+
+    // Wipe stale per-sale application rows for this farmer's receipts so the
+    // FIFO replay below can repopulate them deterministically.
+    await this.clearApplicationsForFarmer(coldStorageId, resolvedLedgerId, farmerName, village);
 
     // Step 1: Reset all farmer receivables paidAmount to 0, restore previous interest state
     const fallbackReceivables = await db.select().from(openingReceivables)
@@ -4029,6 +4060,11 @@ export class DatabaseStorage implements IStorage {
             })
             .where(eq(salesHistory.id, sale.id));
 
+          // Only the portion that flowed into paid_amount counts as a sale-payment
+          // application (extra_due_to_merchant doesn't go into paid_amount).
+          if (applyToDue > 0) {
+            await this.recordReceiptApplication(coldStorageId, receipt.id, sale.id, applyToDue, receipt.receivedAt);
+          }
           remainingAmount = roundAmount(remainingAmount - amountToApply);
           receivablesUpdated++;
         }
@@ -4108,6 +4144,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }> {
+    // Wipe stale application rows for this buyer's receipts; the FIFO replay
+    // below will repopulate them with the correct (receipt → sale) mappings.
+    await this.clearApplicationsForBuyer(coldStorageId, buyerName);
+
     // Step 1: Reset all sales for this buyer to "due" status with 0 paidAmount
     // Calculate proper dueAmount using all surcharges
     // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
@@ -4366,6 +4406,7 @@ export class DatabaseStorage implements IStorage {
             })
             .where(eq(salesHistory.id, sale.id));
           
+          await this.recordReceiptApplication(coldStorageId, receipt.id, sale.id, saleDueAmount, receipt.receivedAt);
           remainingAmount = roundAmount(remainingAmount - saleDueAmount);
           appliedAmount = roundAmount(appliedAmount + saleDueAmount);
         } else {
@@ -4388,6 +4429,7 @@ export class DatabaseStorage implements IStorage {
             })
             .where(eq(salesHistory.id, sale.id));
           
+          await this.recordReceiptApplication(coldStorageId, receipt.id, sale.id, remainingAmount, receipt.receivedAt);
           appliedAmount = roundAmount(appliedAmount + remainingAmount);
           remainingAmount = 0;
         }
@@ -5941,6 +5983,10 @@ export class DatabaseStorage implements IStorage {
     contactNumber: string, 
     village: string
   ): Promise<{ receivablesUpdated: number; selfSalesUpdated: number }> {
+    // Wipe stale per-sale application rows for this farmer's receipts so the
+    // FIFO replay below can repopulate them deterministically.
+    await this.clearApplicationsForFarmer(coldStorageId, farmerLedgerId, farmerName, village);
+
     // Step 1: Reset all farmer receivables paidAmount to 0, restore previous interest state
     const farmerReceivables = await db.select().from(openingReceivables)
       .where(and(
@@ -6320,7 +6366,12 @@ export class DatabaseStorage implements IStorage {
                 paymentStatus
               })
               .where(eq(salesHistory.id, sale.id));
-            
+
+            // Only the portion that flowed into paid_amount counts as a sale-payment
+            // application (extra_due_to_merchant doesn't go into paid_amount).
+            if (applyToDue > 0) {
+              await this.recordReceiptApplication(coldStorageId, txn.data.id, sale.id, applyToDue, txn.data.receivedAt);
+            }
             remainingAmount = roundAmount(remainingAmount - amountToApply);
             selfSalesUpdated++;
           }

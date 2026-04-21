@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -316,6 +316,25 @@ export const cashReceipts = pgTable("cash_receipts", {
   appliesToSaleId: varchar("applies_to_sale_id"),
 }, (table) => ({
   uniqueTxnPerColdStorage: uniqueIndex("cash_receipts_cs_txn_idx").on(table.coldStorageId, table.transactionId),
+}));
+
+// Cash Receipt Applications - junction table tracking exactly which payments
+// closed which sales. One row per (cash_receipt, sales_history) pair when a
+// receipt's funds are applied to a sale (FIFO or manual single-sale closure).
+// Reversal/recompute flows delete and re-create these rows so the table
+// always reflects the current allocation state of non-reversed receipts.
+export const cashReceiptApplications = pgTable("cash_receipt_applications", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  cashReceiptId: varchar("cash_receipt_id").notNull(),
+  salesHistoryId: varchar("sales_history_id").notNull(),
+  amountApplied: real("amount_applied").notNull(),
+  appliedAt: timestamp("applied_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  byReceipt: index("cra_receipt_idx").on(table.cashReceiptId),
+  bySale: index("cra_sale_idx").on(table.salesHistoryId),
+  byColdStorage: index("cra_cs_idx").on(table.coldStorageId),
 }));
 
 // Expenses - tracks outward cash/account payments
@@ -741,6 +760,7 @@ export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).o
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
 export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, billNumber: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, transactionId: true, createdAt: true, appliedAmount: true, unappliedAmount: true, isReversed: true, reversedAt: true });
+export const insertCashReceiptApplicationSchema = createInsertSchema(cashReceiptApplications).omit({ id: true, createdAt: true, appliedAt: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashTransferSchema = createInsertSchema(cashTransfers).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashOpeningBalanceSchema = createInsertSchema(cashOpeningBalances).omit({ id: true, createdAt: true, updatedAt: true });
@@ -776,7 +796,19 @@ export type LotEditHistory = typeof lotEditHistory.$inferSelect;
 export type InsertLotEditHistory = z.infer<typeof insertLotEditHistorySchema>;
 export type SalesHistory = typeof salesHistory.$inferSelect;
 export type InsertSalesHistory = z.infer<typeof insertSalesHistorySchema>;
-export type SalesHistoryWithLastPayment = SalesHistory & { lastPaymentAt: Date | null };
+export type SalePayment = {
+  receiptId: string;
+  transactionId: string | null;
+  amount: number;
+  receivedAt: Date;
+  receiptType: string | null;
+};
+export type SalesHistoryWithLastPayment = SalesHistory & {
+  lastPaymentAt: Date | null;
+  payments?: SalePayment[];
+};
+export type CashReceiptApplication = typeof cashReceiptApplications.$inferSelect;
+export type InsertCashReceiptApplication = z.infer<typeof insertCashReceiptApplicationSchema>;
 
 // Exit / Nikasi Register response types (joined exit_history + sales_history with proportional money shares)
 export type ExitRegisterRow = {
