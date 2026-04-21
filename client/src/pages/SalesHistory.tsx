@@ -1534,18 +1534,6 @@ function ExitRegister() {
               />
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrint}
-              disabled={!summary || rows.length === 0}
-              data-testid="button-exit-print"
-              aria-label={t("printPdf")}
-              title={t("printPdf")}
-            >
-              <Printer className="h-4 w-4" />
-            </Button>
-
             {/* Farmer autocomplete */}
             <div className="relative w-56">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
