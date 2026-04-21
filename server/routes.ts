@@ -1579,7 +1579,7 @@ export async function registerRoutes(
   app.get("/api/exit-register", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, months, days, farmerName, farmerContact, buyerName } = req.query as Record<string, string | undefined>;
+      const { year, months, days, farmerName, farmerContact, buyerName, village, bagType } = req.query as Record<string, string | undefined>;
       const parseCsvInts = (v?: string) => (v ? v.split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n)) : undefined);
       const result = await storage.getExitRegister(coldStorageId, {
         year: year && year !== "all" ? parseInt(year, 10) : undefined,
@@ -1588,6 +1588,8 @@ export async function registerRoutes(
         farmerName: farmerName?.trim() || undefined,
         farmerContact: farmerContact?.trim() || undefined,
         buyerName: buyerName?.trim() || undefined,
+        village: village?.trim() || undefined,
+        bagType: bagType?.trim() || undefined,
       });
       res.json(result);
     } catch (error) {

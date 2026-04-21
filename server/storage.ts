@@ -249,7 +249,7 @@ export interface IStorage {
   getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
   getTotalBagsExited(coldStorageId: string, year?: number): Promise<number>;
-  getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string }): Promise<ExitRegisterResponse>;
+  getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string; village?: string; bagType?: string }): Promise<ExitRegisterResponse>;
   getExitRegisterYears(coldStorageId: string): Promise<number[]>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
   getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
@@ -2257,6 +2257,8 @@ export class DatabaseStorage implements IStorage {
       farmerName?: string;
       farmerContact?: string;
       buyerName?: string;
+      village?: string;
+      bagType?: string;
     }
   ): Promise<{
     rows: Array<{
@@ -2313,19 +2315,27 @@ export class DatabaseStorage implements IStorage {
     ];
 
     if (filters.year) {
-      where.push(sql`EXTRACT(YEAR FROM ${exitHistory.exitDate})::int = ${filters.year}`);
+      where.push(sql`EXTRACT(YEAR FROM (${exitHistory.exitDate} AT TIME ZONE 'Asia/Kolkata'))::int = ${filters.year}`);
     }
     if (filters.months && filters.months.length > 0) {
-      where.push(sql`EXTRACT(MONTH FROM ${exitHistory.exitDate})::int IN (${sql.join(filters.months.map(m => sql`${m}`), sql`, `)})`);
+      where.push(sql`EXTRACT(MONTH FROM (${exitHistory.exitDate} AT TIME ZONE 'Asia/Kolkata'))::int IN (${sql.join(filters.months.map(m => sql`${m}`), sql`, `)})`);
     }
     if (filters.days && filters.days.length > 0) {
-      where.push(sql`EXTRACT(DAY FROM ${exitHistory.exitDate})::int IN (${sql.join(filters.days.map(d => sql`${d}`), sql`, `)})`);
+      where.push(sql`EXTRACT(DAY FROM (${exitHistory.exitDate} AT TIME ZONE 'Asia/Kolkata'))::int IN (${sql.join(filters.days.map(d => sql`${d}`), sql`, `)})`);
     }
     if (filters.farmerName && filters.farmerName.trim()) {
       where.push(ilike(salesHistory.farmerName, `%${filters.farmerName.trim()}%`));
     }
     if (filters.farmerContact && filters.farmerContact.trim()) {
       where.push(eq(salesHistory.contactNumber, filters.farmerContact.trim()));
+    }
+    if (filters.village && filters.village.trim()) {
+      const v = filters.village.trim().toLowerCase();
+      where.push(sql`lower(trim(${salesHistory.village})) = ${v}`);
+    }
+    if (filters.bagType && filters.bagType.trim() && filters.bagType !== "all") {
+      const b = filters.bagType.trim().toLowerCase();
+      where.push(sql`lower(${salesHistory.bagType}) = ${b}`);
     }
     if (filters.buyerName && filters.buyerName.trim()) {
       const b = filters.buyerName.trim();
@@ -2571,7 +2581,7 @@ export class DatabaseStorage implements IStorage {
 
   async getExitRegisterYears(coldStorageId: string): Promise<number[]> {
     const rows = await db.execute<{ year: number }>(sql`
-      SELECT DISTINCT EXTRACT(YEAR FROM ${exitHistory.exitDate})::int AS year
+      SELECT DISTINCT EXTRACT(YEAR FROM (${exitHistory.exitDate} AT TIME ZONE 'Asia/Kolkata'))::int AS year
       FROM ${exitHistory}
       WHERE ${exitHistory.coldStorageId} = ${coldStorageId} AND ${exitHistory.isReversed} = 0
       ORDER BY year DESC

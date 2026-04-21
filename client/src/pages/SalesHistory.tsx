@@ -59,7 +59,7 @@ export default function SalesHistoryPage() {
   const [farmerFilter, setFarmerFilter] = useState(savedFilters?.farmerFilter ?? "");
   const [selectedFarmerVillage, setSelectedFarmerVillage] = useState(savedFilters?.selectedFarmerVillage ?? "");
   const [selectedFarmerMobile, setSelectedFarmerMobile] = useState(savedFilters?.selectedFarmerMobile ?? "");
-  const [mobileFilter, setMobileFilter] = useState(savedFilters?.mobileFilter ?? "");
+  const [villageFilter, setVillageFilter] = useState<string>(savedFilters?.villageFilter ?? "");
   const [paymentFilter, setPaymentFilter] = useState<string>(savedFilters?.paymentFilter ?? "");
   const [buyerFilter, setBuyerFilter] = useState(savedFilters?.buyerFilter ?? "");
   const [typeFilter, setTypeFilter] = useState<string>(savedFilters?.typeFilter ?? "all");
@@ -75,23 +75,23 @@ export default function SalesHistoryPage() {
       farmerFilter,
       selectedFarmerVillage,
       selectedFarmerMobile,
-      mobileFilter,
+      villageFilter,
       paymentFilter,
       buyerFilter,
       typeFilter,
       activeTab,
     };
     localStorage.setItem(SALES_FILTERS_KEY, JSON.stringify(filters));
-  }, [yearFilter, selectedMonths, selectedDays, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter, typeFilter, activeTab]);
+  }, [yearFilter, selectedMonths, selectedDays, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, villageFilter, paymentFilter, buyerFilter, typeFilter, activeTab]);
   const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   // Autocomplete state
   const [showFarmerSuggestions, setShowFarmerSuggestions] = useState(false);
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
-  const [showMobileSuggestions, setShowMobileSuggestions] = useState(false);
+  const [showVillageSuggestions, setShowVillageSuggestions] = useState(false);
   const farmerNav = useDropdownNavigation();
-  const mobileNav = useDropdownNavigation();
+  const villageNav = useDropdownNavigation();
   const buyerNav = useDropdownNavigation();
 
   const { data: years = [], isLoading: yearsLoading } = useQuery<number[]>({
@@ -128,15 +128,16 @@ export default function SalesHistoryPage() {
       .slice(0, 8);
   }, [buyerRecords, buyerFilter]);
 
-  // Filtered suggestions for mobile number
-  const getMobileSuggestions = useMemo(() => {
-    if (!farmerRecords || farmerRecords.length === 0 || !mobileFilter.trim()) return [];
-    const query = mobileFilter.replace(/\D/g, '');
-    if (!query) return [];
-    return farmerRecords
-      .filter(farmer => farmer.contactNumber.includes(query))
-      .slice(0, 8);
-  }, [farmerRecords, mobileFilter]);
+  // Village suggestions derived from farmer lookup
+  const getVillageSuggestions = useMemo(() => {
+    if (!farmerRecords || !villageFilter.trim()) return [];
+    const q = villageFilter.toLowerCase().trim();
+    const set = new Set<string>();
+    for (const f of farmerRecords) {
+      if (f.village && f.village.toLowerCase().includes(q)) set.add(f.village);
+    }
+    return Array.from(set).sort().slice(0, 8);
+  }, [farmerRecords, villageFilter]);
 
   const selectFarmerSuggestion = (farmer: FarmerRecord) => {
     setFarmerFilter(farmer.farmerName);
@@ -150,25 +151,20 @@ export default function SalesHistoryPage() {
     setShowBuyerSuggestions(false);
   };
 
-  const selectMobileSuggestion = (farmer: FarmerRecord) => {
-    setMobileFilter(farmer.contactNumber);
-    setShowMobileSuggestions(false);
-  };
-
   const buildQueryString = () => {
     const params = new URLSearchParams();
     if (yearFilter) params.append("year", yearFilter);
     if (farmerFilter) params.append("farmerName", farmerFilter);
-    if (selectedFarmerVillage) params.append("village", selectedFarmerVillage);
+    const effectiveVillage = villageFilter || selectedFarmerVillage;
+    if (effectiveVillage) params.append("village", effectiveVillage);
     if (selectedFarmerMobile) params.append("contactNumber", selectedFarmerMobile);
-    else if (mobileFilter) params.append("contactNumber", mobileFilter);
     if (paymentFilter) params.append("paymentStatus", paymentFilter);
     if (buyerFilter) params.append("buyerName", buyerFilter);
     return params.toString();
   };
 
   const { data: salesHistory = [], isLoading: historyLoading } = useQuery<SalesHistory[]>({
-    queryKey: ["/api/sales-history", yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter],
+    queryKey: ["/api/sales-history", yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, villageFilter, paymentFilter, buyerFilter],
     queryFn: async () => {
       const queryString = buildQueryString();
       const response = await authFetch(`/api/sales-history${queryString ? `?${queryString}` : ""}`);
@@ -189,13 +185,13 @@ export default function SalesHistoryPage() {
     setFarmerFilter("");
     setSelectedFarmerVillage("");
     setSelectedFarmerMobile("");
-    setMobileFilter("");
+    setVillageFilter("");
     setPaymentFilter("");
     setBuyerFilter("");
     setTypeFilter("all");
   };
 
-  const hasActiveFilters = yearFilter || selectedMonths.length || selectedDays.length || farmerFilter || selectedFarmerVillage || mobileFilter || paymentFilter || buyerFilter || (typeFilter && typeFilter !== "all");
+  const hasActiveFilters = yearFilter || selectedMonths.length || selectedDays.length || farmerFilter || selectedFarmerVillage || villageFilter || paymentFilter || buyerFilter || (typeFilter && typeFilter !== "all");
 
   // Download function for sales export
   const getDownloadToken = async (): Promise<string | null> => {
@@ -249,9 +245,9 @@ export default function SalesHistoryPage() {
       // Add filter parameters
       if (yearFilter && yearFilter !== "all") params.append("year", yearFilter);
       if (farmerFilter) params.append("farmerName", farmerFilter);
-      if (selectedFarmerVillage) params.append("village", selectedFarmerVillage);
+      const effectiveVillageExport = villageFilter || selectedFarmerVillage;
+      if (effectiveVillageExport) params.append("village", effectiveVillageExport);
       if (selectedFarmerMobile) params.append("contactNumber", selectedFarmerMobile);
-      else if (mobileFilter) params.append("contactNumber", mobileFilter);
       if (buyerFilter) params.append("buyerName", buyerFilter);
       if (paymentFilter && paymentFilter !== "all") params.append("paymentStatus", paymentFilter);
       
@@ -442,35 +438,34 @@ export default function SalesHistoryPage() {
             </div>
 
             <div className="w-full sm:w-36 space-y-2">
-              <label className="text-sm text-muted-foreground">{t("filterByMobile")}</label>
+              <label className="text-sm text-muted-foreground">{t("village")}</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
                 <Input
-                  value={mobileFilter}
+                  value={villageFilter}
                   onChange={(e) => {
-                    setMobileFilter(e.target.value);
-                    setShowMobileSuggestions(true);
+                    setVillageFilter(capitalizeFirstLetter(e.target.value));
+                    setShowVillageSuggestions(true);
                   }}
-                  onFocus={() => { setShowMobileSuggestions(true); mobileNav.resetActive(); }}
-                  onBlur={() => setTimeout(() => { setShowMobileSuggestions(false); mobileNav.resetActive(); }, 200)}
-                  onKeyDown={(e) => mobileNav.handleKeyDown(e, getMobileSuggestions.length, (i) => { selectMobileSuggestion(getMobileSuggestions[i]); setShowMobileSuggestions(false); }, () => setShowMobileSuggestions(false))}
-                  placeholder={t("contactNumber")}
+                  onFocus={() => { setShowVillageSuggestions(true); villageNav.resetActive(); }}
+                  onBlur={() => setTimeout(() => { setShowVillageSuggestions(false); villageNav.resetActive(); }, 200)}
+                  onKeyDown={(e) => villageNav.handleKeyDown(e, getVillageSuggestions.length, (i) => { setVillageFilter(getVillageSuggestions[i]); setShowVillageSuggestions(false); }, () => setShowVillageSuggestions(false))}
+                  placeholder={t("village")}
                   className="pl-10"
                   autoComplete="off"
-                  data-testid="input-mobile-filter"
+                  data-testid="input-village-filter"
                 />
-                {showMobileSuggestions && getMobileSuggestions.length > 0 && mobileFilter && (
+                {showVillageSuggestions && getVillageSuggestions.length > 0 && villageFilter && (
                   <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                    {getMobileSuggestions.map((farmer, idx) => (
+                    {getVillageSuggestions.map((v, idx) => (
                       <button
                         key={idx}
                         type="button"
-                        className={`w-full px-3 py-2 text-left hover-elevate text-sm flex flex-col ${mobileNav.activeIndex === idx ? "bg-accent" : ""}`}
-                        onClick={() => selectMobileSuggestion(farmer)}
-                        data-testid={`suggestion-mobile-${idx}`}
+                        className={`w-full px-3 py-2 text-left hover-elevate text-sm ${villageNav.activeIndex === idx ? "bg-accent" : ""}`}
+                        onClick={() => { setVillageFilter(v); setShowVillageSuggestions(false); }}
+                        data-testid={`suggestion-village-${idx}`}
                       >
-                        <span className="font-medium">{farmer.contactNumber}</span>
-                        <span className="text-xs text-muted-foreground">{farmer.farmerName} • {farmer.village}</span>
+                        {v}
                       </button>
                     ))}
                   </div>
@@ -1151,6 +1146,7 @@ function FarmerPaymentTracker() {
 function ExitRegister() {
   const { t } = useI18n();
   const exitFarmerNav = useDropdownNavigation();
+  const exitVillageNav = useDropdownNavigation();
   const exitBuyerNav = useDropdownNavigation();
 
   const currentYear = new Date().getFullYear();
@@ -1159,8 +1155,10 @@ function ExitRegister() {
   const [days, setDays] = useState<number[]>([]);
   const [farmerFilter, setFarmerFilter] = useState("");
   const [farmerContact, setFarmerContact] = useState("");
+  const [villageFilter, setVillageFilter] = useState("");
   const [buyerFilter, setBuyerFilter] = useState("");
   const [showFarmerSug, setShowFarmerSug] = useState(false);
+  const [showVillageSug, setShowVillageSug] = useState(false);
   const [showBuyerSug, setShowBuyerSug] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
@@ -1190,6 +1188,16 @@ function ExitRegister() {
     return buyerRecords.filter(b => b.buyerName.toLowerCase().includes(q)).slice(0, 8);
   }, [buyerRecords, buyerFilter]);
 
+  const villageSug = useMemo(() => {
+    if (!farmerRecords || !villageFilter.trim()) return [];
+    const q = villageFilter.toLowerCase().trim();
+    const set = new Set<string>();
+    for (const f of farmerRecords) {
+      if (f.village && f.village.toLowerCase().includes(q)) set.add(f.village);
+    }
+    return Array.from(set).sort().slice(0, 8);
+  }, [farmerRecords, villageFilter]);
+
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
     if (year !== "all") p.append("year", year);
@@ -1198,11 +1206,13 @@ function ExitRegister() {
     if (farmerFilter) p.append("farmerName", farmerFilter);
     if (farmerContact) p.append("farmerContact", farmerContact);
     if (buyerFilter) p.append("buyerName", buyerFilter);
+    if (villageFilter) p.append("village", villageFilter);
+    if (typeFilter && typeFilter !== "all") p.append("bagType", typeFilter);
     return p.toString();
-  }, [year, months, days, farmerFilter, farmerContact, buyerFilter]);
+  }, [year, months, days, farmerFilter, farmerContact, buyerFilter, villageFilter, typeFilter]);
 
   const { data, isLoading } = useQuery<ExitRegisterResponse>({
-    queryKey: ["/api/exit-register", year, months.join(","), days.join(","), farmerFilter, farmerContact, buyerFilter],
+    queryKey: ["/api/exit-register", year, months.join(","), days.join(","), farmerFilter, farmerContact, buyerFilter, villageFilter, typeFilter],
     queryFn: async () => {
       const res = await authFetch(`/api/exit-register${queryString ? `?${queryString}` : ""}`);
       if (!res.ok) throw new Error("Failed to fetch exit register");
@@ -1232,24 +1242,15 @@ function ExitRegister() {
     setDays([]);
     setFarmerFilter("");
     setFarmerContact("");
+    setVillageFilter("");
     setBuyerFilter("");
     setTypeFilter("all");
   };
 
-  const hasFilters = year !== String(currentYear) || months.length || days.length || farmerFilter || farmerContact || buyerFilter || (typeFilter && typeFilter !== "all");
+  const hasFilters = year !== String(currentYear) || months.length || days.length || farmerFilter || farmerContact || villageFilter || buyerFilter || (typeFilter && typeFilter !== "all");
 
   const summary = data?.summary;
-  const rawRows = data?.rows ?? [];
-  const rows = useMemo(() => {
-    let r = rawRows;
-    if (months.length || days.length) {
-      r = r.filter((row) => dateMatchesFilter(row.exitDate, year, months, days));
-    }
-    if (typeFilter && typeFilter !== "all") {
-      r = r.filter((row) => (row.bagType ?? "").toLowerCase() === typeFilter);
-    }
-    return r;
-  }, [rawRows, year, months, days, typeFilter]);
+  const rows = data?.rows ?? [];
 
   const renderBuyer = (r: ExitRegisterRow) => {
     if (Number(r.isSelfSale) === 1 && !r.transferToBuyerName) return t("self");
@@ -1480,6 +1481,37 @@ function ExitRegister() {
               )}
             </div>
 
+            {/* Village autocomplete */}
+            <div className="relative w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+              <Input
+                value={villageFilter}
+                onChange={(e) => { setVillageFilter(capitalizeFirstLetter(e.target.value)); setShowVillageSug(true); }}
+                onFocus={() => { setShowVillageSug(true); exitVillageNav.resetActive(); }}
+                onBlur={() => setTimeout(() => { setShowVillageSug(false); exitVillageNav.resetActive(); }, 200)}
+                onKeyDown={(e) => exitVillageNav.handleKeyDown(e, villageSug.length, (i) => { setVillageFilter(villageSug[i]); setShowVillageSug(false); }, () => setShowVillageSug(false))}
+                placeholder={t("village")}
+                className="pl-10 h-9"
+                autoComplete="off"
+                data-testid="input-exit-village"
+              />
+              {showVillageSug && villageSug.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                  {villageSug.map((v, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`w-full px-3 py-2 text-left hover-elevate text-sm ${exitVillageNav.activeIndex === idx ? "bg-accent" : ""}`}
+                      onClick={() => { setVillageFilter(v); setShowVillageSug(false); }}
+                      data-testid={`exit-suggestion-village-${idx}`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Buyer autocomplete */}
             <div className="relative w-56">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
@@ -1538,7 +1570,7 @@ function ExitRegister() {
               disabled={!summary || rows.length === 0}
               data-testid="button-exit-print"
             >
-              <Printer className="h-4 w-4 mr-1" /> {t("printPdf")}
+              <Printer className="h-4 w-4" />
             </Button>
           </div>
         </CardContent>
