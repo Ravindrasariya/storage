@@ -1336,17 +1336,18 @@ function ExitRegister() {
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escape(t("exitRegister"))}</title>
 <style>
+  @page{size:A4 landscape;margin:8mm;}
   *{box-sizing:border-box;}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:16px;color:#111;}
   h1{margin:0 0 4px 0;font-size:18px;}
   .meta{font-size:11px;color:#555;margin-bottom:12px;}
   .cards{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-bottom:14px;}
   .card{border:1px solid #d4d4d8;border-radius:6px;padding:6px 8px;}
-  .lbl{font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.3px;}
-  .val{font-size:13px;font-weight:700;margin-top:2px;}
+  .lbl{font-size:9px;color:#555;word-break:break-word;overflow-wrap:anywhere;}
+  .val{font-size:13px;font-weight:700;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;}
   .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.disc{color:#7c3aed;} .val.due{color:#be123c;}
   table{width:100%;border-collapse:collapse;font-size:11px;}
-  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;}
+  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;word-break:break-word;overflow-wrap:anywhere;}
   th{background:#f4f4f5;font-weight:700;}
   td.r,th.r{text-align:right;}
   td.cash{color:#047857;} td.due{color:#be123c;}
