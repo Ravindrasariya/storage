@@ -62,6 +62,7 @@ export default function SalesHistoryPage() {
   const [mobileFilter, setMobileFilter] = useState(savedFilters?.mobileFilter ?? "");
   const [paymentFilter, setPaymentFilter] = useState<string>(savedFilters?.paymentFilter ?? "");
   const [buyerFilter, setBuyerFilter] = useState(savedFilters?.buyerFilter ?? "");
+  const [typeFilter, setTypeFilter] = useState<string>(savedFilters?.typeFilter ?? "all");
 
   const [activeTab, setActiveTab] = useState<"sales" | "tracker" | "exits">(savedFilters?.activeTab ?? "sales");
 
@@ -77,10 +78,11 @@ export default function SalesHistoryPage() {
       mobileFilter,
       paymentFilter,
       buyerFilter,
+      typeFilter,
       activeTab,
     };
     localStorage.setItem(SALES_FILTERS_KEY, JSON.stringify(filters));
-  }, [yearFilter, selectedMonths, selectedDays, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter, activeTab]);
+  }, [yearFilter, selectedMonths, selectedDays, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter, typeFilter, activeTab]);
   const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
@@ -190,9 +192,10 @@ export default function SalesHistoryPage() {
     setMobileFilter("");
     setPaymentFilter("");
     setBuyerFilter("");
+    setTypeFilter("all");
   };
 
-  const hasActiveFilters = yearFilter || selectedMonths.length || selectedDays.length || farmerFilter || selectedFarmerVillage || mobileFilter || paymentFilter || buyerFilter;
+  const hasActiveFilters = yearFilter || selectedMonths.length || selectedDays.length || farmerFilter || selectedFarmerVillage || mobileFilter || paymentFilter || buyerFilter || (typeFilter && typeFilter !== "all");
 
   // Download function for sales export
   const getDownloadToken = async (): Promise<string | null> => {
@@ -278,9 +281,15 @@ export default function SalesHistoryPage() {
   });
 
   const filteredSalesHistory = useMemo(() => {
-    if (selectedMonths.length === 0 && selectedDays.length === 0) return salesHistory;
-    return salesHistory.filter((s) => dateMatchesFilter(s.soldAt, yearFilter || "all", selectedMonths, selectedDays));
-  }, [salesHistory, yearFilter, selectedMonths, selectedDays]);
+    let list = salesHistory;
+    if (selectedMonths.length || selectedDays.length) {
+      list = list.filter((s) => dateMatchesFilter(s.soldAt, yearFilter || "all", selectedMonths, selectedDays));
+    }
+    if (typeFilter && typeFilter !== "all") {
+      list = list.filter((s) => (s.bagType ?? "").toLowerCase() === typeFilter);
+    }
+    return list;
+  }, [salesHistory, yearFilter, selectedMonths, selectedDays, typeFilter]);
 
   const summary = filteredSalesHistory.reduce(
     (acc, sale) => {
@@ -361,8 +370,8 @@ export default function SalesHistoryPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-            <div className="lg:col-span-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-full sm:w-[22rem]">
               <DateFilterBar
                 year={yearFilter || "all"}
                 onYearChange={(y) => setYearFilter(y === "all" ? "" : y)}
@@ -374,7 +383,7 @@ export default function SalesHistoryPage() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="w-full sm:w-44 space-y-2">
               <label className="text-sm text-muted-foreground">{t("filterByFarmer")}</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
@@ -432,7 +441,7 @@ export default function SalesHistoryPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="w-full sm:w-36 space-y-2">
               <label className="text-sm text-muted-foreground">{t("filterByMobile")}</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
@@ -469,7 +478,7 @@ export default function SalesHistoryPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="w-full sm:w-44 space-y-2">
               <label className="text-sm text-muted-foreground">{t("filterByBuyer")}</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
@@ -505,8 +514,23 @@ export default function SalesHistoryPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">{t("filterByPayment")}</label>
+            <div className="w-full sm:w-32 space-y-2">
+              <label className="text-sm text-muted-foreground">{t("filterByType")}</label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger data-testid="select-type-filter">
+                  <SelectValue placeholder={t("all")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("all")}</SelectItem>
+                  <SelectItem value="wafer">{t("wafer")}</SelectItem>
+                  <SelectItem value="seed">{t("seed")}</SelectItem>
+                  <SelectItem value="ration">{t("ration")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-full sm:w-36 space-y-2">
+              <label className="text-sm text-muted-foreground">{t("paymentStatus")}</label>
               <Select value={paymentFilter} onValueChange={setPaymentFilter}>
                 <SelectTrigger data-testid="select-payment-filter">
                   <SelectValue placeholder={t("all")} />
@@ -519,14 +543,12 @@ export default function SalesHistoryPage() {
               </Select>
             </div>
 
-            <div className="flex items-end">
-              {hasActiveFilters && (
-                <Button variant="outline" onClick={clearFilters} className="w-full" data-testid="button-clear-filters">
-                  <X className="h-4 w-4 mr-2" />
-                  {t("clearFilters")}
-                </Button>
-              )}
-            </div>
+            {hasActiveFilters && (
+              <Button variant="outline" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
+                <X className="h-4 w-4 mr-1" />
+                {t("clearFilters")}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1140,6 +1162,7 @@ function ExitRegister() {
   const [buyerFilter, setBuyerFilter] = useState("");
   const [showFarmerSug, setShowFarmerSug] = useState(false);
   const [showBuyerSug, setShowBuyerSug] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<string>("all");
 
   const { data: years = [] } = useQuery<number[]>({
     queryKey: ["/api/exit-register/years"],
@@ -1210,16 +1233,23 @@ function ExitRegister() {
     setFarmerFilter("");
     setFarmerContact("");
     setBuyerFilter("");
+    setTypeFilter("all");
   };
 
-  const hasFilters = year !== String(currentYear) || months.length || days.length || farmerFilter || farmerContact || buyerFilter;
+  const hasFilters = year !== String(currentYear) || months.length || days.length || farmerFilter || farmerContact || buyerFilter || (typeFilter && typeFilter !== "all");
 
   const summary = data?.summary;
   const rawRows = data?.rows ?? [];
   const rows = useMemo(() => {
-    if (months.length === 0 && days.length === 0) return rawRows;
-    return rawRows.filter((r) => dateMatchesFilter(r.exitDate, year, months, days));
-  }, [rawRows, year, months, days]);
+    let r = rawRows;
+    if (months.length || days.length) {
+      r = r.filter((row) => dateMatchesFilter(row.exitDate, year, months, days));
+    }
+    if (typeFilter && typeFilter !== "all") {
+      r = r.filter((row) => (row.bagType ?? "").toLowerCase() === typeFilter);
+    }
+    return r;
+  }, [rawRows, year, months, days, typeFilter]);
 
   const renderBuyer = (r: ExitRegisterRow) => {
     if (Number(r.isSelfSale) === 1 && !r.transferToBuyerName) return t("self");
@@ -1479,6 +1509,20 @@ function ExitRegister() {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="w-full sm:w-32">
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-9" data-testid="select-exit-type-filter">
+                  <SelectValue placeholder={t("filterByType")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("all")}</SelectItem>
+                  <SelectItem value="wafer">{t("wafer")}</SelectItem>
+                  <SelectItem value="seed">{t("seed")}</SelectItem>
+                  <SelectItem value="ration">{t("ration")}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {hasFilters && (
