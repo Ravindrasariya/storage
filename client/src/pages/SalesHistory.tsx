@@ -1166,7 +1166,10 @@ function initExitDateFilters() {
     const raw = localStorage.getItem(EXIT_DATE_FILTERS_KEY);
     if (raw) {
       const saved = JSON.parse(raw);
-      if (saved.savedDate === today.dateStr) {
+      const yearOk   = typeof saved.year === "string" && saved.year.length > 0;
+      const monthsOk = Array.isArray(saved.months) && saved.months.every((m: unknown) => typeof m === "number");
+      const daysOk   = Array.isArray(saved.days)   && saved.days.every((d: unknown) => typeof d === "number");
+      if (yearOk && monthsOk && daysOk && saved.savedDate === today.dateStr) {
         return { year: saved.year as string, months: saved.months as number[], days: saved.days as number[] };
       }
     }
