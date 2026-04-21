@@ -2796,7 +2796,8 @@ export async function registerRoutes(
     (data) => (data.amount + (data.roundOff || 0)) > 0,
     { message: "Amount + Round-off must be greater than zero", path: ["amount"] }
   ).refine(
-    (data) => data.receiptType !== "account" || data.amount === 0 || !!data.accountId,
+    // Account mode requires an account whenever ANY money posts (including round-off-only)
+    (data) => data.receiptType !== "account" || (data.amount + (data.roundOff || 0)) === 0 || !!data.accountId,
     { message: "Bank account is required when payment mode is account", path: ["accountId"] }
   );
 

@@ -864,7 +864,9 @@ function ManualPaymentDialog({ sale, open, onOpenChange, onSuccess }: ManualPaym
   const gross = amountNum + roundOffNum;
   const exceedsDue = gross > currentDue + 0.5;
   const grossInvalid = gross <= 0;
-  const accountMissing = paymentMode === "account" && amountNum > 0 && !accountId;
+  // Require a bank account whenever the gross is positive AND mode is account
+  // (covers round-off-only submissions that still post an account-mode receipt).
+  const accountMissing = paymentMode === "account" && gross > 0 && !accountId;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -892,8 +894,14 @@ function ManualPaymentDialog({ sale, open, onOpenChange, onSuccess }: ManualPaym
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
       onSuccess();
     },
-    onError: (err: any) => {
-      const message = err?.response?.data?.error || err?.message || "Failed to record payment";
+    onError: (err: unknown) => {
+      let message = "Failed to record payment";
+      if (err instanceof Error && err.message) {
+        message = err.message;
+      } else if (typeof err === "object" && err !== null) {
+        const maybe = err as { response?: { data?: { error?: string } }; message?: string };
+        message = maybe.response?.data?.error || maybe.message || message;
+      }
       toast({ title: t("error") || "Error", description: message, variant: "destructive" });
     },
   });
