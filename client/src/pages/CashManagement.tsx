@@ -20,6 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
+import { DateFilterBar, dateMatchesFilter } from "@/components/DateFilterBar";
 import type { CashReceipt as BaseCashReceipt, Expense as BaseExpense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
 
 type Expense = BaseExpense & { advanceRateOfInterest?: number; advanceEffectiveDate?: string | null };
@@ -256,8 +257,9 @@ export default function CashManagement() {
   const [showFilterFarmerSuggestions, setShowFilterFarmerSuggestions] = useState(false);
   const [filterExpenseType, setFilterExpenseType] = useState<string>("");
   const [filterRemarks, setFilterRemarks] = useState<string>("");
-  const [filterMonth, setFilterMonth] = useState<string>("");
   const [filterYear, setFilterYear] = useState<string>("");
+  const [filterMonths, setFilterMonths] = useState<number[]>([]);
+  const [filterDays, setFilterDays] = useState<number[]>([]);
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionItem | null>(null);
 
   // Settings dialog state
@@ -2078,20 +2080,11 @@ export default function CashManagement() {
       );
     }
     
-    // Month filter for receipts
-    if (filterMonth) {
-      filteredReceipts = filteredReceipts.filter(r => {
-        const date = new Date(r.receivedAt);
-        return format(date, "yyyy-MM") === filterMonth;
-      });
-    }
-    
-    // Year filter for receipts
-    if (filterYear) {
-      filteredReceipts = filteredReceipts.filter(r => {
-        const date = new Date(r.receivedAt);
-        return format(date, "yyyy") === filterYear;
-      });
+    // Date filter for receipts (year/months/days)
+    if (filterYear || filterMonths.length || filterDays.length) {
+      filteredReceipts = filteredReceipts.filter(r =>
+        dateMatchesFilter(r.receivedAt as any, filterYear || "all", filterMonths, filterDays)
+      );
     }
     
     // Remarks filter for receipts
@@ -2137,20 +2130,11 @@ export default function CashManagement() {
       );
     }
     
-    // Month filter for expenses
-    if (filterMonth) {
-      filteredExpenses = filteredExpenses.filter(e => {
-        const date = new Date(e.paidAt);
-        return format(date, "yyyy-MM") === filterMonth;
-      });
-    }
-    
-    // Year filter for expenses
-    if (filterYear) {
-      filteredExpenses = filteredExpenses.filter(e => {
-        const date = new Date(e.paidAt);
-        return format(date, "yyyy") === filterYear;
-      });
+    // Date filter for expenses (year/months/days)
+    if (filterYear || filterMonths.length || filterDays.length) {
+      filteredExpenses = filteredExpenses.filter(e =>
+        dateMatchesFilter(e.paidAt as any, filterYear || "all", filterMonths, filterDays)
+      );
     }
     
     // Remarks filter for expenses
@@ -2183,20 +2167,11 @@ export default function CashManagement() {
       filteredTransfers = [];
     }
     
-    // Month filter for transfers
-    if (filterMonth) {
-      filteredTransfers = filteredTransfers.filter(t => {
-        const date = new Date(t.transferredAt);
-        return format(date, "yyyy-MM") === filterMonth;
-      });
-    }
-    
-    // Year filter for transfers
-    if (filterYear) {
-      filteredTransfers = filteredTransfers.filter(t => {
-        const date = new Date(t.transferredAt);
-        return format(date, "yyyy") === filterYear;
-      });
+    // Date filter for transfers (year/months/days)
+    if (filterYear || filterMonths.length || filterDays.length) {
+      filteredTransfers = filteredTransfers.filter(t =>
+        dateMatchesFilter(t.transferredAt as any, filterYear || "all", filterMonths, filterDays)
+      );
     }
     
     // Remarks filter for transfers
@@ -2263,20 +2238,11 @@ export default function CashManagement() {
       filteredBuyerTransfers = [];
     }
     
-    // Month filter for buyer transfers
-    if (filterMonth) {
-      filteredBuyerTransfers = filteredBuyerTransfers.filter(bt => {
-        const date = new Date(bt.transferDate || bt.soldAt);
-        return format(date, "yyyy-MM") === filterMonth;
-      });
-    }
-    
-    // Year filter for buyer transfers
-    if (filterYear) {
-      filteredBuyerTransfers = filteredBuyerTransfers.filter(bt => {
-        const date = new Date(bt.transferDate || bt.soldAt);
-        return format(date, "yyyy") === filterYear;
-      });
+    // Date filter for buyer transfers (year/months/days)
+    if (filterYear || filterMonths.length || filterDays.length) {
+      filteredBuyerTransfers = filteredBuyerTransfers.filter(bt =>
+        dateMatchesFilter((bt.transferDate || bt.soldAt) as any, filterYear || "all", filterMonths, filterDays)
+      );
     }
     
     // Remarks filter for buyer transfers
@@ -2339,15 +2305,10 @@ export default function CashManagement() {
           const farmerName = d.farmerName?.trim().toLowerCase() || "";
           if (!farmerName.includes(filterKey)) return false;
         }
-        // Apply month filter
-        if (filterMonth) {
-          const date = new Date(d.discountDate);
-          if (format(date, "yyyy-MM") !== filterMonth) return false;
-        }
-        // Apply year filter
-        if (filterYear) {
-          const date = new Date(d.discountDate);
-          if (format(date, "yyyy") !== filterYear) return false;
+        // Apply date filter (year/months/days)
+        if ((filterYear || filterMonths.length || filterDays.length) &&
+            !dateMatchesFilter(d.discountDate as any, filterYear || "all", filterMonths, filterDays)) {
+          return false;
         }
         // Apply remarks filter
         if (filterRemarks) {
@@ -2401,7 +2362,7 @@ export default function CashManagement() {
       if (timeDiff !== 0) return timeDiff;
       return String(b.data.id).localeCompare(String(a.data.id));
     });
-  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterFarmer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
+  }, [receipts, expensesList, transfers, buyerTransfers, discountsList, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterFarmer, filterExpenseType, filterRemarks, filterYear, filterMonths, filterDays]);
 
   const isLoading = loadingReceipts || loadingExpenses || loadingTransfers || loadingBuyerTransfers || loadingDiscounts;
 
@@ -2452,7 +2413,7 @@ export default function CashManagement() {
     return Array.from(years).sort().reverse();
   }, [receipts, expensesList]);
 
-  const hasActiveFilters = filterTransactionType !== "all" || filterPaymentMode || filterPayerType || filterBuyer || filterFarmer || filterExpenseType || filterRemarks || filterMonth || filterYear;
+  const hasActiveFilters = filterTransactionType !== "all" || filterPaymentMode || filterPayerType || filterBuyer || filterFarmer || filterExpenseType || filterRemarks || filterYear || filterMonths.length > 0 || filterDays.length > 0;
 
   const clearFilters = () => {
     setFilterTransactionType("all");
@@ -2464,7 +2425,8 @@ export default function CashManagement() {
     setFilterFarmerSearch("");
     setFilterExpenseType("");
     setFilterRemarks("");
-    setFilterMonth("");
+    setFilterMonths([]);
+    setFilterDays([]);
     setFilterYear("");
   };
 
@@ -2684,34 +2646,11 @@ export default function CashManagement() {
       filteredExpenses = filteredExpenses.filter(e => e.expenseType === filterExpenseType);
     }
 
-    if (filterMonth) {
-      filteredReceipts = filteredReceipts.filter(r => {
-        const date = new Date(r.receivedAt);
-        return format(date, "yyyy-MM") === filterMonth;
-      });
-      filteredExpenses = filteredExpenses.filter(e => {
-        const date = new Date(e.paidAt);
-        return format(date, "yyyy-MM") === filterMonth;
-      });
-      filteredTransfers = filteredTransfers.filter(t => {
-        const date = new Date(t.transferredAt);
-        return format(date, "yyyy-MM") === filterMonth;
-      });
-    }
-
-    if (filterYear) {
-      filteredReceipts = filteredReceipts.filter(r => {
-        const date = new Date(r.receivedAt);
-        return format(date, "yyyy") === filterYear;
-      });
-      filteredExpenses = filteredExpenses.filter(e => {
-        const date = new Date(e.paidAt);
-        return format(date, "yyyy") === filterYear;
-      });
-      filteredTransfers = filteredTransfers.filter(t => {
-        const date = new Date(t.transferredAt);
-        return format(date, "yyyy") === filterYear;
-      });
+    if (filterYear || filterMonths.length || filterDays.length) {
+      const yr = filterYear || "all";
+      filteredReceipts = filteredReceipts.filter(r => dateMatchesFilter(r.receivedAt as any, yr, filterMonths, filterDays));
+      filteredExpenses = filteredExpenses.filter(e => dateMatchesFilter(e.paidAt as any, yr, filterMonths, filterDays));
+      filteredTransfers = filteredTransfers.filter(t => dateMatchesFilter(t.transferredAt as any, yr, filterMonths, filterDays));
     }
 
     if (filterRemarks) {
@@ -2752,7 +2691,7 @@ export default function CashManagement() {
       showInward: includeInward,
       showExpense: includeExpense,
     };
-  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterFarmer, filterExpenseType, filterRemarks, filterMonth, filterYear]);
+  }, [receipts, expensesList, transfers, filterTransactionType, filterPaymentMode, filterPayerType, filterBuyer, filterFarmer, filterExpenseType, filterRemarks, filterYear, filterMonths, filterDays]);
 
   return (
     <div className="container mx-auto p-4 max-w-4xl overflow-x-hidden">
@@ -2971,38 +2910,18 @@ export default function CashManagement() {
               </Select>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">{t("filterByMonth")}</Label>
-              <Select value={filterMonth || "all"} onValueChange={(v) => setFilterMonth(v === "all" ? "" : v)}>
-                <SelectTrigger data-testid="select-filter-month" className="h-8 text-sm">
-                  <SelectValue placeholder={t("allMonths")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allMonths")}</SelectItem>
-                  {availableMonths.map((month) => (
-                    <SelectItem key={month} value={month}>
-                      {format(new Date(month + "-01"), "MMM yyyy")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">{t("filterByYear")}</Label>
-              <Select value={filterYear || "all"} onValueChange={(v) => setFilterYear(v === "all" ? "" : v)}>
-                <SelectTrigger data-testid="select-filter-year" className="h-8 text-sm">
-                  <SelectValue placeholder={t("allYears")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allYears")}</SelectItem>
-                  {availableYears.map((year) => (
-                    <SelectItem key={year} value={year}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="col-span-2 md:col-span-2">
+              <DateFilterBar
+                year={filterYear || "all"}
+                onYearChange={(y) => setFilterYear(y === "all" ? "" : y)}
+                selectedMonths={filterMonths}
+                onMonthsChange={setFilterMonths}
+                selectedDays={filterDays}
+                onDaysChange={setFilterDays}
+                availableYears={availableYears.map((y) => parseInt(y, 10)).filter((n) => !isNaN(n))}
+                testIdPrefix="cash-date"
+                showLabels={false}
+              />
             </div>
           </div>
 

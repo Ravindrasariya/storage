@@ -22,6 +22,7 @@ import type { SalesHistory, ExitRegisterResponse, ExitRegisterRow } from "@share
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency } from "@/components/Currency";
+import { DateFilterBar, dateMatchesFilter } from "@/components/DateFilterBar";
 
 type FarmerRecord = {
   farmerName: string;
@@ -53,6 +54,8 @@ export default function SalesHistoryPage() {
   // Load persisted filters or use defaults
   const savedFilters = loadSavedFilters();
   const [yearFilter, setYearFilter] = useState<string>(savedFilters?.yearFilter ?? new Date().getFullYear().toString());
+  const [selectedMonths, setSelectedMonths] = useState<number[]>(Array.isArray(savedFilters?.selectedMonths) ? savedFilters.selectedMonths : []);
+  const [selectedDays, setSelectedDays] = useState<number[]>(Array.isArray(savedFilters?.selectedDays) ? savedFilters.selectedDays : []);
   const [farmerFilter, setFarmerFilter] = useState(savedFilters?.farmerFilter ?? "");
   const [selectedFarmerVillage, setSelectedFarmerVillage] = useState(savedFilters?.selectedFarmerVillage ?? "");
   const [selectedFarmerMobile, setSelectedFarmerMobile] = useState(savedFilters?.selectedFarmerMobile ?? "");
@@ -66,6 +69,8 @@ export default function SalesHistoryPage() {
   useEffect(() => {
     const filters = {
       yearFilter,
+      selectedMonths,
+      selectedDays,
       farmerFilter,
       selectedFarmerVillage,
       selectedFarmerMobile,
@@ -75,7 +80,7 @@ export default function SalesHistoryPage() {
       activeTab,
     };
     localStorage.setItem(SALES_FILTERS_KEY, JSON.stringify(filters));
-  }, [yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter, activeTab]);
+  }, [yearFilter, selectedMonths, selectedDays, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, mobileFilter, paymentFilter, buyerFilter, activeTab]);
   const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
@@ -177,6 +182,8 @@ export default function SalesHistoryPage() {
 
   const clearFilters = () => {
     setYearFilter("");
+    setSelectedMonths([]);
+    setSelectedDays([]);
     setFarmerFilter("");
     setSelectedFarmerVillage("");
     setSelectedFarmerMobile("");
@@ -185,7 +192,7 @@ export default function SalesHistoryPage() {
     setBuyerFilter("");
   };
 
-  const hasActiveFilters = yearFilter || farmerFilter || selectedFarmerVillage || mobileFilter || paymentFilter || buyerFilter;
+  const hasActiveFilters = yearFilter || selectedMonths.length || selectedDays.length || farmerFilter || selectedFarmerVillage || mobileFilter || paymentFilter || buyerFilter;
 
   // Download function for sales export
   const getDownloadToken = async (): Promise<string | null> => {
@@ -270,7 +277,12 @@ export default function SalesHistoryPage() {
     },
   });
 
-  const summary = salesHistory.reduce(
+  const filteredSalesHistory = useMemo(() => {
+    if (selectedMonths.length === 0 && selectedDays.length === 0) return salesHistory;
+    return salesHistory.filter((s) => dateMatchesFilter(s.soldAt as any, yearFilter || "all", selectedMonths, selectedDays));
+  }, [salesHistory, yearFilter, selectedMonths, selectedDays]);
+
+  const summary = filteredSalesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
       acc.amountPaid += sale.paidAmount || 0;
@@ -350,19 +362,17 @@ export default function SalesHistoryPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">{t("filterByYear")}</label>
-              <Select value={yearFilter} onValueChange={setYearFilter}>
-                <SelectTrigger data-testid="select-year-filter">
-                  <SelectValue placeholder={t("allYears")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allYears")}</SelectItem>
-                  {years.map((year) => (
-                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="lg:col-span-3">
+              <DateFilterBar
+                year={yearFilter || "all"}
+                onYearChange={(y) => setYearFilter(y === "all" ? "" : y)}
+                selectedMonths={selectedMonths}
+                onMonthsChange={setSelectedMonths}
+                selectedDays={selectedDays}
+                onDaysChange={setSelectedDays}
+                availableYears={years}
+                testIdPrefix="sales-date"
+              />
             </div>
 
             <div className="space-y-2">
@@ -523,7 +533,7 @@ export default function SalesHistoryPage() {
       </Card>
 
       {/* Summary Section */}
-      {!historyLoading && salesHistory.length > 0 && (
+      {!historyLoading && filteredSalesHistory.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 lg:gap-4">
           <Card data-testid="card-summary-bags">
             <CardContent className="p-3 lg:pt-6 lg:px-6">
@@ -629,7 +639,7 @@ export default function SalesHistoryPage() {
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : salesHistory.length === 0 ? (
+          ) : filteredSalesHistory.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground" data-testid="text-no-results">
               {t("noSalesHistory")}
             </div>
@@ -655,7 +665,7 @@ export default function SalesHistoryPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {salesHistory.map((sale) => (
+                  {filteredSalesHistory.map((sale) => (
                     <TableRow key={sale.id} data-testid={`row-sale-${sale.id}`}>
                       <TableCell className="whitespace-nowrap text-xs">
                         {format(new Date(sale.soldAt), "dd MMM yyyy")}
@@ -738,20 +748,20 @@ export default function SalesHistoryPage() {
         </CardContent>
       </Card>
 
-      {salesHistory.length > 0 && (
+      {filteredSalesHistory.length > 0 && (
         <div className="flex justify-between items-center text-sm text-muted-foreground">
           <span>
-            {salesHistory.length} {salesHistory.length === 1 ? "sale" : "sales"} found
+            {filteredSalesHistory.length} {filteredSalesHistory.length === 1 ? "sale" : "sales"} found
           </span>
           <div className="flex gap-4">
             <span className="text-green-600">
-              {t("paid")}: {salesHistory.filter(s => s.paymentStatus === "paid").length}
+              {t("paid")}: {filteredSalesHistory.filter(s => s.paymentStatus === "paid").length}
             </span>
             <span className="text-blue-600">
-              {t("partial")}: {salesHistory.filter(s => s.paymentStatus === "partial").length}
+              {t("partial")}: {filteredSalesHistory.filter(s => s.paymentStatus === "partial").length}
             </span>
             <span className="text-amber-600">
-              {t("due")}: {salesHistory.filter(s => s.paymentStatus === "due").length}
+              {t("due")}: {filteredSalesHistory.filter(s => s.paymentStatus === "due").length}
             </span>
           </div>
         </div>
@@ -1122,7 +1132,7 @@ function ExitRegister() {
   const exitBuyerNav = useDropdownNavigation();
 
   const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState<number | "all">(currentYear);
+  const [year, setYear] = useState<string>(String(currentYear));
   const [months, setMonths] = useState<number[]>([]);
   const [days, setDays] = useState<number[]>([]);
   const [farmerFilter, setFarmerFilter] = useState("");
@@ -1159,7 +1169,7 @@ function ExitRegister() {
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
-    if (year !== "all") p.append("year", String(year));
+    if (year !== "all") p.append("year", year);
     if (months.length) p.append("months", months.join(","));
     if (days.length) p.append("days", days.join(","));
     if (farmerFilter) p.append("farmerName", farmerFilter);
@@ -1177,22 +1187,7 @@ function ExitRegister() {
     },
   });
 
-  const yearOptions = useMemo(() => {
-    const set = new Set<number>(years);
-    set.add(currentYear);
-    for (let y = currentYear - 4; y <= currentYear; y++) set.add(y);
-    return Array.from(set).sort((a, b) => b - a);
-  }, [years, currentYear]);
-
   const monthShortNames = t("monthsShort").split(",");
-  const allMonths = months.length === 12;
-
-  const toggleMonth = (m: number) => {
-    setMonths(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m].sort((a, b) => a - b));
-  };
-  const toggleDay = (d: number) => {
-    setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b));
-  };
 
   const monthLabel = months.length === 0
     ? t("allMonths")
@@ -1206,10 +1201,10 @@ function ExitRegister() {
       ? String(days[0])
       : `${days.length} ${t("daysLabel")}`;
 
-  const yearLabel = year === "all" ? t("allYears") : String(year);
+  const yearLabel = year === "all" ? t("allYears") : year;
 
   const clearFilters = () => {
-    setYear(currentYear);
+    setYear(String(currentYear));
     setMonths([]);
     setDays([]);
     setFarmerFilter("");
@@ -1217,7 +1212,7 @@ function ExitRegister() {
     setBuyerFilter("");
   };
 
-  const hasFilters = year !== currentYear || months.length || days.length || farmerFilter || farmerContact || buyerFilter;
+  const hasFilters = year !== String(currentYear) || months.length || days.length || farmerFilter || farmerContact || buyerFilter;
 
   const summary = data?.summary;
   const rows = data?.rows ?? [];
@@ -1401,111 +1396,20 @@ function ExitRegister() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-end gap-3">
-            {/* Year */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2" data-testid="trigger-year">
-                  {yearLabel}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-48 p-1" align="start">
-                <button
-                  type="button"
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 hover-elevate ${year === "all" ? "bg-emerald-600 text-white" : ""}`}
-                  onClick={() => setYear("all")}
-                  data-testid="option-year-all"
-                >
-                  <Checkbox checked={year === "all"} className="pointer-events-none" />
-                  {t("allYears")}
-                </button>
-                {yearOptions.map((y) => (
-                  <button
-                    key={y}
-                    type="button"
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 hover-elevate ${year === y ? "bg-emerald-600 text-white" : ""}`}
-                    onClick={() => setYear(y)}
-                    data-testid={`option-year-${y}`}
-                  >
-                    <Checkbox checked={year === y} className="pointer-events-none" />
-                    {y}
-                  </button>
-                ))}
-              </PopoverContent>
-            </Popover>
-
-            {/* Month */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2" data-testid="trigger-month">
-                  {monthLabel}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-3" align="start">
-                <label className="flex items-center gap-2 pb-2 mb-2 border-b cursor-pointer">
-                  <Checkbox
-                    checked={allMonths}
-                    onCheckedChange={(v) => setMonths(v ? Array.from({ length: 12 }, (_, i) => i + 1) : [])}
-                    data-testid="checkbox-all-months"
-                  />
-                  <span className="text-sm font-medium">{t("allMonths")}</span>
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {monthShortNames.map((label, idx) => {
-                    const m = idx + 1;
-                    const selected = months.includes(m);
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        className={`px-2 py-2 rounded-md text-sm font-medium border ${selected ? "bg-emerald-600 text-white border-emerald-600" : "bg-background hover-elevate"}`}
-                        onClick={() => toggleMonth(m)}
-                        data-testid={`chip-month-${m}`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            {/* Day */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2" data-testid="trigger-day">
-                  {dayLabel}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-3" align="start">
-                <label className="flex items-center gap-2 pb-2 mb-2 border-b cursor-pointer">
-                  <Checkbox
-                    checked={days.length === 31}
-                    onCheckedChange={(v) => setDays(v ? Array.from({ length: 31 }, (_, i) => i + 1) : [])}
-                    data-testid="checkbox-all-days"
-                  />
-                  <span className="text-sm font-medium">{t("allDays")}</span>
-                </label>
-                <div className="grid grid-cols-7 gap-1">
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
-                    const selected = days.includes(d);
-                    return (
-                      <button
-                        key={d}
-                        type="button"
-                        className={`px-1 py-2 rounded-md text-sm font-medium border ${selected ? "bg-emerald-600 text-white border-emerald-600" : "bg-background hover-elevate"}`}
-                        onClick={() => toggleDay(d)}
-                        data-testid={`chip-day-${d}`}
-                      >
-                        {d}
-                      </button>
-                    );
-                  })}
-                </div>
-              </PopoverContent>
-            </Popover>
+            {/* Year / Month / Day */}
+            <div className="w-full sm:w-[28rem]">
+              <DateFilterBar
+                year={year}
+                onYearChange={setYear}
+                selectedMonths={months}
+                onMonthsChange={setMonths}
+                selectedDays={days}
+                onDaysChange={setDays}
+                availableYears={years}
+                testIdPrefix="exit-date"
+                showLabels={false}
+              />
+            </div>
 
             {/* Farmer autocomplete */}
             <div className="relative w-56">
