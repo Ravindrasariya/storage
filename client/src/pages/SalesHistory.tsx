@@ -1170,7 +1170,7 @@ function initExitDateFilters(): { year: string; months: number[]; days: number[]
         typeof m === "number" && m >= 1 && m <= 12;
       const isValidDay = (d: unknown): d is number =>
         typeof d === "number" && d >= 1 && d <= 31;
-      const yearOk   = typeof saved.year === "string" && /^\d{4}$/.test(saved.year);
+      const yearOk   = typeof saved.year === "string" && (/^\d{4}$/.test(saved.year) || saved.year === "all");
       const monthsOk = Array.isArray(saved.months) && saved.months.every(isValidMonth);
       const daysOk   = Array.isArray(saved.days)   && saved.days.every(isValidDay);
       if (yearOk && monthsOk && daysOk && saved.savedDate === today.dateStr) {
