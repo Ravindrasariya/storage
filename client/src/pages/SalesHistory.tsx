@@ -1338,10 +1338,10 @@ function ExitRegister() {
 <style>
   @page{size:A4 landscape;margin:8mm;}
   *{box-sizing:border-box;}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:16px;color:#111;}
+  body{font-family:Arial,Helvetica,"Liberation Sans","DejaVu Sans",sans-serif;margin:16px;color:#111;}
   h1{margin:0 0 4px 0;font-size:18px;}
   .meta{font-size:11px;color:#555;margin-bottom:12px;}
-  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;}
+  .cards{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-bottom:14px;}
   .card{border:1px solid #d4d4d8;border-radius:6px;padding:8px 10px;min-height:44px;}
   .lbl{font-size:11px;line-height:1.25;color:#555;word-break:break-word;overflow-wrap:anywhere;}
   .val{font-size:16px;line-height:1.3;font-weight:700;margin-top:2px;white-space:nowrap;}
@@ -1355,7 +1355,7 @@ function ExitRegister() {
   .wrap{word-break:break-word;overflow-wrap:anywhere;}
   th.date{width:64px;} th.lot{width:48px;} th.bags{width:48px;} th.cold-bill{width:60px;} th.cold-charges{width:80px;}
   .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(4,1fr);}}
+  @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(8,1fr);}}
 </style></head><body>
   <h1>${escape(t("exitRegister"))}</h1>
   <div class="meta">${filterParts.map((p) => escape(p)).join(" &nbsp;|&nbsp; ")}</div>
