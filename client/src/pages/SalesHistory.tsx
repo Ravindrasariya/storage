@@ -279,7 +279,7 @@ export default function SalesHistoryPage() {
 
   const filteredSalesHistory = useMemo(() => {
     if (selectedMonths.length === 0 && selectedDays.length === 0) return salesHistory;
-    return salesHistory.filter((s) => dateMatchesFilter(s.soldAt as any, yearFilter || "all", selectedMonths, selectedDays));
+    return salesHistory.filter((s) => dateMatchesFilter(s.soldAt, yearFilter || "all", selectedMonths, selectedDays));
   }, [salesHistory, yearFilter, selectedMonths, selectedDays]);
 
   const summary = filteredSalesHistory.reduce(
@@ -1215,7 +1215,11 @@ function ExitRegister() {
   const hasFilters = year !== String(currentYear) || months.length || days.length || farmerFilter || farmerContact || buyerFilter;
 
   const summary = data?.summary;
-  const rows = data?.rows ?? [];
+  const rawRows = data?.rows ?? [];
+  const rows = useMemo(() => {
+    if (months.length === 0 && days.length === 0) return rawRows;
+    return rawRows.filter((r) => dateMatchesFilter(r.exitDate, year, months, days));
+  }, [rawRows, year, months, days]);
 
   const renderBuyer = (r: ExitRegisterRow) => {
     if (Number(r.isSelfSale) === 1 && !r.transferToBuyerName) return t("self");

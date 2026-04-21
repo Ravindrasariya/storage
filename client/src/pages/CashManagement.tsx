@@ -2083,7 +2083,7 @@ export default function CashManagement() {
     // Date filter for receipts (year/months/days)
     if (filterYear || filterMonths.length || filterDays.length) {
       filteredReceipts = filteredReceipts.filter(r =>
-        dateMatchesFilter(r.receivedAt as any, filterYear || "all", filterMonths, filterDays)
+        dateMatchesFilter(r.receivedAt, filterYear || "all", filterMonths, filterDays)
       );
     }
     
@@ -2133,7 +2133,7 @@ export default function CashManagement() {
     // Date filter for expenses (year/months/days)
     if (filterYear || filterMonths.length || filterDays.length) {
       filteredExpenses = filteredExpenses.filter(e =>
-        dateMatchesFilter(e.paidAt as any, filterYear || "all", filterMonths, filterDays)
+        dateMatchesFilter(e.paidAt, filterYear || "all", filterMonths, filterDays)
       );
     }
     
@@ -2170,7 +2170,7 @@ export default function CashManagement() {
     // Date filter for transfers (year/months/days)
     if (filterYear || filterMonths.length || filterDays.length) {
       filteredTransfers = filteredTransfers.filter(t =>
-        dateMatchesFilter(t.transferredAt as any, filterYear || "all", filterMonths, filterDays)
+        dateMatchesFilter(t.transferredAt, filterYear || "all", filterMonths, filterDays)
       );
     }
     
@@ -2241,7 +2241,7 @@ export default function CashManagement() {
     // Date filter for buyer transfers (year/months/days)
     if (filterYear || filterMonths.length || filterDays.length) {
       filteredBuyerTransfers = filteredBuyerTransfers.filter(bt =>
-        dateMatchesFilter((bt.transferDate || bt.soldAt) as any, filterYear || "all", filterMonths, filterDays)
+        dateMatchesFilter((bt.transferDate || bt.soldAt), filterYear || "all", filterMonths, filterDays)
       );
     }
     
@@ -2307,7 +2307,7 @@ export default function CashManagement() {
         }
         // Apply date filter (year/months/days)
         if ((filterYear || filterMonths.length || filterDays.length) &&
-            !dateMatchesFilter(d.discountDate as any, filterYear || "all", filterMonths, filterDays)) {
+            !dateMatchesFilter(d.discountDate, filterYear || "all", filterMonths, filterDays)) {
           return false;
         }
         // Apply remarks filter
@@ -2648,9 +2648,9 @@ export default function CashManagement() {
 
     if (filterYear || filterMonths.length || filterDays.length) {
       const yr = filterYear || "all";
-      filteredReceipts = filteredReceipts.filter(r => dateMatchesFilter(r.receivedAt as any, yr, filterMonths, filterDays));
-      filteredExpenses = filteredExpenses.filter(e => dateMatchesFilter(e.paidAt as any, yr, filterMonths, filterDays));
-      filteredTransfers = filteredTransfers.filter(t => dateMatchesFilter(t.transferredAt as any, yr, filterMonths, filterDays));
+      filteredReceipts = filteredReceipts.filter(r => dateMatchesFilter(r.receivedAt, yr, filterMonths, filterDays));
+      filteredExpenses = filteredExpenses.filter(e => dateMatchesFilter(e.paidAt, yr, filterMonths, filterDays));
+      filteredTransfers = filteredTransfers.filter(t => dateMatchesFilter(t.transferredAt, yr, filterMonths, filterDays));
     }
 
     if (filterRemarks) {

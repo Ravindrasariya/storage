@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 export interface DateFilterBarProps {
   year: string;
@@ -32,11 +32,12 @@ export function DateFilterBar({
   onDaysChange,
   availableYears = [],
   allowAllYears = true,
-  testIdPrefix = "date-filter",
+  testIdPrefix = "",
   showLabels = true,
 }: DateFilterBarProps) {
   const { t } = useI18n();
   const currentYear = new Date().getFullYear();
+  const tid = (id: string) => (testIdPrefix ? `${testIdPrefix}-${id}` : id);
 
   const yearOptions = useMemo(() => {
     const set = new Set<number>(availableYears);
@@ -47,7 +48,8 @@ export function DateFilterBar({
   const monthShortNames = useMemo(() => t("monthsShort").split(","), [t]);
 
   const maxDay = useMemo(() => {
-    const yNum = year === "all" ? currentYear : parseInt(year, 10) || currentYear;
+    if (year === "all") return 31;
+    const yNum = parseInt(year, 10) || currentYear;
     if (selectedMonths.length === 0) return 31;
     return Math.max(...selectedMonths.map((m) => daysInMonth(yNum, m)));
   }, [year, selectedMonths, currentYear]);
@@ -56,9 +58,7 @@ export function DateFilterBar({
   useEffect(() => {
     if (selectedDays.length === 0) return;
     const trimmed = selectedDays.filter((d) => d <= maxDay);
-    if (trimmed.length !== selectedDays.length) {
-      onDaysChange(trimmed);
-    }
+    if (trimmed.length !== selectedDays.length) onDaysChange(trimmed);
   }, [maxDay, selectedDays, onDaysChange]);
 
   const handleYearChange = (next: string) => {
@@ -81,6 +81,9 @@ export function DateFilterBar({
       : [...selectedDays, d].sort((a, b) => a - b);
     onDaysChange(next);
   };
+
+  const allMonthsSelected = selectedMonths.length === 12;
+  const allDaysSelected = selectedDays.length === maxDay && maxDay > 0;
 
   const yearLabel = year === "all" ? t("allYears") : year;
 
@@ -105,13 +108,17 @@ export function DateFilterBar({
           <label className="text-sm text-muted-foreground">{t("filterByYear")}</label>
         )}
         <Select value={year} onValueChange={handleYearChange}>
-          <SelectTrigger data-testid={`${testIdPrefix}-year`}>
+          <SelectTrigger data-testid={tid("trigger-year")}>
             <SelectValue>{yearLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {allowAllYears && <SelectItem value="all">{t("allYears")}</SelectItem>}
+            {allowAllYears && (
+              <SelectItem value="all" data-testid={tid("option-year-all")}>
+                {t("allYears")}
+              </SelectItem>
+            )}
             {yearOptions.map((y) => (
-              <SelectItem key={y} value={String(y)}>
+              <SelectItem key={y} value={String(y)} data-testid={tid(`option-year-${y}`)}>
                 {y}
               </SelectItem>
             ))}
@@ -129,49 +136,49 @@ export function DateFilterBar({
               type="button"
               variant="outline"
               className="w-full justify-between font-normal"
-              data-testid={`${testIdPrefix}-months`}
+              data-testid={tid("trigger-month")}
             >
               <span className="truncate">{monthLabel}</span>
               <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-64 p-3" align="start">
+            <label className="flex items-center gap-2 pb-2 mb-2 border-b cursor-pointer">
+              <Checkbox
+                checked={allMonthsSelected}
+                onCheckedChange={(v) => {
+                  if (v) {
+                    onMonthsChange(Array.from({ length: 12 }, (_, i) => i + 1));
+                  } else {
+                    onMonthsChange([]);
+                    if (selectedDays.length > 0) onDaysChange([]);
+                  }
+                }}
+                data-testid={tid("checkbox-all-months")}
+              />
+              <span className="text-sm font-medium">{t("allMonths")}</span>
+            </label>
             <div className="grid grid-cols-4 gap-2">
-              {monthShortNames.map((mn, idx) => {
+              {monthShortNames.map((label, idx) => {
                 const m = idx + 1;
-                const checked = selectedMonths.includes(m);
+                const selected = selectedMonths.includes(m);
                 return (
-                  <label
+                  <button
                     key={m}
-                    className="flex items-center gap-1.5 cursor-pointer text-sm hover-elevate rounded px-1.5 py-1"
-                    data-testid={`${testIdPrefix}-month-${m}`}
+                    type="button"
+                    className={`px-2 py-2 rounded-md text-sm font-medium border ${
+                      selected
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-background hover-elevate"
+                    }`}
+                    onClick={() => toggleMonth(m)}
+                    data-testid={tid(`chip-month-${m}`)}
                   >
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={() => toggleMonth(m)}
-                    />
-                    <span>{mn.trim()}</span>
-                  </label>
+                    {label.trim()}
+                  </button>
                 );
               })}
             </div>
-            {selectedMonths.length > 0 && (
-              <div className="mt-3 pt-2 border-t flex justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    onMonthsChange([]);
-                    if (selectedDays.length > 0) onDaysChange([]);
-                  }}
-                  data-testid={`${testIdPrefix}-months-clear`}
-                >
-                  <X className="h-3.5 w-3.5 mr-1" />
-                  {t("clearFilters")}
-                </Button>
-              </div>
-            )}
           </PopoverContent>
         </Popover>
       </div>
@@ -186,47 +193,47 @@ export function DateFilterBar({
               type="button"
               variant="outline"
               className="w-full justify-between font-normal"
-              data-testid={`${testIdPrefix}-days`}
+              data-testid={tid("trigger-day")}
             >
               <span className="truncate">{dayLabel}</span>
               <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-72 p-3" align="start">
-            <div className="grid grid-cols-7 gap-1.5">
+            <label className="flex items-center gap-2 pb-2 mb-2 border-b cursor-pointer">
+              <Checkbox
+                checked={allDaysSelected}
+                onCheckedChange={(v) => {
+                  if (v) {
+                    onDaysChange(Array.from({ length: maxDay }, (_, i) => i + 1));
+                  } else {
+                    onDaysChange([]);
+                  }
+                }}
+                data-testid={tid("checkbox-all-days")}
+              />
+              <span className="text-sm font-medium">{t("allDays")}</span>
+            </label>
+            <div className="grid grid-cols-7 gap-1">
               {Array.from({ length: maxDay }, (_, i) => i + 1).map((d) => {
-                const checked = selectedDays.includes(d);
+                const selected = selectedDays.includes(d);
                 return (
                   <button
                     key={d}
                     type="button"
-                    onClick={() => toggleDay(d)}
-                    className={`text-xs rounded h-8 w-8 flex items-center justify-center border hover-elevate ${
-                      checked
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background"
+                    className={`px-1 py-2 rounded-md text-sm font-medium border ${
+                      selected
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-background hover-elevate"
                     }`}
-                    data-testid={`${testIdPrefix}-day-${d}`}
+                    onClick={() => toggleDay(d)}
+                    data-testid={tid(`chip-day-${d}`)}
                   >
                     {d}
                   </button>
                 );
               })}
             </div>
-            {selectedDays.length > 0 && (
-              <div className="mt-3 pt-2 border-t flex justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onDaysChange([])}
-                  data-testid={`${testIdPrefix}-days-clear`}
-                >
-                  <X className="h-3.5 w-3.5 mr-1" />
-                  {t("clearFilters")}
-                </Button>
-              </div>
-            )}
           </PopoverContent>
         </Popover>
       </div>
@@ -234,17 +241,43 @@ export function DateFilterBar({
   );
 }
 
+export type DateFilterValue = string | Date | null | undefined;
+
 export function dateMatchesFilter(
-  isoDate: string | Date | null | undefined,
+  value: DateFilterValue,
   year: string,
   months: number[],
   days: number[],
 ): boolean {
-  if (!isoDate) return false;
-  const d = isoDate instanceof Date ? isoDate : new Date(isoDate);
-  if (isNaN(d.getTime())) return false;
-  if (year && year !== "all" && String(d.getFullYear()) !== year) return false;
-  if (months.length > 0 && !months.includes(d.getMonth() + 1)) return false;
-  if (days.length > 0 && !days.includes(d.getDate())) return false;
+  if (value === null || value === undefined) return false;
+
+  let y: number;
+  let m: number;
+  let d: number;
+
+  if (typeof value === "string") {
+    // Prefer deterministic parsing for YYYY-MM-DD prefixed strings
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      y = parseInt(match[1], 10);
+      m = parseInt(match[2], 10);
+      d = parseInt(match[3], 10);
+    } else {
+      const dt = new Date(value);
+      if (isNaN(dt.getTime())) return false;
+      y = dt.getFullYear();
+      m = dt.getMonth() + 1;
+      d = dt.getDate();
+    }
+  } else {
+    if (isNaN(value.getTime())) return false;
+    y = value.getFullYear();
+    m = value.getMonth() + 1;
+    d = value.getDate();
+  }
+
+  if (year && year !== "all" && String(y) !== year) return false;
+  if (months.length > 0 && !months.includes(m)) return false;
+  if (days.length > 0 && !days.includes(d)) return false;
   return true;
 }
