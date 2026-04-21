@@ -1317,18 +1317,18 @@ function ExitRegister() {
       .map(
         (r) => `
         <tr>
-          <td>${escape(format(new Date(r.exitDate), "dd MMM yyyy"))}</td>
-          <td>${escape(r.farmerName)}</td>
-          <td>${escape(r.village)}</td>
-          <td>${escape(r.lotNo)}</td>
-          <td>${escape(r.marka || "—")}</td>
-          <td>${isKnownBagType(r.bagType) ? `<span class="bag-badge" style="${bagTypePrintStyle(r.bagType)}">${escape(formatBagType(r.bagType))}</span>` : "—"}</td>
-          <td>${escape(r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—")}</td>
-          <td class="r">${escape(r.bagsExited)}</td>
-          <td>${escape(renderBuyerText(r))}</td>
-          <td class="r">${escape(fmtINR(r.coldChargeShare))}</td>
-          <td class="r cash">${r.paidShare > 0 ? escape(fmtINR(r.paidShare)) : "—"}</td>
-          <td class="r due">${r.dueShare > 0 ? escape(fmtINR(r.dueShare)) : "—"}</td>
+          <td class="nowrap">${escape(format(new Date(r.exitDate), "dd MMM yyyy"))}</td>
+          <td class="wrap">${escape(r.farmerName)}</td>
+          <td class="nowrap">${escape(r.village)}</td>
+          <td class="nowrap">${escape(r.lotNo)}</td>
+          <td class="nowrap">${escape(r.marka || "—")}</td>
+          <td class="nowrap">${isKnownBagType(r.bagType) ? `<span class="bag-badge" style="${bagTypePrintStyle(r.bagType)}">${escape(formatBagType(r.bagType))}</span>` : "—"}</td>
+          <td class="nowrap">${escape(r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—")}</td>
+          <td class="nowrap r">${escape(r.bagsExited)}</td>
+          <td class="wrap">${escape(renderBuyerText(r))}</td>
+          <td class="nowrap r">${escape(fmtINR(r.coldChargeShare))}</td>
+          <td class="nowrap r cash">${r.paidShare > 0 ? escape(fmtINR(r.paidShare)) : "—"}</td>
+          <td class="nowrap r due">${r.dueShare > 0 ? escape(fmtINR(r.dueShare)) : "—"}</td>
         </tr>
       `,
       )
@@ -1341,36 +1341,39 @@ function ExitRegister() {
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:16px;color:#111;}
   h1{margin:0 0 4px 0;font-size:18px;}
   .meta{font-size:11px;color:#555;margin-bottom:12px;}
-  .cards{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-bottom:14px;}
-  .card{border:1px solid #d4d4d8;border-radius:6px;padding:6px 8px;}
-  .lbl{font-size:9px;color:#555;word-break:break-word;overflow-wrap:anywhere;}
-  .val{font-size:13px;font-weight:700;margin-top:2px;word-break:break-word;overflow-wrap:anywhere;}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;}
+  .card{border:1px solid #d4d4d8;border-radius:6px;padding:8px 10px;min-height:44px;}
+  .lbl{font-size:11px;line-height:1.25;color:#555;word-break:break-word;overflow-wrap:anywhere;}
+  .val{font-size:16px;line-height:1.3;font-weight:700;margin-top:2px;white-space:nowrap;}
   .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.disc{color:#7c3aed;} .val.due{color:#be123c;}
   table{width:100%;border-collapse:collapse;font-size:11px;}
-  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;word-break:break-word;overflow-wrap:anywhere;}
+  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;}
   th{background:#f4f4f5;font-weight:700;}
   td.r,th.r{text-align:right;}
   td.cash{color:#047857;} td.due{color:#be123c;}
+  .nowrap{white-space:nowrap;}
+  .wrap{word-break:break-word;overflow-wrap:anywhere;}
+  th.date{width:64px;} th.lot{width:48px;} th.bags{width:48px;} th.cold-bill{width:60px;} th.cold-charges{width:80px;}
   .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(8,1fr);}}
+  @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(4,1fr);}}
 </style></head><body>
   <h1>${escape(t("exitRegister"))}</h1>
   <div class="meta">${filterParts.map((p) => escape(p)).join(" &nbsp;|&nbsp; ")}</div>
   ${summaryCardsHtml}
   <table>
     <thead><tr>
-      <th>${escape(t("exitDate"))}</th>
-      <th>${escape(t("farmerName"))}</th>
-      <th>${escape(t("village"))}</th>
-      <th>${escape(t("lotNo"))}</th>
-      <th>${escape(t("marka"))}</th>
-      <th>${escape(t("potatoType"))}</th>
-      <th>${escape(t("coldBillNo"))}</th>
-      <th class="r">${escape(t("bagsExited"))}</th>
-      <th>${escape(t("buyerName"))}</th>
-      <th class="r">${escape(t("coldStorageCharges"))}</th>
-      <th class="r">${escape(t("paid"))}</th>
-      <th class="r">${escape(t("due"))}</th>
+      <th class="nowrap date">${escape(t("exitDate"))}</th>
+      <th class="wrap">${escape(t("farmerName"))}</th>
+      <th class="nowrap">${escape(t("village"))}</th>
+      <th class="nowrap lot">${escape(t("lotNo"))}</th>
+      <th class="nowrap">${escape(t("marka"))}</th>
+      <th class="nowrap">${escape(t("potatoType"))}</th>
+      <th class="nowrap cold-bill">${escape(t("coldBillNo"))}</th>
+      <th class="nowrap r bags">${escape(t("bagsExited"))}</th>
+      <th class="wrap">${escape(t("buyerName"))}</th>
+      <th class="nowrap r cold-charges">Cold Charges</th>
+      <th class="nowrap r">${escape(t("paid"))}</th>
+      <th class="nowrap r">${escape(t("due"))}</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
