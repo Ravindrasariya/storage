@@ -1,5 +1,6 @@
+import { randomUUID } from "crypto";
 import { db } from "./db";
-import { migrations } from "@shared/schema";
+import { cashReceiptApplications, migrations } from "@shared/schema";
 import { sql } from "drizzle-orm";
 
 interface Migration {
@@ -327,6 +328,177 @@ const MIGRATIONS: Migration[] = [
       await db.execute(sql`CREATE INDEX IF NOT EXISTS cra_receipt_idx ON cash_receipt_applications(cash_receipt_id)`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS cra_sale_idx ON cash_receipt_applications(sales_history_id)`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS cra_cs_idx ON cash_receipt_applications(cold_storage_id)`);
+    },
+  },
+  {
+    name: "2026-04-22_backfill_legacy_receipt_applications",
+    up: async () => {
+      // Synthesize cash_receipt_applications rows for receipts created before
+      // Task #156 added the junction table. Without these rows, the exit
+      // register cannot attribute legacy receipts' round-off concessions to
+      // specific sales, so the round-off stays bundled in Cash Received
+      // instead of moving to Discount.
+      //
+      // Algorithm: walk every non-reversed receipt that has zero application
+      // rows in receipt-date order (FIFO). For each one:
+      //   - manual single-sale closures (applies_to_sale_id set) attribute
+      //     the entire gross to that sale,
+      //   - cold_merchant / sales_goods receipts FIFO across the buyer's sales
+      //     by createdAt, capped at each sale's residual (paid_amount minus
+      //     discount_allocated minus already-attributed amount_applied),
+      //   - farmer receipts do the same against self-sales for the matching
+      //     farmer (ledger id, falling back to "name (village)" composite),
+      //   - other payer types (kata, others, cold_merchant_advance,
+      //     farmer_loan) don't attach to sales so we skip them.
+      // Each iteration re-queries residuals so subsequent receipts see the
+      // updated attribution from earlier ones in the same pass.
+      const legacyReceipts = (await db.execute(sql`
+        SELECT cr.id,
+               cr.cold_storage_id,
+               cr.payer_type,
+               cr.buyer_name,
+               cr.farmer_ledger_id,
+               cr.amount,
+               cr.round_off,
+               cr.applied_amount,
+               cr.received_at,
+               cr.applies_to_sale_id
+        FROM cash_receipts cr
+        WHERE cr.is_reversed = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM cash_receipt_applications cra
+            WHERE cra.cash_receipt_id = cr.id
+          )
+        ORDER BY cr.received_at ASC, cr.created_at ASC
+      `)).rows as Array<{
+        id: string;
+        cold_storage_id: string;
+        payer_type: string;
+        buyer_name: string | null;
+        farmer_ledger_id: string | null;
+        amount: number;
+        round_off: number;
+        applied_amount: number | null;
+        received_at: Date;
+        applies_to_sale_id: string | null;
+      }>;
+
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      for (const r of legacyReceipts) {
+        const baseAmount = Number(r.amount) || 0;
+        const roundOff = Number(r.round_off) || 0;
+        const fullGross = round2(baseAmount + roundOff);
+        if (fullGross <= 0) continue;
+        // Cap allocation at the portion that historically flowed into sales:
+        // applied_amount tracks how much of `amount` (base) the FIFO wrote
+        // into salesHistory.paid_amount; the proportional round-off slice
+        // is `round_off * applied_amount / amount`. The remainder stayed as
+        // unapplied buyer/farmer credit and never touched a sale, so it
+        // shouldn't get a junction row.
+        const appliedBase = r.applied_amount == null
+          ? baseAmount
+          : Math.min(Number(r.applied_amount) || 0, baseAmount);
+        const gross = baseAmount > 0
+          ? round2(appliedBase + (roundOff * appliedBase) / baseAmount)
+          : 0;
+        if (gross <= 0) continue;
+        const appliedAt = r.received_at instanceof Date
+          ? r.received_at
+          : new Date(r.received_at as unknown as string);
+
+        if (r.applies_to_sale_id) {
+          await db.insert(cashReceiptApplications).values({
+            id: randomUUID(),
+            coldStorageId: r.cold_storage_id,
+            cashReceiptId: r.id,
+            salesHistoryId: r.applies_to_sale_id,
+            amountApplied: gross,
+            appliedAt,
+          });
+          continue;
+        }
+
+        const isBuyerReceipt =
+          r.payer_type === "cold_merchant" || r.payer_type === "sales_goods";
+        const isFarmerReceipt = r.payer_type === "farmer";
+        if (!isBuyerReceipt && !isFarmerReceipt) continue;
+
+        let candidates: Array<{ id: string; residual: number }> = [];
+        if (isBuyerReceipt) {
+          if (!r.buyer_name) continue;
+          const rows = (await db.execute(sql`
+            SELECT s.id,
+                   GREATEST(
+                     COALESCE(s.paid_amount, 0)
+                       - COALESCE(s.discount_allocated, 0)
+                       - COALESCE((
+                           SELECT SUM(cra.amount_applied)
+                           FROM cash_receipt_applications cra
+                           WHERE cra.sales_history_id = s.id
+                         ), 0),
+                     0
+                   ) AS residual
+            FROM sales_history s
+            WHERE s.cold_storage_id = ${r.cold_storage_id}
+              AND COALESCE(s.paid_amount, 0) > 0
+              AND LOWER(TRIM(CASE
+                WHEN s.is_transfer_reversed = 1 THEN s.buyer_name
+                WHEN s.transfer_to_buyer_name IS NOT NULL AND s.transfer_to_buyer_name <> ''
+                  THEN s.transfer_to_buyer_name
+                ELSE s.buyer_name
+              END)) = LOWER(TRIM(${r.buyer_name}))
+            ORDER BY s.sold_at ASC
+          `)).rows as Array<{ id: string; residual: number }>;
+          candidates = rows.map((c) => ({ id: c.id, residual: Number(c.residual) || 0 }));
+        } else {
+          // farmer / self-sale receipt
+          const composite = r.buyer_name; // e.g. "Name (Village)"
+          const rows = (await db.execute(sql`
+            SELECT s.id,
+                   GREATEST(
+                     COALESCE(s.paid_amount, 0)
+                       - COALESCE(s.discount_allocated, 0)
+                       - COALESCE((
+                           SELECT SUM(cra.amount_applied)
+                           FROM cash_receipt_applications cra
+                           WHERE cra.sales_history_id = s.id
+                         ), 0),
+                     0
+                   ) AS residual
+            FROM sales_history s
+            WHERE s.cold_storage_id = ${r.cold_storage_id}
+              AND s.is_self_sale = 1
+              AND COALESCE(s.paid_amount, 0) > 0
+              AND (
+                (s.farmer_ledger_id IS NOT NULL AND s.farmer_ledger_id = ${r.farmer_ledger_id ?? ""})
+                OR (
+                  ${r.farmer_ledger_id === null ? 1 : 0} = 1
+                  AND LOWER(TRIM(s.farmer_name || ' (' || s.village || ')')) = LOWER(TRIM(${composite ?? ""}))
+                )
+              )
+            ORDER BY s.sold_at ASC
+          `)).rows as Array<{ id: string; residual: number }>;
+          candidates = rows.map((c) => ({ id: c.id, residual: Number(c.residual) || 0 }));
+        }
+
+        let remaining = gross;
+        for (const c of candidates) {
+          if (remaining < 0.005) break;
+          if (c.residual < 0.005) continue;
+          const slice = round2(Math.min(remaining, c.residual));
+          if (slice < 0.005) continue;
+          await db.insert(cashReceiptApplications).values({
+            id: randomUUID(),
+            coldStorageId: r.cold_storage_id,
+            cashReceiptId: r.id,
+            salesHistoryId: c.id,
+            amountApplied: slice,
+            appliedAt,
+          });
+          remaining = round2(remaining - slice);
+        }
+      }
     },
   },
   {
