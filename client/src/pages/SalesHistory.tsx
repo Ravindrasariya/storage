@@ -371,7 +371,6 @@ export default function SalesHistoryPage() {
                 selectedDays={selectedDays}
                 onDaysChange={setSelectedDays}
                 availableYears={years}
-                testIdPrefix="sales-date"
               />
             </div>
 
@@ -1410,7 +1409,6 @@ function ExitRegister() {
                 selectedDays={days}
                 onDaysChange={setDays}
                 availableYears={years}
-                testIdPrefix="exit-date"
                 showLabels={false}
               />
             </div>

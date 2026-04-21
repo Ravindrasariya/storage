@@ -82,9 +82,6 @@ export function DateFilterBar({
     onDaysChange(next);
   };
 
-  const allMonthsSelected = selectedMonths.length === 12;
-  const allDaysSelected = selectedDays.length === maxDay && maxDay > 0;
-
   const yearLabel = year === "all" ? t("allYears") : year;
 
   const monthLabel =
@@ -145,11 +142,9 @@ export function DateFilterBar({
           <PopoverContent className="w-64 p-3" align="start">
             <label className="flex items-center gap-2 pb-2 mb-2 border-b cursor-pointer">
               <Checkbox
-                checked={allMonthsSelected}
+                checked={selectedMonths.length === 0}
                 onCheckedChange={(v) => {
                   if (v) {
-                    onMonthsChange(Array.from({ length: 12 }, (_, i) => i + 1));
-                  } else {
                     onMonthsChange([]);
                     if (selectedDays.length > 0) onDaysChange([]);
                   }
@@ -202,13 +197,9 @@ export function DateFilterBar({
           <PopoverContent className="w-72 p-3" align="start">
             <label className="flex items-center gap-2 pb-2 mb-2 border-b cursor-pointer">
               <Checkbox
-                checked={allDaysSelected}
+                checked={selectedDays.length === 0}
                 onCheckedChange={(v) => {
-                  if (v) {
-                    onDaysChange(Array.from({ length: maxDay }, (_, i) => i + 1));
-                  } else {
-                    onDaysChange([]);
-                  }
+                  if (v) onDaysChange([]);
                 }}
                 data-testid={tid("checkbox-all-days")}
               />

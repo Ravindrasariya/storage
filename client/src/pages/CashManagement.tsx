@@ -2919,7 +2919,6 @@ export default function CashManagement() {
                 selectedDays={filterDays}
                 onDaysChange={setFilterDays}
                 availableYears={availableYears.map((y) => parseInt(y, 10)).filter((n) => !isNaN(n))}
-                testIdPrefix="cash-date"
                 showLabels={false}
               />
             </div>
