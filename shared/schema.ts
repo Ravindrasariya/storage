@@ -211,6 +211,9 @@ export const salesHistory = pgTable("sales_history", {
   adjSelfDue: real("adj_self_due").default(0), // FIFO allocated to Self Due
   // Self sale flag - when farmer is the buyer (Self checkbox checked)
   isSelfSale: integer("is_self_sale").default(0), // 1 = farmer buying own produce, dues tracked under farmer not cold_merchant
+  // FIFO exclusion flag - when set, this sale is fully opaque to the FIFO payment-allocation engine
+  // (no receipts/discounts allocated to it; never reset/replayed). Used for sales that are closed manually.
+  fifoExclusion: integer("fifo_exclusion").default(0), // 0 = participates in FIFO (default), 1 = excluded from FIFO
   // Transfer reversal tracking
   isTransferReversed: integer("is_transfer_reversed").default(0), // 0 = active transfer, 1 = reversed
   transferReversedAt: timestamp("transfer_reversed_at"), // When the transfer was reversed

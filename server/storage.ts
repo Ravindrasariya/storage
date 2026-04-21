@@ -2626,6 +2626,7 @@ export class DatabaseStorage implements IStorage {
         AND TRIM(contact_number) = TRIM(${farmerIdentity.contactNumber})
         AND LOWER(TRIM(village)) = LOWER(TRIM(${farmerIdentity.village}))
         AND (due_amount > 0 OR extra_due_to_merchant > 0)
+        AND COALESCE(fifo_exclusion, 0) = 0
         AND (
           (transfer_to_buyer_name IS NULL OR transfer_to_buyer_name = '')
           OR is_transfer_reversed = 1
@@ -2916,7 +2917,8 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
         sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${data.buyerName}))`,
-        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+        sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
+        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
       ))
       .orderBy(salesHistory.soldAt); // FIFO - oldest first
 
@@ -2986,7 +2988,8 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(salesHistory.coldStorageId, data.coldStorageId),
           sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
-          sql`${salesHistory.extraDueToMerchant} > 0`
+          sql`${salesHistory.extraDueToMerchant} > 0`,
+          sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
         ))
         .orderBy(salesHistory.soldAt); // FIFO - oldest first
 
@@ -3524,6 +3527,7 @@ export class DatabaseStorage implements IStorage {
           ELSE 'due'
         END
       WHERE cold_storage_id = ${coldStorageId}
+        AND COALESCE(fifo_exclusion, 0) = 0
         AND (
           (COALESCE(is_self_sale, 0) = 1 
            AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
@@ -3657,7 +3661,8 @@ export class DatabaseStorage implements IStorage {
               OR
               (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
             )`,
-            sql`(due_amount > 0 OR extra_due_to_merchant > 0)`
+            sql`(due_amount > 0 OR extra_due_to_merchant > 0)`,
+            sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
           ))
           .orderBy(salesHistory.soldAt);
 
@@ -3779,7 +3784,8 @@ export class DatabaseStorage implements IStorage {
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))`
+        sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))`,
+        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
       ))
       .orderBy(salesHistory.soldAt);
 
@@ -3810,7 +3816,8 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
-        sql`(${salesHistory.extraDueToMerchantOriginal} > 0 OR ${salesHistory.extraDueToMerchant} > 0)`
+        sql`(${salesHistory.extraDueToMerchantOriginal} > 0 OR ${salesHistory.extraDueToMerchant} > 0)`,
+        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
       ));
     
     for (const sale of salesByOriginalBuyer) {
@@ -3999,7 +4006,8 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
           sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))`,
-          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
+          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
+          sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
         ))
         .orderBy(salesHistory.soldAt);
 
@@ -4061,7 +4069,8 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
           sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
-          sql`${salesHistory.extraDueToMerchant} > 0`
+          sql`${salesHistory.extraDueToMerchant} > 0`,
+          sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
         ))
         .orderBy(salesHistory.soldAt);
 
@@ -4118,6 +4127,7 @@ export class DatabaseStorage implements IStorage {
         AND TRIM(contact_number) = TRIM(${discount.contactNumber})
         AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${allocation.buyerName}))
         AND due_amount > 0
+        AND COALESCE(fifo_exclusion, 0) = 0
       ORDER BY sold_at ASC
     `);
     
@@ -5367,6 +5377,7 @@ export class DatabaseStorage implements IStorage {
               AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
               AND TRIM(contact_number) = TRIM(${data.contactNumber})
               AND due_amount > 0
+              AND COALESCE(fifo_exclusion, 0) = 0
             ORDER BY sold_at ASC
           `);
           
@@ -5407,6 +5418,7 @@ export class DatabaseStorage implements IStorage {
             AND TRIM(contact_number) = TRIM(${data.contactNumber})
             AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${buyerName}))
             AND due_amount > 0
+            AND COALESCE(fifo_exclusion, 0) = 0
           ORDER BY sold_at ASC
         `);
         
@@ -5690,6 +5702,7 @@ export class DatabaseStorage implements IStorage {
           ELSE 'due'
         END
       WHERE cold_storage_id = ${coldStorageId}
+        AND COALESCE(fifo_exclusion, 0) = 0
         AND (
           (COALESCE(is_self_sale, 0) = 1 
            AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
@@ -5760,6 +5773,7 @@ export class DatabaseStorage implements IStorage {
       UPDATE sales_history
       SET adj_py_receivables = 0, adj_freight = 0, adj_advance = 0, adj_self_due = 0
       WHERE cold_storage_id = ${coldStorageId}
+        AND COALESCE(fifo_exclusion, 0) = 0
         AND (COALESCE(is_self_sale, 0) != 1)
         AND COALESCE(adj_receivable_self_due_amount, 0) > 0
         AND (
@@ -5780,6 +5794,7 @@ export class DatabaseStorage implements IStorage {
         eq(salesHistory.coldStorageId, coldStorageId),
         sql`(COALESCE(is_self_sale, 0) != 1)`,
         sql`COALESCE(adj_receivable_self_due_amount, 0) > 0`,
+        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`,
         sql`(
           (${salesHistory.farmerLedgerId} IS NOT NULL AND ${salesHistory.farmerLedgerId} = ${farmerLedgerEntryForDiscount?.id || ''})
           OR (
@@ -5938,7 +5953,8 @@ export class DatabaseStorage implements IStorage {
                 OR
                 (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
               )`,
-              sql`(due_amount > 0 OR extra_due_to_merchant > 0)`
+              sql`(due_amount > 0 OR extra_due_to_merchant > 0)`,
+              sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
             ))
             .orderBy(salesHistory.soldAt);
           
@@ -6084,7 +6100,8 @@ export class DatabaseStorage implements IStorage {
                 OR
                 (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
               )`,
-              sql`(due_amount > 0 OR extra_due_to_merchant > 0)`
+              sql`(due_amount > 0 OR extra_due_to_merchant > 0)`,
+              sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
             ))
             .orderBy(salesHistory.soldAt);
           
@@ -6235,7 +6252,8 @@ export class DatabaseStorage implements IStorage {
                 OR
                 (LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${selfSalePattern})))
               )`,
-              sql`due_amount > 0`
+              sql`due_amount > 0`,
+              sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
             ))
             .orderBy(salesHistory.soldAt);
           
