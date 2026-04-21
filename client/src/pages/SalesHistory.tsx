@@ -1239,13 +1239,15 @@ function ExitRegister() {
 
   // Auto-reset to today's date on every IST midnight (recurring)
   useEffect(() => {
+    // IST = UTC+5:30 (no DST). Next IST midnight in ms:
+    //   take today's IST date, advance by 1 day, convert to UTC.
+    //   IST 00:00 = UTC 00:00 - 5h30m = UTC (prev day) 18:30.
     const getMsUntilMidnightIST = () => {
       const now = new Date();
-      const istNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-      const nextMidnight = new Date(
-        istNow.getFullYear(), istNow.getMonth(), istNow.getDate() + 1
-      );
-      return nextMidnight.getTime() - istNow.getTime();
+      const today = getTodayIST();
+      const nextMidnightUTC =
+        Date.UTC(today.year, today.month - 1, today.day + 1) - 330 * 60 * 1000;
+      return Math.max(0, nextMidnightUTC - now.getTime());
     };
 
     let timer: ReturnType<typeof setTimeout>;
