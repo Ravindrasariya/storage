@@ -2315,13 +2315,13 @@ export class DatabaseStorage implements IStorage {
     ];
 
     if (filters.year) {
-      where.push(sql`EXTRACT(YEAR FROM (${exitHistory.exitDate} AT TIME ZONE 'Asia/Kolkata'))::int = ${filters.year}`);
+      where.push(sql`EXTRACT(YEAR FROM (${exitHistory.exitDate} AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))::int = ${filters.year}`);
     }
     if (filters.months && filters.months.length > 0) {
-      where.push(sql`EXTRACT(MONTH FROM (${exitHistory.exitDate} AT TIME ZONE 'Asia/Kolkata'))::int IN (${sql.join(filters.months.map(m => sql`${m}`), sql`, `)})`);
+      where.push(sql`EXTRACT(MONTH FROM (${exitHistory.exitDate} AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))::int IN (${sql.join(filters.months.map(m => sql`${m}`), sql`, `)})`);
     }
     if (filters.days && filters.days.length > 0) {
-      where.push(sql`EXTRACT(DAY FROM (${exitHistory.exitDate} AT TIME ZONE 'Asia/Kolkata'))::int IN (${sql.join(filters.days.map(d => sql`${d}`), sql`, `)})`);
+      where.push(sql`EXTRACT(DAY FROM (${exitHistory.exitDate} AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))::int IN (${sql.join(filters.days.map(d => sql`${d}`), sql`, `)})`);
     }
     if (filters.farmerName && filters.farmerName.trim()) {
       where.push(ilike(salesHistory.farmerName, `%${filters.farmerName.trim()}%`));
@@ -2581,7 +2581,7 @@ export class DatabaseStorage implements IStorage {
 
   async getExitRegisterYears(coldStorageId: string): Promise<number[]> {
     const rows = await db.execute<{ year: number }>(sql`
-      SELECT DISTINCT EXTRACT(YEAR FROM (${exitHistory.exitDate} AT TIME ZONE 'Asia/Kolkata'))::int AS year
+      SELECT DISTINCT EXTRACT(YEAR FROM (${exitHistory.exitDate} AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))::int AS year
       FROM ${exitHistory}
       WHERE ${exitHistory.coldStorageId} = ${coldStorageId} AND ${exitHistory.isReversed} = 0
       ORDER BY year DESC
