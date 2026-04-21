@@ -1501,20 +1501,20 @@ function ExitRegister() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           <Card data-testid="card-exit-farmers-due">
             <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10">
+              <div className="flex flex-col gap-2">
+                <div className="p-2 rounded-lg bg-blue-500/10 self-start">
                   <Users className="h-5 w-5 text-blue-600" />
                 </div>
-                <div className="min-w-0 space-y-1">
-                  <div>
-                    <p className="text-xs text-muted-foreground">{t("numFarmers")}</p>
-                    <p className="text-base font-bold text-blue-700 dark:text-blue-300 truncate" data-testid="stat-farmers">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-xs text-muted-foreground truncate">{t("numFarmers")}</p>
+                    <p className="text-base font-bold text-blue-700 dark:text-blue-300" data-testid="stat-farmers">
                       {summary.farmers}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">{t("exitsWithDue")}</p>
-                    <p className="text-base font-bold text-amber-700 dark:text-amber-300 truncate" data-testid="stat-exits-due">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-xs text-muted-foreground truncate">{t("exitsWithDue")}</p>
+                    <p className="text-base font-bold text-amber-700 dark:text-amber-300" data-testid="stat-exits-due">
                       {summary.exitsWithDue}
                     </p>
                   </div>
@@ -1600,7 +1600,7 @@ function ExitRegister() {
                   </p>
                   {summary.roundOffReceived > 0 && (
                     <p className="text-[10px] text-muted-foreground truncate" data-testid="stat-discount-roundoff">
-                      {t("ofWhichRoundOff")}: <Currency amount={summary.roundOffReceived} />
+                      {t("roundOffShort")}: <Currency amount={summary.roundOffReceived} />
                     </p>
                   )}
                 </div>

@@ -464,6 +464,7 @@ const translations: Translations = {
   accountReceived: { en: "Account Received", hi: "खाता प्राप्त" },
   discountReceived: { en: "Discount", hi: "छूट" },
   ofWhichRoundOff: { en: "of which round-off", hi: "जिसमें राउंड-ऑफ" },
+  roundOffShort: { en: "Round off", hi: "राउंड-ऑफ" },
   numFarmers: { en: "# of Farmers", hi: "किसानों की संख्या" },
   exitsWithDue: { en: "# Exits with Due", hi: "बकाया वाली निकासी" },
   totalBagsExited: { en: "Total # Bags Exited", hi: "कुल निकाले गए बैग" },
