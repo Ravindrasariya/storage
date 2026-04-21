@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank, Check, ChevronsUpDown, Search, Package } from "lucide-react";
 import { DEPRECIATION_RATES } from "@shared/schema";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -739,6 +739,7 @@ export default function CashManagement() {
       setBuyerTransferDate(format(new Date(), "yyyy-MM-dd"));
       setBuyerTransferRemarks("");
       clearPersistedState(coldStorageId);
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
@@ -777,6 +778,7 @@ export default function CashManagement() {
       setReceivedDate(format(new Date(), "yyyy-MM-dd"));
       setInwardRemarks("");
       clearPersistedState(coldStorageId);
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/sales-goods-buyers"] });
@@ -814,6 +816,7 @@ export default function CashManagement() {
       setAdvanceBuyerName("");
       setSelectedAdvanceIds([]);
       clearPersistedState(coldStorageId);
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]) === "/api/merchant-advances/outstanding" });
       queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/py"] });
@@ -845,6 +848,7 @@ export default function CashManagement() {
       setLoanFarmerName("");
       setSelectedLoanIds([]);
       clearPersistedState(coldStorageId);
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/farmers-with-dues"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]) === "/api/farmer-loans/outstanding" });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-loans/py"] });
@@ -884,6 +888,7 @@ export default function CashManagement() {
       setExpenseEffectiveDate(format(new Date(), "yyyy-MM-dd"));
       setExpenseFarmerSearchQuery("");
       clearPersistedState(coldStorageId);
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/receiver-names"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
@@ -914,6 +919,7 @@ export default function CashManagement() {
         variant: "success",
       });
       // Comprehensive cache invalidation for receipt reversal
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
@@ -955,6 +961,7 @@ export default function CashManagement() {
         variant: "success",
       });
       // Comprehensive cache invalidation for expense reversal
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
@@ -997,6 +1004,7 @@ export default function CashManagement() {
       setDiscountRemarks("");
       setDiscountBuyerAllocations([]);
       clearPersistedState(coldStorageId);
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
@@ -1029,6 +1037,7 @@ export default function CashManagement() {
         variant: "success",
       });
       // Comprehensive cache invalidation for discount reversal
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/discounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
@@ -1068,6 +1077,7 @@ export default function CashManagement() {
       setTransferDate(format(new Date(), "yyyy-MM-dd"));
       setTransferRemarks("");
       clearPersistedState(coldStorageId);
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
@@ -1089,6 +1099,7 @@ export default function CashManagement() {
         variant: "success",
       });
       // Comprehensive cache invalidation for internal transfer reversal
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/cash-transfers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
@@ -1120,6 +1131,7 @@ export default function CashManagement() {
         variant: "success",
       });
       // Comprehensive cache invalidation for B2B transfer reversal
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
@@ -1680,6 +1692,7 @@ export default function CashManagement() {
           }
         }
 
+        invalidateSaleSideEffects(queryClient);
         queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
         if (!partialFailure) {

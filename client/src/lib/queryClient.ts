@@ -88,6 +88,78 @@ export const getQueryFn: <T>(options: {
     return await res.json();
   };
 
+/**
+ * Invalidate every cache key derived from sales/cash/ledger state. Call this
+ * from the onSuccess of any mutation that creates, edits, reverses, or
+ * otherwise affects a sale, payment, discount, exit, or cash receipt — so
+ * dependent pages like NIKASI, Cash Flow, Buyer/Farmer Ledger, dashboards,
+ * and reports refresh without a manual browser reload.
+ *
+ * Centralised on purpose: React Query treats sibling keys like
+ * "/api/sales-history" and "/api/exit-register" as independent, so each one
+ * needs its own invalidate call. New keys should be added here ONCE rather
+ * than scattered across mutation handlers.
+ */
+export function invalidateSaleSideEffects(client: QueryClient): void {
+  const keys: string[] = [
+    "/api/sales-history",
+    "/api/sales-history/by-buyer",
+    "/api/sales-history/buyer-transfers",
+    "/api/sales-history/years",
+    "/api/sales-history/exits-summary",
+    "/api/exit-register",
+    "/api/exit-register/years",
+    "/api/exits",
+    "/api/lots",
+    "/api/lots/sales-summary",
+    "/api/lots/summary",
+    "/api/lots/search",
+    "/api/up-for-sale",
+    "/api/buyer-ledger",
+    "/api/farmer-ledger",
+    "/api/farmer-ledger/dues-for-dropdown",
+    "/api/farmer-ledger/dues-for-discount",
+    "/api/cash-flow",
+    "/api/cash-receipts",
+    "/api/cash-receipts/buyers-with-dues",
+    "/api/cash-receipts/sales-goods-buyers",
+    "/api/cash-transfers",
+    "/api/expenses",
+    "/api/discounts",
+    "/api/buyer-dues",
+    "/api/merchant-advances/buyers-with-dues",
+    "/api/merchant-advances/py",
+    "/api/farmer-loans/farmers-with-dues",
+    "/api/farmer-loans/py",
+    "/api/farmers-with-dues",
+    "/api/farmers-with-all-dues",
+    "/api/opening-receivables",
+    "/api/analytics/payments",
+    "/api/analytics/merchants",
+    "/api/analytics/quality",
+    "/api/analytics/chambers",
+    "/api/bank-accounts",
+  ];
+  for (const key of keys) {
+    client.invalidateQueries({ queryKey: [key] });
+  }
+  // Prefix-matched groups
+  client.invalidateQueries({
+    predicate: (query) => {
+      const head = String(query.queryKey[0] ?? "");
+      return (
+        head.startsWith("/api/dashboard/stats") ||
+        head.startsWith("/api/reports/") ||
+        head.startsWith("/api/farmer-receivables-with-dues") ||
+        head.startsWith("/api/farmer-dues") ||
+        head.startsWith("/api/buyer-dues-for-farmer") ||
+        head === "/api/merchant-advances/outstanding" ||
+        head === "/api/farmer-loans/outstanding"
+      );
+    },
+  });
+}
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { LogOut, Printer, Save } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, ExitHistory, ColdStorage } from "@shared/schema";
@@ -78,6 +78,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       toast({ title: t("success"), description: t("exitCreated"), variant: "success" });
       setLastExit(data);
       setPendingPrint(true);
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "exits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });

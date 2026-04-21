@@ -34,7 +34,7 @@ import { SaleDialog } from "@/components/SaleDialog";
 import { ExitDialog } from "@/components/ExitDialog";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { ArrowLeft, Search, Phone, Package, User, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
 import {
   DropdownMenu,
@@ -1417,6 +1417,7 @@ export default function StockRegister() {
       return apiRequest("PATCH", `/api/lots/${data.id}`, data.updates);
     },
     onSuccess: async (_, variables) => {
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });

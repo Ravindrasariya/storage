@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { Users, RefreshCw, Search, Archive, RotateCcw, Pencil, ArrowUpDown, Printer, ShoppingCart, UserPlus, ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -493,6 +493,7 @@ export default function BuyerLedger() {
       if (result.needsConfirmation) {
         return;
       }
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ['/api/buyer-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['/api/buyers/lookup'] });
       queryClient.invalidateQueries({ queryKey: ['/api/lots'] });

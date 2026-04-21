@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Printer, FileText, Receipt, Share2, Loader2, IndianRupee } from "lucide-react";
 import type { SalesHistory, ColdStorage, BankAccount } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 
 // Format amount: round to 1 decimal if fractional, show integer if whole (e.g., 72.54 → "72.5", 72 → "72")
@@ -93,6 +93,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     const apiType = type === "deduction" ? "coldStorage" : "sales";
     const response = await apiRequest("POST", `/api/sales-history/${sale.id}/assign-bill-number`, { billType: apiType });
     const data = await response.json();
+    invalidateSaleSideEffects(queryClient);
     queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
     return data.billNumber;
   };
@@ -882,6 +883,7 @@ function ManualPaymentDialog({ sale, open, onOpenChange, onSuccess }: ManualPaym
     onSuccess: () => {
       toast({ title: t("success") || "Success", description: "Payment recorded successfully" });
       // Invalidate everything that depends on this sale + cash flow
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });

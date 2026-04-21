@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { authFetch, apiRequest, queryClient } from "@/lib/queryClient";
+import { authFetch, apiRequest, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -899,6 +899,7 @@ function FarmerPaymentTracker() {
       });
     },
     onSuccess: () => {
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
     },
     onError: (error: Error) => {

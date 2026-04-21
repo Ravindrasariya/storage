@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
@@ -230,6 +230,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
     onSuccess: () => {
       toast({ title: t("success"), description: t("saleUpdated"), variant: "success" });
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "edit-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
@@ -262,6 +263,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
     onSuccess: () => {
       toast({ title: t("success"), description: t("saleReversed"), variant: "success" });
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });

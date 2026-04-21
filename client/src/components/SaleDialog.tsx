@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SaleLotInfo } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
@@ -127,6 +127,7 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount });
     },
     onSuccess: () => {
+      invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
