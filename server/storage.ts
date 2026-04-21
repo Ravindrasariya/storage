@@ -2281,10 +2281,18 @@ export class DatabaseStorage implements IStorage {
       quantitySold: number;
       coldStorageCharge: number;
       paidAmount: number;
+      paidCash: number;
+      paidAccount: number;
+      discountAllocated: number;
+      adjPyReceivables: number;
+      adjAdvance: number;
+      adjFreight: number;
+      adjSelfDue: number;
       dueAmount: number;
       coldChargeShare: number;
       paidShare: number;
       dueShare: number;
+      discountShare: number;
     }>;
     summary: {
       totalBagsExited: number;

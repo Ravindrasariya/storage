@@ -837,6 +837,10 @@ export type ExitRegisterRow = {
   paidCash: number;
   paidAccount: number;
   discountAllocated: number;
+  adjPyReceivables: number;
+  adjAdvance: number;
+  adjFreight: number;
+  adjSelfDue: number;
   dueAmount: number;
   farmerId: string | null;
   buyerId: string | null;
