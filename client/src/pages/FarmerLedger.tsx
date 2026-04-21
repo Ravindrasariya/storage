@@ -609,6 +609,7 @@ export default function FarmerLedger() {
     setShowAddMobileSuggestions(false);
   };
 
+  // guardrail-allow: skip-sale-invalidation -- re-syncs farmer roster from existing lots/sales; does not mutate any sale/exit/payment data.
   const syncMutation = useMutation({
     mutationFn: () => apiRequest('POST', '/api/farmer-ledger/sync'),
     onSuccess: () => {
@@ -621,6 +622,7 @@ export default function FarmerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- creates an empty farmer roster entry with no attached lots/sales yet; targeted invalidations below cover all dependent views.
   const createFarmerMutation = useMutation({
     mutationFn: async (data: typeof addFormData) => {
       const response = await apiRequest('POST', '/api/farmer-ledger/manual', data);
@@ -645,6 +647,7 @@ export default function FarmerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- read-only check that previews a merge; commits no changes.
   const checkMergeMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<FarmerLedgerEntry> }) => {
       const response = await apiRequest('POST', `/api/farmer-ledger/${data.id}/check-merge`, data.updates);
@@ -691,6 +694,7 @@ export default function FarmerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- toggles a farmer roster flag; sale aggregates are unchanged.
   const flagMutation = useMutation({
     mutationFn: (id: string) => apiRequest('POST', `/api/farmer-ledger/${id}/flag`),
     onSuccess: () => {
@@ -698,6 +702,7 @@ export default function FarmerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- archives a farmer record; existing lots/sales are untouched.
   const archiveMutation = useMutation({
     mutationFn: (id: string) => apiRequest('POST', `/api/farmer-ledger/${id}/archive`),
     onSuccess: () => {
@@ -707,6 +712,7 @@ export default function FarmerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- reinstates an archived farmer record; existing lots/sales are untouched.
   const reinstateMutation = useMutation({
     mutationFn: (id: string) => apiRequest('POST', `/api/farmer-ledger/${id}/reinstate`),
     onSuccess: () => {

@@ -433,6 +433,7 @@ export default function BuyerLedger() {
     enabled: !!editingBuyer?.id,
   });
 
+  // guardrail-allow: skip-sale-invalidation -- re-syncs buyer roster from existing sales; does not mutate any sale/exit/payment data.
   const syncMutation = useMutation({
     mutationFn: () => apiRequest('POST', '/api/buyer-ledger/sync'),
     onSuccess: () => {
@@ -445,6 +446,7 @@ export default function BuyerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- creates an empty buyer roster entry with no attached sales yet; targeted invalidations below cover all dependent views.
   const createBuyerMutation = useMutation({
     mutationFn: async (data: { buyerName: string; address?: string; contactNumber?: string }) => {
       const response = await apiRequest('POST', '/api/buyer-ledger/manual', data);
@@ -471,6 +473,7 @@ export default function BuyerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- read-only check that previews a merge; commits no changes.
   const checkMergeMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<BuyerLedgerEntry> }) => {
       const response = await apiRequest('POST', `/api/buyer-ledger/${data.id}/check-merge`, data.updates);
@@ -517,6 +520,7 @@ export default function BuyerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- toggles a buyer roster flag; sale aggregates are unchanged.
   const flagMutation = useMutation({
     mutationFn: (id: string) => apiRequest('POST', `/api/buyer-ledger/${id}/flag`),
     onSuccess: () => {
@@ -524,6 +528,7 @@ export default function BuyerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- archives a buyer record; existing sales are untouched.
   const archiveMutation = useMutation({
     mutationFn: (id: string) => apiRequest('POST', `/api/buyer-ledger/${id}/archive`),
     onSuccess: () => {
@@ -533,6 +538,7 @@ export default function BuyerLedger() {
     },
   });
 
+  // guardrail-allow: skip-sale-invalidation -- reinstates an archived buyer record; existing sales are untouched.
   const reinstateMutation = useMutation({
     mutationFn: (id: string) => apiRequest('POST', `/api/buyer-ledger/${id}/reinstate`),
     onSuccess: () => {

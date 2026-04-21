@@ -3,6 +3,12 @@ set -e
 npm install
 npm run db:push
 
+# Guardrail: every sale-touching React Query mutation must call
+# invalidateSaleSideEffects(queryClient) so dependent pages (NIKASI / Exit
+# Register / Cash Flow / Buyer & Farmer Ledger) refresh automatically. This
+# catches forgotten cache invalidations introduced by new features.
+node scripts/check-sale-invalidation.mjs
+
 # Idempotent backfill: snapshot lots.marka into sales_history.marka for any
 # historical sale rows that were created before sales_history.marka existed.
 if [ -n "$DATABASE_URL" ]; then

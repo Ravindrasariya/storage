@@ -36,6 +36,7 @@ Preferred communication style: Simple, everyday language.
 - **Shared Types**: Centralized schema definitions for client and server.
 - **Form Validation**: Zod for consistent client/server validation.
 - **Component Architecture**: Reusable UI components and feature-specific components.
+- **Sale Cache Invalidation**: Any React Query mutation that writes to a sale, exit, payment, cash-receipt, cash-transfer, discount, up-for-sale, buyer-ledger, or farmer-ledger endpoint must call `invalidateSaleSideEffects(queryClient)` from `@/lib/queryClient` (typically in `onSuccess`) so NIKASI / Exit Register / Cash Flow / Buyer & Farmer Ledger views refresh automatically. The guardrail script `scripts/check-sale-invalidation.mjs` enforces this; run it locally or via the `sale-invalidation` validation. It also runs as part of `scripts/post-merge.sh`. Document any legitimate exception (e.g. roster-only ledger writes that don't change sale aggregates) with `// guardrail-allow: skip-sale-invalidation -- <reason>` directly above or inside the `useMutation` call.
 
 ### Year Conventions
 - **Operations** (lots, sales, cash flow, receivables, expenses, lot numbering, year filters): Calendar year (Jan-Dec)
