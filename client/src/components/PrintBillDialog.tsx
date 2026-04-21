@@ -448,6 +448,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 : `बकाया (रु. ${formatAmount(sale.dueAmount || 0)})`)}
       </div>
 
+      {sale.paidAt && (
+        <div className="payment-status">
+          भुगतान तिथि: {format(new Date(sale.paidAt), "dd/MM/yyyy")}
+        </div>
+      )}
+
       <div className="footer-note">
         यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
       </div>
@@ -630,24 +636,6 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </tr>
           </tbody>
         </table>
-      </div>
-
-      <div className="payment-status">
-        भुगतान स्थिति: {sale.paymentStatus === "paid" 
-          ? (discountAllocated > 0 
-              ? (actualCashPaid > 0 
-                  ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(actualCashPaid)}, छूट: रु. ${formatAmount(discountAllocated)})`
-                  : `भुगतान हो गया (छूट: रु. ${formatAmount(discountAllocated)})`)
-              : "भुगतान हो गया")
-          : sale.paymentStatus === "partial" 
-            ? (discountAllocated > 0
-                ? (actualCashPaid > 0
-                    ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(actualCashPaid)}, छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
-                    : `आंशिक भुगतान (छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
-                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(actualCashPaid)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
-            : (discountAllocated > 0
-                ? `बकाया (छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
-                : `बकाया (रु. ${formatAmount(sale.dueAmount || 0)})`)}
       </div>
 
       <div className="footer-note">
