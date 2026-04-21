@@ -2522,26 +2522,25 @@ export class DatabaseStorage implements IStorage {
       const adjFreightShare = (r.adjFreight || 0) * share;
       const adjSelfDueShare = (r.adjSelfDue || 0) * share;
       receivableAdjTotal += adjPyShare + adjAdvanceShare + adjFreightShare + adjSelfDueShare;
-      // Match the cash/account attribution branches above so the self-due
-      // net-out only fires for rows whose paid amount actually flowed into a
-      // bucket — legacy rows with no counters and no paymentMode contribute
-      // nothing to cash/account and must contribute nothing here either,
-      // otherwise the invariant cash + account + discount + due == coldCharges
-      // breaks for those rows. coldCharges is still reduced by adjSelfDue
-      // only for rows whose adjSelfDue actually landed somewhere.
-      let netted = false;
+      // adjSelfDue always inflates this sale's coldStorageCharge (the self-due
+      // transfer is re-billed on this side), so unconditionally net it out of
+      // cold-charges to keep the aggregate invariant
+      // cash + account + discount + due == coldCharges. The matching cash
+      // inflow lives on the partner self-sale row whose paid_amount is the
+      // real cash collected — those two rows balance each other in the totals.
+      // The cash/account net-out, however, only fires when we can attribute
+      // the self-due payment to a bucket (counters or explicit paymentMode);
+      // legacy rows with neither leave cash/account untouched so we don't
+      // double-debit a bucket that never received the inflow on this row.
+      adjSelfDueTotal += adjSelfDueShare;
       if (counterTotal > 0) {
         cashSelfDueNet += adjSelfDueShare * ((r.paidCash || 0) / counterTotal);
         accountSelfDueNet += adjSelfDueShare * ((r.paidAccount || 0) / counterTotal);
-        netted = true;
       } else if (r.paymentMode === "cash") {
         cashSelfDueNet += adjSelfDueShare;
-        netted = true;
       } else if (r.paymentMode === "account") {
         accountSelfDueNet += adjSelfDueShare;
-        netted = true;
       }
-      if (netted) adjSelfDueTotal += adjSelfDueShare;
     }
 
     const roundOffTotal = roundOffCashTotal + roundOffAccountTotal;
