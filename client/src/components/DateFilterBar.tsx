@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,6 +17,7 @@ export interface DateFilterBarProps {
   allowAllYears?: boolean;
   testIdPrefix?: string;
   showLabels?: boolean;
+  inline?: boolean;
 }
 
 function daysInMonth(year: number, month1: number): number {
@@ -34,6 +35,7 @@ export function DateFilterBar({
   allowAllYears = true,
   testIdPrefix = "",
   showLabels = true,
+  inline = false,
 }: DateFilterBarProps) {
   const { t } = useI18n();
   const currentYear = new Date().getFullYear();
@@ -98,8 +100,11 @@ export function DateFilterBar({
         ? String(selectedDays[0])
         : `${selectedDays.length} ${t("daysLabel")}`;
 
+  const Wrapper = inline ? Fragment : "div";
+  const wrapperProps = inline ? {} : { className: "grid grid-cols-3 gap-2 sm:gap-3" };
+
   return (
-    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+    <Wrapper {...wrapperProps}>
       <div className="space-y-2">
         {showLabels && (
           <label className="text-sm text-muted-foreground">{t("filterByYear")}</label>
@@ -228,7 +233,7 @@ export function DateFilterBar({
           </PopoverContent>
         </Popover>
       </div>
-    </div>
+    </Wrapper>
   );
 }
 

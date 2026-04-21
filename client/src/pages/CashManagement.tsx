@@ -2779,7 +2779,7 @@ export default function CashManagement() {
               <div className="mt-1 text-xs space-y-0.5">
                 {Object.values(summary.accountBalances).filter(acc => acc.received > 0).map(acc => (
                   <div key={acc.accountId} className="flex justify-between items-center">
-                    <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
+                    <span className="text-muted-foreground">{acc.accountName}</span>
                     <span className="text-green-600">
                       ₹{acc.received.toLocaleString()}
                     </span>
@@ -2787,7 +2787,7 @@ export default function CashManagement() {
                 ))}
                 {summary.unassignedReceived > 0 && (
                   <div className="flex justify-between items-center">
-                    <span className="text-amber-600 truncate max-w-[100px]">{t("unassigned")}</span>
+                    <span className="text-amber-600">{t("unassigned")}</span>
                     <span className="text-amber-600">
                       ₹{summary.unassignedReceived.toLocaleString()}
                     </span>
@@ -2811,7 +2811,7 @@ export default function CashManagement() {
               <div className="mt-1 text-xs space-y-0.5">
                 {Object.values(summary.accountBalances).filter(acc => acc.expenses > 0).map(acc => (
                   <div key={acc.accountId} className="flex justify-between items-center">
-                    <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
+                    <span className="text-muted-foreground">{acc.accountName}</span>
                     <span className="text-red-600">
                       ₹{acc.expenses.toLocaleString()}
                     </span>
@@ -2819,7 +2819,7 @@ export default function CashManagement() {
                 ))}
                 {summary.unassignedExpenses > 0 && (
                   <div className="flex justify-between items-center">
-                    <span className="text-amber-600 truncate max-w-[100px]">{t("unassigned")}</span>
+                    <span className="text-amber-600">{t("unassigned")}</span>
                     <span className="text-amber-600">
                       ₹{summary.unassignedExpenses.toLocaleString()}
                     </span>
@@ -2850,7 +2850,7 @@ export default function CashManagement() {
                   })
                   .map(acc => (
                   <div key={acc.accountId} className="flex justify-between items-center">
-                    <span className="text-muted-foreground truncate max-w-[100px]">{acc.accountName}</span>
+                    <span className="text-muted-foreground">{acc.accountName}</span>
                     <span className={acc.balance >= 0 ? "text-blue-600" : "text-red-600"}>
                       ₹{acc.balance.toLocaleString()}
                     </span>
@@ -2886,9 +2886,9 @@ export default function CashManagement() {
             )}
           </div>
 
-          {/* Row 1: Transaction Type, Payment Mode, Month, Year */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div className="space-y-1">
+          {/* Row 1: Transaction Type, Payment Mode, Year, Month, Day */}
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
+            <div className="space-y-1 md:col-span-2">
               <Label className="text-xs">{t("transactionType")}</Label>
               <Select value={filterTransactionType} onValueChange={(v) => setFilterTransactionType(v as "all" | "inward" | "expense" | "self" | "buyerTransfer")}>
                 <SelectTrigger data-testid="select-filter-transaction-type" className="h-8 text-sm">
@@ -2904,7 +2904,7 @@ export default function CashManagement() {
               </Select>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 md:col-span-2">
               <Label className="text-xs">{t("filterByPaymentMode")}</Label>
               <Select value={filterPaymentMode || "all"} onValueChange={(v) => setFilterPaymentMode(v === "all" ? "" : v)}>
                 <SelectTrigger data-testid="select-filter-payment-mode" className="h-8 text-sm">
@@ -2923,22 +2923,21 @@ export default function CashManagement() {
               </Select>
             </div>
 
-            <div className="col-span-2 md:col-span-2">
-              <DateFilterBar
-                year={filterYear || "all"}
-                onYearChange={(y) => setFilterYear(y === "all" ? "" : y)}
-                selectedMonths={filterMonths}
-                onMonthsChange={setFilterMonths}
-                selectedDays={filterDays}
-                onDaysChange={setFilterDays}
-                availableYears={availableYears.map((y) => parseInt(y, 10)).filter((n) => !isNaN(n))}
-                showLabels={false}
-              />
-            </div>
+            <DateFilterBar
+              inline
+              year={filterYear || "all"}
+              onYearChange={(y) => setFilterYear(y === "all" ? "" : y)}
+              selectedMonths={filterMonths}
+              onMonthsChange={setFilterMonths}
+              selectedDays={filterDays}
+              onDaysChange={setFilterDays}
+              availableYears={availableYears.map((y) => parseInt(y, 10)).filter((n) => !isNaN(n))}
+              showLabels={false}
+            />
           </div>
 
-          {/* Row 2: Payer Type (inward only), Buyer Name (cold_merchant only), Expense Type (expense only) */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {/* Row 2: Payer Type, Buyer, Farmer, Expense Type, Remarks */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {(filterTransactionType === "all" || filterTransactionType === "inward") && (
               <div className="space-y-1">
                 <Label className="text-xs">{t("filterByPayerType")}</Label>
@@ -3141,7 +3140,7 @@ export default function CashManagement() {
               </div>
             )}
 
-            <div className="space-y-1 col-span-2 md:col-span-1">
+            <div className="space-y-1">
               <Label className="text-xs">{t("filterByRemarks")}</Label>
               <Input
                 value={filterRemarks}

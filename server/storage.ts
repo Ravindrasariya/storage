@@ -1747,7 +1747,7 @@ export class DatabaseStorage implements IStorage {
             noteContribution(sale.id, r.receivedAt);
           }
         }
-      }
+      });
     };
 
     simulate(buyerSales, buyerReceipts);
