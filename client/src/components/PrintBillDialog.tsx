@@ -884,6 +884,8 @@ function ManualPaymentDialog({ sale, open, onOpenChange, onSuccess }: ManualPaym
       // Invalidate everything that depends on this sale + cash flow
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/merchant-advances/buyers-with-dues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-flow"] });
