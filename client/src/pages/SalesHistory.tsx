@@ -1143,16 +1143,47 @@ function FarmerPaymentTracker() {
 // Exit / Nikasi Register
 // =====================
 
+const EXIT_DATE_FILTERS_KEY = "exit_register_date_filters";
+
+function getTodayIST() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const year  = Number(parts.find(p => p.type === "year")!.value);
+  const month = Number(parts.find(p => p.type === "month")!.value);
+  const day   = Number(parts.find(p => p.type === "day")!.value);
+  return {
+    year, month, day,
+    dateStr: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+  };
+}
+
+function initExitDateFilters() {
+  const today = getTodayIST();
+  try {
+    const raw = localStorage.getItem(EXIT_DATE_FILTERS_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved.savedDate === today.dateStr) {
+        return { year: saved.year as string, months: saved.months as number[], days: saved.days as number[] };
+      }
+    }
+  } catch {}
+  return { year: String(today.year), months: [today.month], days: [today.day] };
+}
+
 function ExitRegister() {
   const { t } = useI18n();
   const exitFarmerNav = useDropdownNavigation();
   const exitVillageNav = useDropdownNavigation();
   const exitBuyerNav = useDropdownNavigation();
 
-  const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState<string>(String(currentYear));
-  const [months, setMonths] = useState<number[]>([]);
-  const [days, setDays] = useState<number[]>([]);
+  const _initDates = initExitDateFilters();
+  const [year, setYear] = useState<string>(_initDates.year);
+  const [months, setMonths] = useState<number[]>(_initDates.months);
+  const [days, setDays] = useState<number[]>(_initDates.days);
   const [farmerFilter, setFarmerFilter] = useState("");
   const [farmerContact, setFarmerContact] = useState("");
   const [villageFilter, setVillageFilter] = useState("");
@@ -1198,6 +1229,34 @@ function ExitRegister() {
     return Array.from(set).sort().slice(0, 8);
   }, [farmerRecords, villageFilter]);
 
+  // Persist date filters to localStorage (keyed by today's IST date)
+  useEffect(() => {
+    const today = getTodayIST();
+    localStorage.setItem(EXIT_DATE_FILTERS_KEY, JSON.stringify({
+      year, months, days, savedDate: today.dateStr,
+    }));
+  }, [year, months, days]);
+
+  // Auto-reset to today's date when IST midnight passes
+  useEffect(() => {
+    const getMsUntilMidnightIST = () => {
+      const now = new Date();
+      const istNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      const nextMidnight = new Date(
+        istNow.getFullYear(), istNow.getMonth(), istNow.getDate() + 1
+      );
+      return nextMidnight.getTime() - istNow.getTime();
+    };
+    const timer = setTimeout(() => {
+      const today = getTodayIST();
+      setYear(String(today.year));
+      setMonths([today.month]);
+      setDays([today.day]);
+      localStorage.removeItem(EXIT_DATE_FILTERS_KEY);
+    }, getMsUntilMidnightIST());
+    return () => clearTimeout(timer);
+  }, []);
+
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
     if (year !== "all") p.append("year", year);
@@ -1237,9 +1296,10 @@ function ExitRegister() {
   const yearLabel = year === "all" ? t("allYears") : year;
 
   const clearFilters = () => {
-    setYear(String(currentYear));
-    setMonths([]);
-    setDays([]);
+    const today = getTodayIST();
+    setYear(String(today.year));
+    setMonths([today.month]);
+    setDays([today.day]);
     setFarmerFilter("");
     setFarmerContact("");
     setVillageFilter("");
@@ -1247,7 +1307,13 @@ function ExitRegister() {
     setTypeFilter("all");
   };
 
-  const hasFilters = year !== String(currentYear) || months.length || days.length || farmerFilter || farmerContact || villageFilter || buyerFilter || (typeFilter && typeFilter !== "all");
+  const todayIST = getTodayIST();
+  const hasFilters =
+    year !== String(todayIST.year) ||
+    months.join(",") !== String(todayIST.month) ||
+    days.join(",") !== String(todayIST.day) ||
+    !!farmerFilter || !!farmerContact || !!villageFilter || !!buyerFilter ||
+    (typeFilter !== "" && typeFilter !== "all");
 
   const summary = data?.summary;
   const rows = data?.rows ?? [];
