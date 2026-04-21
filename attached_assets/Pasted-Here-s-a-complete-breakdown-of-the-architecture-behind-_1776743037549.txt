@@ -1,0 +1,52 @@
+Here's a complete breakdown of the architecture behind the year/month/day filters:
+Tech Stack
+
+    React (useState, useMemo, useEffect) — all state and filtering is 100% client-side
+    Shadcn UI — Select (year), Popover + Button (month & day), Checkbox
+    Lucide React — icons (Filter, Calendar, ChevronDown)
+    Tailwind CSS — styling
+
+State (held in the parent page component)
+
+const [yearFilter, setYearFilter] = useState("2026");         // string or "all"
+const [selectedMonths, setSelectedMonths] = useState(["4"]);  // [] = all months
+const [selectedDays, setSelectedDays] = useState(["16"]);     // [] = all days
+
+Empty array means "show everything" — no filter applied for that level.
+UI Components
+Control	Component	Behaviour
+Year	Shadcn Select	Single-select. Options are derived from actual data dates (not hardcoded), always includes current year. Changing year resets months & days.
+Month	Shadcn Popover + 4-column button grid	Multi-select — clicking toggles the month in the array. "All Months" clears the array. Picking a month clears the day selection.
+Day	Shadcn Popover + 7-column button grid	Multi-select — same toggle pattern. Number of day buttons shown is computed dynamically from which months are selected (new Date(year, month, 0).getDate() to get the correct last day).
+Filtering Logic (useMemo)
+
+Pure client-side — no API call on filter change. The date stored in DB is YYYY-MM-DD:
+
+const dateMatchesValue = (dateStr: string) => {
+  const [y, m, d] = dateStr.split("-");
+  if (yearFilter !== "all" && y !== yearFilter) return false;
+  if (selectedMonths.length > 0 && !selectedMonths.includes(String(parseInt(m)))) return false;
+  if (selectedDays.length > 0 && !selectedDays.includes(String(parseInt(d)))) return false;
+  return true;
+};
+
+The parseInt(m) strips the leading zero — so month "03" becomes "3" to match the stored state ["3"].
+Smart Button Labels
+
+const monthLabel =
+  selectedMonths.length === 0 ? "All Months" :
+  selectedMonths.length === 1 ? MONTH_LABELS[selectedMonths[0] - 1] :  // e.g. "Mar"
+  `${selectedMonths.length} months`;  // e.g. "3 months"
+
+Same pattern for days.
+Component Structure
+
+ParentPage
+ ├── state: yearFilter, selectedMonths, selectedDays
+ ├── StockFilterBar (props: all state + setters)   ← pure UI, no logic
+ │    ├── Year Select
+ │    ├── Month Popover (multi-select grid)
+ │    └── Day Popover (multi-select grid, dynamic count)
+ └── filteredData = useMemo(...) using yearFilter, selectedMonths, selectedDays
+
+The filter component (StockFilterBar) is stateless — it just receives values and setters as props. All the actual filtering happens in a single useMemo in the parent, making it easy to reuse across any list of records that have a YYYY-MM-DD date field.
