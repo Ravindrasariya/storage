@@ -1519,9 +1519,9 @@ function ExitRegister() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-2">
             {/* Year / Month / Day */}
-            <div className="w-full sm:w-[28rem]">
+            <div className="w-full sm:w-[22rem]">
               <DateFilterBar
                 year={year}
                 onYearChange={setYear}
@@ -1533,6 +1533,18 @@ function ExitRegister() {
                 showLabels={false}
               />
             </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrint}
+              disabled={!summary || rows.length === 0}
+              data-testid="button-exit-print"
+              aria-label={t("printPdf")}
+              title={t("printPdf")}
+            >
+              <Printer className="h-4 w-4" />
+            </Button>
 
             {/* Farmer autocomplete */}
             <div className="relative w-56">
@@ -1648,17 +1660,6 @@ function ExitRegister() {
               </Button>
             )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrint}
-              disabled={!summary || rows.length === 0}
-              data-testid="button-exit-print"
-              aria-label={t("printPdf")}
-              title={t("printPdf")}
-            >
-              <Printer className="h-4 w-4" />
-            </Button>
           </div>
         </CardContent>
       </Card>
