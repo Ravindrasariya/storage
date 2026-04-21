@@ -1660,6 +1660,18 @@ function ExitRegister() {
               </Button>
             )}
 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrint}
+              disabled={!summary || rows.length === 0}
+              data-testid="button-exit-print"
+              aria-label={t("printPdf")}
+              title={t("printPdf")}
+            >
+              <Printer className="h-4 w-4" />
+            </Button>
+
           </div>
         </CardContent>
       </Card>
