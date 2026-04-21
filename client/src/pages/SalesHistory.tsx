@@ -1180,10 +1180,10 @@ function ExitRegister() {
   const exitVillageNav = useDropdownNavigation();
   const exitBuyerNav = useDropdownNavigation();
 
-  const _initDates = initExitDateFilters();
-  const [year, setYear] = useState<string>(_initDates.year);
-  const [months, setMonths] = useState<number[]>(_initDates.months);
-  const [days, setDays] = useState<number[]>(_initDates.days);
+  const [{ year: _initYear, months: _initMonths, days: _initDays }] = useState(initExitDateFilters);
+  const [year, setYear] = useState<string>(_initYear);
+  const [months, setMonths] = useState<number[]>(_initMonths);
+  const [days, setDays] = useState<number[]>(_initDays);
   const [farmerFilter, setFarmerFilter] = useState("");
   const [farmerContact, setFarmerContact] = useState("");
   const [villageFilter, setVillageFilter] = useState("");
@@ -1237,7 +1237,7 @@ function ExitRegister() {
     }));
   }, [year, months, days]);
 
-  // Auto-reset to today's date when IST midnight passes
+  // Auto-reset to today's date on every IST midnight (recurring)
   useEffect(() => {
     const getMsUntilMidnightIST = () => {
       const now = new Date();
@@ -1247,13 +1247,21 @@ function ExitRegister() {
       );
       return nextMidnight.getTime() - istNow.getTime();
     };
-    const timer = setTimeout(() => {
-      const today = getTodayIST();
-      setYear(String(today.year));
-      setMonths([today.month]);
-      setDays([today.day]);
-      localStorage.removeItem(EXIT_DATE_FILTERS_KEY);
-    }, getMsUntilMidnightIST());
+
+    let timer: ReturnType<typeof setTimeout>;
+
+    const scheduleReset = () => {
+      timer = setTimeout(() => {
+        const today = getTodayIST();
+        setYear(String(today.year));
+        setMonths([today.month]);
+        setDays([today.day]);
+        localStorage.removeItem(EXIT_DATE_FILTERS_KEY);
+        scheduleReset(); // reschedule for the next midnight
+      }, getMsUntilMidnightIST());
+    };
+
+    scheduleReset();
     return () => clearTimeout(timer);
   }, []);
 
