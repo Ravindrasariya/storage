@@ -45,7 +45,7 @@ import {
 import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Lot, Chamber, LotEditHistory, SalesHistory, SaleLotInfo } from "@shared/schema";
+import type { Lot, Chamber, LotEditHistory, SalesHistory, SalesHistoryWithLastPayment, SaleLotInfo } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency } from "@/components/Currency";
@@ -121,7 +121,7 @@ export default function StockRegister() {
   const [printReceiptLot, setPrintReceiptLot] = useState<Lot | null>(null);
   const [exitingSale, setExitingSale] = useState<SalesHistory | null>(null);
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
-  const [printingSale, setPrintingSale] = useState<SalesHistory | null>(null);
+  const [printingSale, setPrintingSale] = useState<SalesHistoryWithLastPayment | null>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
   const [saleLotInfo, setSaleLotInfo] = useState<SaleLotInfo | null>(null);
@@ -335,7 +335,7 @@ export default function StockRegister() {
   const initialLots = displayedLots;
 
   // Fetch all sales to calculate charges from sales history (same as Analytics)
-  const { data: allSalesHistory } = useQuery<SalesHistory[]>({
+  const { data: allSalesHistory } = useQuery<SalesHistoryWithLastPayment[]>({
     queryKey: ["/api/sales-history"],
   });
 

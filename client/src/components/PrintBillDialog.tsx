@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Printer, FileText, Receipt, Share2, Loader2, IndianRupee } from "lucide-react";
-import type { SalesHistory, ColdStorage, BankAccount } from "@shared/schema";
+import type { SalesHistory, SalesHistoryWithLastPayment, ColdStorage, BankAccount } from "@shared/schema";
 import { apiRequest, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 
@@ -58,7 +58,7 @@ const BILL_PRINT_STYLES = `
 `;
 
 interface PrintBillDialogProps {
-  sale: SalesHistory;
+  sale: SalesHistoryWithLastPayment;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -448,11 +448,22 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 : `बकाया (रु. ${formatAmount(sale.dueAmount || 0)})`)}
       </div>
 
-      {sale.paidAt && (
-        <div className="payment-status">
-          भुगतान तिथि: {format(new Date(sale.paidAt), "dd/MM/yyyy")}
-        </div>
-      )}
+      {(() => {
+        // Fully-paid sales keep showing the historical paidAt (set when FIFO
+        // or a manual receipt closed the sale). Partial sales fall back to the
+        // most recent applied cash receipt as a "latest payment" indicator.
+        const latestPaymentAt =
+          sale.paymentStatus === "paid"
+            ? sale.paidAt
+            : sale.paymentStatus === "partial"
+              ? (sale.lastPaymentAt ?? null)
+              : null;
+        return latestPaymentAt ? (
+          <div className="payment-status">
+            भुगतान तिथि: {format(new Date(latestPaymentAt), "dd/MM/yyyy")}
+          </div>
+        ) : null;
+      })()}
 
       <div className="footer-note">
         यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।

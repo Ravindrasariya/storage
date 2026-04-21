@@ -776,6 +776,7 @@ export type LotEditHistory = typeof lotEditHistory.$inferSelect;
 export type InsertLotEditHistory = z.infer<typeof insertLotEditHistorySchema>;
 export type SalesHistory = typeof salesHistory.$inferSelect;
 export type InsertSalesHistory = z.infer<typeof insertSalesHistorySchema>;
+export type SalesHistoryWithLastPayment = SalesHistory & { lastPaymentAt: Date | null };
 
 // Exit / Nikasi Register response types (joined exit_history + sales_history with proportional money shares)
 export type ExitRegisterRow = {

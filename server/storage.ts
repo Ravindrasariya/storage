@@ -36,6 +36,7 @@ import {
   type LotEditHistory,
   type InsertLotEditHistory,
   type SalesHistory,
+  type SalesHistoryWithLastPayment,
   type InsertSalesHistory,
   type SaleEditHistory,
   type InsertSaleEditHistory,
@@ -215,7 +216,7 @@ export interface IStorage {
     contactNumber?: string;
     paymentStatus?: "paid" | "due";
     buyerName?: string;
-  }): Promise<SalesHistory[]>;
+  }): Promise<SalesHistoryWithLastPayment[]>;
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
   reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }>;
@@ -1576,7 +1577,7 @@ export class DatabaseStorage implements IStorage {
     contactNumber?: string;
     paymentStatus?: "paid" | "due";
     buyerName?: string;
-  }): Promise<SalesHistory[]> {
+  }): Promise<SalesHistoryWithLastPayment[]> {
     let conditions = [eq(salesHistory.coldStorageId, coldStorageId)];
     
     if (filters?.year) {
@@ -1605,10 +1606,157 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
-    return db.select()
+    const sales = await db.select()
       .from(salesHistory)
       .where(and(...conditions))
       .orderBy(desc(salesHistory.soldAt));
+
+    if (sales.length === 0) return [];
+
+    // Enrich each sale with `lastPaymentAt` — the most recent non-reversed
+    // cash receipt that *actually contributed* to this sale's paid amount.
+    // Used for showing the latest payment date on partial-pay cold storage
+    // bills. We do not have a per-sale receipt-application junction table,
+    // so we replay FIFO (oldest soldAt first, oldest receivedAt first) per
+    // payer group, capping each sale's intake at its current paidAmount.
+    const receipts = await db.select({
+      id: cashReceipts.id,
+      buyerName: cashReceipts.buyerName,
+      farmerLedgerId: cashReceipts.farmerLedgerId,
+      appliesToSaleId: cashReceipts.appliesToSaleId,
+      receivedAt: cashReceipts.receivedAt,
+      payerType: cashReceipts.payerType,
+      appliedAmount: cashReceipts.appliedAmount,
+    })
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.isReversed, 0),
+        sql`${cashReceipts.appliedAmount} > 0`,
+      ));
+
+    const norm = (v: string | null | undefined) => (v || "").trim().toLowerCase();
+    const toMs = (d: Date | string | null | undefined) =>
+      d ? new Date(d as unknown as string).getTime() : 0;
+
+    const lastPaymentBySale = new Map<string, Date>();
+    const noteContribution = (saleId: string, when: Date) => {
+      const cur = lastPaymentBySale.get(saleId);
+      if (!cur || when > cur) lastPaymentBySale.set(saleId, when);
+    };
+
+    // Step 1: precise per-sale contributions (manual single-sale closures).
+    // These receipts are excluded from the buyer FIFO pool by design — the
+    // sale they target is stamped fifoExclusion=1 in the existing flow.
+    for (const r of receipts) {
+      if (!r.appliesToSaleId) continue;
+      const when = r.receivedAt ? new Date(r.receivedAt as unknown as string) : null;
+      if (when) noteContribution(r.appliesToSaleId, when);
+    }
+
+    // Step 2: FIFO simulation per payer group.
+    // - non-self sales: group by CurrentDueBuyerName, pool buyer's cash
+    //   receipts (payerType excludes farmer/farmer_loan, buyerName matches).
+    // - self sales: group by farmerLedgerId, pool the farmer's payments.
+    type SaleLite = {
+      id: string;
+      soldAtMs: number;
+      paidAmount: number;
+      fifoExclusion: number;
+    };
+    type ReceiptLite = {
+      receivedAt: Date;
+      receivedAtMs: number;
+      remaining: number;
+    };
+
+    const buyerSales = new Map<string, SaleLite[]>();
+    const farmerSales = new Map<string, SaleLite[]>();
+    for (const sale of sales) {
+      const lite: SaleLite = {
+        id: sale.id,
+        soldAtMs: toMs(sale.soldAt as unknown as Date | string | null),
+        paidAmount: Number(sale.paidAmount || 0),
+        fifoExclusion: Number(sale.fifoExclusion || 0),
+      };
+      // Manual single-sale-closed rows skip FIFO simulation.
+      if (lite.fifoExclusion !== 0) continue;
+      if (sale.isSelfSale === 1) {
+        if (!sale.farmerLedgerId) continue;
+        const key = sale.farmerLedgerId;
+        if (!farmerSales.has(key)) farmerSales.set(key, []);
+        farmerSales.get(key)!.push(lite);
+      } else {
+        const currentDueBuyer = sale.isTransferReversed === 1
+          ? sale.buyerName
+          : (sale.transferToBuyerName?.trim() || sale.buyerName);
+        const key = norm(currentDueBuyer);
+        if (!key) continue;
+        if (!buyerSales.has(key)) buyerSales.set(key, []);
+        buyerSales.get(key)!.push(lite);
+      }
+    }
+
+    const buyerReceipts = new Map<string, ReceiptLite[]>();
+    const farmerReceipts = new Map<string, ReceiptLite[]>();
+    for (const r of receipts) {
+      if (r.appliesToSaleId) continue; // handled in Step 1
+      const when = r.receivedAt ? new Date(r.receivedAt as unknown as string) : null;
+      if (!when) continue;
+      const lite: ReceiptLite = {
+        receivedAt: when,
+        receivedAtMs: when.getTime(),
+        remaining: Number(r.appliedAmount || 0),
+      };
+      if (r.payerType === "farmer") {
+        if (!r.farmerLedgerId) continue;
+        if (!farmerReceipts.has(r.farmerLedgerId)) farmerReceipts.set(r.farmerLedgerId, []);
+        farmerReceipts.get(r.farmerLedgerId)!.push(lite);
+      } else if (r.payerType === "farmer_loan") {
+        // Farmer loan repayments do not pay down cold-storage sales.
+        continue;
+      } else {
+        const key = norm(r.buyerName);
+        if (!key) continue;
+        if (!buyerReceipts.has(key)) buyerReceipts.set(key, []);
+        buyerReceipts.get(key)!.push(lite);
+      }
+    }
+
+    const simulate = (
+      salesGroup: Map<string, SaleLite[]>,
+      receiptsGroup: Map<string, ReceiptLite[]>,
+    ) => {
+      Array.from(salesGroup.entries()).forEach(([key, group]) => {
+        const pool = receiptsGroup.get(key);
+        if (!pool || pool.length === 0) return;
+        group.sort((a: SaleLite, b: SaleLite) => a.soldAtMs - b.soldAtMs || a.id.localeCompare(b.id));
+        pool.sort((a: ReceiptLite, b: ReceiptLite) => a.receivedAtMs - b.receivedAtMs);
+        for (const sale of group) {
+          let remainingPaid = sale.paidAmount;
+          if (remainingPaid <= 0) continue;
+          for (const r of pool) {
+            if (remainingPaid <= 0) break;
+            if (r.remaining <= 0) continue;
+            // A receipt can only have applied to this sale if the sale
+            // already existed when the receipt was recorded.
+            if (r.receivedAtMs < sale.soldAtMs) continue;
+            const take = Math.min(remainingPaid, r.remaining);
+            r.remaining -= take;
+            remainingPaid -= take;
+            noteContribution(sale.id, r.receivedAt);
+          }
+        }
+      }
+    };
+
+    simulate(buyerSales, buyerReceipts);
+    simulate(farmerSales, farmerReceipts);
+
+    return sales.map((sale): SalesHistoryWithLastPayment => ({
+      ...sale,
+      lastPaymentAt: lastPaymentBySale.get(sale.id) ?? null,
+    }));
   }
 
   async markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined> {
