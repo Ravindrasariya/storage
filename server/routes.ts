@@ -2782,6 +2782,52 @@ export async function registerRoutes(
     }
   });
 
+  // Manual single-sale payment (from Stock Register Print Bill dialog)
+  // Records a single-sale payment against the cold-storage deduction bill, bypassing FIFO.
+  // Sets fifoExclusion=1 on the sale so the FIFO engine ignores it going forward.
+  const manualSalePaymentSchema = z.object({
+    receiptType: z.enum(["cash", "account"]),
+    accountId: z.string().optional(),
+    amount: z.number().min(0),
+    roundOff: z.number().min(0).optional(),
+    receivedAt: z.string().transform((val) => new Date(val)),
+    notes: z.string().optional(),
+  }).refine(
+    (data) => (data.amount + (data.roundOff || 0)) > 0,
+    { message: "Amount + Round-off must be greater than zero", path: ["amount"] }
+  ).refine(
+    (data) => data.receiptType !== "account" || data.amount === 0 || !!data.accountId,
+    { message: "Bank account is required when payment mode is account", path: ["accountId"] }
+  );
+
+  app.post("/api/sales/:saleId/manual-payment", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const saleId = req.params.saleId;
+      const validated = manualSalePaymentSchema.parse(req.body);
+      const grossAmount = (validated.amount || 0) + (validated.roundOff || 0);
+
+      const result = await storage.createManualSalePayment({
+        coldStorageId,
+        saleId,
+        receiptType: validated.receiptType,
+        accountType: null,
+        accountId: validated.accountId || null,
+        amount: grossAmount,
+        roundOff: validated.roundOff || 0,
+        receivedAt: validated.receivedAt,
+        notes: validated.notes || null,
+      });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid manual payment data", details: error.errors });
+      }
+      const message = error instanceof Error ? error.message : "Failed to create manual sale payment";
+      res.status(400).json({ error: message });
+    }
+  });
+
   // Expenses
   app.get("/api/expenses", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {

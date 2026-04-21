@@ -311,6 +311,9 @@ export const cashReceipts = pgTable("cash_receipts", {
   buyerLedgerId: varchar("buyer_ledger_id"), // Reference to buyer_ledger table
   buyerId: text("buyer_id"), // User-friendly buyer ID (BYYYYYMMDD format)
   appliedAdvanceIds: text("applied_advance_ids"), // JSON array of merchant_advance IDs this receipt paid (for cold_merchant_advance payer type)
+  // Manual single-sale closure: when set, this receipt was applied to exactly one sale (no FIFO).
+  // Reversal restores due to that sale only and resets fifoExclusion if due returns to original billed amount.
+  appliesToSaleId: varchar("applies_to_sale_id"),
 }, (table) => ({
   uniqueTxnPerColdStorage: uniqueIndex("cash_receipts_cs_txn_idx").on(table.coldStorageId, table.transactionId),
 }));

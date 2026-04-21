@@ -1,12 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Printer, FileText, Receipt, Share2, Loader2 } from "lucide-react";
-import type { SalesHistory, ColdStorage } from "@shared/schema";
+import { Printer, FileText, Receipt, Share2, Loader2, IndianRupee } from "lucide-react";
+import type { SalesHistory, ColdStorage, BankAccount } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 
@@ -64,6 +69,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const [billNumber, setBillNumber] = useState<number | null>(null);
   const [action, setAction] = useState<"print" | "share" | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
@@ -679,6 +685,46 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                     <div className="font-medium text-sm">{t("coldStorageDeductionBill")}</div>
                     <div className="text-xs text-muted-foreground">{t("chargesBreakdown")}</div>
                   </div>
+                  {(() => {
+                    const billed = sale.coldStorageCharge || 0;
+                    const due = sale.dueAmount || 0;
+                    const flag = sale.fifoExclusion || 0;
+                    // Disabled when nothing is owed, or when FIFO has already paid into the sale (flag=0 AND due<billed)
+                    const noDue = due <= 0;
+                    const fifoPartiallyPaid = flag === 0 && due < billed - 0.5;
+                    const disabled = noDue || fifoPartiallyPaid;
+                    const reason = noDue
+                      ? "No outstanding due on this sale"
+                      : fifoPartiallyPaid
+                        ? "Cannot use manual payment — FIFO has already paid into this sale. Reverse those receipts first."
+                        : "";
+                    const btn = (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 text-xs border-green-600 text-green-700 hover:bg-green-50 hover:text-green-800 dark:hover:bg-green-950 disabled:opacity-50"
+                        disabled={disabled}
+                        onClick={() => setPaymentDialogOpen(true)}
+                        data-testid="button-deduction-bill-payment"
+                      >
+                        <IndianRupee className="h-3.5 w-3.5" />
+                        {t("payment") || "Payment"}
+                      </Button>
+                    );
+                    if (!disabled) return btn;
+                    return (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex">{btn}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-xs text-xs">
+                            {reason}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    );
+                  })()}
                 </div>
                 <div className="flex border-t">
                   <Button
@@ -755,6 +801,242 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             {billType === "deduction" ? renderDeductionBill() : billType === "sales" ? renderSalesBill() : null}
           </div>
         </div>
+      </DialogContent>
+      <ManualPaymentDialog
+        sale={sale}
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        onSuccess={() => {
+          setPaymentDialogOpen(false);
+          onOpenChange(false);
+        }}
+      />
+    </Dialog>
+  );
+}
+
+// ---- Manual single-sale payment dialog ----
+interface ManualPaymentDialogProps {
+  sale: SalesHistory;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+}
+
+function ManualPaymentDialog({ sale, open, onOpenChange, onSuccess }: ManualPaymentDialogProps) {
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
+  const [accountId, setAccountId] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [roundOff, setRoundOff] = useState<string>("");
+  const [receivedAt, setReceivedAt] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [notes, setNotes] = useState<string>("");
+
+  const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
+    queryKey: ["/api/bank-accounts"],
+    enabled: open,
+  });
+
+  // Reset form whenever dialog opens
+  useEffect(() => {
+    if (open) {
+      setPaymentMode("cash");
+      setAccountId("");
+      setAmount("");
+      setRoundOff("");
+      setReceivedAt(format(new Date(), "yyyy-MM-dd"));
+      setNotes("");
+    }
+  }, [open]);
+
+  const billed = sale.coldStorageCharge || 0;
+  const currentDue = sale.dueAmount || 0;
+  const isSelfSale = (sale.isSelfSale || 0) === 1;
+  const partyLabel = isSelfSale
+    ? `${sale.farmerName} (${sale.village})`
+    : ((sale.transferToBuyerName && (sale.isTransferReversed || 0) === 0)
+        ? sale.transferToBuyerName!
+        : (sale.buyerName || sale.farmerName));
+
+  const amountNum = parseFloat(amount) || 0;
+  const roundOffNum = parseFloat(roundOff) || 0;
+  const gross = amountNum + roundOffNum;
+  const exceedsDue = gross > currentDue + 0.5;
+  const grossInvalid = gross <= 0;
+  const accountMissing = paymentMode === "account" && amountNum > 0 && !accountId;
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", `/api/sales/${sale.id}/manual-payment`, {
+        receiptType: paymentMode,
+        accountId: paymentMode === "account" ? accountId : undefined,
+        amount: amountNum,
+        roundOff: roundOffNum,
+        receivedAt: new Date(receivedAt).toISOString(),
+        notes: notes.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: t("success") || "Success", description: "Payment recorded successfully" });
+      // Invalidate everything that depends on this sale + cash flow
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-flow"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/exits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/exit-register"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/exit-register/years"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
+      onSuccess();
+    },
+    onError: (err: any) => {
+      const message = err?.response?.data?.error || err?.message || "Failed to record payment";
+      toast({ title: t("error") || "Error", description: message, variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = () => {
+    if (grossInvalid) {
+      toast({ title: t("error") || "Error", description: "Amount must be greater than zero", variant: "destructive" });
+      return;
+    }
+    if (exceedsDue) {
+      toast({ title: t("error") || "Error", description: `Payment exceeds current due (₹${formatAmount(currentDue)})`, variant: "destructive" });
+      return;
+    }
+    if (accountMissing) {
+      toast({ title: t("error") || "Error", description: "Please select a bank account", variant: "destructive" });
+      return;
+    }
+    mutation.mutate();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="dialog-manual-payment">
+        <DialogHeader>
+          <DialogTitle>Record Payment — Cold Storage Bill</DialogTitle>
+        </DialogHeader>
+
+        {/* Sale summary header */}
+        <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+          <div className="flex justify-between"><span className="text-muted-foreground">Lot</span><span className="font-medium" data-testid="text-payment-lot">{sale.lotNo}{sale.marka ? ` (${sale.marka})` : ""}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">{isSelfSale ? "Farmer" : "Buyer"}</span><span className="font-medium" data-testid="text-payment-party">{partyLabel}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Billed amount</span><span className="font-medium" data-testid="text-payment-billed">₹{formatAmount(billed)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Current due</span><span className="font-semibold text-red-600 dark:text-red-400" data-testid="text-payment-due">₹{formatAmount(currentDue)}</span></div>
+        </div>
+
+        <div className="space-y-3">
+          {/* Payment mode */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Payment mode</Label>
+            <Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as "cash" | "account")}>
+              <SelectTrigger className="h-9" data-testid="select-payment-mode"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="account">Account / Bank</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Bank account (only when account) */}
+          {paymentMode === "account" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Bank account</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger className="h-9" data-testid="select-bank-account"><SelectValue placeholder="Select an account" /></SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.accountName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Amount + Round-off */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Amount (₹)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+                data-testid="input-payment-amount"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Round-off (₹)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                value={roundOff}
+                onChange={(e) => setRoundOff(e.target.value)}
+                placeholder="0"
+                data-testid="input-payment-roundoff"
+              />
+            </div>
+          </div>
+
+          {/* Gross + validation */}
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-muted-foreground">Gross (Amount + Round-off)</span>
+            <span className={`font-semibold ${exceedsDue ? "text-red-600 dark:text-red-400" : ""}`} data-testid="text-payment-gross">
+              ₹{formatAmount(gross)}
+            </span>
+          </div>
+          {exceedsDue && (
+            <div className="text-xs text-red-600 dark:text-red-400" data-testid="text-payment-error-exceeds">
+              Cannot exceed current due (₹{formatAmount(currentDue)})
+            </div>
+          )}
+
+          {/* Received on */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Received on</Label>
+            <Input
+              type="date"
+              value={receivedAt}
+              onChange={(e) => setReceivedAt(e.target.value)}
+              data-testid="input-payment-date"
+            />
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Notes (optional)</Label>
+            <Input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Remarks…"
+              data-testid="input-payment-notes"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending} data-testid="button-payment-cancel">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={mutation.isPending || grossInvalid || exceedsDue || accountMissing}
+            className="bg-green-600 hover:bg-green-700 text-white"
+            data-testid="button-payment-submit"
+          >
+            {mutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Save payment
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

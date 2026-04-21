@@ -263,6 +263,7 @@ export interface IStorage {
   getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
   getSalesGoodsBuyers(coldStorageId: string): Promise<string[]>;
   createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
+  createManualSalePayment(data: { coldStorageId: string; saleId: string; receiptType: string; accountType: string | null; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
   // Expenses
   getExpenses(coldStorageId: string): Promise<Expense[]>;
   createExpense(data: InsertExpense): Promise<Expense>;
@@ -2827,6 +2828,132 @@ export class DatabaseStorage implements IStorage {
     return { receipt, salesUpdated: recordsUpdated };
   }
 
+  async createManualSalePayment(data: { coldStorageId: string; saleId: string; receiptType: string; accountType: string | null; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
+    // Fetch the target sale
+    const [sale] = await db.select().from(salesHistory)
+      .where(and(eq(salesHistory.id, data.saleId), eq(salesHistory.coldStorageId, data.coldStorageId)))
+      .limit(1);
+    if (!sale) throw new Error("Sale not found");
+
+    const gross = roundAmount(data.amount); // amount already includes roundOff (route layer composes it)
+    const billedAmount = sale.coldStorageCharge || 0;
+    const currentDue = roundAmount(sale.dueAmount || 0);
+
+    if (currentDue <= 0) throw new Error("This sale has no outstanding due");
+    if (gross <= 0) throw new Error("Payment amount must be greater than zero");
+    if (gross > currentDue) throw new Error(`Payment amount (₹${gross}) exceeds current due (₹${currentDue})`);
+
+    // Enforce the same lifecycle guard the UI shows — block when FIFO has already
+    // partially paid into this sale (flag=0 AND due < billed). Direct API callers must
+    // reverse those FIFO receipts first. Allowed when flag=1 (already manually closed).
+    const flag = sale.fifoExclusion || 0;
+    if (flag === 0 && currentDue < billedAmount - 0.5) {
+      throw new Error("FIFO has already paid into this sale — reverse those receipts before recording a manual payment");
+    }
+
+    // Apply payment to this single sale only — no FIFO hop
+    const newPaidAmount = roundAmount((sale.paidAmount || 0) + gross);
+    const newDueAmount = roundAmount(currentDue - gross);
+    const paymentMode = data.receiptType as "cash" | "account";
+    const cashDelta = paymentMode === "cash" ? gross : 0;
+    const accountDelta = paymentMode === "account" ? gross : 0;
+    // Mirror existing FIFO semantics from createCashReceiptWithFIFO: status flips to "paid"
+    // once remaining due is < ₹1 (petty-balance threshold), but we PRESERVE the actual
+    // rounded due so reversal stays symmetric (avoids losing a fractional residual).
+    const newStatus = newDueAmount < 1 ? "paid" : "partial";
+
+    await db.update(salesHistory)
+      .set({
+        paidAmount: newPaidAmount,
+        dueAmount: newDueAmount,
+        paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
+        paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
+        paymentStatus: newStatus,
+        paymentMode: paymentMode,
+        paidAt: newStatus === "paid" ? data.receivedAt : sale.paidAt,
+        // Stamp the sale as FIFO-excluded so future receipts don't allocate to it
+        fifoExclusion: 1,
+      })
+      .where(eq(salesHistory.id, data.saleId));
+
+    // Recompute lot totals so Stock Register row reflects the new state
+    if (sale.lotId) {
+      await this.recalculateLotTotals(sale.lotId);
+    }
+
+    // Determine display fields & ledger references for the receipt row
+    const isSelf = (sale.isSelfSale || 0) === 1;
+    let payerType: string;
+    let buyerDisplayName: string;
+    let farmerLedgerId: string | null = null;
+    let farmerId: string | null = null;
+    let buyerLedgerId: string | null = null;
+    let buyerId: string | null = null;
+    let dueBalanceAfter: number | null = null;
+
+    if (isSelf) {
+      payerType = "farmer";
+      buyerDisplayName = `${sale.farmerName} (${sale.village})`;
+      if (sale.farmerLedgerId) {
+        farmerLedgerId = sale.farmerLedgerId;
+        farmerId = sale.farmerId || null;
+      } else {
+        const farmerEntry = await this.ensureFarmerLedgerEntry(data.coldStorageId, {
+          name: sale.farmerName,
+          contactNumber: sale.contactNumber,
+          village: sale.village,
+        });
+        farmerLedgerId = farmerEntry.id;
+        farmerId = farmerEntry.farmerId;
+      }
+    } else {
+      payerType = "cold_merchant";
+      const useTransferred = !!sale.transferToBuyerName && (sale.isTransferReversed || 0) === 0;
+      buyerDisplayName = (useTransferred ? sale.transferToBuyerName! : (sale.buyerName || "")) || "";
+      buyerLedgerId = sale.buyerLedgerId || null;
+      buyerId = sale.buyerId || null;
+      if (buyerDisplayName) {
+        try {
+          dueBalanceAfter = await this.getBuyerDueBalance(data.coldStorageId, buyerDisplayName);
+        } catch {
+          dueBalanceAfter = null;
+        }
+      }
+    }
+
+    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
+
+    const [receipt] = await db.insert(cashReceipts)
+      .values({
+        id: randomUUID(),
+        coldStorageId: data.coldStorageId,
+        payerType,
+        buyerName: buyerDisplayName || null,
+        receiptType: data.receiptType,
+        accountType: data.accountType,
+        accountId: data.accountId,
+        amount: gross,
+        roundOff: data.roundOff || 0,
+        receivedAt: data.receivedAt,
+        notes: data.notes,
+        appliedAmount: gross,
+        unappliedAmount: 0,
+        transactionId,
+        dueBalanceAfter,
+        farmerLedgerId,
+        farmerId,
+        buyerLedgerId,
+        buyerId,
+        appliesToSaleId: data.saleId,
+      })
+      .returning();
+
+    // Suppress unused var lint — billedAmount kept for clarity / future use
+    void billedAmount;
+
+    return { receipt, salesUpdated: 1 };
+  }
+
   async getCashReceipts(coldStorageId: string): Promise<CashReceipt[]> {
     return await db.select()
       .from(cashReceipts)
@@ -3298,6 +3425,63 @@ export class DatabaseStorage implements IStorage {
         reversedAt: new Date(),
       })
       .where(eq(cashReceipts.id, receiptId));
+
+    // ---- Manual single-sale closure receipts: reverse only the targeted sale (no FIFO replay) ----
+    if (receipt.appliesToSaleId && receipt.coldStorageId) {
+      const [sale] = await db.select().from(salesHistory)
+        .where(and(eq(salesHistory.id, receipt.appliesToSaleId), eq(salesHistory.coldStorageId, receipt.coldStorageId)))
+        .limit(1);
+      if (sale) {
+        const gross = receipt.amount || 0;
+        const billed = sale.coldStorageCharge || 0;
+        const currentPaid = sale.paidAmount || 0;
+        const currentDue = sale.dueAmount || 0;
+        const newPaid = roundAmount(Math.max(0, currentPaid - gross));
+        const newDue = roundAmount(currentDue + gross);
+        const cashDelta = receipt.receiptType === "cash" ? gross : 0;
+        const accountDelta = receipt.receiptType === "account" ? gross : 0;
+
+        // If due returns to original billed amount → reset fifoExclusion so the sale rejoins FIFO.
+        // Safety: only reset when no OTHER unreversed manual-closure receipts are still active on this sale
+        // (handles out-of-order reversals when multiple manual payments exist).
+        const dueReturnedToBilled = Math.abs(newDue - billed) < 1;
+        let otherActiveManualReceipts = 0;
+        if (dueReturnedToBilled) {
+          const others = await db.select({ id: cashReceipts.id })
+            .from(cashReceipts)
+            .where(and(
+              eq(cashReceipts.appliesToSaleId, receipt.appliesToSaleId),
+              eq(cashReceipts.coldStorageId, receipt.coldStorageId),
+              eq(cashReceipts.isReversed, 0),
+              sql`${cashReceipts.id} <> ${receipt.id}`
+            ));
+          otherActiveManualReceipts = others.length;
+        }
+        const newFifoExclusion = (dueReturnedToBilled && otherActiveManualReceipts === 0) ? 0 : 1;
+
+        let newStatus: string;
+        if (newDue < 1) newStatus = "paid";
+        else if (newPaid > 0) newStatus = "partial";
+        else newStatus = "due";
+
+        await db.update(salesHistory)
+          .set({
+            paidAmount: newPaid,
+            dueAmount: newDue,
+            paidCash: sql`GREATEST(COALESCE(${salesHistory.paidCash}, 0) - ${cashDelta}, 0)`,
+            paidAccount: sql`GREATEST(COALESCE(${salesHistory.paidAccount}, 0) - ${accountDelta}, 0)`,
+            paymentStatus: newStatus,
+            fifoExclusion: newFifoExclusion,
+            paidAt: newStatus === "paid" ? sale.paidAt : null,
+          })
+          .where(eq(salesHistory.id, receipt.appliesToSaleId));
+
+        if (sale.lotId) {
+          await this.recalculateLotTotals(sale.lotId);
+        }
+      }
+      return { success: true, message: "Receipt reversed and sale due restored" };
+    }
 
     // Handle recomputation based on payer type
     if (receipt.payerType === "farmer_loan" && receipt.coldStorageId && receipt.buyerLedgerId) {
