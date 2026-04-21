@@ -2294,6 +2294,7 @@ export class DatabaseStorage implements IStorage {
       cashReceived: number;
       accountReceived: number;
       discountReceived: number;
+      roundOffReceived: number;
       amountDue: number;
     };
   }> {
@@ -2405,6 +2406,49 @@ export class DatabaseStorage implements IStorage {
     //   2) Otherwise (legacy rows whose counters are still zero), fall back
     //      to the sale's payment_mode field, same as before. This preserves
     //      historical reporting without requiring a backfill.
+    // Per-sale round-off applied so far, sourced from the
+    // cash_receipt_applications junction table. Each application's share of
+    // its parent receipt's gross is (amount_applied / (amount + round_off));
+    // multiply by round_off to get the round-off slice attributable to this
+    // sale. Reattributing this from "Cash Received" to "Discount" lets the
+    // exit register surface round-off as a concession instead of bundling it
+    // into cash totals.
+    const saleIdsForRoundOff = enriched.map((r) => r.saleId);
+    const roundOffCashBySale = new Map<string, number>();
+    const roundOffAccountBySale = new Map<string, number>();
+    if (saleIdsForRoundOff.length > 0) {
+      const roundOffRows = await db
+        .select({
+          saleId: cashReceiptApplications.salesHistoryId,
+          // Split by receipt type so we can subtract each slice from the
+          // matching bucket (cashReceived / accountReceived) and preserve the
+          // exit-register invariant: cash + account + discount + due == coldCharges.
+          cashRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'cash' THEN
+            ${cashReceiptApplications.amountApplied}
+            * ${cashReceipts.roundOff}
+            / NULLIF(${cashReceipts.amount} + ${cashReceipts.roundOff}, 0)
+          ELSE 0 END), 0)`,
+          accountRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'account' THEN
+            ${cashReceiptApplications.amountApplied}
+            * ${cashReceipts.roundOff}
+            / NULLIF(${cashReceipts.amount} + ${cashReceipts.roundOff}, 0)
+          ELSE 0 END), 0)`,
+        })
+        .from(cashReceiptApplications)
+        .innerJoin(cashReceipts, eq(cashReceipts.id, cashReceiptApplications.cashReceiptId))
+        .where(and(
+          eq(cashReceiptApplications.coldStorageId, coldStorageId),
+          inArray(cashReceiptApplications.salesHistoryId, saleIdsForRoundOff),
+          eq(cashReceipts.isReversed, 0),
+          sql`${cashReceipts.roundOff} > 0`,
+        ))
+        .groupBy(cashReceiptApplications.salesHistoryId);
+      for (const r of roundOffRows) {
+        roundOffCashBySale.set(r.saleId, Number(r.cashRoundOff) || 0);
+        roundOffAccountBySale.set(r.saleId, Number(r.accountRoundOff) || 0);
+      }
+    }
+
     const farmerSet = new Set<string>();
     let totalBagsExited = 0;
     let exitsWithDue = 0;
@@ -2412,6 +2456,8 @@ export class DatabaseStorage implements IStorage {
     let cashReceived = 0;
     let accountReceived = 0;
     let discountReceived = 0;
+    let roundOffCashTotal = 0;
+    let roundOffAccountTotal = 0;
     let amountDue = 0;
     for (const r of enriched) {
       farmerSet.add(r.contactNumber);
@@ -2433,13 +2479,24 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Discount portion: per-sale discount from sales_history.discount_allocated
-      // (sale-linked, prorated by bags_exited / quantity_sold). Round-off
-      // concessions on cash_receipts are intentionally NOT added here — the
-      // receipt's gross amount (amount + roundOff) already flows into
-      // sales_history.paid_amount during FIFO application, so adding round-off
-      // again would double-count it.
+      // (sale-linked, prorated by bags_exited / quantity_sold). The receipt's
+      // gross amount (amount + roundOff) flows into sales_history.paid_amount
+      // during FIFO application, so the round-off slice is currently part of
+      // cashReceived above. We pull it back out here and add it to the
+      // discount total so round-off concessions are surfaced as discount-like
+      // adjustments rather than cash.
       discountReceived += r.discountShare;
+      roundOffCashTotal += (roundOffCashBySale.get(r.saleId) || 0) * share;
+      roundOffAccountTotal += (roundOffAccountBySale.get(r.saleId) || 0) * share;
     }
+
+    const roundOffTotal = roundOffCashTotal + roundOffAccountTotal;
+    // Subtract each receipt-type's round-off slice from its matching bucket
+    // and roll the combined amount into discount. This keeps the invariant
+    // cash + account + discount + due == coldCharges (modulo rounding).
+    const cashNet = cashReceived - roundOffCashTotal;
+    const accountNet = accountReceived - roundOffAccountTotal;
+    const discountWithRoundOff = discountReceived + roundOffTotal;
 
     return {
       rows: enriched,
@@ -2448,9 +2505,10 @@ export class DatabaseStorage implements IStorage {
         farmers: farmerSet.size,
         exitsWithDue,
         coldChargesTotal: roundAmount(coldChargesTotal),
-        cashReceived: roundAmount(cashReceived),
-        accountReceived: roundAmount(accountReceived),
-        discountReceived: roundAmount(discountReceived),
+        cashReceived: roundAmount(cashNet),
+        accountReceived: roundAmount(accountNet),
+        discountReceived: roundAmount(discountWithRoundOff),
+        roundOffReceived: roundAmount(roundOffTotal),
         amountDue: roundAmount(amountDue),
       },
     };

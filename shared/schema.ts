@@ -853,6 +853,7 @@ export type ExitRegisterSummary = {
   cashReceived: number;
   accountReceived: number;
   discountReceived: number;
+  roundOffReceived: number;
   amountDue: number;
 };
 export type ExitRegisterResponse = {

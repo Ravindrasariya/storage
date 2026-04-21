@@ -1606,6 +1606,11 @@ function ExitRegister() {
                   <p className="text-lg font-bold text-violet-700 dark:text-violet-400 truncate" data-testid="stat-discount">
                     <Currency amount={summary.discountReceived} />
                   </p>
+                  {summary.roundOffReceived > 0 && (
+                    <p className="text-[10px] text-muted-foreground truncate" data-testid="stat-discount-roundoff">
+                      {t("ofWhichRoundOff")}: <Currency amount={summary.roundOffReceived} />
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
