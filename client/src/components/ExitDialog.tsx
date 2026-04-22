@@ -40,7 +40,7 @@ interface ExitDialogProps {
 }
 
 export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const { toast } = useToast();
   const printRef = useRef<HTMLDivElement>(null);
   
@@ -239,112 +239,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
 
   const handlePrint = () => {
     if (!printRef.current) return;
-    
-    const printContent = printRef.current.innerHTML;
-    const printStyles = `
-      @page { size: A4; margin: 8mm; }
-      body { 
-        font-family: 'Noto Sans Devanagari', Arial, sans-serif; 
-        padding: 0;
-        margin: 0;
-        font-size: 14px;
-      }
-      .copies-container {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-      }
-      .copy {
-        flex: 1;
-        padding: 12px 20px;
-        border-bottom: 2px dashed #000;
-        page-break-inside: avoid;
-      }
-      .copy:last-child {
-        border-bottom: none;
-      }
-      .copy-label {
-        text-align: right;
-        font-size: 11px;
-        font-weight: bold;
-        color: #666;
-        margin-bottom: 8px;
-      }
-      .header { text-align: center; margin-bottom: 12px; }
-      .header h1 { font-size: 20px; margin: 0 0 5px; }
-      .header h2 { font-size: 16px; margin: 0; font-weight: normal; border: 1px solid #000; padding: 4px 10px; display: inline-block; }
-      .header h3 { font-size: 15px; margin: 8px 0 0; }
-      .details { margin-bottom: 10px; }
-      .details-row { display: flex; margin-bottom: 4px; }
-      .details-row-double { display: flex; margin-bottom: 4px; }
-      .details-row-double > div { flex: 1; display: flex; }
-      .details-label { font-weight: bold; width: 45%; font-size: 13px; }
-      .details-value { width: 55%; font-size: 13px; }
-      .separator { border-top: 1px dashed #000; margin: 8px 0; }
-      .signature { margin-top: 20px; text-align: right; }
-      .signature-line { border-top: 1px solid #000; width: 200px; margin-left: auto; padding-top: 5px; font-size: 12px; }
-      .footer { text-align: center; margin-top: 10px; font-size: 11px; color: #666; }
-    `;
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${t("exitReceipt")}</title>
-        <style>${printStyles}</style>
-      </head>
-      <body>
-        <div class="copies-container">
-          <div class="copy">
-            <div class="copy-label">OFFICE COPY / कार्यालय प्रति</div>
-            ${printContent}
-          </div>
-          <div class="copy">
-            <div class="copy-label">CUSTOMER COPY / ग्राहक प्रति</div>
-            ${printContent}
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    const printWindow = window.open("", "_blank", "width=595,height=842");
-    if (printWindow) {
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 250);
-    } else {
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
-      iframe.style.left = '-9999px';
-      document.body.appendChild(iframe);
-      
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (iframeDoc) {
-        iframeDoc.open();
-        iframeDoc.write(htmlContent);
-        iframeDoc.close();
-        
-        setTimeout(() => {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-          }, 1000);
-        }, 250);
-      }
-    }
-  };
-
-  const formatDate = (date: Date | string) => {
-    return format(new Date(date), "dd/MM/yyyy HH:mm");
+    printNikasiReceipt(printRef.current.innerHTML, t("exitReceipt"));
   };
 
   if (!sale) return null;
@@ -544,99 +439,40 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
         </div>
       </div>
 
-      {/* Hidden print content — rendered off-screen for printRef capture */}
+      {/* Hidden print content — rendered off-screen for printRef capture.
+          Uses the same NikasiPrintable component as Master Nikasi so the
+          individual exit receipt shares the same layout, with a single
+          table row and the buyer name in the party block. */}
       <div style={{ position: "absolute", left: "-9999px", top: 0, pointerEvents: "none" }}>
         <div ref={printRef}>
           {sale && lastExit && (
-            <>
-              <div className="header">
-                <h1>{coldStorage?.name || "Cold Storage"}</h1>
-                <h2>निकासी रसीद / Exit Receipt</h2>
-                <h3 style={{ marginTop: "5px", fontSize: "12px" }}>बिल नंबर / Bill No: <strong>{lastExit.billNumber || "-"}</strong></h3>
-              </div>
-
-              <div className="details">
-                <div className="details-row-double">
-                  <div>
-                    <span className="details-label">बिक्री तिथि / Sale:</span>
-                    <span className="details-value">{formatDate(sale.soldAt)}</span>
-                  </div>
-                  <div>
-                    <span className="details-label">निकासी तिथि / Exit:</span>
-                    <span className="details-value">{formatDate(lastExit.exitDate)}</span>
-                  </div>
-                </div>
-                <div className="details-row-double">
-                  <div>
-                    <span className="details-label">रसीद नं. / Receipt #:</span>
-                    <span className="details-value">{sale.lotNo}</span>
-                  </div>
-                  <div>
-                    <span className="details-label">आलू / Potato:</span>
-                    <span className="details-value">{sale.potatoType}</span>
-                  </div>
-                </div>
-                <div className="details-row-double">
-                  <div>
-                    <span className="details-label">लॉट नं. / Lot #:</span>
-                    <span className="details-value">{sale.marka || "—"}</span>
-                  </div>
-                  <div>
-                    <span className="details-label"></span>
-                    <span className="details-value"></span>
-                  </div>
-                </div>
-                <div className="details-row">
-                  <span className="details-label">{partyRowLabel}</span>
-                  <span className="details-value">{sale.farmerName}</span>
-                </div>
-                <div className="details-row">
-                  <span className="details-label">खरीदार / Buyer:</span>
-                  <span className="details-value">{sale.isSelfSale === 1 ? (language === "hi" ? "स्वयं" : "Self") : (sale.buyerName || "-")}</span>
-                </div>
-                <div className="separator"></div>
-                <div className="details-row-double">
-                  <div>
-                    <span className="details-label">कुल बेचे / Sold:</span>
-                    <span className="details-value">{sale.quantitySold} bags</span>
-                  </div>
-                  <div>
-                    <span className="details-label">निकासी / Exited:</span>
-                    <span className="details-value"><strong>{lastExit.bagsExited} bags</strong></span>
-                  </div>
-                </div>
-                <div className="details-row-double">
-                  <div>
-                    <span className="details-label">बैग / Bag:</span>
-                    <span className="details-value">{sale.bagType === "wafer" ? "Wafer" : "Seed"}</span>
-                  </div>
-                  <div>
-                    <span className="details-label">कक्ष / Chamber:</span>
-                    <span className="details-value">{sale.chamberName}</span>
-                  </div>
-                </div>
-                <div className="details-row-double">
-                  <div>
-                    <span className="details-label">मंजिल / Floor:</span>
-                    <span className="details-value">{sale.floor}</span>
-                  </div>
-                  <div>
-                    <span className="details-label">स्थिति / Position:</span>
-                    <span className="details-value">{sale.position}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="signature">
-                <div className="signature-line">
-                  प्रबंधक हस्ताक्षर / Manager Sign
-                </div>
-              </div>
-
-              <div className="footer">
-                कंप्यूटर जनित रसीद / Computer generated receipt
-              </div>
-            </>
+            <NikasiPrintable
+              data={{
+                sharedExitBillNumber: lastExit.billNumber || 0,
+                exitDate: lastExit.exitDate,
+                farmer: {
+                  farmerName: sale.farmerName,
+                  village: sale.village,
+                  contactNumber: sale.contactNumber,
+                },
+                buyerName: sale.isSelfSale === 1
+                  ? null
+                  : (sale.buyerName || null),
+                sales: [{
+                  saleId: sale.id,
+                  lotNo: sale.lotNo,
+                  marka: sale.marka,
+                  bagsExited: lastExit.bagsExited,
+                  bagType: sale.bagType,
+                  chamberName: sale.chamberName,
+                  floor: sale.floor,
+                  position: sale.position,
+                }],
+              }}
+              coldStorage={coldStorage}
+              partyRowLabel={batchPartyLabel}
+              t={t}
+            />
           )}
         </div>
       </div>

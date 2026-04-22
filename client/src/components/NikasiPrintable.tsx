@@ -9,6 +9,7 @@ export interface NikasiReceiptData {
     village: string;
     contactNumber: string;
   };
+  buyerName?: string | null;
   sales: Array<{
     saleId: string;
     lotNo: string;
@@ -85,12 +86,16 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
     coldStorage?.pincode,
   ].filter(Boolean).join(", ");
 
+  const buyerDisplay = data.buyerName && data.buyerName.trim().length > 0
+    ? data.buyerName
+    : `${t("self") || "Self"} / स्वयं`;
+
   return (
     <>
       <div className="header">
         <h1>{coldStorage?.name || "Cold Storage"}</h1>
         {address && <div style={{ fontSize: 11 }}>{address}</div>}
-        <h2>{t("masterNikasi")} / Master Nikasi</h2>
+        <h2>{t("exitReceipt")} / निकासी रसीद</h2>
         <h3>{t("exitBillNumber")} #{data.sharedExitBillNumber}</h3>
       </div>
       <div className="meta">
@@ -101,6 +106,9 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
         <strong>{partyRowLabel}:</strong> {data.farmer.farmerName} &nbsp;|&nbsp;
         <strong>{t("village")}:</strong> {data.farmer.village} &nbsp;|&nbsp;
         <strong>{t("phone") || "Phone"}:</strong> {data.farmer.contactNumber}
+      </div>
+      <div className="party" data-testid="text-nikasi-buyer">
+        <strong>{t("buyer") || "Buyer"} / खरीदार:</strong> {buyerDisplay}
       </div>
       <table className="lots">
         <thead>
@@ -128,11 +136,13 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
               <td>{s.position}</td>
             </tr>
           ))}
-          <tr className="tot">
-            <td colSpan={3} className="lft">{t("total") || "Total"}</td>
-            <td>{totalBags}</td>
-            <td colSpan={4}></td>
-          </tr>
+          {data.sales.length > 1 && (
+            <tr className="tot">
+              <td colSpan={3} className="lft">{t("total") || "Total"}</td>
+              <td>{totalBags}</td>
+              <td colSpan={4}></td>
+            </tr>
+          )}
         </tbody>
       </table>
       <div className="signature">
