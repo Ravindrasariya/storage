@@ -2628,7 +2628,7 @@ export class DatabaseStorage implements IStorage {
   async getLotIdsWithIncompleteExits(coldStorageId: string): Promise<Set<string>> {
     // Aggregate non-reversed exits per sale, then return distinct lotIds
     // for sales where total exited bags < quantity sold (incl. zero exits).
-    const rows = await db.execute(sql`
+    const rows = await db.execute<{ lot_id: string }>(sql`
       SELECT DISTINCT s.lot_id AS lot_id
       FROM ${salesHistory} s
       LEFT JOIN (
@@ -2641,8 +2641,8 @@ export class DatabaseStorage implements IStorage {
         AND COALESCE(e.total_exited, 0) < s.quantity_sold
     `);
     const result = new Set<string>();
-    for (const r of (rows as any).rows ?? []) {
-      if (r.lot_id) result.add(r.lot_id as string);
+    for (const r of rows.rows) {
+      if (r.lot_id) result.add(r.lot_id);
     }
     return result;
   }
