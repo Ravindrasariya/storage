@@ -2151,10 +2151,25 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Disallow duplicate lotId in the batch (the dialog also blocks this).
-    const seen = new Set<string>();
+    const seenLot = new Set<string>();
     for (const r of rows) {
-      if (seen.has(r.lotId)) throw new Error("Duplicate lot in master nikasi batch");
-      seen.add(r.lotId);
+      if (seenLot.has(r.lotId)) throw new Error("Duplicate lot in master nikasi batch");
+      seenLot.add(r.lotId);
+    }
+    // Resolve lots up-front so we can also enforce the business key
+    // (Receipt# + Marka#) is unique within the batch.
+    const resolvedLots = await Promise.all(rows.map(async (r) => {
+      const l = await this.getLot(r.lotId);
+      if (!l) throw new Error(`Lot ${r.lotId} not found`);
+      return l;
+    }));
+    const seenReceiptMarka = new Set<string>();
+    for (const lot of resolvedLots) {
+      const key = `${(lot.lotNo || "").trim()}::${(lot.marka || "").trim()}`;
+      if (seenReceiptMarka.has(key)) {
+        throw new Error(`Duplicate Receipt#/Marka# in batch: ${lot.lotNo}/${lot.marka || "-"}`);
+      }
+      seenReceiptMarka.add(key);
     }
 
     const coldStorage = await this.getColdStorage(coldStorageId);
@@ -2332,7 +2347,7 @@ export class DatabaseStorage implements IStorage {
           hammali: hammaliRate,
           coldStorageCharge: totalChargeForLot,
           kataCharges: kata,
-          extraHammali: extra,
+          extraHammali: extraTotal,
           gradingCharges: grading,
           netWeight: null,
           buyerName: null,

@@ -400,7 +400,9 @@ export function MasterNikasiDialog({
                             <SelectValue placeholder={lotMarkaForRow || "—"} />
                           </SelectTrigger>
                           <SelectContent>
-                            {markaOptions.map(m => (
+                            {/* When a Receipt# is selected, only show that lot's marka so the
+                                two selectors stay strictly consistent. Otherwise show all. */}
+                            {(r.lotId && lotMarkaForRow ? [lotMarkaForRow] : markaOptions).map(m => (
                               <SelectItem key={m} value={m}>{m}</SelectItem>
                             ))}
                           </SelectContent>
