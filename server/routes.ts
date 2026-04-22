@@ -1179,11 +1179,20 @@ export async function registerRoutes(
 
       // Pre-flight CS bill # dup check fails fast before any mutation;
       // the atomic check inside createSalesHistory below handles the
-      // rare concurrent-insert race.
-      if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
-        if (!Number.isInteger(coldStorageBillNumber)) {
-          return res.status(400).json({ error: "Cold storage bill number must be a positive integer" });
+      // rare concurrent-insert race. Any explicitly-provided value
+      // (not undefined / null) must be a positive integer — we don't
+      // silently fall back to auto-assignment on garbage input.
+      if (coldStorageBillNumber !== undefined && coldStorageBillNumber !== null) {
+        if (typeof coldStorageBillNumber !== "number"
+            || !Number.isInteger(coldStorageBillNumber)
+            || coldStorageBillNumber <= 0) {
+          return res.status(400).json({
+            error: "Cold storage bill number must be a positive integer",
+            field: "coldStorageBillNumber",
+          });
         }
+      }
+      if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
         const csYear = saleDate.getFullYear();
         const dup = await storage.findColdStorageBillDuplicate(lot.coldStorageId, coldStorageBillNumber, csYear);
         if (dup) {
