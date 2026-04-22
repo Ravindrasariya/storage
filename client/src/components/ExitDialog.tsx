@@ -45,6 +45,8 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
   
   const [bagsToExit, setBagsToExit] = useState("");
+  const [billNumberInput, setBillNumberInput] = useState<string>("");
+  const [billNumberEdited, setBillNumberEdited] = useState(false);
   const [lastExit, setLastExit] = useState<ExitHistory | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [batchData, setBatchData] = useState<NikasiReceiptData | null>(null);
@@ -55,6 +57,21 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
   });
+
+  // Pre-fill the exit bill number from the cold-storage counter when the
+  // dialog opens. The operator can override this to match a manual
+  // receipt-book number; we keep an "edited" flag to switch the visual
+  // state from auto/amber to edited/blue.
+  useEffect(() => {
+    if (open && coldStorage?.nextExitBillNumber != null) {
+      setBillNumberInput(String(coldStorage.nextExitBillNumber));
+      setBillNumberEdited(false);
+    }
+    if (!open) {
+      setBillNumberInput("");
+      setBillNumberEdited(false);
+    }
+  }, [open, coldStorage?.nextExitBillNumber]);
 
   const { data: farmerLedgerData } = useQuery<{ farmers: Array<{ id: string; entityType: string }> }>({
     queryKey: ["/api/farmer-ledger"],
@@ -95,8 +112,9 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   }, [pendingPrint, lastExit]);
 
   const createExitMutation = useMutation({
-    mutationFn: async (bagsExited: number) => {
-      const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/exits`, { bagsExited });
+    mutationFn: async ({ bagsExited, billNumber }: { bagsExited: number; billNumber?: number }) => {
+      const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/exits`,
+        billNumber != null ? { bagsExited, billNumber } : { bagsExited });
       return response.json();
     },
     onSuccess: (data: ExitHistory) => {
@@ -108,6 +126,9 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/years"] });
+      // Refresh the cold-storage counter so the next dialog opening
+      // pre-fills with the up-to-date next-bill #s.
+      queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/exits-summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
@@ -125,7 +146,12 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       toast({ title: t("error"), description: `Max bags: ${remainingToExit}`, variant: "destructive" });
       return;
     }
-    createExitMutation.mutate(bags);
+    const billNum = parseInt(billNumberInput);
+    if (!Number.isFinite(billNum) || billNum <= 0) {
+      toast({ title: t("error"), description: "Exit bill number must be a positive integer", variant: "destructive" });
+      return;
+    }
+    createExitMutation.mutate({ bagsExited: bags, billNumber: billNum });
   };
 
   // Auto-print when batchData is set and a batch print is pending.
@@ -359,20 +385,61 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             </div>
 
             {remainingToExit > 0 && (
-              <div className="flex items-center gap-2">
-                <Label htmlFor="bagsToExit" className="whitespace-nowrap text-sm">{t("bagsToExit")}:</Label>
-                <Input
-                  id="bagsToExit"
-                  type="number"
-                  value={bagsToExit}
-                  onChange={(e) => setBagsToExit(e.target.value)}
-                  min={1}
-                  max={remainingToExit}
-                  className="w-24"
-                  data-testid="input-bags-to-exit"
-                />
-                <span className="text-xs text-muted-foreground">(max {remainingToExit})</span>
-              </div>
+              <>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="bagsToExit" className="whitespace-nowrap text-sm">{t("bagsToExit")}:</Label>
+                  <Input
+                    id="bagsToExit"
+                    type="number"
+                    value={bagsToExit}
+                    onChange={(e) => setBagsToExit(e.target.value)}
+                    min={1}
+                    max={remainingToExit}
+                    className="w-24"
+                    data-testid="input-bags-to-exit"
+                  />
+                  <span className="text-xs text-muted-foreground">(max {remainingToExit})</span>
+                </div>
+                <div className={`flex items-start gap-2 rounded-md p-2 border ${
+                  billNumberEdited
+                    ? "border-blue-300 dark:border-blue-700 bg-blue-50/60 dark:bg-blue-900/20"
+                    : "border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-900/20"
+                }`}>
+                  <Label htmlFor="exitBillNumber" className="whitespace-nowrap text-sm pt-1.5">
+                    {t("exitBillNumber") || "Exit Bill #"}:
+                  </Label>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="exitBillNumber"
+                        type="number"
+                        min={1}
+                        value={billNumberInput}
+                        onChange={(e) => {
+                          setBillNumberInput(e.target.value);
+                          setBillNumberEdited(true);
+                        }}
+                        className="w-28 h-8"
+                        data-testid="input-exit-bill-number"
+                      />
+                      <Badge
+                        variant="outline"
+                        className={billNumberEdited
+                          ? "text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-700"
+                          : "text-amber-700 dark:text-amber-300 border-amber-400 dark:border-amber-700"}
+                        data-testid="badge-exit-bill-state"
+                      >
+                        {billNumberEdited ? "edited" : "auto"}
+                      </Badge>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {billNumberEdited
+                        ? "Edited — please verify before submit"
+                        : "Auto-filled — please verify before submit"}
+                    </span>
+                  </div>
+                </div>
+              </>
             )}
 
             {exits.length > 0 && (

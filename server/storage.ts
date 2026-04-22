@@ -306,6 +306,8 @@ export interface IStorage {
   recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }>;
   // Bill number assignment
   assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number>;
+  assignSpecificColdStorageBillNumber(saleId: string, billNumber: number): Promise<number>;
+  findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<boolean>;
   assignLotBillNumber(lotId: string): Promise<number>;
   // Admin - Cold Storage Management
   getAllColdStorages(): Promise<ColdStorage[]>;
@@ -2190,12 +2192,14 @@ export class DatabaseStorage implements IStorage {
     coldStorageId: string;
     farmerLedgerId: string;
     exitDate: Date;
+    sharedExitBillNumber?: number | null;
     rows: Array<{
       lotId: string;
       exitBags: number;
       kataCharges: number;
       extraHammaliPerBag: number;
       gradingCharges: number;
+      coldStorageBillNumber?: number | null;
     }>;
   }): Promise<{
     sharedExitBillNumber: number;
@@ -2267,16 +2271,58 @@ export class DatabaseStorage implements IStorage {
     const farmerEntityType = farmerRecord.entityType || "farmer";
     const effectiveChargeUnit = farmerEntityType === "company" ? "quintal" : (coldStorage.chargeUnit || "bag");
 
+    const userSharedExitBill = args.sharedExitBillNumber ?? null;
+    const exitYear = exitDate.getFullYear();
+
     return await db.transaction(async (tx) => {
-      // Atomically reserve ONE exit bill number to be shared across every row.
-      const counterRow = await tx.update(coldStorages)
-        .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 1) + 1` })
-        .where(eq(coldStorages.id, coldStorageId))
-        .returning({ next: coldStorages.nextExitBillNumber });
-      if (counterRow.length === 0 || counterRow[0].next == null) {
-        throw new Error("Cold storage not found");
+      // Allocate the shared exit bill number — either honor the user's
+      // override (with calendar-year duplicate check, ignoring reversed
+      // exits) or atomically reserve the next counter value.
+      let sharedExitBillNumber: number;
+      if (userSharedExitBill != null) {
+        if (!Number.isFinite(userSharedExitBill) || userSharedExitBill <= 0) {
+          throw new Error("Invalid exit bill number");
+        }
+        const dup = await tx.select({ id: exitHistory.id })
+          .from(exitHistory)
+          .where(and(
+            eq(exitHistory.coldStorageId, coldStorageId),
+            eq(exitHistory.billNumber, userSharedExitBill),
+            eq(exitHistory.isReversed, 0),
+            sql`extract(year from ${exitHistory.exitDate}) = ${exitYear}`,
+          ));
+        if (dup.length > 0) {
+          throw new Error(`Exit bill number ${userSharedExitBill} is already used in ${exitYear}`);
+        }
+        sharedExitBillNumber = userSharedExitBill;
+        await tx.update(coldStorages)
+          .set({ nextExitBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextExitBillNumber}, 1), ${sharedExitBillNumber + 1})` })
+          .where(eq(coldStorages.id, coldStorageId));
+      } else {
+        const counterRow = await tx.update(coldStorages)
+          .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 1) + 1` })
+          .where(eq(coldStorages.id, coldStorageId))
+          .returning({ next: coldStorages.nextExitBillNumber });
+        if (counterRow.length === 0 || counterRow[0].next == null) {
+          throw new Error("Cold storage not found");
+        }
+        sharedExitBillNumber = (counterRow[0].next as number) - 1;
       }
-      const sharedExitBillNumber = (counterRow[0].next as number) - 1;
+
+      // Per-row user-supplied cold-storage bill numbers must be unique
+      // within the batch as well as within the calendar year.
+      const seenUserCsBill = new Set<number>();
+      for (const r of rows) {
+        if (r.coldStorageBillNumber != null) {
+          if (!Number.isFinite(r.coldStorageBillNumber) || r.coldStorageBillNumber <= 0) {
+            throw new Error("Invalid cold storage bill number");
+          }
+          if (seenUserCsBill.has(r.coldStorageBillNumber)) {
+            throw new Error(`Cold storage bill number ${r.coldStorageBillNumber} is repeated in the batch`);
+          }
+          seenUserCsBill.add(r.coldStorageBillNumber);
+        }
+      }
 
       const createdSales: Array<{
         saleId: string;
@@ -2286,6 +2332,7 @@ export class DatabaseStorage implements IStorage {
         bagsExited: number;
         baseColdCharge: number;
         kataCharges: number;
+        extraHammaliPerBag: number;
         extraHammali: number;
         gradingCharges: number;
         totalColdStorageCharge: number;
@@ -2465,14 +2512,38 @@ export class DatabaseStorage implements IStorage {
           soldAt: new Date(),
         } as InsertSalesHistory).returning();
 
-        // Atomically allocate this sale's coldStorageBillNumber.
-        const csBillRow = await tx.update(coldStorages)
-          .set({ nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 1) + 1` })
-          .where(eq(coldStorages.id, coldStorageId))
-          .returning({ next: coldStorages.nextColdStorageBillNumber });
-        const coldStorageBillNumber = csBillRow.length > 0 && csBillRow[0].next != null
-          ? (csBillRow[0].next as number) - 1
-          : null;
+        // Allocate the per-row cold-storage bill number — either honor a
+        // user override (with calendar-year duplicate check, scoped to
+        // the *sale's* year, which is the year the row is recorded
+        // against — independent of any backdated exitDate) or atomically
+        // reserve the next counter value.
+        let coldStorageBillNumber: number | null = null;
+        const userCsBill = row.coldStorageBillNumber ?? null;
+        const csYear = new Date().getFullYear();
+        if (userCsBill != null) {
+          const dupCs = await tx.select({ id: salesHistory.id })
+            .from(salesHistory)
+            .where(and(
+              eq(salesHistory.coldStorageId, coldStorageId),
+              eq(salesHistory.coldStorageBillNumber, userCsBill),
+              sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+            ));
+          if (dupCs.length > 0) {
+            throw new Error(`Cold storage bill number ${userCsBill} is already used in ${csYear}`);
+          }
+          coldStorageBillNumber = userCsBill;
+          await tx.update(coldStorages)
+            .set({ nextColdStorageBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextColdStorageBillNumber}, 1), ${userCsBill + 1})` })
+            .where(eq(coldStorages.id, coldStorageId));
+        } else {
+          const csBillRow = await tx.update(coldStorages)
+            .set({ nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 1) + 1` })
+            .where(eq(coldStorages.id, coldStorageId))
+            .returning({ next: coldStorages.nextColdStorageBillNumber });
+          coldStorageBillNumber = csBillRow.length > 0 && csBillRow[0].next != null
+            ? (csBillRow[0].next as number) - 1
+            : null;
+        }
         if (coldStorageBillNumber != null) {
           await tx.update(salesHistory)
             .set({ coldStorageBillNumber })
@@ -2540,23 +2611,53 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Exit History methods
-  async createExit(data: InsertExitHistory): Promise<ExitHistory> {
-    // Get the current bill number (before incrementing)
-    const coldStorage = await this.getColdStorage(data.coldStorageId);
-    if (!coldStorage) {
-      throw new Error("Cold storage not found");
-    }
-    const billNumber = coldStorage.nextExitBillNumber ?? 1;
-    
-    // Increment the counter for the next exit
-    await db.update(coldStorages)
-      .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 0) + 1` })
-      .where(eq(coldStorages.id, data.coldStorageId));
-    
-    // Create the exit record with the bill number
-    const [record] = await db.insert(exitHistory)
-      .values({ id: randomUUID(), billNumber, ...data })
-      .returning();
+  async createExit(data: InsertExitHistory, opts?: { userBillNumber?: number | null }): Promise<ExitHistory> {
+    const userBill = opts?.userBillNumber ?? null;
+    const exitDateForYear = (data.exitDate as Date | undefined) ?? new Date();
+    const year = new Date(exitDateForYear).getFullYear();
+
+    // Wrap counter+insert in a transaction so concurrent writers cannot
+    // produce duplicate bill numbers when the user did not override it.
+    const record = await db.transaction(async (tx) => {
+      let billNumber: number;
+
+      if (userBill != null) {
+        if (!Number.isFinite(userBill) || userBill <= 0) {
+          throw new Error("Invalid exit bill number");
+        }
+        // Calendar-year-scoped duplicate check, ignoring reversed exits.
+        const dup = await tx.select({ id: exitHistory.id })
+          .from(exitHistory)
+          .where(and(
+            eq(exitHistory.coldStorageId, data.coldStorageId),
+            eq(exitHistory.billNumber, userBill),
+            eq(exitHistory.isReversed, 0),
+            sql`extract(year from ${exitHistory.exitDate}) = ${year}`,
+          ));
+        if (dup.length > 0) {
+          throw new Error(`Exit bill number ${userBill} is already used in ${year}`);
+        }
+        billNumber = userBill;
+        // Bump counter forward so future auto-numbers skip past this one.
+        await tx.update(coldStorages)
+          .set({ nextExitBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextExitBillNumber}, 1), ${billNumber + 1})` })
+          .where(eq(coldStorages.id, data.coldStorageId));
+      } else {
+        const counterRow = await tx.update(coldStorages)
+          .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 1) + 1` })
+          .where(eq(coldStorages.id, data.coldStorageId))
+          .returning({ next: coldStorages.nextExitBillNumber });
+        if (counterRow.length === 0 || counterRow[0].next == null) {
+          throw new Error("Cold storage not found");
+        }
+        billNumber = (counterRow[0].next as number) - 1;
+      }
+
+      const [inserted] = await tx.insert(exitHistory)
+        .values({ id: randomUUID(), billNumber, ...data })
+        .returning();
+      return inserted;
+    });
 
     // Decrement chamber fill — bags have physically left the chamber.
     // Atomic SQL delta clamped to [0, capacity] avoids lost updates under
@@ -5367,6 +5468,69 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Bill number assignment failed");
       }
       return winner;
+    });
+  }
+
+  // Cheap pre-flight duplicate check used by the partial-sale route to
+  // reject explicit user-supplied cold-storage bill numbers BEFORE any
+  // sale/lot mutations occur. The same check is also enforced at
+  // assignment time for safety against concurrent inserts.
+  async findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<boolean> {
+    const dup = await db.select({ id: salesHistory.id })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.coldStorageBillNumber, billNumber),
+        sql`extract(year from ${salesHistory.soldAt}) = ${year}`,
+      ))
+      .limit(1);
+    return dup.length > 0;
+  }
+
+  // Assign a user-supplied cold-storage bill number to a sale, with a
+  // calendar-year-scoped duplicate check (using the sale's soldAt year).
+  // Bumps the cold storage's nextColdStorageBillNumber forward when the
+  // user picked a number at or beyond the current counter so future
+  // auto-numbers skip past it.
+  async assignSpecificColdStorageBillNumber(saleId: string, billNumber: number): Promise<number> {
+    if (!Number.isFinite(billNumber) || billNumber <= 0) {
+      throw new Error("Invalid cold storage bill number");
+    }
+    return await db.transaction(async (tx) => {
+      const [sale] = await tx.select()
+        .from(salesHistory)
+        .where(eq(salesHistory.id, saleId));
+      if (!sale) throw new Error("Sale not found");
+      if (sale.coldStorageBillNumber) return sale.coldStorageBillNumber;
+
+      const year = new Date(sale.soldAt).getFullYear();
+      const dup = await tx.select({ id: salesHistory.id })
+        .from(salesHistory)
+        .where(and(
+          eq(salesHistory.coldStorageId, sale.coldStorageId),
+          eq(salesHistory.coldStorageBillNumber, billNumber),
+          sql`extract(year from ${salesHistory.soldAt}) = ${year}`,
+        ));
+      if (dup.length > 0) {
+        throw new Error(`Cold storage bill number ${billNumber} is already used in ${year}`);
+      }
+
+      const wrote = await tx.update(salesHistory)
+        .set({ coldStorageBillNumber: billNumber })
+        .where(and(eq(salesHistory.id, saleId), isNull(salesHistory.coldStorageBillNumber)))
+        .returning({ id: salesHistory.id });
+      if (wrote.length === 0) {
+        const [refetched] = await tx.select()
+          .from(salesHistory)
+          .where(eq(salesHistory.id, saleId));
+        return refetched?.coldStorageBillNumber ?? billNumber;
+      }
+
+      await tx.update(coldStorages)
+        .set({ nextColdStorageBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextColdStorageBillNumber}, 1), ${billNumber + 1})` })
+        .where(eq(coldStorages.id, sale.coldStorageId));
+
+      return billNumber;
     });
   }
 

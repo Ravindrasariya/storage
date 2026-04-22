@@ -23,7 +23,7 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { SaleLotInfo } from "@shared/schema";
+import type { SaleLotInfo, ColdStorage } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency } from "@/components/Currency";
 
@@ -55,6 +55,15 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
   const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
   const [isSelfBuyer, setIsSelfBuyer] = useState(false);
   const [adjAmount, setAdjAmount] = useState<string>("");
+  // Editable cold-storage receipt-book bill #. Pre-filled from the cold
+  // storage's running counter when the dialog opens; operator may
+  // override to match their physical receipt book.
+  const [coldStorageBillInput, setColdStorageBillInput] = useState<string>("");
+  const [coldStorageBillEdited, setColdStorageBillEdited] = useState(false);
+
+  const { data: coldStorage } = useQuery<ColdStorage>({
+    queryKey: ["/api/cold-storage"],
+  });
 
   const { data: buyersData } = useQuery<{ buyerName: string; isSelfSale: boolean }[]>({
     queryKey: ["/api/buyers/lookup"],
@@ -100,6 +109,8 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       setEditableColdCharge(lot.coldCharge.toString());
       setEditableHammali(lot.hammali.toString());
       setChargeBasis(lot.baseColdChargesBilled === 1 ? "actual" : "actual");
+      setColdStorageBillInput(coldStorage?.nextColdStorageBillNumber ? String(coldStorage.nextColdStorageBillNumber) : "");
+      setColdStorageBillEdited(false);
     } else if (!open) {
       // Reset all state when closing
       setPartialQuantity(0);
@@ -119,12 +130,14 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       setEditableHammali("");
       setChargeBasis("actual");
       setAdjAmount("");
+      setColdStorageBillInput("");
+      setColdStorageBillEdited(false);
     }
-  }, [open, lot?.id]);
+  }, [open, lot?.id, coldStorage?.nextColdStorageBillNumber]);
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber });
     },
     onSuccess: () => {
       invalidateSaleSideEffects(queryClient);
@@ -152,6 +165,9 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
       queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-dues") });
+      // Refresh the cold-storage counter so the next sale dialog opens
+      // with an up-to-date pre-filled cold-storage bill #.
+      queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
       toast({
         title: t("success"),
         description: "Partial sale recorded successfully",
@@ -159,10 +175,10 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       });
       onOpenChange(false);
     },
-    onError: () => {
+    onError: (err: Error) => {
       toast({
         title: t("error"),
-        description: "Failed to record partial sale",
+        description: err.message || "Failed to record partial sale",
         variant: "destructive",
       });
     },
@@ -308,6 +324,10 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       chargeBasis: effectiveChargeBasis,
       isSelfSale: isSelfBuyer,
       adjReceivableSelfDueAmount: !isSelfBuyer ? (parseFloat(adjAmount) || 0) : 0,
+      coldStorageBillNumber: (() => {
+        const n = parseInt(coldStorageBillInput);
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      })(),
     });
   };
 
@@ -528,6 +548,44 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
                 placeholder="0"
                 data-testid="input-partial-kata-charges"
               />
+            </div>
+
+            {/* Editable cold-storage receipt-book bill # — pre-filled from
+                the running counter so the digital record matches the
+                operator's manual receipt book. Switches to a blue "edited"
+                state once the operator overrides the auto-filled value. */}
+            <div className={`space-y-1 rounded-md p-2 border ${
+              coldStorageBillEdited
+                ? "border-blue-300 dark:border-blue-700 bg-blue-50/60 dark:bg-blue-900/20"
+                : "border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-900/20"
+            }`}>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="partial-cs-bill" className="text-sm">
+                  {t("coldStorageBillNumber") || "Cold Storage Bill #"}
+                </Label>
+                <span className={`text-[10px] uppercase tracking-wide ${
+                  coldStorageBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
+                }`}>
+                  {coldStorageBillEdited ? "edited" : "auto"}
+                </span>
+              </div>
+              <Input
+                id="partial-cs-bill"
+                type="number"
+                min={1}
+                value={coldStorageBillInput}
+                onChange={(e) => {
+                  setColdStorageBillInput(e.target.value);
+                  setColdStorageBillEdited(true);
+                }}
+                placeholder="—"
+                data-testid="input-partial-cs-bill"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {coldStorageBillEdited
+                  ? "Edited — please verify before submit"
+                  : "Auto-filled — please verify before submit"}
+              </p>
             </div>
 
             <div className="space-y-2">

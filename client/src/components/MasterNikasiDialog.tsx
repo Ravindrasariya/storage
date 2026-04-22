@@ -44,6 +44,11 @@ interface RowState {
   kataCharges: string;
   extraHammaliPerBag: string;
   gradingCharges: string;
+  // Cold-storage receipt-book bill #, editable per row. Pre-filled from
+  // the running counter (with each row taking the next sequential value)
+  // and tracked as edited once the operator overrides it.
+  coldStorageBillNumber: string;
+  coldStorageBillEdited: boolean;
 }
 
 interface MasterNikasiResult {
@@ -79,7 +84,7 @@ interface MasterNikasiResult {
   };
 }
 
-const newRow = (lotNo = "", marka = ""): RowState => ({
+const newRow = (lotNo = "", marka = "", coldStorageBillNumber = ""): RowState => ({
   rowKey: `r${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
   lotNo,
   marka,
@@ -87,6 +92,8 @@ const newRow = (lotNo = "", marka = ""): RowState => ({
   kataCharges: "",
   extraHammaliPerBag: "",
   gradingCharges: "",
+  coldStorageBillNumber,
+  coldStorageBillEdited: false,
 });
 
 function fmt(n: number): string {
@@ -121,22 +128,26 @@ export function MasterNikasiDialog({
   const [exitDate, setExitDate] = useState(todayIso);
   const [rows, setRows] = useState<RowState[]>(() => [newRow()]);
   const [result, setResult] = useState<MasterNikasiResult | null>(null);
+  // Shared exit bill # for the whole nikasi batch. Pre-filled from the
+  // running counter; user may override to match a manual receipt book.
+  const [sharedExitBillInput, setSharedExitBillInput] = useState<string>("");
+  const [sharedExitBillEdited, setSharedExitBillEdited] = useState(false);
 
-  // Reset state whenever dialog opens
+  // Reset state whenever dialog opens. Pre-fill the shared exit bill # and
+  // each row's cold-storage bill # from the cold-storage running counters.
   useEffect(() => {
     if (open) {
       setExitDate(new Date().toISOString().slice(0, 10));
-      // If exactly one lot is available, pre-select it.
       const only = lots.length === 1 ? lots[0].lot : null;
       const onlyMarka = (only?.marka || "").trim();
-      // Use the NO_MARKA sentinel when the single lot has a blank marka,
-      // so the row is immediately resolvable (resolveLot/canSubmit
-      // require a non-empty marka value in state).
       const onlyMarkaState = only ? (onlyMarka === "" ? NO_MARKA : onlyMarka) : "";
-      setRows([newRow(only?.lotNo || "", onlyMarkaState)]);
+      const startCs = coldStorage?.nextColdStorageBillNumber ?? null;
+      setRows([newRow(only?.lotNo || "", onlyMarkaState, startCs ? String(startCs) : "")]);
+      setSharedExitBillInput(coldStorage?.nextExitBillNumber ? String(coldStorage.nextExitBillNumber) : "");
+      setSharedExitBillEdited(false);
       setResult(null);
     }
-  }, [open, lots]);
+  }, [open, lots, coldStorage?.nextExitBillNumber, coldStorage?.nextColdStorageBillNumber]);
 
   // Index lots by (lotNo, marka) so a row can resolve its database lot id
   // from the user-facing identity. Per the operator workflow, the same
@@ -237,8 +248,10 @@ export function MasterNikasiDialog({
         kataCharges: number;
         extraHammaliPerBag: number;
         gradingCharges: number;
+        coldStorageBillNumber?: number;
       }> = [];
       const seenKey = new Set<string>();
+      const seenCsBill = new Set<number>();
       for (const r of rows) {
         const bags = Number(r.exitBags);
         if (!r.lotNo || !r.marka || !Number.isFinite(bags) || bags <= 0) continue;
@@ -250,18 +263,38 @@ export function MasterNikasiDialog({
         const key = `${r.lotNo}::${canonMarka(r.marka)}`;
         if (seenKey.has(key)) throw new Error(t("duplicateReceipt"));
         seenKey.add(key);
+
+        // Per-row cold-storage bill #. Required (pre-filled from counter)
+        // and must be unique within this batch.
+        const csBill = parseInt(r.coldStorageBillNumber);
+        if (!Number.isFinite(csBill) || csBill <= 0) {
+          throw new Error(`Lot ${lwc.lot.lotNo}: cold-storage bill # must be a positive integer`);
+        }
+        if (seenCsBill.has(csBill)) {
+          throw new Error(`Cold-storage bill # ${csBill} is repeated within this batch`);
+        }
+        seenCsBill.add(csBill);
+
         cleaned.push({
           lotId: lwc.lot.id,
           exitBags: bags,
           kataCharges: Number(r.kataCharges) || 0,
           extraHammaliPerBag: Number(r.extraHammaliPerBag) || 0,
           gradingCharges: Number(r.gradingCharges) || 0,
+          coldStorageBillNumber: csBill,
         });
       }
       if (cleaned.length === 0) throw new Error("Add at least one valid row.");
+
+      const sharedExitBill = parseInt(sharedExitBillInput);
+      if (!Number.isFinite(sharedExitBill) || sharedExitBill <= 0) {
+        throw new Error("Exit bill # must be a positive integer");
+      }
+
       const res = await apiRequest("POST", "/api/farmers/master-nikasi", {
         farmerLedgerId,
         exitDate: new Date(exitDate + "T00:00:00").toISOString(),
+        sharedExitBillNumber: sharedExitBill,
         rows: cleaned,
       });
       return (await res.json()) as MasterNikasiResult;
@@ -270,6 +303,9 @@ export function MasterNikasiDialog({
       setResult(data);
       invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/farmers"] });
+      // Refresh the cold-storage counter so subsequent dialogs see the
+      // bumped nextExitBillNumber / nextColdStorageBillNumber values.
+      queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
       toast({ title: t("masterNikasi"), description: `${t("exitBillNumber")} ${data.sharedExitBillNumber}` });
       // Auto-print after a short delay so DOM renders the print block.
       setTimeout(() => {
@@ -327,14 +363,46 @@ export function MasterNikasiDialog({
                 data-testid="input-mn-exit-date"
               />
             </div>
-            {result && (
+            {result ? (
               <div className="text-right">
                 <div className="text-xs text-muted-foreground">{t("exitBillNumber")}</div>
                 <div className="text-lg font-bold text-amber-600" data-testid="text-mn-bill">#{result.sharedExitBillNumber}</div>
               </div>
+            ) : (
+              <div className={`flex items-center gap-2 rounded-md px-2 py-1 border ${
+                sharedExitBillEdited
+                  ? "border-blue-300 dark:border-blue-700 bg-blue-50/60 dark:bg-blue-900/20"
+                  : "border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-900/20"
+              }`}>
+                <Label htmlFor="mn-shared-exit-bill" className="text-xs whitespace-nowrap">
+                  {t("exitBillNumber") || "Exit Bill #"}
+                </Label>
+                <Input
+                  id="mn-shared-exit-bill"
+                  type="number"
+                  min={1}
+                  value={sharedExitBillInput}
+                  onChange={(e) => {
+                    setSharedExitBillInput(e.target.value);
+                    setSharedExitBillEdited(true);
+                  }}
+                  className="h-8 w-24"
+                  data-testid="input-mn-shared-exit-bill"
+                />
+                <span className={`text-[10px] uppercase tracking-wide ${
+                  sharedExitBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
+                }`}>
+                  {sharedExitBillEdited ? "edited" : "auto"}
+                </span>
+              </div>
             )}
           </div>
         </div>
+        {!result && (
+          <p className="text-[11px] text-muted-foreground -mt-1 px-1">
+            Auto-filled from your counter — please verify before submit.
+          </p>
+        )}
 
         {/* Grid */}
         {lots.length === 0 ? (
@@ -358,6 +426,7 @@ export function MasterNikasiDialog({
                   <th className="p-2 text-right">{t("extraHammaliPerBagShort") || `${t("extraHammaliShort")}/Bag`}</th>
                   <th className="p-2 text-right">{t("gradingChargesShort")}</th>
                   <th className="p-2 text-right">{t("totalChargesShort")}</th>
+                  <th className="p-2 text-right">CS Bill #</th>
                   <th className="p-2 w-10"></th>
                 </tr>
               </thead>
@@ -528,6 +597,24 @@ export function MasterNikasiDialog({
                         />
                       </td>
                       <td className="p-2 text-right font-mono font-semibold" data-testid={`text-mn-total-${idx}`}>{fmt(totals.total)}</td>
+                      <td className={`p-1 ${
+                        r.coldStorageBillEdited
+                          ? "bg-blue-50/60 dark:bg-blue-900/20"
+                          : "bg-amber-50/60 dark:bg-amber-900/20"
+                      }`}>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={r.coldStorageBillNumber}
+                          onChange={(e) => updateRow(r.rowKey, {
+                            coldStorageBillNumber: e.target.value,
+                            coldStorageBillEdited: true,
+                          })}
+                          disabled={!!result || !r.lotNo || !r.marka}
+                          className="h-8 w-20 text-right"
+                          data-testid={`input-mn-cs-bill-${idx}`}
+                        />
+                      </td>
                       <td className="p-2 text-center">
                         {!result && rows.length > 1 && (
                           <Button
@@ -552,6 +639,7 @@ export function MasterNikasiDialog({
                   <td className="p-2" colSpan={4}></td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-grand-total">{fmt(grandTotal)}</td>
                   <td></td>
+                  <td></td>
                 </tr>
               </tbody>
             </table>
@@ -564,7 +652,18 @@ export function MasterNikasiDialog({
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => setRows(prev => [...prev, newRow()])}
+              onClick={() => setRows(prev => {
+                // Prefill the new row's cold-storage bill # with the next
+                // sequential value: max of the bill #s already entered in
+                // this batch + 1, so consecutive rows take consecutive
+                // numbers without colliding with each other.
+                const used = prev
+                  .map(r => parseInt(r.coldStorageBillNumber))
+                  .filter(n => Number.isFinite(n) && n > 0);
+                const counterStart = coldStorage?.nextColdStorageBillNumber ?? 0;
+                const next = used.length > 0 ? Math.max(...used) + 1 : counterStart;
+                return [...prev, newRow("", "", next > 0 ? String(next) : "")];
+              })}
               disabled={lots.length === 0 || rows.length >= lots.length}
               data-testid="button-mn-add-row"
             >

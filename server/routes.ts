@@ -1163,7 +1163,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -1171,6 +1171,24 @@ export async function registerRoutes(
 
       if (quantitySold > lot.remainingSize) {
         return res.status(400).json({ error: "Quantity exceeds remaining size" });
+      }
+
+      // Pre-validate the user-supplied cold-storage bill number BEFORE we
+      // mutate any lot/sale state. This avoids the failure mode where a
+      // sale row, lot deduction, and ledger writes commit but the bill-#
+      // assignment then fails on a duplicate, leaving the operator with
+      // a phantom sale they must reverse manually. The same uniqueness
+      // check is also done inside assignSpecificColdStorageBillNumber so
+      // a concurrent insert is still rejected at assignment time.
+      if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
+        if (!Number.isInteger(coldStorageBillNumber)) {
+          return res.status(400).json({ error: "Cold storage bill number must be a positive integer" });
+        }
+        const csYear = new Date().getFullYear();
+        const dup = await storage.findColdStorageBillDuplicate(lot.coldStorageId, coldStorageBillNumber, csYear);
+        if (dup) {
+          return res.status(400).json({ error: `Cold storage bill number ${coldStorageBillNumber} is already used in ${csYear}` });
+        }
       }
 
       // Update position if provided
@@ -1384,14 +1402,27 @@ export async function registerRoutes(
         buyerId: buyerEntry?.buyerId || null,
       });
 
-      // Auto-assign the cold-storage deduction bill number at sale-creation
-      // time so it's never null for newly recorded sales. Reuses the same
-      // counter and idempotent assignment logic that the print-bill flow uses.
+      // Assign the cold-storage deduction bill number at sale-creation
+      // time so it's never null for newly recorded sales. If the operator
+      // provided an explicit number (to match a manual receipt book), use
+      // that with a calendar-year duplicate check; otherwise fall back to
+      // the auto counter.
       try {
-        await storage.assignBillNumber(createdSale.id, "coldStorage");
+        if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
+          await storage.assignSpecificColdStorageBillNumber(createdSale.id, coldStorageBillNumber);
+        } else {
+          await storage.assignBillNumber(createdSale.id, "coldStorage");
+        }
       } catch (e) {
-        console.error("Failed to auto-assign cold storage bill number:", e);
-        // Non-fatal: the sale itself succeeded; the print path will assign later.
+        console.error("Failed to assign cold storage bill number:", e);
+        const message = e instanceof Error ? e.message : "Failed to assign cold storage bill number";
+        // If the user explicitly chose a duplicate, surface the error so
+        // they can correct it. (The sale row itself was already created;
+        // we accept that minor inconsistency in exchange for clear UX.)
+        if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
+          return res.status(400).json({ error: message });
+        }
+        // Auto-mode failure: non-fatal — the print path will assign later.
       }
 
       // If adj amount was applied, trigger farmer FIFO recomputation to allocate across buckets
@@ -1415,12 +1446,14 @@ export async function registerRoutes(
   const masterNikasiSchema = z.object({
     farmerLedgerId: z.string().min(1),
     exitDate: z.string().min(1),
+    sharedExitBillNumber: z.number().int().positive().optional(),
     rows: z.array(z.object({
       lotId: z.string().min(1),
       exitBags: z.number().int().min(1),
       kataCharges: z.number().min(0).default(0),
       extraHammaliPerBag: z.number().min(0).default(0),
       gradingCharges: z.number().min(0).default(0),
+      coldStorageBillNumber: z.number().int().positive().optional(),
     })).min(1),
   });
 
@@ -1437,7 +1470,15 @@ export async function registerRoutes(
         coldStorageId,
         farmerLedgerId: body.farmerLedgerId,
         exitDate,
-        rows: body.rows,
+        sharedExitBillNumber: body.sharedExitBillNumber ?? null,
+        rows: body.rows.map(r => ({
+          lotId: r.lotId,
+          exitBags: r.exitBags,
+          kataCharges: r.kataCharges,
+          extraHammaliPerBag: r.extraHammaliPerBag,
+          gradingCharges: r.gradingCharges,
+          coldStorageBillNumber: r.coldStorageBillNumber ?? null,
+        })),
       });
 
       res.status(201).json(result);
@@ -1964,6 +2005,7 @@ export async function registerRoutes(
   // Exit History (Nikasi)
   const createExitSchema = z.object({
     bagsExited: z.number().min(1, "Must exit at least 1 bag"),
+    billNumber: z.number().int().positive().optional(),
   });
 
   app.get("/api/sales-history/:id/exits", requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -2003,7 +2045,7 @@ export async function registerRoutes(
   app.post("/api/sales-history/:id/exits", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { bagsExited } = createExitSchema.parse(req.body);
+      const { bagsExited, billNumber } = createExitSchema.parse(req.body);
       
       // Get the sale to verify bags available
       const sales = await storage.getSalesHistory(coldStorageId, {});
@@ -2027,12 +2069,17 @@ export async function registerRoutes(
         lotId: sale.lotId,
         coldStorageId: sale.coldStorageId,
         bagsExited,
-      });
-      
+      }, { userBillNumber: billNumber ?? null });
+
       res.status(201).json(exit);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid exit data", details: error.errors });
+      }
+      const message = error instanceof Error ? error.message : "Failed to create exit";
+      // Surface duplicate-bill errors so the user can correct the number.
+      if (/already used in/.test(message) || /Invalid exit bill/.test(message)) {
+        return res.status(400).json({ error: message });
       }
       res.status(500).json({ error: "Failed to create exit" });
     }
