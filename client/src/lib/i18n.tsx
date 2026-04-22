@@ -160,6 +160,7 @@ const translations: Translations = {
   exitDates: { en: "Exit Dates", hi: "निकासी तिथि" },
   exitBills: { en: "Exit Bill No(s)", hi: "निकासी बिल नं." },
   coldBillNo: { en: "Cold Bill No", hi: "कोल्ड बिल नं." },
+  exitBillNo: { en: "Exit Bill No", hi: "निकासी बिल नं." },
   editHistory: { en: "Edit History", hi: "संपादन इतिहास" },
   editableFields: { en: "Editable Fields (Location & Quality)", hi: "संपादन योग्य फ़ील्ड (स्थान और गुणवत्ता)" },
   reverse: { en: "Reverse", hi: "वापस करें" },

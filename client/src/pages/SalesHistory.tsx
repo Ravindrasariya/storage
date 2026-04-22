@@ -1831,6 +1831,7 @@ function ExitRegister() {
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("marka")}</TableHead>
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("potatoType")}</TableHead>
+                    <TableHead className="text-sm font-semibold whitespace-nowrap">{t("exitBillNo")}</TableHead>
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("coldBillNo")}</TableHead>
                     <TableHead className="text-sm font-semibold text-right whitespace-nowrap">{t("bagsExited")}</TableHead>
                     <TableHead className="text-sm font-semibold whitespace-nowrap">{t("buyerName")}</TableHead>
@@ -1848,6 +1849,7 @@ function ExitRegister() {
                       <TableCell className="text-sm">{r.lotNo}</TableCell>
                       <TableCell className="text-sm">{r.marka || "—"}</TableCell>
                       <TableCell className="text-sm whitespace-nowrap">{renderBagTypeBadge(r.bagType)}</TableCell>
+                      <TableCell className="text-sm" data-testid={`exit-bill-${r.exitId}`}>{r.billNumber != null && r.billNumber > 0 ? String(r.billNumber) : "—"}</TableCell>
                       <TableCell className="text-sm">{r.coldStorageBillNumber != null ? String(r.coldStorageBillNumber) : "—"}</TableCell>
                       <TableCell className="text-sm text-right">{r.bagsExited}</TableCell>
                       <TableCell className="text-sm">{renderBuyer(r)}</TableCell>
