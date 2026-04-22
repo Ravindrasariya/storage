@@ -1163,7 +1163,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt: soldAtInput } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -1175,7 +1175,33 @@ export async function registerRoutes(
 
       // Single sale date drives both the row's soldAt and the year
       // window for the CS bill # duplicate check (pre-flight + atomic).
-      const saleDate = new Date();
+      // Operator may supply an explicit sale date (YYYY-MM-DD) on the
+      // dialog to back-date a sale that was actually completed earlier.
+      // We anchor user-picked dates at noon IST (+05:30) so the calendar
+      // day is unambiguous regardless of client TZ — see the IST
+      // convention block in server/db.ts.
+      let saleDate: Date;
+      if (soldAtInput !== undefined && soldAtInput !== null && soldAtInput !== "") {
+        let parsed: Date;
+        if (typeof soldAtInput === "string" && /^\d{4}-\d{2}-\d{2}$/.test(soldAtInput)) {
+          parsed = new Date(`${soldAtInput}T12:00:00+05:30`);
+        } else if (typeof soldAtInput === "string" || typeof soldAtInput === "number") {
+          parsed = new Date(soldAtInput);
+        } else {
+          return res.status(400).json({ error: "Invalid sale date", field: "soldAt" });
+        }
+        if (isNaN(parsed.getTime())) {
+          return res.status(400).json({ error: "Invalid sale date", field: "soldAt" });
+        }
+        // Reject dates more than 1 day in the future (small grace
+        // window for client/server clock skew across TZs).
+        if (parsed.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
+          return res.status(400).json({ error: "Sale date cannot be in the future", field: "soldAt" });
+        }
+        saleDate = parsed;
+      } else {
+        saleDate = new Date();
+      }
 
       // Pre-flight CS bill # dup check fails fast before any mutation;
       // the atomic check inside createSalesHistory below handles the
@@ -1290,7 +1316,7 @@ export async function registerRoutes(
         updateData.saleStatus = "sold";
         updateData.paymentStatus = paymentStatus;
         updateData.saleCharge = storageCharge;
-        updateData.soldAt = new Date();
+        updateData.soldAt = saleDate;
         updateData.upForSale = 0;
       }
       
@@ -1339,6 +1365,11 @@ export async function registerRoutes(
 
       // Sale insert first: atomic dup check + counter bump inside the tx.
       // If it throws, no lot/edit-history mutation has run.
+      // NOTE: insertSalesHistorySchema omits `soldAt` from its zod-derived
+      // type, but createSalesHistory explicitly reads `data.soldAt` (see
+      // server/storage.ts) to drive both the row's effective sale date and
+      // the year-scoped CS-bill # dup check. The cast threads the
+      // user-picked / server-stamped saleDate through that path.
       const createdSale = await storage.createSalesHistory({
         coldStorageId: lot.coldStorageId,
         farmerName: lot.farmerName,
@@ -1393,6 +1424,8 @@ export async function registerRoutes(
         // Buyer ledger reference (ensure buyer exists and get IDs)
         buyerLedgerId: buyerEntry?.id || null,
         buyerId: buyerEntry?.buyerId || null,
+        // soldAt threaded via cast — see NOTE above this object literal.
+        ...({ soldAt: saleDate } as Record<string, unknown>),
       }, {
         // When the operator supplies an explicit cold-storage bill #
         // (to match their manual receipt book), createSalesHistory

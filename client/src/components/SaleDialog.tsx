@@ -64,6 +64,13 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
   // rejects a duplicate bill number, so the operator can correct it
   // without hunting through a toast.
   const [coldStorageBillError, setColdStorageBillError] = useState<string | null>(null);
+  // Editable sale date pill — defaults to today (IST). When edited,
+  // the chosen date becomes the authoritative `soldAt` for the new
+  // sales-history row, and drives the year window for the CS bill #
+  // duplicate check on the server. Format: YYYY-MM-DD; the server
+  // anchors it at noon IST so the calendar day is unambiguous.
+  const [saleDateInput, setSaleDateInput] = useState<string>("");
+  const [saleDateEdited, setSaleDateEdited] = useState(false);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
@@ -116,6 +123,8 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       setColdStorageBillInput(coldStorage?.nextColdStorageBillNumber ? String(coldStorage.nextColdStorageBillNumber) : "");
       setColdStorageBillEdited(false);
       setColdStorageBillError(null);
+      setSaleDateInput(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()));
+      setSaleDateEdited(false);
     } else if (!open) {
       // Reset all state when closing
       setPartialQuantity(0);
@@ -137,12 +146,14 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       setAdjAmount("");
       setColdStorageBillInput("");
       setColdStorageBillEdited(false);
+      setSaleDateInput("");
+      setSaleDateEdited(false);
     }
   }, [open, lot?.id, coldStorage?.nextColdStorageBillNumber]);
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt });
     },
     onSuccess: () => {
       invalidateSaleSideEffects(queryClient);
@@ -339,6 +350,9 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
         const n = parseInt(coldStorageBillInput);
         return Number.isFinite(n) && n > 0 ? n : undefined;
       })(),
+      // Send the picked date only when the operator actually edited it.
+      // Untouched → omit so the server stamps current time as before.
+      soldAt: saleDateEdited && saleDateInput ? saleDateInput : undefined,
     });
   };
 
@@ -348,6 +362,44 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
         <DialogHeader>
           <div className="flex items-center justify-between gap-3 pr-6">
             <DialogTitle className="flex-shrink-0">{t("sale")}</DialogTitle>
+            {/* Editable Sale Date — defaults to today (IST) so back-
+                dated entries (sale recorded a day or two late) carry
+                the real sale date through the row's `soldAt`, the
+                CS-bill # year window, and every downstream register /
+                ledger / export. Same amber-vs-blue treatment as the
+                CS # pill on the right. */}
+            <div className={`flex items-center gap-2 rounded-md px-2 py-1 border ${
+              saleDateEdited
+                ? "border-blue-400 dark:border-blue-600 bg-blue-100/80 dark:bg-blue-900/40 ring-1 ring-blue-300/50"
+                : "border-amber-400 dark:border-amber-600 bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-300/50"
+            }`}>
+              <Label
+                htmlFor="partial-sale-date"
+                className={`text-xs font-semibold whitespace-nowrap ${
+                  saleDateEdited
+                    ? "text-blue-800 dark:text-blue-200"
+                    : "text-amber-800 dark:text-amber-200"
+                }`}
+              >
+                {t("date") || "Date"}
+              </Label>
+              <Input
+                id="partial-sale-date"
+                type="date"
+                value={saleDateInput}
+                onChange={(e) => {
+                  setSaleDateInput(e.target.value);
+                  setSaleDateEdited(true);
+                }}
+                className="h-7 w-36 text-sm bg-background"
+                data-testid="input-partial-sale-date"
+              />
+              <span className={`text-[10px] uppercase tracking-wide ${
+                saleDateEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
+              }`}>
+                {saleDateEdited ? "edited" : "auto"}
+              </span>
+            </div>
             {/* Cold-storage receipt-book bill #, surfaced inline with the
                 Sale title so the operator sees and verifies it before
                 anything else. Amber = auto-filled from the running
