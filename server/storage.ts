@@ -1635,10 +1635,11 @@ export class DatabaseStorage implements IStorage {
         : (data.extraDueToMerchant ?? 0);
 
     const userCsBill = opts?.userColdStorageBillNumber ?? null;
-    // Year derives from the sale's effective date (soldAt). Insert
-    // schema omits soldAt so callers may not pass it; in that case the
-    // DB default (now()) applies and we use the same timestamp here.
-    const dataSoldAt = (data as InsertSalesHistory & { soldAt?: Date | string }).soldAt;
+    // Year derives from the sale's effective date (soldAt). Callers may
+    // pass an explicit soldAt (e.g. operator back-dating a sale on the
+    // Sale dialog — see Task #206); when omitted, the DB default (now())
+    // applies and we use the same timestamp here for the dup check.
+    const dataSoldAt = data.soldAt;
     const saleDate: Date = dataSoldAt instanceof Date
       ? dataSoldAt
       : (dataSoldAt ? new Date(dataSoldAt) : new Date());
