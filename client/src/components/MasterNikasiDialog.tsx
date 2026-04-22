@@ -334,7 +334,7 @@ export function MasterNikasiDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] xl:max-w-7xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PackageMinus className="h-5 w-5" />
@@ -413,7 +413,7 @@ export function MasterNikasiDialog({
           </p>
         ) : (
           <div className="overflow-x-auto border border-blue-700 rounded-md">
-            <table className="w-full text-xs min-w-[920px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_td]:border [&_td]:border-border">
+            <table className="w-full text-xs min-w-[1100px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_th]:whitespace-nowrap [&_td]:border [&_td]:border-border">
               <thead className="bg-blue-700 text-white">
                 <tr>
                   <th className="p-2 text-left">{t("receiptNo")}</th>

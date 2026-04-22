@@ -1173,21 +1173,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Quantity exceeds remaining size" });
       }
 
-      // Pre-validate the user-supplied cold-storage bill number BEFORE we
-      // mutate any lot/sale state. This avoids the failure mode where a
-      // sale row, lot deduction, and ledger writes commit but the bill-#
-      // assignment then fails on a duplicate, leaving the operator with
-      // a phantom sale they must reverse manually. The same uniqueness
-      // check is also done inside assignSpecificColdStorageBillNumber so
-      // a concurrent insert is still rejected at assignment time.
+      // Validate shape only — the year-scoped duplicate check, sale
+      // insert, and counter bump all happen atomically inside
+      // createSalesHistory below, so a duplicate bill # rolls back the
+      // entire sale rather than leaving a phantom row.
       if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
         if (!Number.isInteger(coldStorageBillNumber)) {
           return res.status(400).json({ error: "Cold storage bill number must be a positive integer" });
-        }
-        const csYear = new Date().getFullYear();
-        const dup = await storage.findColdStorageBillDuplicate(lot.coldStorageId, coldStorageBillNumber, csYear);
-        if (dup) {
-          return res.status(400).json({ error: `Cold storage bill number ${coldStorageBillNumber} is already used in ${csYear}` });
         }
       }
 
@@ -1400,29 +1392,26 @@ export async function registerRoutes(
         // Buyer ledger reference (ensure buyer exists and get IDs)
         buyerLedgerId: buyerEntry?.id || null,
         buyerId: buyerEntry?.buyerId || null,
+      }, {
+        // When the operator supplies an explicit cold-storage bill #
+        // (to match their manual receipt book), createSalesHistory
+        // performs the year-scoped duplicate check, the row insert,
+        // and the counter bump in a single transaction so a duplicate
+        // rolls back the sale entirely instead of leaving a phantom row.
+        userColdStorageBillNumber: typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0
+          ? coldStorageBillNumber
+          : null,
       });
 
-      // Assign the cold-storage deduction bill number at sale-creation
-      // time so it's never null for newly recorded sales. If the operator
-      // provided an explicit number (to match a manual receipt book), use
-      // that with a calendar-year duplicate check; otherwise fall back to
-      // the auto counter.
-      try {
-        if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
-          await storage.assignSpecificColdStorageBillNumber(createdSale.id, coldStorageBillNumber);
-        } else {
+      // Auto-mode (no user-supplied number): fall back to the legacy
+      // counter-bump path so the sale still gets a CS bill # assigned.
+      if (!(typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0)) {
+        try {
           await storage.assignBillNumber(createdSale.id, "coldStorage");
+        } catch (e) {
+          console.error("Failed to auto-assign cold storage bill number:", e);
+          // Non-fatal: the sale itself succeeded; the print path will assign later.
         }
-      } catch (e) {
-        console.error("Failed to assign cold storage bill number:", e);
-        const message = e instanceof Error ? e.message : "Failed to assign cold storage bill number";
-        // If the user explicitly chose a duplicate, surface the error so
-        // they can correct it. (The sale row itself was already created;
-        // we accept that minor inconsistency in exchange for clear UX.)
-        if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
-          return res.status(400).json({ error: message });
-        }
-        // Auto-mode failure: non-fatal — the print path will assign later.
       }
 
       // If adj amount was applied, trigger farmer FIFO recomputation to allocate across buckets

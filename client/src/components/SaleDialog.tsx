@@ -335,7 +335,47 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle>{t("sale")}</DialogTitle>
+          <div className="flex items-center justify-between gap-3 pr-6">
+            <DialogTitle className="flex-shrink-0">{t("sale")}</DialogTitle>
+            {/* Cold-storage receipt-book bill #, surfaced inline with the
+                Sale title so the operator sees and verifies it before
+                anything else. Amber = auto-filled from the running
+                counter, blue = explicitly edited. */}
+            <div className={`flex items-center gap-2 rounded-md px-2 py-1 border ${
+              coldStorageBillEdited
+                ? "border-blue-400 dark:border-blue-600 bg-blue-100/80 dark:bg-blue-900/40 ring-1 ring-blue-300/50"
+                : "border-amber-400 dark:border-amber-600 bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-300/50"
+            }`}>
+              <Label
+                htmlFor="partial-cs-bill"
+                className={`text-xs font-semibold whitespace-nowrap ${
+                  coldStorageBillEdited
+                    ? "text-blue-800 dark:text-blue-200"
+                    : "text-amber-800 dark:text-amber-200"
+                }`}
+              >
+                CS #
+              </Label>
+              <Input
+                id="partial-cs-bill"
+                type="number"
+                min={1}
+                value={coldStorageBillInput}
+                onChange={(e) => {
+                  setColdStorageBillInput(e.target.value);
+                  setColdStorageBillEdited(true);
+                }}
+                placeholder="—"
+                className="h-7 w-20 text-sm bg-background"
+                data-testid="input-partial-cs-bill"
+              />
+              <span className={`text-[10px] uppercase tracking-wide ${
+                coldStorageBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
+              }`}>
+                {coldStorageBillEdited ? "edited" : "auto"}
+              </span>
+            </div>
+          </div>
           <DialogDescription>
             {lot && `${lot.farmerName} - ${lot.lotNo}`}
           </DialogDescription>
@@ -548,44 +588,6 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
                 placeholder="0"
                 data-testid="input-partial-kata-charges"
               />
-            </div>
-
-            {/* Editable cold-storage receipt-book bill # — pre-filled from
-                the running counter so the digital record matches the
-                operator's manual receipt book. Switches to a blue "edited"
-                state once the operator overrides the auto-filled value. */}
-            <div className={`space-y-1 rounded-md p-2 border ${
-              coldStorageBillEdited
-                ? "border-blue-300 dark:border-blue-700 bg-blue-50/60 dark:bg-blue-900/20"
-                : "border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-900/20"
-            }`}>
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="partial-cs-bill" className="text-sm">
-                  {t("coldStorageBillNumber") || "Cold Storage Bill #"}
-                </Label>
-                <span className={`text-[10px] uppercase tracking-wide ${
-                  coldStorageBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
-                }`}>
-                  {coldStorageBillEdited ? "edited" : "auto"}
-                </span>
-              </div>
-              <Input
-                id="partial-cs-bill"
-                type="number"
-                min={1}
-                value={coldStorageBillInput}
-                onChange={(e) => {
-                  setColdStorageBillInput(e.target.value);
-                  setColdStorageBillEdited(true);
-                }}
-                placeholder="—"
-                data-testid="input-partial-cs-bill"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                {coldStorageBillEdited
-                  ? "Edited — please verify before submit"
-                  : "Auto-filled — please verify before submit"}
-              </p>
             </div>
 
             <div className="space-y-2">

@@ -386,20 +386,10 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
 
             {remainingToExit > 0 && (
               <>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="bagsToExit" className="whitespace-nowrap text-sm">{t("bagsToExit")}:</Label>
-                  <Input
-                    id="bagsToExit"
-                    type="number"
-                    value={bagsToExit}
-                    onChange={(e) => setBagsToExit(e.target.value)}
-                    min={1}
-                    max={remainingToExit}
-                    className="w-24"
-                    data-testid="input-bags-to-exit"
-                  />
-                  <span className="text-xs text-muted-foreground">(max {remainingToExit})</span>
-                </div>
+                {/* Bill # comes BEFORE bags so the operator confirms /
+                    overrides the receipt-book number first, then enters
+                    the quantity — matches the natural order of writing
+                    a manual exit slip. */}
                 <div className={`flex items-start gap-2 rounded-md p-2 border ${
                   billNumberEdited
                     ? "border-blue-300 dark:border-blue-700 bg-blue-50/60 dark:bg-blue-900/20"
@@ -438,6 +428,20 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                         : "Auto-filled — please verify before submit"}
                     </span>
                   </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="bagsToExit" className="whitespace-nowrap text-sm">{t("bagsToExit")}:</Label>
+                  <Input
+                    id="bagsToExit"
+                    type="number"
+                    value={bagsToExit}
+                    onChange={(e) => setBagsToExit(e.target.value)}
+                    min={1}
+                    max={remainingToExit}
+                    className="w-24"
+                    data-testid="input-bags-to-exit"
+                  />
+                  <span className="text-xs text-muted-foreground">(max {remainingToExit})</span>
                 </div>
               </>
             )}
