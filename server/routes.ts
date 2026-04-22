@@ -2,8 +2,30 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
+import { db } from "./db";
 import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema } from "@shared/schema";
 import { z } from "zod";
+
+// Retry a transactional operation when Postgres aborts it due to a farmer_id
+// unique-constraint collision (rare race during concurrent farmer creation).
+// The whole transaction must restart because Postgres aborts the entire tx on
+// any constraint violation — we cannot catch and retry inline within the tx.
+async function runWithFarmerIdRetry<T>(op: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await op();
+    } catch (error: any) {
+      const isFarmerIdCollision = error?.code === '23505' &&
+        (error?.constraint?.includes('farmer_id') || error?.constraint?.includes('cs_fid'));
+      if (isFarmerIdCollision && attempt < maxRetries - 1) {
+        console.log(`Farmer ID collision detected (attempt ${attempt + 1}/${maxRetries}), retrying transaction...`);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Failed to complete transaction after farmer_id collision retries');
+}
 
 // CAPTCHA verification helper
 async function verifyCaptcha(token: string): Promise<boolean> {
@@ -404,30 +426,37 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const validatedData = lotFormSchema.parse(req.body);
-      
-      // Ensure farmer ledger entry exists and get both IDs
-      const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
-        name: validatedData.farmerName,
-        contactNumber: validatedData.contactNumber,
-        village: validatedData.village,
-        tehsil: validatedData.tehsil,
-        district: validatedData.district,
-        state: validatedData.state,
-      });
-      
-      const lot = await storage.createLot({
-        ...validatedData,
-        coldStorageId: coldStorageId,
-        remainingSize: validatedData.size,
-        farmerLedgerId: farmerEntry.id,
-        farmerId: farmerEntry.farmerId,
-      });
-      
+
+      // Wrap farmer-ledger + lot insert + chamber fill in a single transaction so
+      // a failure mid-way leaves the database fully unchanged. If a unique-constraint
+      // collision on farmer_id happens (rare), retry the whole transaction.
+      const lot = await runWithFarmerIdRetry(async () =>
+        db.transaction(async (tx) => {
+          const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
+            name: validatedData.farmerName,
+            contactNumber: validatedData.contactNumber,
+            village: validatedData.village,
+            tehsil: validatedData.tehsil,
+            district: validatedData.district,
+            state: validatedData.state,
+          }, tx);
+
+          return storage.createLot({
+            ...validatedData,
+            coldStorageId: coldStorageId,
+            remainingSize: validatedData.size,
+            farmerLedgerId: farmerEntry.id,
+            farmerId: farmerEntry.farmerId,
+          }, tx);
+        })
+      );
+
       res.status(201).json(lot);
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: "Validation error", details: error.errors });
       } else {
+        console.error("Lot creation error:", error);
         res.status(500).json({ error: "Failed to create lot" });
       }
     }
@@ -478,35 +507,42 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const { farmer, lots: lotDataArray, bagTypeCategory, manualLotNo, entryDate } = batchLotSchema.parse(req.body);
 
-      // Ensure farmer ledger entry exists and get both IDs
-      const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
-        name: farmer.farmerName,
-        contactNumber: farmer.contactNumber,
-        village: farmer.village,
-        tehsil: farmer.tehsil,
-        district: farmer.district,
-        state: farmer.state,
-        entityType: farmer.entityType,
-      });
-      
-      // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
-      const lotsToCreate = lotDataArray.map(lotData => {
-        // Destructure to remove deductions from the spread
-        const { deductions, ...lotDataWithoutDeductions } = lotData;
-        
-        return {
-          ...farmer,
-          ...lotDataWithoutDeductions,
-          lotNo: "", // Will be set by createBatchLots
-          coldStorageId: coldStorageId,
-          remainingSize: lotData.size,
-          farmerLedgerId: farmerEntry.id,
-          farmerId: farmerEntry.farmerId,
-        };
-      });
-      
-      const result = await storage.createBatchLots(lotsToCreate, coldStorageId, bagTypeCategory, manualLotNo, entryDate);
-      
+      // Wrap farmer-ledger + all lot inserts + chamber-fill updates in a single
+      // transaction so a failure mid-loop rolls back every lot and the farmer
+      // ledger entry created in this request. Retry the whole transaction on a
+      // farmer_id collision (Postgres aborts the tx on 23505).
+      const result = await runWithFarmerIdRetry(async () =>
+        db.transaction(async (tx) => {
+          const farmerEntry = await storage.ensureFarmerLedgerEntry(coldStorageId, {
+            name: farmer.farmerName,
+            contactNumber: farmer.contactNumber,
+            village: farmer.village,
+            tehsil: farmer.tehsil,
+            district: farmer.district,
+            state: farmer.state,
+            entityType: farmer.entityType,
+          }, tx);
+
+          // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
+          const lotsToCreate = lotDataArray.map(lotData => {
+            // Destructure to remove deductions from the spread
+            const { deductions, ...lotDataWithoutDeductions } = lotData;
+
+            return {
+              ...farmer,
+              ...lotDataWithoutDeductions,
+              lotNo: "", // Will be set by createBatchLots
+              coldStorageId: coldStorageId,
+              remainingSize: lotData.size,
+              farmerLedgerId: farmerEntry.id,
+              farmerId: farmerEntry.farmerId,
+            };
+          });
+
+          return storage.createBatchLots(lotsToCreate, coldStorageId, bagTypeCategory, manualLotNo, entryDate, tx);
+        })
+      );
+
       res.status(201).json({
         lots: result.lots,
         entrySequence: result.entrySequence, // This is the unified Lot # = Receipt # = Bill #

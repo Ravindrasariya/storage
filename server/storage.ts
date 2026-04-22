@@ -187,8 +187,8 @@ export interface IStorage {
   deleteFloorsByChamber(chamberId: string): Promise<void>;
   updateChamberFill(id: string, fill: number): Promise<void>;
   applyChamberFillDelta(id: string, delta: number): Promise<void>;
-  createLot(lot: InsertLot): Promise<Lot>;
-  createBatchLots(lots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number, entryDate?: string): Promise<{ lots: Lot[]; entrySequence: number }>;
+  createLot(lot: InsertLot, tx?: any): Promise<Lot>;
+  createBatchLots(lots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number, entryDate?: string, tx?: any): Promise<{ lots: Lot[]; entrySequence: number }>;
   getNextEntrySequence(coldStorageId: string): Promise<number>;
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
@@ -448,7 +448,8 @@ export interface IStorage {
     tehsil?: string;
     district?: string;
     state?: string;
-  }): Promise<{ id: string; farmerId: string }>;
+    entityType?: string;
+  }, tx?: any): Promise<{ id: string; farmerId: string }>;
   createManualFarmer(coldStorageId: string, farmerData: {
     name: string;
     contactNumber: string;
@@ -694,7 +695,8 @@ export class DatabaseStorage implements IStorage {
       .where(eq(chambers.id, id));
   }
 
-  async createLot(insertLot: InsertLot): Promise<Lot> {
+  async createLot(insertLot: InsertLot, tx?: any): Promise<Lot> {
+    const exec = tx ?? db;
     const id = await generateSequentialId('lot');
     const lotData = {
       ...insertLot,
@@ -713,11 +715,13 @@ export class DatabaseStorage implements IStorage {
       soldAt: insertLot.soldAt ?? null,
     };
 
-    const [lot] = await db.insert(lots).values(lotData).returning();
+    const [lot] = await exec.insert(lots).values(lotData).returning();
 
-    const chamber = await this.getChamber(lot.chamberId);
+    const [chamber] = await exec.select().from(chambers).where(eq(chambers.id, lot.chamberId));
     if (chamber) {
-      await this.updateChamberFill(chamber.id, chamber.currentFill + lot.size);
+      await exec.update(chambers)
+        .set({ currentFill: chamber.currentFill + lot.size })
+        .where(eq(chambers.id, chamber.id));
     }
 
     return lot;
@@ -734,7 +738,8 @@ export class DatabaseStorage implements IStorage {
     return result?.entrySequence ?? 1;
   }
 
-  async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number, entryDate?: string): Promise<{ lots: Lot[]; entrySequence: number }> {
+  async createBatchLots(insertLots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number, entryDate?: string, tx?: any): Promise<{ lots: Lot[]; entrySequence: number }> {
+    const exec = tx ?? db;
     const isWaferCategory = bagTypeCategory === "wafer";
     const currentYear = entryDate ? new Date(entryDate + "T00:00:00").getFullYear() : new Date().getFullYear();
     const yearStart = new Date(currentYear, 0, 1);
@@ -799,13 +804,15 @@ export class DatabaseStorage implements IStorage {
         soldAt: insertLot.soldAt ?? null,
       };
 
-      const [lot] = await db.insert(lots).values(lotData).returning();
+      const [lot] = await exec.insert(lots).values(lotData).returning();
       createdLots.push(lot);
 
       // Update chamber fill
-      const chamber = await this.getChamber(lot.chamberId);
+      const [chamber] = await exec.select().from(chambers).where(eq(chambers.id, lot.chamberId));
       if (chamber) {
-        await this.updateChamberFill(chamber.id, chamber.currentFill + lot.size);
+        await exec.update(chambers)
+          .set({ currentFill: chamber.currentFill + lot.size })
+          .where(eq(chambers.id, chamber.id));
       }
     }
 
@@ -9185,11 +9192,12 @@ export class DatabaseStorage implements IStorage {
     district?: string;
     state?: string;
     entityType?: string;
-  }): Promise<{ id: string; farmerId: string }> {
+  }, tx?: any): Promise<{ id: string; farmerId: string }> {
+    const exec = tx ?? db;
     const key = this.getFarmerCompositeKey(farmerData.name, farmerData.contactNumber, farmerData.village);
     
     // Check if farmer already exists with this composite key
-    const existingFarmers = await db.select()
+    const existingFarmers = await exec.select()
       .from(farmerLedger)
       .where(and(
         eq(farmerLedger.coldStorageId, coldStorageId),
@@ -9208,7 +9216,7 @@ export class DatabaseStorage implements IStorage {
       if (!existing.state && farmerData.state) updates.state = farmerData.state.trim();
       
       if (Object.keys(updates).length > 0) {
-        await db.update(farmerLedger)
+        await exec.update(farmerLedger)
           .set(updates)
           .where(eq(farmerLedger.id, existing.id));
       }
@@ -9216,7 +9224,31 @@ export class DatabaseStorage implements IStorage {
       return { id: existing.id, farmerId: existing.farmerId };
     }
     
-    // Create new farmer ledger entry with retry logic for unique constraint violations
+    // Create new farmer ledger entry.
+    // When called inside a transaction, a unique-constraint violation aborts the
+    // entire transaction in Postgres — we cannot catch and retry inline. Instead
+    // we throw and let the caller re-run the whole transaction. When called
+    // outside a transaction, we keep the original in-line retry loop.
+    if (tx) {
+      const farmerId = await this.generateFarmerId(coldStorageId);
+      const newId = randomUUID();
+      await exec.insert(farmerLedger).values({
+        id: newId,
+        coldStorageId,
+        farmerId,
+        name: farmerData.name.trim(),
+        contactNumber: farmerData.contactNumber.trim(),
+        village: farmerData.village.trim(),
+        tehsil: farmerData.tehsil?.trim() || null,
+        district: farmerData.district?.trim() || null,
+        state: farmerData.state?.trim() || null,
+        entityType: farmerData.entityType || "farmer",
+        isFlagged: 0,
+        isArchived: 0,
+      });
+      return { id: newId, farmerId };
+    }
+
     const maxRetries = 3;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       const farmerId = await this.generateFarmerId(coldStorageId);
