@@ -2124,6 +2124,7 @@ export class DatabaseStorage implements IStorage {
       bagsExited: number;
       baseColdCharge: number;
       kataCharges: number;
+      extraHammaliPerBag: number;
       extraHammali: number;
       gradingCharges: number;
       totalColdStorageCharge: number;

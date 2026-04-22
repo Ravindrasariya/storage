@@ -277,7 +277,14 @@ export function MasterNikasiDialog({
     }
   };
 
-  const validRowCount = rows.filter(r => r.lotId && Number(r.exitBags) > 0).length;
+  const validRowCount = rows.filter(r => {
+    if (!r.lotId) return false;
+    const bags = Number(r.exitBags);
+    if (!Number.isFinite(bags) || bags <= 0) return false;
+    const lwc = lotById.get(r.lotId);
+    if (!lwc) return false;
+    return bags <= lwc.lot.remainingSize;
+  }).length;
   const canSubmit = !!farmerLedgerId && validRowCount > 0 && !submitMutation.isPending && !result;
 
   return (
