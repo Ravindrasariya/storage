@@ -136,6 +136,10 @@ export function MasterNikasiDialog({
   // a generic banner if a per-row CS bill # collided), so the operator
   // can correct duplicates without losing the toast.
   const [billNumberError, setBillNumberError] = useState<string | null>(null);
+  // Per-row inline CS bill # errors keyed by rowKey, populated when the
+  // master-nikasi route returns a structured 400 with rowIndex pointing
+  // at the conflicting row.
+  const [csBillRowErrors, setCsBillRowErrors] = useState<Record<string, string>>({});
 
   // Reset state whenever dialog opens. Pre-fill the shared exit bill # and
   // each row's cold-storage bill # from the cold-storage running counters.
@@ -150,6 +154,7 @@ export function MasterNikasiDialog({
       setSharedExitBillInput(coldStorage?.nextExitBillNumber ? String(coldStorage.nextExitBillNumber) : "");
       setSharedExitBillEdited(false);
       setBillNumberError(null);
+      setCsBillRowErrors({});
       setResult(null);
     }
   }, [open, lots, coldStorage?.nextExitBillNumber, coldStorage?.nextColdStorageBillNumber]);
@@ -319,7 +324,20 @@ export function MasterNikasiDialog({
     },
     onError: (err: Error) => {
       const msg = err.message || "Failed";
-      if (/Exit Bill #|exit bill number|Cold Storage Bill #|cold storage bill number/i.test(msg)) {
+      const body = (err as Error & { body?: { field?: string; rowIndex?: number | null } }).body;
+      // Per-row CS bill # collision: server returned rowIndex pointing at
+      // the conflicting grid row. Map it back to that row's rowKey so the
+      // input renders inline red.
+      if (body?.field === "coldStorageBillNumber" && typeof body.rowIndex === "number") {
+        const target = rows[body.rowIndex];
+        if (target) {
+          setCsBillRowErrors(prev => ({ ...prev, [target.rowKey]: msg }));
+        } else {
+          setBillNumberError(msg);
+        }
+      } else if (body?.field === "sharedExitBillNumber" || /Exit Bill #|exit bill number/i.test(msg)) {
+        setBillNumberError(msg);
+      } else if (/Cold Storage Bill #|cold storage bill number/i.test(msg)) {
         setBillNumberError(msg);
       }
       toast({ title: t("error") || "Error", description: msg, variant: "destructive" });
@@ -625,14 +643,32 @@ export function MasterNikasiDialog({
                           type="number"
                           min={1}
                           value={r.coldStorageBillNumber}
-                          onChange={(e) => updateRow(r.rowKey, {
-                            coldStorageBillNumber: e.target.value,
-                            coldStorageBillEdited: true,
-                          })}
+                          onChange={(e) => {
+                            updateRow(r.rowKey, {
+                              coldStorageBillNumber: e.target.value,
+                              coldStorageBillEdited: true,
+                            });
+                            if (csBillRowErrors[r.rowKey]) {
+                              setCsBillRowErrors(prev => {
+                                const next = { ...prev };
+                                delete next[r.rowKey];
+                                return next;
+                              });
+                            }
+                          }}
                           disabled={!!result || !r.lotNo || !r.marka}
-                          className="h-8 w-20 text-right"
+                          className={`h-8 w-20 text-right ${csBillRowErrors[r.rowKey] ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                          aria-invalid={!!csBillRowErrors[r.rowKey]}
                           data-testid={`input-mn-cs-bill-${idx}`}
                         />
+                        {csBillRowErrors[r.rowKey] && (
+                          <p
+                            className="mt-1 text-[10px] leading-tight text-red-600 dark:text-red-400 whitespace-normal"
+                            data-testid={`text-mn-cs-bill-error-${idx}`}
+                          >
+                            {csBillRowErrors[r.rowKey]}
+                          </p>
+                        )}
                       </td>
                       <td className="p-2 text-center">
                         {!result && rows.length > 1 && (

@@ -2402,7 +2402,8 @@ export class DatabaseStorage implements IStorage {
         position: string;
       }> = [];
 
-      for (const row of rows) {
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        const row = rows[rowIndex];
         const [lot] = await tx.select().from(lots).where(eq(lots.id, row.lotId));
         if (!lot) throw new Error(`Lot ${row.lotId} not found`);
         if (lot.coldStorageId !== coldStorageId) throw new Error("Lot does not belong to this cold storage");
@@ -2579,15 +2580,22 @@ export class DatabaseStorage implements IStorage {
         const userCsBill = row.coldStorageBillNumber ?? null;
         const csYear = new Date().getFullYear();
         if (userCsBill != null) {
-          const dupCs = await tx.select({ id: salesHistory.id })
+          const dupCs = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
             .from(salesHistory)
             .where(and(
               eq(salesHistory.coldStorageId, coldStorageId),
               eq(salesHistory.coldStorageBillNumber, userCsBill),
               sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
-            ));
+            ))
+            .limit(1);
           if (dupCs.length > 0) {
-            throw new Error(`Cold storage bill number ${userCsBill} is already used in ${csYear}`);
+            const conflictDate = dupCs[0].soldAt instanceof Date ? dupCs[0].soldAt : new Date();
+            const dd = String(conflictDate.getDate()).padStart(2, "0");
+            const mm = String(conflictDate.getMonth() + 1).padStart(2, "0");
+            const yyyy = conflictDate.getFullYear();
+            // Suffix [row N] is parsed by the master-nikasi route to map
+            // the error back to the exact CS bill # input in the grid.
+            throw new Error(`Cold Storage Bill # ${userCsBill} already used on ${dd}/${mm}/${yyyy} [row ${rowIndex}]`);
           }
           coldStorageBillNumber = userCsBill;
           await tx.update(coldStorages)

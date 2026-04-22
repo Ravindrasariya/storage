@@ -1310,35 +1310,17 @@ export async function registerRoutes(
         updateData.totalDueCharge = (lot.totalDueCharge || 0) + actualDue;
       }
       
-      await storage.updateLot(req.params.id, updateData);
-
-      await storage.createEditHistory({
-        lotId: lot.id,
-        changeType: isLotFullySold ? "final_sale" : "partial_sale",
-        previousData: JSON.stringify(previousData),
-        newData: JSON.stringify(isLotFullySold ? { remainingSize: 0, saleStatus: "sold" } : { remainingSize: newRemainingSize }),
-        soldQuantity: quantitySold,
-        pricePerBag,
-        coldCharge: coldChargeRate,
-        hammali: hammaliRate,
-        pricePerKg: pricePerKg || null,
-        buyerName: buyerName || null,
-        totalPrice,
-        salePaymentStatus: paymentStatus,
-        saleCharge: storageCharge,
-      });
-
       // Get chamber for sales history (chamber fill is no longer changed on
       // sale — fill tracks physical bag movement and only changes on entry,
       // exit, exit-reversal, and lot size edits).
       const chamber = await storage.getChamber(lot.chamberId);
-      
+
       // Ensure buyer exists in buyer ledger and get IDs (skip for self-sales)
       let buyerEntry: { id: string; buyerId: string } | null = null;
       if (buyerName && buyerName.trim() && !isSelfSale) {
         buyerEntry = await storage.ensureBuyerLedgerEntry(lot.coldStorageId, { buyerName: buyerName.trim() });
       }
-      
+
       // Calculate paid/due amounts based on payment status (use totalChargeForLot which includes all charges)
       let salePaidAmount = 0;
       let saleDueAmount = 0;
@@ -1351,8 +1333,14 @@ export async function registerRoutes(
         salePaidAmount = Math.min(rawPaidForSale, totalChargeForLot);
         saleDueAmount = totalChargeForLot - salePaidAmount;
       }
-      
-      // Create permanent sales history record
+
+      // Create the permanent sales history record FIRST. The atomic
+      // duplicate-bill-# check + counter bump happen inside this call's
+      // transaction; if the operator picked a number that's already
+      // used in the same calendar year (or a concurrent submission
+      // grabbed it first), this throws and we exit the route BEFORE
+      // any lot mutation, edit-history insert, or position update
+      // commits — leaving the system fully consistent.
       const createdSale = await storage.createSalesHistory({
         coldStorageId: lot.coldStorageId,
         farmerName: lot.farmerName,
@@ -1429,6 +1417,32 @@ export async function registerRoutes(
         }
       }
 
+      // Sale row is safely persisted with its bill #. Now apply the
+      // lot mutations (position, remainingSize, charges, status) and
+      // write the edit-history audit row. These run AFTER the sale so
+      // a duplicate-bill rejection above leaves the lot untouched.
+      if (position) {
+        await storage.updateLot(req.params.id, { position });
+      }
+
+      await storage.updateLot(req.params.id, updateData);
+
+      await storage.createEditHistory({
+        lotId: lot.id,
+        changeType: isLotFullySold ? "final_sale" : "partial_sale",
+        previousData: JSON.stringify(previousData),
+        newData: JSON.stringify(isLotFullySold ? { remainingSize: 0, saleStatus: "sold" } : { remainingSize: newRemainingSize }),
+        soldQuantity: quantitySold,
+        pricePerBag,
+        coldCharge: coldChargeRate,
+        hammali: hammaliRate,
+        pricePerKg: pricePerKg || null,
+        buyerName: buyerName || null,
+        totalPrice,
+        salePaymentStatus: paymentStatus,
+        saleCharge: storageCharge,
+      });
+
       // If adj amount was applied, trigger farmer FIFO recomputation to allocate across buckets
       if (!isSelfSale && adjReceivableSelfDueAmount > 0 && lot.farmerName && lot.contactNumber && lot.village) {
         await storage.recomputeFarmerPaymentsWithDiscounts(
@@ -1501,6 +1515,21 @@ export async function registerRoutes(
       }
       console.error("Master nikasi error:", error);
       const message = error instanceof Error ? error.message : "Failed to create master nikasi";
+      // Bill-# duplicate / validation errors carry an optional [row N]
+      // suffix from the storage layer so the dialog can map the message
+      // to the exact per-row CS bill input that conflicts.
+      const csMatch = message.match(/^(Cold Storage Bill #.*?)(?:\s*\[row (\d+)\])?$/i);
+      if (csMatch) {
+        const rowIndex = csMatch[2] != null ? Number(csMatch[2]) : null;
+        return res.status(400).json({
+          error: csMatch[1],
+          field: "coldStorageBillNumber",
+          rowIndex,
+        });
+      }
+      if (/Exit Bill #|Invalid .* bill/i.test(message)) {
+        return res.status(400).json({ error: message, field: "sharedExitBillNumber" });
+      }
       res.status(400).json({ error: message });
     }
   });
