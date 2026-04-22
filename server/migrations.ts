@@ -523,6 +523,20 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    name: "2026-04-21_backfill_extra_due_to_merchant_original",
+    up: async () => {
+      // Backfill extra_due_to_merchant_original for historical records that were created
+      // before createSalesHistory was fixed to always seed this column. Without this,
+      // payment reversals cannot restore the correct extraDueToMerchant baseline.
+      await db.execute(sql`
+        UPDATE sales_history
+        SET extra_due_to_merchant_original = extra_due_to_merchant
+        WHERE extra_due_to_merchant > 0
+          AND (extra_due_to_merchant_original IS NULL OR extra_due_to_merchant_original = 0)
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {
