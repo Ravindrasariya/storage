@@ -973,17 +973,15 @@ export async function registerRoutes(
         soldAt?: Date;
       }> = { ...validated };
 
-      // Adjust remainingSize by the same delta when size changes, and apply
-      // the same delta to the chamber's currentFill — the lot's bags are
-      // physically present in its chamber, so changing the recorded size
-      // changes the chamber fill by the same amount. Atomic SQL delta
-      // clamped to [0, capacity] avoids lost updates.
+      // Adjust remainingSize by the same delta when size changes. The
+      // matching chamber.currentFill adjustment is applied below, AFTER the
+      // lot row has been successfully updated, so a failed lot update can't
+      // leave the chamber over- or under-counted relative to the lot.
+      let chamberFillDelta = 0;
       if (validated.size !== undefined && validated.size !== lot.size) {
         const delta = validated.size - lot.size;
         updateData.remainingSize = lot.remainingSize + delta;
-        if (lot.chamberId) {
-          await storage.applyChamberFillDelta(lot.chamberId, delta);
-        }
+        chamberFillDelta = delta;
       }
       if (validated.lotNo && validated.lotNo !== lot.lotNo) {
         updateData.entrySequence = parseInt(validated.lotNo, 10);
@@ -1004,6 +1002,14 @@ export async function registerRoutes(
       }
 
       const updatedLot = await storage.updateLot(req.params.id, updateData);
+
+      // Apply chamber fill delta now that the lot row has persisted. The
+      // lot's bags are physically present in its chamber, so changing the
+      // recorded size changes the chamber fill by the same amount. The
+      // helper performs an atomic SQL delta clamped to [0, capacity].
+      if (chamberFillDelta !== 0 && lot.chamberId) {
+        await storage.applyChamberFillDelta(lot.chamberId, chamberFillDelta);
+      }
 
       // If farmer details changed, update all related salesHistory entries
       const farmerFieldsChanged = validated.farmerName !== undefined || 
