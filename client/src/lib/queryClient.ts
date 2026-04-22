@@ -21,10 +21,8 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    // Try to parse JSON error response and surface the full payload on
-    // the thrown Error so callers can read structured fields like
-    // `field` and `rowIndex` (e.g. master-nikasi per-row bill-#
-    // duplicates), not just the message.
+    // Surface JSON body on the thrown Error so callers can read
+    // structured fields like `field` and `rowIndex`, not just message.
     try {
       const json = JSON.parse(text);
       if (json.error) {

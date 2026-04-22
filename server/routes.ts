@@ -1173,19 +1173,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Quantity exceeds remaining size" });
       }
 
-      // Defense-in-depth duplicate check for the user-supplied
-      // cold-storage bill #:
-      //   (a) Pre-flight here, BEFORE any lot / edit-history / ledger
-      //       mutation, so the common case (operator just typed a number
-      //       that already exists) fails fast with no partial writes.
-      //   (b) Atomic check + lock inside createSalesHistory below
-      //       handles the rare concurrent-insert race.
-      // Pure shape validation runs first either way.
+      // Single sale date drives both the row's soldAt and the year
+      // window for the CS bill # duplicate check (pre-flight + atomic).
+      const saleDate = new Date();
+
+      // Pre-flight CS bill # dup check fails fast before any mutation;
+      // the atomic check inside createSalesHistory below handles the
+      // rare concurrent-insert race.
       if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
         if (!Number.isInteger(coldStorageBillNumber)) {
           return res.status(400).json({ error: "Cold storage bill number must be a positive integer" });
         }
-        const csYear = new Date().getFullYear();
+        const csYear = saleDate.getFullYear();
         const dup = await storage.findColdStorageBillDuplicate(lot.coldStorageId, coldStorageBillNumber, csYear);
         if (dup) {
           const onDate = dup.soldAt ? new Date(dup.soldAt).toLocaleDateString("en-IN") : `${csYear}`;
@@ -1196,13 +1195,8 @@ export async function registerRoutes(
         }
       }
 
-      // NOTE: Position update + main updateLot + createEditHistory are
-      // intentionally moved BELOW the createSalesHistory call. That way
-      // any duplicate-bill-# rejection from the atomic check inside
-      // createSalesHistory aborts before any lot/history mutation
-      // commits, eliminating the half-written-state risk under
-      // concurrent submissions of the same number.
-
+      // Lot mutations + edit history run AFTER createSalesHistory below
+      // so a duplicate bill # rejection leaves the lot untouched.
       const previousData = {
         remainingSize: lot.remainingSize,
       };
@@ -1334,13 +1328,8 @@ export async function registerRoutes(
         saleDueAmount = totalChargeForLot - salePaidAmount;
       }
 
-      // Create the permanent sales history record FIRST. The atomic
-      // duplicate-bill-# check + counter bump happen inside this call's
-      // transaction; if the operator picked a number that's already
-      // used in the same calendar year (or a concurrent submission
-      // grabbed it first), this throws and we exit the route BEFORE
-      // any lot mutation, edit-history insert, or position update
-      // commits — leaving the system fully consistent.
+      // Sale insert first: atomic dup check + counter bump inside the tx.
+      // If it throws, no lot/edit-history mutation has run.
       const createdSale = await storage.createSalesHistory({
         coldStorageId: lot.coldStorageId,
         farmerName: lot.farmerName,
@@ -1377,7 +1366,7 @@ export async function registerRoutes(
         paidAmount: salePaidAmount,
         dueAmount: saleDueAmount,
         entryDate: lot.createdAt,
-        saleYear: new Date().getFullYear(),
+        saleYear: saleDate.getFullYear(),
         // Charge calculation context for edit dialog
         chargeBasis: chargeBasis || "actual",
         chargeUnitAtSale: effectiveChargeUnit, // Preserve effective charge unit used at sale time (company=quintal, farmer=global)
@@ -1417,10 +1406,7 @@ export async function registerRoutes(
         }
       }
 
-      // Sale row is safely persisted with its bill #. Now apply the
-      // lot mutations (position, remainingSize, charges, status) and
-      // write the edit-history audit row. These run AFTER the sale so
-      // a duplicate-bill rejection above leaves the lot untouched.
+      // Sale persisted; safe to apply lot mutations + audit row.
       if (position) {
         await storage.updateLot(req.params.id, { position });
       }
@@ -1515,9 +1501,7 @@ export async function registerRoutes(
       }
       console.error("Master nikasi error:", error);
       const message = error instanceof Error ? error.message : "Failed to create master nikasi";
-      // Bill-# duplicate / validation errors carry an optional [row N]
-      // suffix from the storage layer so the dialog can map the message
-      // to the exact per-row CS bill input that conflicts.
+      // [row N] suffix maps the error back to the offending grid row.
       const csMatch = message.match(/^(Cold Storage Bill #.*?)(?:\s*\[row (\d+)\])?$/i);
       if (csMatch) {
         const rowIndex = csMatch[2] != null ? Number(csMatch[2]) : null;

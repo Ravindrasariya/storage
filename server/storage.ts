@@ -212,7 +212,7 @@ export interface IStorage {
   updateChamber(id: string, updates: Partial<Chamber>): Promise<Chamber | undefined>;
   deleteChamber(id: string): Promise<boolean>;
   // Sales History
-  createSalesHistory(data: InsertSalesHistory): Promise<SalesHistory>;
+  createSalesHistory(data: InsertSalesHistory, opts?: { userColdStorageBillNumber?: number | null }): Promise<SalesHistory>;
   getSalesHistory(coldStorageId: string, filters?: {
     year?: number;
     farmerName?: string;
@@ -246,7 +246,7 @@ export interface IStorage {
   getSaleEditHistory(saleId: string): Promise<SaleEditHistory[]>;
   createSaleEditHistory(data: InsertSaleEditHistory): Promise<SaleEditHistory>;
   // Exit History
-  createExit(data: InsertExitHistory): Promise<ExitHistory>;
+  createExit(data: InsertExitHistory, opts?: { userBillNumber?: number | null }): Promise<ExitHistory>;
   getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
   getExitsByBillNumber(coldStorageId: string, billNumber: number): Promise<Array<{
@@ -1635,26 +1635,26 @@ export class DatabaseStorage implements IStorage {
         : (data.extraDueToMerchant ?? 0);
 
     const userCsBill = opts?.userColdStorageBillNumber ?? null;
+    // Year derives from the sale's effective date (soldAt). Insert
+    // schema omits soldAt so callers may not pass it; in that case the
+    // DB default (now()) applies and we use the same timestamp here.
+    const dataSoldAt = (data as InsertSalesHistory & { soldAt?: Date | string }).soldAt;
+    const saleDate: Date = dataSoldAt instanceof Date
+      ? dataSoldAt
+      : (dataSoldAt ? new Date(dataSoldAt) : new Date());
 
-    // Wrap the insert so the cold-storage bill # assignment (when the
-    // user supplied one) and the counter bump happen in the SAME
-    // transaction as the salesHistory row insert. That way a duplicate
-    // bill # rejection rolls back the entire sale write — the operator
-    // can never end up with a half-recorded sale because the bill #
-    // collided.
+    // Atomic dup-check + insert + counter bump in one tx so a duplicate
+    // bill # rolls back the entire sale write.
     return await db.transaction(async (tx) => {
       let resolvedCsBill: number | null = null;
       if (userCsBill != null) {
         if (!Number.isFinite(userCsBill) || userCsBill <= 0) {
           throw new Error("Invalid cold storage bill number");
         }
-        // Lock the cold-storage row so concurrent transactions serialize
-        // on the same counter — closes the dup-check race for the
-        // common case where two operators submit the same number at the
-        // same time.
+        // Lock cold-storage row to serialize concurrent same-number submits.
         await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${data.coldStorageId} FOR UPDATE`);
 
-        const csYear = new Date().getFullYear();
+        const csYear = saleDate.getFullYear();
         const dup = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
           .from(salesHistory)
           .where(and(
@@ -2282,6 +2282,9 @@ export class DatabaseStorage implements IStorage {
     };
   }> {
     const { coldStorageId, farmerLedgerId, exitDate, rows } = args;
+    // Sale rows are recorded "now"; exitDate may be backdated.
+    // Year-scope for CS bill # dup checks comes from saleDate, not exitDate.
+    const saleDate = new Date();
 
     if (rows.length === 0) {
       throw new Error("No rows provided");
@@ -2568,17 +2571,14 @@ export class DatabaseStorage implements IStorage {
           farmerId: lot.farmerId || null,
           buyerLedgerId: null,
           buyerId: null,
-          soldAt: new Date(),
+          soldAt: saleDate,
         } as InsertSalesHistory).returning();
 
-        // Allocate the per-row cold-storage bill number — either honor a
-        // user override (with calendar-year duplicate check, scoped to
-        // the *sale's* year, which is the year the row is recorded
-        // against — independent of any backdated exitDate) or atomically
-        // reserve the next counter value.
+        // Per-row CS bill #: dup check is scoped to the sale row's year
+        // (saleDate.getFullYear()), not the backdated exitDate.
         let coldStorageBillNumber: number | null = null;
         const userCsBill = row.coldStorageBillNumber ?? null;
-        const csYear = new Date().getFullYear();
+        const csYear = saleDate.getFullYear();
         if (userCsBill != null) {
           const dupCs = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
             .from(salesHistory)
