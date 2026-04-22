@@ -286,55 +286,10 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            {/* Title + Exit Date pill share one tidy row, same shape as
-                the Sale dialog header (Task #206 / layout fix). flex-wrap
-                lets the date pill drop below the title on narrow widths
-                instead of clipping. */}
-            <div className="flex items-center gap-2 flex-wrap pr-6">
-              <DialogTitle className="flex items-center gap-2 flex-shrink-0">
-                <LogOut className="h-5 w-5" />
-                {t("exit")} / निकासी
-              </DialogTitle>
-              {/* Editable Exit Date — defaults to today (IST). Same
-                  amber-when-default / blue-when-edited pill treatment as
-                  the Sale Date pill. */}
-              <div className={`flex items-center gap-2 rounded-md px-2 py-1 border ${
-                exitDateEdited
-                  ? "border-blue-400 dark:border-blue-600 bg-blue-100/80 dark:bg-blue-900/40 ring-1 ring-blue-300/50"
-                  : "border-amber-400 dark:border-amber-600 bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-300/50"
-              }`}>
-                <Label
-                  htmlFor="exit-date"
-                  className={`text-xs font-semibold whitespace-nowrap ${
-                    exitDateEdited
-                      ? "text-blue-800 dark:text-blue-200"
-                      : "text-amber-800 dark:text-amber-200"
-                  }`}
-                >
-                  {t("date") || "Date"}
-                </Label>
-                <Input
-                  id="exit-date"
-                  type="date"
-                  value={exitDateInput}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setExitDateInput(next);
-                    // Clearing the field returns the pill to "auto" and
-                    // omits exitDate from the payload, matching the
-                    // visual state to the wire behaviour.
-                    setExitDateEdited(next.length > 0);
-                  }}
-                  className="h-7 w-36 text-sm bg-background"
-                  data-testid="input-exit-date"
-                />
-                <span className={`text-[10px] uppercase tracking-wide ${
-                  exitDateEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
-                }`}>
-                  {exitDateEdited ? "edited" : "auto"}
-                </span>
-              </div>
-            </div>
+            <DialogTitle className="flex items-center gap-2">
+              <LogOut className="h-5 w-5" />
+              {t("exit")} / निकासी
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">
@@ -371,20 +326,25 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
 
             {remainingToExit > 0 && (
               <>
-                {/* Bill # comes BEFORE bags so the operator confirms /
-                    overrides the receipt-book number first, then enters
-                    the quantity — matches the natural order of writing
-                    a manual exit slip. */}
-                <div className={`flex items-start gap-2 rounded-md p-2 border ${
-                  billNumberEdited
+                {/* Bill # + Date share one block, one amber→blue
+                    highlighter, one auto/edited badge, and one shared
+                    verification comment (Task #212). Bill # comes
+                    BEFORE Date here, then bags below — matches the
+                    natural order of writing a manual exit slip. The
+                    block as a whole is gated on remainingToExit > 0,
+                    so once a sale is fully exited the editor (and the
+                    new entry's date input) disappear; the history list
+                    below shows each saved exit's date as read-only. */}
+                <div className={`flex flex-col gap-1 rounded-md p-2 border ${
+                  (billNumberEdited || exitDateEdited)
                     ? "border-blue-300 dark:border-blue-700 bg-blue-50/60 dark:bg-blue-900/20"
                     : "border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-900/20"
                 }`}>
-                  <Label htmlFor="exitBillNumber" className="whitespace-nowrap text-sm pt-1.5">
-                    {t("exitBillNumber") || "Exit Bill #"}:
-                  </Label>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-2">
+                      <Label htmlFor="exitBillNumber" className="whitespace-nowrap text-sm">
+                        {t("exitBillNumber") || "Exit Bill #"}:
+                      </Label>
                       <Input
                         id="exitBillNumber"
                         type="number"
@@ -395,34 +355,54 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                           setBillNumberEdited(true);
                           if (billNumberError) setBillNumberError(null);
                         }}
-                        className={`w-28 h-8 ${billNumberError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                        className={`w-24 h-8 ${billNumberError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                         data-testid="input-exit-bill-number"
                         aria-invalid={!!billNumberError}
                       />
-                      <Badge
-                        variant="outline"
-                        className={billNumberEdited
-                          ? "text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-700"
-                          : "text-amber-700 dark:text-amber-300 border-amber-400 dark:border-amber-700"}
-                        data-testid="badge-exit-bill-state"
-                      >
-                        {billNumberEdited ? "edited" : "auto"}
-                      </Badge>
                     </div>
-                    <span className="text-[11px] text-muted-foreground">
-                      {billNumberEdited
-                        ? "Edited — please verify before submit"
-                        : "Auto-filled — please verify before submit"}
-                    </span>
-                    {billNumberError && (
-                      <span
-                        className="text-[11px] text-red-600 dark:text-red-400"
-                        data-testid="error-exit-bill-number"
-                      >
-                        {billNumberError}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="exit-date" className="whitespace-nowrap text-sm">
+                        {t("date") || "Date"}:
+                      </Label>
+                      <Input
+                        id="exit-date"
+                        type="date"
+                        value={exitDateInput}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setExitDateInput(next);
+                          // Clearing returns the field to "auto" so we
+                          // omit exitDate from the payload — visual and
+                          // wire behaviour stay in sync.
+                          setExitDateEdited(next.length > 0);
+                        }}
+                        className="h-8 w-36 text-sm bg-background"
+                        data-testid="input-exit-date"
+                      />
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={(billNumberEdited || exitDateEdited)
+                        ? "text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-700"
+                        : "text-amber-700 dark:text-amber-300 border-amber-400 dark:border-amber-700"}
+                      data-testid="badge-exit-bill-state"
+                    >
+                      {(billNumberEdited || exitDateEdited) ? "edited" : "auto"}
+                    </Badge>
                   </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    {(billNumberEdited || exitDateEdited)
+                      ? "Edited — please verify before submit"
+                      : "Auto-filled — please verify before submit"}
+                  </span>
+                  {billNumberError && (
+                    <span
+                      className="text-[11px] text-red-600 dark:text-red-400"
+                      data-testid="error-exit-bill-number"
+                    >
+                      {billNumberError}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Label htmlFor="bagsToExit" className="whitespace-nowrap text-sm">{t("bagsToExit")}:</Label>
