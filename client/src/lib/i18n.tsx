@@ -426,6 +426,8 @@ const translations: Translations = {
   baseColdCharge: { en: "Base Cold Charge", hi: "आधार शीत शुल्क" },
   kataChargesShort: { en: "Kata", hi: "काटा" },
   extraHammaliShort: { en: "Extra Hammali / Bag", hi: "अतिरिक्त हम्माली / बोरी" },
+  extraHammaliPerBagShort: { en: "Extra Hammali / Bag", hi: "अतिरिक्त हम्माली / बोरी" },
+  soldBags: { en: "Sold Bags", hi: "बेची बोरी" },
   gradingChargesShort: { en: "Grading", hi: "ग्रेडिंग" },
   totalChargesShort: { en: "Cold Storage Charges", hi: "कुल शीत शुल्क" },
   removeRow: { en: "Remove", hi: "हटाएं" },

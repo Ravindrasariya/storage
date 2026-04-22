@@ -26,9 +26,10 @@ interface MasterNikasiDialogProps {
 interface RowState {
   rowKey: string;
   lotId: string;
+  marka: string;
   exitBags: string;
   kataCharges: string;
-  extraHammali: string;
+  extraHammaliPerBag: string;
   gradingCharges: string;
 }
 
@@ -43,6 +44,7 @@ interface MasterNikasiResult {
     bagsExited: number;
     baseColdCharge: number;
     kataCharges: number;
+    extraHammaliPerBag: number;
     extraHammali: number;
     gradingCharges: number;
     totalColdStorageCharge: number;
@@ -64,12 +66,13 @@ interface MasterNikasiResult {
   };
 }
 
-const newRow = (lotId = ""): RowState => ({
+const newRow = (lotId = "", marka = ""): RowState => ({
   rowKey: `r${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
   lotId,
+  marka,
   exitBags: "",
   kataCharges: "",
-  extraHammali: "",
+  extraHammaliPerBag: "",
   gradingCharges: "",
 });
 
@@ -123,6 +126,15 @@ export function MasterNikasiDialog({
     return m;
   }, [lots]);
 
+  // Distinct marka options across this farmer's lots.
+  const markaOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of lots) {
+      if (l.lot.marka && l.lot.marka.trim()) set.add(l.lot.marka.trim());
+    }
+    return Array.from(set).sort();
+  }, [lots]);
+
   const usedLotIds = useMemo(() => new Set(rows.map(r => r.lotId).filter(Boolean)), [rows]);
 
   // Per-row live computation of base cold charge (mirrors server logic).
@@ -131,7 +143,7 @@ export function MasterNikasiDialog({
     const lwc = lotById.get(lotId);
     if (!lwc) return 0;
     const lot = lwc.lot;
-    if ((lot as any).baseColdChargesBilled === 1) return 0;
+    if (lot.baseColdChargesBilled === 1) return 0;
     if (!exitBags || exitBags <= 0) return 0;
     const useWafer = lot.bagType === "wafer";
     const gCold = useWafer ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
@@ -152,9 +164,10 @@ export function MasterNikasiDialog({
     const exitBags = Number(r.exitBags) || 0;
     const base = calcBaseCharge(r.lotId, exitBags);
     const kata = Number(r.kataCharges) || 0;
-    const extra = Number(r.extraHammali) || 0;
+    const extraPerBag = Number(r.extraHammaliPerBag) || 0;
+    const extra = extraPerBag * exitBags;
     const grading = Number(r.gradingCharges) || 0;
-    return { base, kata, extra, grading, total: base + kata + extra + grading, exitBags };
+    return { base, kata, extra, extraPerBag, grading, total: base + kata + extra + grading, exitBags };
   });
   const grandTotal = rowTotals.reduce((s, r) => s + r.total, 0);
   const totalBags = rowTotals.reduce((s, r) => s + r.exitBags, 0);
@@ -176,7 +189,7 @@ export function MasterNikasiDialog({
           lotId: r.lotId,
           exitBags: Number(r.exitBags),
           kataCharges: Number(r.kataCharges) || 0,
-          extraHammali: Number(r.extraHammali) || 0,
+          extraHammaliPerBag: Number(r.extraHammaliPerBag) || 0,
           gradingCharges: Number(r.gradingCharges) || 0,
         }));
       if (cleaned.length === 0) throw new Error("Add at least one valid row.");
@@ -311,17 +324,18 @@ export function MasterNikasiDialog({
         {lots.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">{t("noLotsAvailable")}</p>
         ) : (
-          <div className="overflow-x-auto border rounded-md">
-            <table className="w-full text-xs min-w-[1100px]">
-              <thead className="bg-muted/50">
+          <div className="overflow-x-auto border border-blue-700 rounded-md">
+            <table className="w-full text-xs min-w-[1200px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_td]:border [&_td]:border-border">
+              <thead className="bg-blue-700 text-white">
                 <tr>
                   <th className="p-2 text-left">{t("receiptNo")}</th>
                   <th className="p-2 text-left">{t("marka") || "Marka"}</th>
                   <th className="p-2 text-right">{t("remainingBagsShort")}</th>
                   <th className="p-2 text-right">{t("exitBags")}</th>
+                  <th className="p-2 text-right">{t("soldBags") || "Sold Bags"}</th>
                   <th className="p-2 text-right">{t("baseColdCharge")}</th>
                   <th className="p-2 text-right">{t("kataChargesShort")}</th>
-                  <th className="p-2 text-right">{t("extraHammaliShort")}</th>
+                  <th className="p-2 text-right">{t("extraHammaliPerBagShort") || `${t("extraHammaliShort")}/Bag`}</th>
                   <th className="p-2 text-right">{t("gradingChargesShort")}</th>
                   <th className="p-2 text-right">{t("totalChargesShort")}</th>
                   <th className="p-2 w-10"></th>
@@ -334,30 +348,64 @@ export function MasterNikasiDialog({
                   const totals = rowTotals[idx];
                   const exceeds = lwc && totals.exitBags > remaining;
                   // Receipt # options: include all lots, but disable already-used (other) ones.
+                  // When marka is selected, narrow Receipt # options to lots with that marka.
+                  const filteredLots = r.marka
+                    ? lots.filter(l => (l.lot.marka || "").trim() === r.marka)
+                    : lots;
+                  // When receipt is selected, narrow Marka options to lots' actual marka.
+                  const lotMarkaForRow = lwc?.lot.marka?.trim() || "";
                   return (
-                    <tr key={r.rowKey} className="border-t" data-testid={`row-mn-${idx}`}>
-                      <td className="p-2 min-w-[160px]">
+                    <tr key={r.rowKey} data-testid={`row-mn-${idx}`}>
+                      <td className="p-2 min-w-[180px]">
                         <Select
                           value={r.lotId || undefined}
-                          onValueChange={(v) => updateRow(r.rowKey, { lotId: v })}
+                          onValueChange={(v) => {
+                            const picked = lotById.get(v);
+                            updateRow(r.rowKey, {
+                              lotId: v,
+                              marka: picked?.lot.marka?.trim() || r.marka,
+                            });
+                          }}
                           disabled={!!result}
                         >
                           <SelectTrigger className="h-8" data-testid={`select-mn-lot-${idx}`}>
                             <SelectValue placeholder="—" />
                           </SelectTrigger>
                           <SelectContent>
-                            {lots.map(l => {
+                            {filteredLots.map(l => {
                               const used = usedLotIds.has(l.lot.id) && l.lot.id !== r.lotId;
                               return (
                                 <SelectItem key={l.lot.id} value={l.lot.id} disabled={used}>
-                                  {l.lot.lotNo}{l.lot.marka ? ` (${l.lot.marka})` : ""} · {l.lot.remainingSize}/{l.lot.size}
+                                  {l.lot.lotNo} · {l.lot.remainingSize}/{l.lot.size}
                                 </SelectItem>
                               );
                             })}
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className="p-2 font-mono">{lwc?.lot.marka || "-"}</td>
+                      <td className="p-2 min-w-[120px]">
+                        <Select
+                          value={r.marka || undefined}
+                          onValueChange={(v) => {
+                            // If the chosen marka doesn't match the current lot, clear lot.
+                            const stillValid = lwc && (lwc.lot.marka || "").trim() === v;
+                            updateRow(r.rowKey, {
+                              marka: v,
+                              lotId: stillValid ? r.lotId : "",
+                            });
+                          }}
+                          disabled={!!result || markaOptions.length === 0}
+                        >
+                          <SelectTrigger className="h-8" data-testid={`select-mn-marka-${idx}`}>
+                            <SelectValue placeholder={lotMarkaForRow || "—"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {markaOptions.map(m => (
+                              <SelectItem key={m} value={m}>{m}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
                       <td className="p-2 text-right font-mono">{remaining || "-"}</td>
                       <td className="p-2">
                         <Input
@@ -370,6 +418,9 @@ export function MasterNikasiDialog({
                           className={`h-8 w-20 text-right ${exceeds ? "border-destructive" : ""}`}
                           data-testid={`input-mn-bags-${idx}`}
                         />
+                      </td>
+                      <td className="p-2 text-right font-mono" data-testid={`text-mn-sold-${idx}`}>
+                        {totals.exitBags || "-"}
                       </td>
                       <td className="p-2 text-right font-mono" data-testid={`text-mn-base-${idx}`}>{fmt(totals.base)}</td>
                       <td className="p-2">
@@ -387,8 +438,8 @@ export function MasterNikasiDialog({
                         <Input
                           type="number"
                           min={0}
-                          value={r.extraHammali}
-                          onChange={(e) => updateRow(r.rowKey, { extraHammali: e.target.value })}
+                          value={r.extraHammaliPerBag}
+                          onChange={(e) => updateRow(r.rowKey, { extraHammaliPerBag: e.target.value })}
                           disabled={!!result || !r.lotId}
                           className="h-8 w-24 text-right"
                           data-testid={`input-mn-extra-${idx}`}
@@ -423,9 +474,10 @@ export function MasterNikasiDialog({
                     </tr>
                   );
                 })}
-                <tr className="border-t bg-muted/30 font-semibold">
+                <tr className="bg-muted/30 font-semibold">
                   <td className="p-2" colSpan={3}>{t("total") || "Total"}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-bags">{totalBags}</td>
+                  <td className="p-2 text-right font-mono" data-testid="text-mn-total-sold">{totalBags}</td>
                   <td className="p-2" colSpan={4}></td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-grand-total">{fmt(grandTotal)}</td>
                   <td></td>
@@ -482,6 +534,7 @@ export function MasterNikasiDialog({
                     <th>{t("chamber") || "Ch"}/{t("floor") || "Fl"}/{t("position") || "Pos"}</th>
                     <th>{t("type") || "Type"}</th>
                     <th>{t("exitBags")}</th>
+                    <th>{t("soldBags") || "Sold Bags"}</th>
                     <th>{t("baseColdCharge")}</th>
                     <th>{t("kataChargesShort")}</th>
                     <th>{t("extraHammaliShort")}</th>
@@ -498,6 +551,7 @@ export function MasterNikasiDialog({
                       <td className="lft">{s.chamberName}/{s.floor}/{s.position}</td>
                       <td className="lft">{s.bagType === "wafer" ? "W" : "S"}-{s.potatoType}</td>
                       <td>{s.bagsExited}</td>
+                      <td>{s.bagsExited}</td>
                       <td>{fmt(s.baseColdCharge)}</td>
                       <td>{fmt(s.kataCharges)}</td>
                       <td>{fmt(s.extraHammali)}</td>
@@ -507,6 +561,7 @@ export function MasterNikasiDialog({
                   ))}
                   <tr className="tot">
                     <td colSpan={5} className="lft">{t("total") || "Total"}</td>
+                    <td>{result.sales.reduce((s, r) => s + r.bagsExited, 0)}</td>
                     <td>{result.sales.reduce((s, r) => s + r.bagsExited, 0)}</td>
                     <td>{fmt(result.sales.reduce((s, r) => s + r.baseColdCharge, 0))}</td>
                     <td>{fmt(result.sales.reduce((s, r) => s + r.kataCharges, 0))}</td>

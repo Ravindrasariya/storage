@@ -2110,7 +2110,7 @@ export class DatabaseStorage implements IStorage {
       lotId: string;
       exitBags: number;
       kataCharges: number;
-      extraHammali: number;
+      extraHammaliPerBag: number;
       gradingCharges: number;
     }>;
   }): Promise<{
@@ -2237,29 +2237,43 @@ export class DatabaseStorage implements IStorage {
         }
 
         const kata = row.kataCharges || 0;
-        const extra = row.extraHammali || 0;
+        const extraPerBag = row.extraHammaliPerBag || 0;
+        const extraTotal = extraPerBag * row.exitBags;
         const grading = row.gradingCharges || 0;
-        const totalChargeForLot = storageCharge + kata + extra + grading;
+        const totalChargeForLot = storageCharge + kata + extraTotal + grading;
 
-        const newRemainingSize = lot.remainingSize - row.exitBags;
-        const isLotFullySold = newRemainingSize === 0;
-
-        // Update the lot
-        const lotUpdate: Record<string, unknown> = {
-          remainingSize: newRemainingSize,
-          totalDueCharge: (lot.totalDueCharge || 0) + totalChargeForLot,
+        // Atomic, race-safe stock decrement: WHERE clause asserts current
+        // remainingSize is sufficient. If any concurrent write reduced stock
+        // below row.exitBags, the UPDATE affects 0 rows and we abort the txn.
+        const decUpdate: Record<string, unknown> = {
+          remainingSize: sql`${lots.remainingSize} - ${row.exitBags}`,
+          totalDueCharge: sql`COALESCE(${lots.totalDueCharge}, 0) + ${totalChargeForLot}`,
         };
         if (clearingLot && lot.baseColdChargesBilled !== 1) {
-          lotUpdate.baseColdChargesBilled = 1;
+          decUpdate.baseColdChargesBilled = 1;
         }
+        const updatedLotRows = await tx.update(lots)
+          .set(decUpdate)
+          .where(and(
+            eq(lots.id, lot.id),
+            gte(lots.remainingSize, row.exitBags),
+          ))
+          .returning({ remainingSize: lots.remainingSize });
+        if (updatedLotRows.length === 0) {
+          throw new Error(`Lot ${lot.lotNo}: insufficient remaining bags (concurrent change)`);
+        }
+        const newRemainingSize = updatedLotRows[0].remainingSize;
+        const isLotFullySold = newRemainingSize === 0;
+
         if (isLotFullySold) {
-          lotUpdate.saleStatus = "sold";
-          lotUpdate.paymentStatus = "due";
-          lotUpdate.saleCharge = storageCharge;
-          lotUpdate.soldAt = new Date();
-          lotUpdate.upForSale = 0;
+          await tx.update(lots).set({
+            saleStatus: "sold",
+            paymentStatus: "due",
+            saleCharge: storageCharge,
+            soldAt: new Date(),
+            upForSale: 0,
+          }).where(eq(lots.id, lot.id));
         }
-        await tx.update(lots).set(lotUpdate).where(eq(lots.id, lot.id));
 
         // Lot edit history (mirrors partial-sale path)
         await tx.insert(lotEditHistory).values({
@@ -2388,7 +2402,8 @@ export class DatabaseStorage implements IStorage {
           bagsExited: row.exitBags,
           baseColdCharge: storageCharge,
           kataCharges: kata,
-          extraHammali: extra,
+          extraHammaliPerBag: extraPerBag,
+          extraHammali: extraTotal,
           gradingCharges: grading,
           totalColdStorageCharge: totalChargeForLot,
           coldStorageBillNumber,

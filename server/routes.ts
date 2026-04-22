@@ -1402,7 +1402,7 @@ export async function registerRoutes(
       lotId: z.string().min(1),
       exitBags: z.number().int().min(1),
       kataCharges: z.number().min(0).default(0),
-      extraHammali: z.number().min(0).default(0),
+      extraHammaliPerBag: z.number().min(0).default(0),
       gradingCharges: z.number().min(0).default(0),
     })).min(1),
   });
