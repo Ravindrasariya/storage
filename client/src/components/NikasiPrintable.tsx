@@ -108,7 +108,6 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
             <th>#</th>
             <th className="lft">{t("receiptNo")}</th>
             <th className="lft">{t("marka") || "Marka"}</th>
-            <th>{t("soldBags")}</th>
             <th>{t("bagsExited")}</th>
             <th>{t("bagTypeLabel")}</th>
             <th>{t("chamber")}</th>
@@ -122,7 +121,6 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
               <td>{i + 1}</td>
               <td className="lft">{s.lotNo}</td>
               <td className="lft">{s.marka || "—"}</td>
-              <td>{s.bagsExited}</td>
               <td><strong>{s.bagsExited}</strong></td>
               <td>{s.bagType === "wafer" ? "Wafer" : "Seed"}</td>
               <td>{s.chamberName}</td>
@@ -133,7 +131,6 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
           <tr className="tot">
             <td colSpan={3} className="lft">{t("total") || "Total"}</td>
             <td>{totalBags}</td>
-            <td>{totalBags}</td>
             <td colSpan={4}></td>
           </tr>
         </tbody>
@@ -141,7 +138,6 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
       <div className="signature">
         <div className="signature-line">{t("authorisedSignatory") || "Authorised Signatory"}</div>
       </div>
-      <div className="footer">{t("paymentStatus") || "Payment"}: {t("due")} (Self-Sale)</div>
     </>
   );
 }
