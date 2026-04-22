@@ -96,11 +96,10 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
         <h1>{coldStorage?.name || "Cold Storage"}</h1>
         {address && <div style={{ fontSize: 11 }}>{address}</div>}
         <h2>{t("exitReceipt")} / निकासी रसीद</h2>
-        <h3>{t("exitBillNumber")} #{data.sharedExitBillNumber || "-"}</h3>
+        <h3>Exit Bill No. / निकासी बिल नं. {data.sharedExitBillNumber || "-"}</h3>
       </div>
       <div className="meta">
         <span><strong>{t("exitDate")}:</strong> {format(new Date(data.exitDate), "dd/MM/yyyy")}</span>
-        <span><strong>{t("printedOn") || "Printed"}:</strong> {format(new Date(), "dd/MM/yyyy HH:mm")}</span>
       </div>
       <div className="party">
         <strong>{partyRowLabel}:</strong> {data.farmer.farmerName} &nbsp;|&nbsp;
