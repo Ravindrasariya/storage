@@ -880,6 +880,7 @@ export async function registerRoutes(
     contactNumber: z.string().optional(),
     farmerLedgerId: z.string().optional(),
     farmerId: z.string().optional(),
+    remarks: z.string().optional(),
   });
 
   app.patch("/api/lots/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {

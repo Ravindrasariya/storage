@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -162,6 +163,7 @@ export default function StockRegister() {
     contactNumber: string;
     farmerLedgerId: string;
     farmerId: string;
+    remarks: string;
   } | null>(null);
   const [lotNoError, setLotNoError] = useState<string | null>(null);
   const [farmerEditMode, setFarmerEditMode] = useState(false);
@@ -1393,6 +1395,7 @@ export default function StockRegister() {
       contactNumber: lot.contactNumber || "",
       farmerLedgerId: lot.farmerLedgerId || "",
       farmerId: lot.farmerId || "",
+      remarks: lot.remarks || "",
     });
     setLotNoError(null);
     setFarmerEditMode(false);
@@ -2552,6 +2555,19 @@ export default function StockRegister() {
             </div>
           )}
 
+          <div className="space-y-1">
+            <Label htmlFor="input-lot-remarks">{t("remarks")}</Label>
+            <Textarea
+              id="input-lot-remarks"
+              data-testid="input-lot-remarks"
+              value={editForm?.remarks ?? ""}
+              onChange={(e) => editForm && setEditForm({ ...editForm, remarks: e.target.value })}
+              placeholder={t("remarksPlaceholder") || "Any additional remarks or notes…"}
+              rows={3}
+              className="resize-none"
+            />
+          </div>
+
           <div className="flex justify-end gap-2 border-t pt-4">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               {t("cancel")}
@@ -2592,7 +2608,11 @@ export default function StockRegister() {
                         position: updatedLot.position || "",
                         quality: updatedLot.quality,
                         netWeight: updatedLot.netWeight || undefined,
+                        size: updatedLot.size,
                         lotNo: updatedLot.lotNo,
+                        marka: updatedLot.marka || "",
+                        rstNo: updatedLot.rstNo || "",
+                        vehicle: updatedLot.vehicle || "",
                         farmerName: updatedLot.farmerName,
                         village: updatedLot.village || "",
                         tehsil: updatedLot.tehsil || "",
@@ -2601,6 +2621,7 @@ export default function StockRegister() {
                         contactNumber: updatedLot.contactNumber || "",
                         farmerLedgerId: updatedLot.farmerLedgerId || "",
                         farmerId: updatedLot.farmerId || "",
+                        remarks: updatedLot.remarks || "",
                       });
                       setLotNoError(null);
                       setFarmerEditMode(false);
