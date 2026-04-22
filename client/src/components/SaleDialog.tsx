@@ -360,9 +360,12 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
-          <div className="flex items-center justify-between gap-3 pr-6">
-            <div className="flex items-center gap-3 flex-wrap">
-              <DialogTitle className="flex-shrink-0">{t("sale")}</DialogTitle>
+          {/* Title + Sale Date pill + CS # pill all share one tidy row.
+              flex-wrap lets the pills drop together below the title on
+              very narrow widths instead of splitting awkwardly across
+              two flex regions (which is what justify-between caused). */}
+          <div className="flex items-center gap-2 flex-wrap pr-6">
+            <DialogTitle className="flex-shrink-0">{t("sale")}</DialogTitle>
             {/* Editable Sale Date — defaults to today (IST) so back-
                 dated entries (sale recorded a day or two late) carry
                 the real sale date through the row's `soldAt`, the
@@ -405,7 +408,6 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
                 {saleDateEdited ? "edited" : "auto"}
               </span>
             </div>
-            </div>
             {/* Cold-storage receipt-book bill #, surfaced inline with the
                 Sale title so the operator sees and verifies it before
                 anything else. Amber = auto-filled from the running
@@ -436,7 +438,7 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
                   if (coldStorageBillError) setColdStorageBillError(null);
                 }}
                 placeholder="—"
-                className={`h-7 w-20 text-sm bg-background ${coldStorageBillError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                className={`h-7 w-14 text-sm bg-background ${coldStorageBillError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                 data-testid="input-partial-cs-bill"
                 aria-invalid={!!coldStorageBillError}
               />
