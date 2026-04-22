@@ -76,6 +76,14 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     queryKey: ["/api/cold-storage"],
   });
 
+  const coldStorageAddress = [
+    coldStorage?.address,
+    coldStorage?.tehsil,
+    coldStorage?.district,
+    coldStorage?.state,
+    coldStorage?.pincode,
+  ].filter(Boolean).join(", ");
+
   const { data: farmerLedgerData } = useQuery<{ farmers: Array<{ id: string; entityType: string }> }>({
     queryKey: ["/api/farmer-ledger"],
   });
@@ -279,6 +287,9 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     <div>
       <div className="bill-header">
         <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
+        {coldStorageAddress && (
+          <div style={{ fontSize: "11px", textAlign: "center", marginTop: "2px" }} data-testid="text-cold-storage-address-deduction">{coldStorageAddress}</div>
+        )}
         <h2>शीत भण्डार कटौती बिल</h2>
         <div style={{ marginTop: "8px", fontSize: "14px" }}>
           बिल नंबर / Bill No: <strong>{billNumber || "-"}</strong>
@@ -487,6 +498,9 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     <div>
       <div className="bill-header">
         <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
+        {coldStorageAddress && (
+          <div style={{ fontSize: "11px", textAlign: "center", marginTop: "2px" }} data-testid="text-cold-storage-address-sales">{coldStorageAddress}</div>
+        )}
         <h2>विक्रय बिल</h2>
         <div style={{ marginTop: "8px", fontSize: "14px" }}>
           बिल नंबर / Bill No: <strong>{billNumber || "-"}</strong>
