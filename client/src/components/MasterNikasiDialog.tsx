@@ -349,23 +349,23 @@ export function MasterNikasiDialog({
           <DialogDescription>{t("masterNikasiDesc")}</DialogDescription>
         </DialogHeader>
 
-        {/* Party + exit date strip */}
-        <div className="flex flex-wrap items-end gap-4 bg-muted/40 p-3 rounded-md text-sm">
-          <div>
-            <div className="text-xs text-muted-foreground">{partyRowLabel}</div>
-            <div className="font-semibold" data-testid="text-mn-farmer-name">{farmerName}</div>
-            <div className="text-xs text-muted-foreground">{village} · <span className="font-mono">{contactNumber}</span></div>
-          </div>
-          <div className="ml-auto flex items-end gap-3">
-            <div>
-              <Label htmlFor="mn-exit-date" className="text-xs">{t("exitDate")}</Label>
+        {/* Party + exit date strip — single row */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-muted/40 px-3 py-2 rounded-md text-sm">
+          <span className="text-xs text-muted-foreground">{partyRowLabel}</span>
+          <span className="font-semibold" data-testid="text-mn-farmer-name">{farmerName}</span>
+          <span className="text-xs text-muted-foreground">
+            {village} · <span className="font-mono">{contactNumber}</span>
+          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="mn-exit-date" className="text-xs whitespace-nowrap">{t("exitDate")}</Label>
               <Input
                 id="mn-exit-date"
                 type="date"
                 value={exitDate}
                 onChange={(e) => setExitDate(e.target.value)}
                 disabled={!!result}
-                className="w-40"
+                className="h-8 w-40"
                 data-testid="input-mn-exit-date"
               />
             </div>
@@ -387,7 +387,7 @@ export function MasterNikasiDialog({
           </p>
         ) : (
           <div className="overflow-x-auto border border-blue-700 rounded-md">
-            <table className="w-full text-xs min-w-[1200px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_td]:border [&_td]:border-border">
+            <table className="w-full text-xs min-w-[920px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_td]:border [&_td]:border-border">
               <thead className="bg-blue-700 text-white">
                 <tr>
                   <th className="p-2 text-left">{t("receiptNo")}</th>
@@ -431,7 +431,7 @@ export function MasterNikasiDialog({
 
                   return (
                     <tr key={r.rowKey} data-testid={`row-mn-${idx}`}>
-                      <td className="p-2 min-w-[180px]">
+                      <td className="p-2 w-[90px]">
                         <Select
                           value={r.lotNo || undefined}
                           onValueChange={(newLotNo) => {
@@ -478,7 +478,7 @@ export function MasterNikasiDialog({
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className="p-2 min-w-[120px]">
+                      <td className="p-2 w-[110px]">
                         <Select
                           value={r.marka || undefined}
                           onValueChange={(newMarkaSel) => {
@@ -528,7 +528,7 @@ export function MasterNikasiDialog({
                           value={r.exitBags}
                           onChange={(e) => updateRow(r.rowKey, { exitBags: e.target.value })}
                           disabled={!!result || !r.lotNo || !r.marka}
-                          className={`h-8 w-20 text-right ${exceeds ? "border-destructive" : ""}`}
+                          className={`h-8 w-14 text-right ${exceeds ? "border-destructive" : ""}`}
                           data-testid={`input-mn-bags-${idx}`}
                         />
                       </td>
@@ -543,7 +543,7 @@ export function MasterNikasiDialog({
                           value={r.kataCharges}
                           onChange={(e) => updateRow(r.rowKey, { kataCharges: e.target.value })}
                           disabled={!!result || !r.lotNo || !r.marka}
-                          className="h-8 w-20 text-right"
+                          className="h-8 w-14 text-right"
                           data-testid={`input-mn-kata-${idx}`}
                         />
                       </td>
@@ -554,7 +554,7 @@ export function MasterNikasiDialog({
                           value={r.extraHammaliPerBag}
                           onChange={(e) => updateRow(r.rowKey, { extraHammaliPerBag: e.target.value })}
                           disabled={!!result || !r.lotNo || !r.marka}
-                          className="h-8 w-24 text-right"
+                          className="h-8 w-16 text-right"
                           data-testid={`input-mn-extra-${idx}`}
                         />
                       </td>
@@ -565,7 +565,7 @@ export function MasterNikasiDialog({
                           value={r.gradingCharges}
                           onChange={(e) => updateRow(r.rowKey, { gradingCharges: e.target.value })}
                           disabled={!!result || !r.lotNo || !r.marka}
-                          className="h-8 w-20 text-right"
+                          className="h-8 w-14 text-right"
                           data-testid={`input-mn-grading-${idx}`}
                         />
                       </td>
