@@ -440,7 +440,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                           <Badge variant="secondary" className="text-xs px-1 py-0 mr-1">
                             #{exit.billNumber || "-"}
                           </Badge>
-                          <strong>{exit.bagsExited}</strong> bags - {format(new Date(exit.exitDate), "dd/MM HH:mm")}
+                          <strong>{exit.bagsExited}</strong> bags - {format(new Date(exit.exitDate), "dd/MM/yyyy")}
                         </span>
                         <div className="flex items-center gap-1">
                           {exit.isReversed === 1 && (
