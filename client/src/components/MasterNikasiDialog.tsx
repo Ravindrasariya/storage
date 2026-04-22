@@ -13,6 +13,13 @@ import { format } from "date-fns";
 import type { ColdStorage } from "@shared/schema";
 import type { LotWithCharges } from "@/components/FarmerLotGroup";
 
+// Sentinel value used as the SelectItem `value` for lots whose marka is
+// blank/null. shadcn's SelectItem disallows empty-string values, so we
+// translate "" <-> NO_MARKA at the UI boundary while keeping the DB
+// canonical marka ("") inside lookup keys and the submit payload.
+const NO_MARKA = "__no_marka__";
+const canonMarka = (m: string) => (m === NO_MARKA ? "" : (m || "").trim());
+
 interface MasterNikasiDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -25,7 +32,12 @@ interface MasterNikasiDialogProps {
 
 interface RowState {
   rowKey: string;
-  lotId: string;
+  // The user-facing identity of a row is (lotNo, marka). The actual
+  // database lot id is resolved from this pair at render/submit time.
+  // Multiple lots can share the same lotNo when added separately via the
+  // Lot Entry tab with different markas — that is the only legitimate
+  // case where one Receipt # has more than one Marka option.
+  lotNo: string;
   marka: string;
   exitBags: string;
   kataCharges: string;
@@ -66,9 +78,9 @@ interface MasterNikasiResult {
   };
 }
 
-const newRow = (lotId = "", marka = ""): RowState => ({
+const newRow = (lotNo = "", marka = ""): RowState => ({
   rowKey: `r${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-  lotId,
+  lotNo,
   marka,
   exitBags: "",
   kataCharges: "",
@@ -114,34 +126,68 @@ export function MasterNikasiDialog({
     if (open) {
       setExitDate(new Date().toISOString().slice(0, 10));
       // If exactly one lot is available, pre-select it.
-      const onlyOne = lots.length === 1 ? lots[0].lot.id : "";
-      setRows([newRow(onlyOne)]);
+      const only = lots.length === 1 ? lots[0].lot : null;
+      const onlyMarka = (only?.marka || "").trim();
+      // Use the NO_MARKA sentinel when the single lot has a blank marka,
+      // so the row is immediately resolvable (resolveLot/canSubmit
+      // require a non-empty marka value in state).
+      const onlyMarkaState = only ? (onlyMarka === "" ? NO_MARKA : onlyMarka) : "";
+      setRows([newRow(only?.lotNo || "", onlyMarkaState)]);
       setResult(null);
     }
   }, [open, lots]);
 
-  const lotById = useMemo(() => {
-    const m = new Map<string, LotWithCharges>();
-    for (const l of lots) m.set(l.lot.id, l);
+  // Index lots by (lotNo, marka) so a row can resolve its database lot id
+  // from the user-facing identity. Per the operator workflow, the same
+  // (lotNo, marka) pair must never appear on more than one lot — if it
+  // does, that is a data error and we expose it instead of silently
+  // resolving to a random lot.
+  const { lotByKey, duplicateKey } = useMemo(() => {
+    const map = new Map<string, LotWithCharges>();
+    let dupe: string | null = null;
+    for (const l of lots) {
+      const key = `${l.lot.lotNo}::${(l.lot.marka || "").trim()}`;
+      if (map.has(key)) dupe = key;
+      else map.set(key, l);
+    }
+    return { lotByKey: map, duplicateKey: dupe };
+  }, [lots]);
+
+  // Map of lotNo -> sorted distinct markas attached to that lotNo. We
+  // intentionally include the blank marka ("") as a real option so lots
+  // entered without a marka remain selectable.
+  const markasByLotNo = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const l of lots) {
+      const arr = m.get(l.lot.lotNo) ?? [];
+      const mk = (l.lot.marka || "").trim();
+      if (!arr.includes(mk)) arr.push(mk);
+      m.set(l.lot.lotNo, arr);
+    }
+    m.forEach((arr, k) => m.set(k, arr.sort()));
     return m;
   }, [lots]);
 
-  // Distinct marka options across this farmer's lots.
-  const markaOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const l of lots) {
-      if (l.lot.marka && l.lot.marka.trim()) set.add(l.lot.marka.trim());
-    }
-    return Array.from(set).sort();
+  // Distinct lotNos (Receipt # options) for this farmer/company.
+  const allLotNos = useMemo(() => {
+    return Array.from(new Set(lots.map(l => l.lot.lotNo))).sort();
   }, [lots]);
 
-  const usedLotIds = useMemo(() => new Set(rows.map(r => r.lotId).filter(Boolean)), [rows]);
+  // Helper: resolve a row's lot id from (lotNo, marka).
+  const resolveLot = (lotNo: string, marka: string): LotWithCharges | undefined => {
+    if (!lotNo || !marka) return undefined;
+    return lotByKey.get(`${lotNo}::${canonMarka(marka)}`);
+  };
+
+  // Used (lotNo, marka) pairs across rows, so duplicates are blocked.
+  const usedKeys = useMemo(
+    () => new Set(rows.filter(r => r.lotNo && r.marka).map(r => `${r.lotNo}::${canonMarka(r.marka)}`)),
+    [rows],
+  );
 
   // Per-row live computation of base cold charge (mirrors server logic).
-  const calcBaseCharge = (lotId: string, exitBags: number): number => {
-    if (!coldStorage) return 0;
-    const lwc = lotById.get(lotId);
-    if (!lwc) return 0;
+  const calcBaseCharge = (lwc: LotWithCharges | undefined, exitBags: number): number => {
+    if (!coldStorage || !lwc) return 0;
     const lot = lwc.lot;
     if (lot.baseColdChargesBilled === 1) return 0;
     if (!exitBags || exitBags <= 0) return 0;
@@ -162,7 +208,8 @@ export function MasterNikasiDialog({
 
   const rowTotals = rows.map((r) => {
     const exitBags = Number(r.exitBags) || 0;
-    const base = calcBaseCharge(r.lotId, exitBags);
+    const lwc = resolveLot(r.lotNo, r.marka);
+    const base = calcBaseCharge(lwc, exitBags);
     const kata = Number(r.kataCharges) || 0;
     const extraPerBag = Number(r.extraHammaliPerBag) || 0;
     const extra = extraPerBag * exitBags;
@@ -183,30 +230,34 @@ export function MasterNikasiDialog({
   const submitMutation = useMutation({
     mutationFn: async () => {
       if (!farmerLedgerId) throw new Error("Missing farmer ledger");
-      const cleaned = rows
-        .filter(r => r.lotId && Number(r.exitBags) > 0)
-        .map(r => ({
-          lotId: r.lotId,
-          exitBags: Number(r.exitBags),
+      const cleaned: Array<{
+        lotId: string;
+        exitBags: number;
+        kataCharges: number;
+        extraHammaliPerBag: number;
+        gradingCharges: number;
+      }> = [];
+      const seenKey = new Set<string>();
+      for (const r of rows) {
+        const bags = Number(r.exitBags);
+        if (!r.lotNo || !r.marka || !Number.isFinite(bags) || bags <= 0) continue;
+        const lwc = resolveLot(r.lotNo, r.marka);
+        if (!lwc) throw new Error(`No lot matches Receipt ${r.lotNo} / Marka ${r.marka}`);
+        if (bags > lwc.lot.remainingSize) {
+          throw new Error(`Lot ${lwc.lot.lotNo}: only ${lwc.lot.remainingSize} bag(s) remaining`);
+        }
+        const key = `${r.lotNo}::${canonMarka(r.marka)}`;
+        if (seenKey.has(key)) throw new Error(t("duplicateReceipt"));
+        seenKey.add(key);
+        cleaned.push({
+          lotId: lwc.lot.id,
+          exitBags: bags,
           kataCharges: Number(r.kataCharges) || 0,
           extraHammaliPerBag: Number(r.extraHammaliPerBag) || 0,
           gradingCharges: Number(r.gradingCharges) || 0,
-        }));
+        });
+      }
       if (cleaned.length === 0) throw new Error("Add at least one valid row.");
-      // Duplicate check (client safety net)
-      const seen = new Set<string>();
-      for (const c of cleaned) {
-        if (seen.has(c.lotId)) throw new Error(t("duplicateReceipt"));
-        seen.add(c.lotId);
-      }
-      // Per-row exit-bags <= remaining
-      for (const c of cleaned) {
-        const lwc = lotById.get(c.lotId);
-        if (!lwc) throw new Error("Lot not found");
-        if (c.exitBags > lwc.lot.remainingSize) {
-          throw new Error(`Lot ${lwc.lot.lotNo}: only ${lwc.lot.remainingSize} bag(s) remaining`);
-        }
-      }
       const res = await apiRequest("POST", "/api/farmers/master-nikasi", {
         farmerLedgerId,
         exitDate: new Date(exitDate + "T00:00:00").toISOString(),
@@ -278,14 +329,14 @@ export function MasterNikasiDialog({
   };
 
   const validRowCount = rows.filter(r => {
-    if (!r.lotId) return false;
+    if (!r.lotNo || !r.marka) return false;
     const bags = Number(r.exitBags);
     if (!Number.isFinite(bags) || bags <= 0) return false;
-    const lwc = lotById.get(r.lotId);
+    const lwc = resolveLot(r.lotNo, r.marka);
     if (!lwc) return false;
     return bags <= lwc.lot.remainingSize;
   }).length;
-  const canSubmit = !!farmerLedgerId && validRowCount > 0 && !submitMutation.isPending && !result;
+  const canSubmit = !!farmerLedgerId && validRowCount > 0 && !duplicateKey && !submitMutation.isPending && !result;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -330,6 +381,11 @@ export function MasterNikasiDialog({
         {/* Grid */}
         {lots.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">{t("noLotsAvailable")}</p>
+        ) : duplicateKey ? (
+          <p className="text-sm text-destructive py-6 text-center" data-testid="text-mn-duplicate-error">
+            Data error: more than one lot exists for Receipt#/Marka# "{duplicateKey.replace("::", " / ")}".
+            Fix the duplicate lot entries before proceeding.
+          </p>
         ) : (
           <div className="overflow-x-auto border border-blue-700 rounded-md">
             <table className="w-full text-xs min-w-[1200px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_td]:border [&_td]:border-border">
@@ -350,28 +406,51 @@ export function MasterNikasiDialog({
               </thead>
               <tbody>
                 {rows.map((r, idx) => {
-                  const lwc = r.lotId ? lotById.get(r.lotId) : undefined;
+                  const lwc = resolveLot(r.lotNo, r.marka);
                   const remaining = lwc?.lot.remainingSize ?? 0;
                   const totals = rowTotals[idx];
                   const exceeds = lwc && totals.exitBags > remaining;
-                  // Receipt # options: include all lots, but disable already-used (other) ones.
-                  // When marka is selected, narrow Receipt # options to lots with that marka.
-                  const filteredLots = r.marka
-                    ? lots.filter(l => (l.lot.marka || "").trim() === r.marka)
-                    : lots;
-                  // When receipt is selected, narrow Marka options to lots' actual marka.
-                  const lotMarkaForRow = lwc?.lot.marka?.trim() || "";
+
+                  // Receipt # options: distinct lotNos. If a marka is already
+                  // chosen but no Receipt yet, narrow to lotNos that have that
+                  // marka. Disable any (lotNo, marka) pair already used in
+                  // another row.
+                  const rowMarkaCanon = canonMarka(r.marka);
+                  const lotNoOptions = r.marka
+                    ? allLotNos.filter(n => (markasByLotNo.get(n) || []).includes(rowMarkaCanon))
+                    : allLotNos;
+
+                  // Marka options: when a Receipt # is chosen, derive strictly
+                  // from that lotNo's markas (typically 1, occasionally more
+                  // when duplicates were entered via Lot Entry). Otherwise
+                  // expose every distinct marka across the farmer's lots so
+                  // marka-first picking still works. Blank ("") markas are
+                  // legitimate and surface here too.
+                  const markaOptionsForRow = r.lotNo
+                    ? (markasByLotNo.get(r.lotNo) || [])
+                    : Array.from(new Set(lots.map(l => (l.lot.marka || "").trim()))).sort();
+
                   return (
                     <tr key={r.rowKey} data-testid={`row-mn-${idx}`}>
                       <td className="p-2 min-w-[180px]">
                         <Select
-                          value={r.lotId || undefined}
-                          onValueChange={(v) => {
-                            const picked = lotById.get(v);
-                            updateRow(r.rowKey, {
-                              lotId: v,
-                              marka: picked?.lot.marka?.trim() || r.marka,
-                            });
+                          value={r.lotNo || undefined}
+                          onValueChange={(newLotNo) => {
+                            const markas = markasByLotNo.get(newLotNo) || [];
+                            const toSel = (m: string) => (m === "" ? NO_MARKA : m);
+                            // If the chosen Receipt # has only one marka,
+                            // auto-fill it (including the blank/no-marka
+                            // case via the sentinel). Otherwise keep the
+                            // existing marka if it still belongs to the new
+                            // Receipt #, else clear it so the operator must
+                            // pick.
+                            let nextMarka = r.marka;
+                            if (markas.length === 1) {
+                              nextMarka = toSel(markas[0]);
+                            } else if (!markas.includes(canonMarka(r.marka))) {
+                              nextMarka = "";
+                            }
+                            updateRow(r.rowKey, { lotNo: newLotNo, marka: nextMarka });
                           }}
                           disabled={!!result}
                         >
@@ -379,11 +458,21 @@ export function MasterNikasiDialog({
                             <SelectValue placeholder="—" />
                           </SelectTrigger>
                           <SelectContent>
-                            {filteredLots.map(l => {
-                              const used = usedLotIds.has(l.lot.id) && l.lot.id !== r.lotId;
+                            {lotNoOptions.map(n => {
+                              // A receipt# is "fully used" only when every one
+                              // of its (lotNo, marka) pairs is already chosen
+                              // in another row. We still allow re-selecting
+                              // the same Receipt# for *this* row when there
+                              // are multiple markas under it.
+                              const markasHere = markasByLotNo.get(n) || [];
+                              const allUsed = markasHere.length > 0 &&
+                                markasHere.every(m => {
+                                  const k = `${n}::${m}`;
+                                  return usedKeys.has(k) && !(r.lotNo === n && rowMarkaCanon === m);
+                                });
                               return (
-                                <SelectItem key={l.lot.id} value={l.lot.id} disabled={used}>
-                                  {l.lot.lotNo} · {l.lot.remainingSize}/{l.lot.size}
+                                <SelectItem key={n} value={n} disabled={allUsed}>
+                                  {n}
                                 </SelectItem>
                               );
                             })}
@@ -393,25 +482,41 @@ export function MasterNikasiDialog({
                       <td className="p-2 min-w-[120px]">
                         <Select
                           value={r.marka || undefined}
-                          onValueChange={(v) => {
-                            // If the chosen marka doesn't match the current lot, clear lot.
-                            const stillValid = lwc && (lwc.lot.marka || "").trim() === v;
+                          onValueChange={(newMarkaSel) => {
+                            // newMarkaSel may be the NO_MARKA sentinel when
+                            // the operator picks the blank-marka option. If
+                            // the resulting canonical marka doesn't belong
+                            // to the currently picked Receipt #, clear the
+                            // Receipt # so the operator picks again from
+                            // the narrowed list.
+                            const newMarkaCanon = canonMarka(newMarkaSel);
+                            const markasForLot = r.lotNo ? (markasByLotNo.get(r.lotNo) || []) : [];
+                            const stillValid = !r.lotNo || markasForLot.includes(newMarkaCanon);
                             updateRow(r.rowKey, {
-                              marka: v,
-                              lotId: stillValid ? r.lotId : "",
+                              marka: newMarkaSel,
+                              lotNo: stillValid ? r.lotNo : "",
                             });
                           }}
-                          disabled={!!result || markaOptions.length === 0}
+                          disabled={!!result || markaOptionsForRow.length === 0}
                         >
                           <SelectTrigger className="h-8" data-testid={`select-mn-marka-${idx}`}>
-                            <SelectValue placeholder={lotMarkaForRow || "—"} />
+                            <SelectValue placeholder="—" />
                           </SelectTrigger>
                           <SelectContent>
-                            {/* When a Receipt# is selected, only show that lot's marka so the
-                                two selectors stay strictly consistent. Otherwise show all. */}
-                            {(r.lotId && lotMarkaForRow ? [lotMarkaForRow] : markaOptions).map(m => (
-                              <SelectItem key={m} value={m}>{m}</SelectItem>
-                            ))}
+                            {markaOptionsForRow.map(m => {
+                              // Disable a marka if (currentLotNo, marka) is
+                              // already taken by another row. SelectItem
+                              // can't accept "" as a value, so blank markas
+                              // ride on the NO_MARKA sentinel.
+                              const sel = m === "" ? NO_MARKA : m;
+                              const k = r.lotNo ? `${r.lotNo}::${m}` : "";
+                              const taken = !!k && usedKeys.has(k) && !(rowMarkaCanon === m);
+                              return (
+                                <SelectItem key={sel} value={sel} disabled={taken}>
+                                  {m === "" ? "—" : m}
+                                </SelectItem>
+                              );
+                            })}
                           </SelectContent>
                         </Select>
                       </td>
@@ -423,7 +528,7 @@ export function MasterNikasiDialog({
                           max={remaining || undefined}
                           value={r.exitBags}
                           onChange={(e) => updateRow(r.rowKey, { exitBags: e.target.value })}
-                          disabled={!!result || !r.lotId}
+                          disabled={!!result || !r.lotNo || !r.marka}
                           className={`h-8 w-20 text-right ${exceeds ? "border-destructive" : ""}`}
                           data-testid={`input-mn-bags-${idx}`}
                         />
@@ -438,7 +543,7 @@ export function MasterNikasiDialog({
                           min={0}
                           value={r.kataCharges}
                           onChange={(e) => updateRow(r.rowKey, { kataCharges: e.target.value })}
-                          disabled={!!result || !r.lotId}
+                          disabled={!!result || !r.lotNo || !r.marka}
                           className="h-8 w-20 text-right"
                           data-testid={`input-mn-kata-${idx}`}
                         />
@@ -449,7 +554,7 @@ export function MasterNikasiDialog({
                           min={0}
                           value={r.extraHammaliPerBag}
                           onChange={(e) => updateRow(r.rowKey, { extraHammaliPerBag: e.target.value })}
-                          disabled={!!result || !r.lotId}
+                          disabled={!!result || !r.lotNo || !r.marka}
                           className="h-8 w-24 text-right"
                           data-testid={`input-mn-extra-${idx}`}
                         />
@@ -460,7 +565,7 @@ export function MasterNikasiDialog({
                           min={0}
                           value={r.gradingCharges}
                           onChange={(e) => updateRow(r.rowKey, { gradingCharges: e.target.value })}
-                          disabled={!!result || !r.lotId}
+                          disabled={!!result || !r.lotNo || !r.marka}
                           className="h-8 w-20 text-right"
                           data-testid={`input-mn-grading-${idx}`}
                         />
