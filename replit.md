@@ -8,6 +8,20 @@ Cold Store Manager is a full-stack web application designed to streamline and ma
 
 Preferred communication style: Simple, everyday language.
 
+## Timezone Convention (IST, end-to-end)
+
+This project operates entirely in India Standard Time (`Asia/Kolkata`). When working on the server, SQL, schema, or any timestamp-bearing code, assume IST wall-clock everywhere — there is no UTC anywhere in the business layer.
+
+- **Node process** is pinned to IST: `process.env.TZ = 'Asia/Kolkata'` at the top of `server/index.ts`. So `new Date()`, `Date.getFullYear()`, date-fns `format(...)`, and any Date→string conversion on the server runs in IST.
+- **Postgres session** is pinned to IST: every pooled connection runs `SET TIME ZONE 'Asia/Kolkata'` (see the `connect` listener in `server/db.ts`). So `now()`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, `EXTRACT`, `date_trunc`, `::date`, and every column with `.defaultNow()` operate in IST wall-clock.
+- **Schema** uses `timestamp(...)` columns (`TIMESTAMP WITHOUT TIME ZONE`) which store the IST wall-clock value as written.
+
+Rules for new code:
+- Use `new Date()` for "now". Do **not** use `new Date(Date.UTC(...))` to populate a timestamp column.
+- Do **not** parse `Z`-suffixed ISO strings from external sources straight into a timestamp column without first converting to IST wall-clock.
+- New raw SQL date math may rely on the session being IST (no need to wrap in `AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'`). The four pre-existing wrappers in `server/storage.ts` are kept as-is for stability.
+- Client-side formatting uses the browser TZ; users are in India so this resolves to IST naturally. Only force `timeZone: 'Asia/Kolkata'` if you have a specific reason.
+
 ## System Architecture
 
 ### Frontend
