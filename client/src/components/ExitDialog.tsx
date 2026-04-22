@@ -324,19 +324,23 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
               </div>
             </div>
 
-            {remainingToExit > 0 && (
+            {remainingToExit > 0 && (() => {
+              // Single combined "did the operator touch anything?" flag
+              // drives the block's border, bg tint, badge, and shared
+              // comment (Task #212). Per-field edited state is still
+              // tracked separately so the mutation only sends each
+              // field when it was actually touched.
+              const anyEdited = billNumberEdited || exitDateEdited;
+              return (
               <>
-                {/* Bill # + Date share one block, one amber→blue
-                    highlighter, one auto/edited badge, and one shared
-                    verification comment (Task #212). Bill # comes
-                    BEFORE Date here, then bags below — matches the
-                    natural order of writing a manual exit slip. The
-                    block as a whole is gated on remainingToExit > 0,
-                    so once a sale is fully exited the editor (and the
-                    new entry's date input) disappear; the history list
-                    below shows each saved exit's date as read-only. */}
+                {/* Bill # + Date share one block. Bill # comes BEFORE
+                    Date and bags below — matches the natural order of
+                    writing a manual exit slip. Gated on
+                    remainingToExit > 0, so once a sale is fully exited
+                    the editor disappears and the history list below
+                    shows each saved exit's date as read-only. */}
                 <div className={`flex flex-col gap-1 rounded-md p-2 border ${
-                  (billNumberEdited || exitDateEdited)
+                  anyEdited
                     ? "border-blue-300 dark:border-blue-700 bg-blue-50/60 dark:bg-blue-900/20"
                     : "border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-900/20"
                 }`}>
@@ -382,16 +386,16 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                     </div>
                     <Badge
                       variant="outline"
-                      className={(billNumberEdited || exitDateEdited)
+                      className={anyEdited
                         ? "text-blue-700 dark:text-blue-300 border-blue-400 dark:border-blue-700"
                         : "text-amber-700 dark:text-amber-300 border-amber-400 dark:border-amber-700"}
                       data-testid="badge-exit-bill-state"
                     >
-                      {(billNumberEdited || exitDateEdited) ? "edited" : "auto"}
+                      {anyEdited ? "edited" : "auto"}
                     </Badge>
                   </div>
                   <span className="text-[11px] text-muted-foreground">
-                    {(billNumberEdited || exitDateEdited)
+                    {anyEdited
                       ? "Edited — please verify before submit"
                       : "Auto-filled — please verify before submit"}
                   </span>
@@ -419,7 +423,8 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                   <span className="text-xs text-muted-foreground">(max {remainingToExit})</span>
                 </div>
               </>
-            )}
+              );
+            })()}
 
             {exits.length > 0 && (
               <div>
