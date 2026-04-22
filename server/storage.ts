@@ -279,6 +279,7 @@ export interface IStorage {
     totalExited: number;
     exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
   }>>>;
+  getLotIdsWithIncompleteExits(coldStorageId: string): Promise<Set<string>>;
   // Cash Receipts
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
   getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
@@ -2622,6 +2623,28 @@ export class DatabaseStorage implements IStorage {
         eq(exitHistory.isReversed, 0)
       ));
     return exits.reduce((sum, exit) => sum + exit.bagsExited, 0);
+  }
+
+  async getLotIdsWithIncompleteExits(coldStorageId: string): Promise<Set<string>> {
+    // Aggregate non-reversed exits per sale, then return distinct lotIds
+    // for sales where total exited bags < quantity sold (incl. zero exits).
+    const rows = await db.execute(sql`
+      SELECT DISTINCT s.lot_id AS lot_id
+      FROM ${salesHistory} s
+      LEFT JOIN (
+        SELECT sales_history_id, COALESCE(SUM(bags_exited), 0) AS total_exited
+        FROM ${exitHistory}
+        WHERE is_reversed = 0
+        GROUP BY sales_history_id
+      ) e ON e.sales_history_id = s.id
+      WHERE s.cold_storage_id = ${coldStorageId}
+        AND COALESCE(e.total_exited, 0) < s.quantity_sold
+    `);
+    const result = new Set<string>();
+    for (const r of (rows as any).rows ?? []) {
+      if (r.lot_id) result.add(r.lot_id as string);
+    }
+    return result;
   }
 
   async getExitsByBillNumber(coldStorageId: string, billNumber: number) {

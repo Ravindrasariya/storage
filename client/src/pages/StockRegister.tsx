@@ -37,7 +37,7 @@ import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { MasterNikasiDialog } from "@/components/MasterNikasiDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
-import { ArrowLeft, Search, Phone, Package, User, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Search, Phone, Package, PackageX, User, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -109,6 +109,7 @@ export default function StockRegister() {
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
   const [upForSaleOnly, setUpForSaleOnly] = useState<boolean>(savedState?.upForSaleOnly || false);
+  const [noExitOnly, setNoExitOnly] = useState<boolean>(savedState?.noExitOnly || false);
   const [filterEntryDate, setFilterEntryDate] = useState<string>(savedState?.filterEntryDate || "");
   const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "ration_seed">(savedState?.bagTypeFilter || "all");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
@@ -449,7 +450,8 @@ export default function StockRegister() {
       potatoTypeFilter !== "all" ||
       paymentDueFilter ||
       !!filterEntryDate ||
-      upForSaleOnly;
+      upForSaleOnly ||
+      noExitOnly;
     const hasPrimaryInput =
       (searchType === "phone" && searchQuery.trim().length >= 3) ||
       (searchType === "farmerName" && farmerNameQuery.trim().length >= 2) ||
@@ -468,7 +470,7 @@ export default function StockRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, upForSaleOnly, filterEntryDate, selectedYear]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, filterEntryDate, selectedYear]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
@@ -485,12 +487,13 @@ export default function StockRegister() {
       potatoTypeFilter,
       paymentDueFilter,
       upForSaleOnly,
+      noExitOnly,
       filterEntryDate,
       bagTypeFilter,
       selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, upForSaleOnly, filterEntryDate, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, filterEntryDate, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -508,7 +511,8 @@ export default function StockRegister() {
           saved.potatoTypeFilter !== "all" ||
           saved.paymentDueFilter ||
           !!saved.filterEntryDate ||
-          saved.upForSaleOnly;
+          saved.upForSaleOnly ||
+          saved.noExitOnly;
         const savedHasPrimary =
           (saved.searchType === "phone" && saved.searchQuery?.trim().length >= 3) ||
           (saved.searchType === "farmerName" && saved.farmerNameQuery?.trim().length >= 2) ||
@@ -541,7 +545,8 @@ export default function StockRegister() {
         potatoTypeFilter === "all" &&
         !paymentDueFilter &&
         !filterEntryDate &&
-        !upForSaleOnly;
+        !upForSaleOnly &&
+        !noExitOnly;
       const noPrimary =
         (searchType === "phone" && !searchQuery.trim()) ||
         (searchType === "farmerName" && !farmerNameQuery.trim()) ||
@@ -563,7 +568,7 @@ export default function StockRegister() {
         }
       }
     }
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, upForSaleOnly, searchType, hasSearched]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, upForSaleOnly, noExitOnly, searchType, hasSearched]);
 
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
@@ -1319,7 +1324,8 @@ export default function StockRegister() {
       potatoTypeFilter !== "all" ||
       paymentDueFilter ||
       !!filterEntryDate ||
-      upForSaleOnly;
+      upForSaleOnly ||
+      noExitOnly;
     const hasPrimary =
       (searchType === "phone" && !!searchQuery.trim()) ||
       (searchType === "lotNoSize" && (!!lotNoFrom.trim() || !!lotNoTo.trim() || !!sizeQuery.trim())) ||
@@ -1360,6 +1366,10 @@ export default function StockRegister() {
       // Apply Up-for-Sale filter to ALL search modes when checked
       if (upForSaleOnly) {
         url += `&upForSale=true`;
+      }
+      // Apply No-Exit filter to ALL search modes when checked
+      if (noExitOnly) {
+        url += `&noExit=true`;
       }
       
       if (qualityFilter && qualityFilter !== "all") {
@@ -1549,8 +1559,26 @@ export default function StockRegister() {
     });
   };
 
-  const upForSaleToggle = (
+  const noExitToggle = (
     <div className="flex items-center gap-1 sm:ml-auto">
+      <Checkbox
+        id="checkbox-no-exit-only"
+        checked={noExitOnly}
+        onCheckedChange={(checked) => setNoExitOnly(!!checked)}
+        data-testid="checkbox-no-exit-only"
+      />
+      <Label
+        htmlFor="checkbox-no-exit-only"
+        className="text-sm whitespace-nowrap cursor-pointer flex items-center gap-1"
+      >
+        <PackageX className="h-3 w-3" />
+        {t("noExit")}
+      </Label>
+    </div>
+  );
+
+  const upForSaleToggle = (
+    <div className="flex items-center gap-1">
       <Checkbox
         id="checkbox-up-for-sale-only"
         checked={upForSaleOnly}
@@ -1690,6 +1718,7 @@ export default function StockRegister() {
                 )}
               </div>
               {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
+              {noExitToggle}
               {upForSaleToggle}
             </div>
           ) : searchType === "farmerName" ? (
@@ -1752,6 +1781,7 @@ export default function StockRegister() {
                   </Button>
                 </div>
               )}
+              {noExitToggle}
               {upForSaleToggle}
             </div>
           ) : (
@@ -1810,6 +1840,7 @@ export default function StockRegister() {
                 </Select>
               )}
               {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
+              {noExitToggle}
               {upForSaleToggle}
             </div>
           )}
@@ -1958,6 +1989,13 @@ export default function StockRegister() {
             onClear: () => setFilterEntryDate(""),
           });
         }
+        if (noExitOnly) {
+          activeChips.push({
+            key: "noExit",
+            label: t("noExit"),
+            onClear: () => setNoExitOnly(false),
+          });
+        }
         if (upForSaleOnly) {
           activeChips.push({
             key: "upForSale",
@@ -1999,6 +2037,7 @@ export default function StockRegister() {
           setPaymentDueFilter(false);
           setFilterEntryDate("");
           setUpForSaleOnly(false);
+          setNoExitOnly(false);
           setChamberFilter("all");
           setFloorFilter("all");
         };

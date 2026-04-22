@@ -647,7 +647,7 @@ export async function registerRoutes(
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { type, query, size, quality, paymentDue, potatoType, year, entryDate, upForSale } = req.query;
+      const { type, query, size, quality, paymentDue, potatoType, year, entryDate, upForSale, noExit } = req.query;
       const filterYear = year ? parseInt(year as string, 10) : undefined;
       
       const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
@@ -671,8 +671,8 @@ export async function registerRoutes(
         const village = req.query.village as string | undefined;
         const contactNumber = req.query.contactNumber as string | undefined;
         const queryStr = (query as string) || "";
-        // Allow empty query when upForSale=true so users can search by Up-for-Sale alone
-        if (!queryStr.trim() && upForSale !== "true") {
+        // Allow empty query when upForSale=true or noExit=true so users can search by these filters alone
+        if (!queryStr.trim() && upForSale !== "true" && noExit !== "true") {
           return res.status(400).json({ error: "Missing query parameter" });
         }
         if (!queryStr.trim()) {
@@ -751,6 +751,13 @@ export async function registerRoutes(
             lot.remainingSize > 0 &&
             lot.saleStatus !== "sold",
         );
+      }
+
+      // Apply No-Exit filter: keep lots with at least one active sale where
+      // bagsExited (sum of non-reversed exits) is less than quantitySold.
+      if (noExit === "true") {
+        const incompleteIds = await storage.getLotIdsWithIncompleteExits(coldStorageId);
+        lots = lots.filter((lot) => incompleteIds.has(lot.id));
       }
       
       // Sort by lot number in ascending order
