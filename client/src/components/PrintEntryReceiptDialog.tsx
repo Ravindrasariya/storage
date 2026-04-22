@@ -30,6 +30,14 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
     queryKey: ["/api/cold-storage"],
   });
 
+  const coldStorageAddress = [
+    coldStorage?.address,
+    coldStorage?.tehsil,
+    coldStorage?.district,
+    coldStorage?.state,
+    coldStorage?.pincode,
+  ].filter(Boolean).join(", ");
+
   const { data: farmerLedgerData } = useQuery<{ farmers: Array<{ id: string; entityType: string }> }>({
     queryKey: ["/api/farmer-ledger"],
   });
@@ -241,18 +249,9 @@ export function PrintEntryReceiptDialog({ lot, open, onOpenChange }: PrintEntryR
               {/* Header */}
               <div style={{ textAlign: "center", borderBottom: "2px solid #333", paddingBottom: "8px", marginBottom: "10px" }}>
                 <h1 style={{ fontSize: "18px", margin: "0 0 3px 0" }}>{coldStorage?.name || "Cold Storage"}</h1>
-                {(() => {
-                  const address = [
-                    coldStorage?.address,
-                    coldStorage?.tehsil,
-                    coldStorage?.district,
-                    coldStorage?.state,
-                    coldStorage?.pincode,
-                  ].filter(Boolean).join(", ");
-                  return address ? (
-                    <div style={{ fontSize: "11px", margin: "0 0 3px 0", color: "#555" }} data-testid="text-cold-storage-address">{address}</div>
-                  ) : null;
-                })()}
+                {coldStorageAddress && (
+                  <div style={{ fontSize: "11px", textAlign: "center", marginTop: "2px" }} data-testid="text-cold-storage-address">{coldStorageAddress}</div>
+                )}
                 <h2 style={{ fontSize: "14px", margin: "0", color: "#555" }}>लॉट प्रवेश रसीद</h2>
                 <div style={{ marginTop: "8px", fontSize: "14px" }}>
                   रसीद नं.: <strong>{lot.entrySequence}</strong>
