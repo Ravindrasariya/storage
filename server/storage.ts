@@ -1566,12 +1566,10 @@ export class DatabaseStorage implements IStorage {
     }
     // Ensure extraDueToMerchantOriginal is always seeded from extraDueToMerchant at creation
     // so that FIFO recomputes (e.g. on payment reversal) can restore the correct baseline.
-    const incomingExtraDue = (data as any).extraDueToMerchant as number | undefined;
-    const incomingExtraDueOriginal = (data as any).extraDueToMerchantOriginal as number | undefined;
     const seedExtraDueOriginal =
-      (incomingExtraDueOriginal && incomingExtraDueOriginal > 0)
-        ? incomingExtraDueOriginal
-        : (incomingExtraDue ?? 0);
+      (data.extraDueToMerchantOriginal && data.extraDueToMerchantOriginal > 0)
+        ? data.extraDueToMerchantOriginal
+        : (data.extraDueToMerchant ?? 0);
 
     const [sale] = await db.insert(salesHistory).values({
       ...data,
