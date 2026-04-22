@@ -296,18 +296,11 @@ export function MasterNikasiDialog({
       .header h3 { font-size: 14px; margin: 6px 0 0; }
       .meta { display: flex; justify-content: space-between; font-size: 12px; margin: 6px 0; }
       .party { font-size: 13px; margin-bottom: 6px; }
-      .lot-block { margin-top: 8px; padding: 6px 8px; border: 1px solid #000; }
-      .lot-title { font-weight: bold; font-size: 12px; margin-bottom: 4px; }
-      .details-row-double { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; font-size: 12px; }
-      .details-row-double > div { flex: 1; display: flex; gap: 6px; }
-      .details-label { color: #555; }
-      .details-value { font-weight: 600; }
-      .separator { border-top: 1px dashed #999; margin: 4px 0; }
-      table.charges { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-top: 8px; }
-      table.charges th, table.charges td { border: 1px solid #000; padding: 3px 4px; text-align: right; }
-      table.charges th { background: #f3f3f3; text-align: center; }
-      table.charges td.lft, table.charges th.lft { text-align: left; }
-      table.charges tr.tot td { font-weight: bold; background: #f8f8f8; }
+      table.lots { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+      table.lots th, table.lots td { border: 1px solid #000; padding: 3px 4px; text-align: center; }
+      table.lots th { background: #f3f3f3; }
+      table.lots td.lft, table.lots th.lft { text-align: left; }
+      table.lots tr.tot td { font-weight: bold; background: #f8f8f8; }
       .signature { margin-top: 14px; text-align: right; font-size: 12px; }
       .signature-line { border-top: 1px solid #000; width: 200px; margin-left: auto; padding-top: 4px; }
       .footer { text-align: center; margin-top: 8px; font-size: 10px; color: #666; }
@@ -645,76 +638,39 @@ export function MasterNikasiDialog({
                 <strong>{t("village")}:</strong> {result.farmer.village} &nbsp;|&nbsp;
                 <strong>{t("phone") || "Phone"}:</strong> {result.farmer.contactNumber}
               </div>
-              {result.sales.map((s, i) => (
-                <div key={s.saleId} className="lot-block">
-                  <div className="lot-title">
-                    {i + 1}. {t("receiptNo")}: {s.lotNo} &nbsp;|&nbsp; {t("marka") || "Marka"}: {s.marka || "—"}
-                  </div>
-                  <div className="details-row-double">
-                    <div>
-                      <span className="details-label">कुल बेचे / Sold:</span>
-                      <span className="details-value">{s.bagsExited} bags</span>
-                    </div>
-                    <div>
-                      <span className="details-label">निकासी / Exited:</span>
-                      <span className="details-value"><strong>{s.bagsExited} bags</strong></span>
-                    </div>
-                  </div>
-                  <div className="details-row-double">
-                    <div>
-                      <span className="details-label">बैग / Bag:</span>
-                      <span className="details-value">{s.bagType === "wafer" ? "Wafer" : "Seed"}</span>
-                    </div>
-                    <div>
-                      <span className="details-label">कक्ष / Chamber:</span>
-                      <span className="details-value">{s.chamberName}</span>
-                    </div>
-                  </div>
-                  <div className="details-row-double">
-                    <div>
-                      <span className="details-label">मंजिल / Floor:</span>
-                      <span className="details-value">{s.floor}</span>
-                    </div>
-                    <div>
-                      <span className="details-label">स्थिति / Position:</span>
-                      <span className="details-value">{s.position}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              <table className="charges">
+              <table className="lots">
                 <thead>
                   <tr>
+                    <th>#</th>
                     <th className="lft">{t("receiptNo")}</th>
-                    <th>{t("soldBags") || "Sold Bags"}</th>
-                    <th>{t("baseColdCharge")}</th>
-                    <th>{t("kataChargesShort")}</th>
-                    <th>{t("extraHammaliShort")}</th>
-                    <th>{t("gradingChargesShort")}</th>
-                    <th>{t("totalChargesShort")}</th>
+                    <th className="lft">{t("marka") || "Marka"}</th>
+                    <th>कुल बेचे / Sold</th>
+                    <th>निकासी / Exited</th>
+                    <th>बैग / Bag</th>
+                    <th>कक्ष / Chamber</th>
+                    <th>मंजिल / Floor</th>
+                    <th>स्थिति / Position</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {result.sales.map((s) => (
+                  {result.sales.map((s, i) => (
                     <tr key={s.saleId}>
-                      <td className="lft">{s.lotNo}{s.marka ? ` / ${s.marka}` : ""}</td>
+                      <td>{i + 1}</td>
+                      <td className="lft">{s.lotNo}</td>
+                      <td className="lft">{s.marka || "—"}</td>
                       <td>{s.bagsExited}</td>
-                      <td>{fmt(s.baseColdCharge)}</td>
-                      <td>{fmt(s.kataCharges)}</td>
-                      <td>{fmt(s.extraHammali)}</td>
-                      <td>{fmt(s.gradingCharges)}</td>
-                      <td>{fmt(s.totalColdStorageCharge)}</td>
+                      <td><strong>{s.bagsExited}</strong></td>
+                      <td>{s.bagType === "wafer" ? "Wafer" : "Seed"}</td>
+                      <td>{s.chamberName}</td>
+                      <td>{s.floor}</td>
+                      <td>{s.position}</td>
                     </tr>
                   ))}
                   <tr className="tot">
-                    <td className="lft">{t("total") || "Total"}</td>
+                    <td colSpan={3} className="lft">{t("total") || "Total"}</td>
                     <td>{result.sales.reduce((s, r) => s + r.bagsExited, 0)}</td>
-                    <td>{fmt(result.sales.reduce((s, r) => s + r.baseColdCharge, 0))}</td>
-                    <td>{fmt(result.sales.reduce((s, r) => s + r.kataCharges, 0))}</td>
-                    <td>{fmt(result.sales.reduce((s, r) => s + r.extraHammali, 0))}</td>
-                    <td>{fmt(result.sales.reduce((s, r) => s + r.gradingCharges, 0))}</td>
-                    <td>{fmt(result.sales.reduce((s, r) => s + r.totalColdStorageCharge, 0))}</td>
+                    <td>{result.sales.reduce((s, r) => s + r.bagsExited, 0)}</td>
+                    <td colSpan={4}></td>
                   </tr>
                 </tbody>
               </table>
