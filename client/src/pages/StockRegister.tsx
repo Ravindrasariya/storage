@@ -433,6 +433,12 @@ export default function StockRegister() {
 
   const isInitialMount = useRef(true);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Monotonic request id — only the latest in-flight search may apply its
+  // response to state. Prevents a slower earlier request (e.g. the no-filter
+  // fetch fired by typing) from overwriting a newer filtered fetch (e.g. one
+  // triggered by checking No-Exit milliseconds later) and silently showing
+  // stale, unfiltered lots.
+  const searchRequestIdRef = useRef(0);
 
   // Debounced auto-search effect
   useEffect(() => {
@@ -1336,6 +1342,9 @@ export default function StockRegister() {
     setIsSearching(true);
     setHasSearched(true);
 
+    // Claim the latest request id so older in-flight responses are ignored.
+    const requestId = ++searchRequestIdRef.current;
+
     try {
       let url: string;
       // No primary input on the active tab → run a filter-only search.
@@ -1386,6 +1395,8 @@ export default function StockRegister() {
       }
       
       const response = await authFetch(url);
+      // Stale response: a newer search has been kicked off, drop this one.
+      if (requestId !== searchRequestIdRef.current) return;
       if (response.ok) {
         const data = await response.json();
         const sortedData = [...data].sort((a: Lot, b: Lot) => {
@@ -1398,9 +1409,13 @@ export default function StockRegister() {
         setSearchResults([]);
       }
     } catch (error) {
+      if (requestId !== searchRequestIdRef.current) return;
       setSearchResults([]);
     } finally {
-      setIsSearching(false);
+      // Only the latest request controls the spinner state.
+      if (requestId === searchRequestIdRef.current) {
+        setIsSearching(false);
+      }
     }
   };
 
