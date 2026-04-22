@@ -17,6 +17,7 @@ import {
   Printer,
   LogOut,
   Truck,
+  PackageMinus,
 } from "lucide-react";
 import type { Lot } from "@shared/schema";
 import { Currency } from "@/components/Currency";
@@ -52,6 +53,7 @@ interface FarmerLotGroupProps {
   onSale?: (lot: Lot) => void;
   onExitSale?: (saleId: string) => void;
   onPrintSale?: (saleId: string) => void;
+  onMasterNikasi?: (lots: LotWithCharges[]) => void;
   canEdit?: boolean;
   chargeUnit?: "bag" | "quintal";
 }
@@ -124,6 +126,7 @@ export function FarmerLotGroup({
   onSale,
   onExitSale,
   onPrintSale,
+  onMasterNikasi,
   canEdit = true,
   chargeUnit,
 }: FarmerLotGroupProps) {
@@ -202,6 +205,18 @@ export function FarmerLotGroup({
             <Currency amount={totalDue} />
           </span>
         </div>
+        {canEdit && onMasterNikasi && remainingBags > 0 && (
+          <Button
+            size="sm"
+            variant="default"
+            className="ml-auto bg-amber-600 hover:bg-amber-700 text-white"
+            onClick={() => onMasterNikasi(lots.filter(l => (l.lot.remainingSize || 0) > 0))}
+            data-testid={`button-master-nikasi-${farmerKey}`}
+          >
+            <PackageMinus className="h-4 w-4 mr-1" />
+            {t("masterNikasi")}
+          </Button>
+        )}
       </div>
 
       {/* Lot table — full-width row combining LEFT (lot identity) and

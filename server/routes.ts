@@ -1392,6 +1392,48 @@ export async function registerRoutes(
     }
   });
 
+  // Master Nikasi — bulk self-sale exit for one farmer/company. Each grid
+  // row becomes its own sale_history + exit_history pair, but every exit
+  // shares a single freshly allocated bill number and exit date.
+  const masterNikasiSchema = z.object({
+    farmerLedgerId: z.string().min(1),
+    exitDate: z.string().min(1),
+    rows: z.array(z.object({
+      lotId: z.string().min(1),
+      exitBags: z.number().int().min(1),
+      kataCharges: z.number().min(0).default(0),
+      extraHammali: z.number().min(0).default(0),
+      gradingCharges: z.number().min(0).default(0),
+    })).min(1),
+  });
+
+  app.post("/api/farmers/master-nikasi", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const body = masterNikasiSchema.parse(req.body);
+      const exitDate = new Date(body.exitDate);
+      if (isNaN(exitDate.getTime())) {
+        return res.status(400).json({ error: "Invalid exit date" });
+      }
+
+      const result = await storage.createMasterNikasi({
+        coldStorageId,
+        farmerLedgerId: body.farmerLedgerId,
+        exitDate,
+        rows: body.rows,
+      });
+
+      res.status(201).json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid master nikasi data", details: error.errors });
+      }
+      console.error("Master nikasi error:", error);
+      const message = error instanceof Error ? error.message : "Failed to create master nikasi";
+      res.status(400).json({ error: message });
+    }
+  });
+
   app.get("/api/lots/:id/history", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

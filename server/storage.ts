@@ -2100,6 +2100,323 @@ export class DatabaseStorage implements IStorage {
     return record;
   }
 
+  // Master Nikasi — bulk self-sale + exit for one farmer/company. All rows
+  // share a single freshly-allocated exit bill number and exit date.
+  async createMasterNikasi(args: {
+    coldStorageId: string;
+    farmerLedgerId: string;
+    exitDate: Date;
+    rows: Array<{
+      lotId: string;
+      exitBags: number;
+      kataCharges: number;
+      extraHammali: number;
+      gradingCharges: number;
+    }>;
+  }): Promise<{
+    sharedExitBillNumber: number;
+    exitDate: Date;
+    sales: Array<{
+      saleId: string;
+      lotId: string;
+      lotNo: string;
+      marka: string | null;
+      bagsExited: number;
+      baseColdCharge: number;
+      kataCharges: number;
+      extraHammali: number;
+      gradingCharges: number;
+      totalColdStorageCharge: number;
+      coldStorageBillNumber: number | null;
+      potatoType: string;
+      bagType: string;
+      chamberName: string;
+      floor: number;
+      position: string;
+    }>;
+    farmer: {
+      farmerName: string;
+      contactNumber: string;
+      village: string;
+      tehsil: string;
+      district: string;
+      state: string;
+      entityType: string;
+    };
+  }> {
+    const { coldStorageId, farmerLedgerId, exitDate, rows } = args;
+
+    if (rows.length === 0) {
+      throw new Error("No rows provided");
+    }
+
+    // Disallow duplicate lotId in the batch (the dialog also blocks this).
+    const seen = new Set<string>();
+    for (const r of rows) {
+      if (seen.has(r.lotId)) throw new Error("Duplicate lot in master nikasi batch");
+      seen.add(r.lotId);
+    }
+
+    const coldStorage = await this.getColdStorage(coldStorageId);
+    if (!coldStorage) throw new Error("Cold storage not found");
+
+    // Look up farmer entity / custom rates once.
+    const farmerRecords = await this.getFarmerRecords(coldStorageId, undefined, true);
+    const farmerRecord = farmerRecords.find(f => f.farmerLedgerId === farmerLedgerId);
+    if (!farmerRecord) throw new Error("Farmer not found");
+    const farmerEntityType = farmerRecord.entityType || "farmer";
+    const effectiveChargeUnit = farmerEntityType === "company" ? "quintal" : (coldStorage.chargeUnit || "bag");
+
+    return await db.transaction(async (tx) => {
+      // Atomically reserve ONE exit bill number to be shared across every row.
+      const counterRow = await tx.update(coldStorages)
+        .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 1) + 1` })
+        .where(eq(coldStorages.id, coldStorageId))
+        .returning({ next: coldStorages.nextExitBillNumber });
+      if (counterRow.length === 0 || counterRow[0].next == null) {
+        throw new Error("Cold storage not found");
+      }
+      const sharedExitBillNumber = (counterRow[0].next as number) - 1;
+
+      const createdSales: Array<{
+        saleId: string;
+        lotId: string;
+        lotNo: string;
+        marka: string | null;
+        bagsExited: number;
+        baseColdCharge: number;
+        kataCharges: number;
+        extraHammali: number;
+        gradingCharges: number;
+        totalColdStorageCharge: number;
+        coldStorageBillNumber: number | null;
+        potatoType: string;
+        bagType: string;
+        chamberName: string;
+        floor: number;
+        position: string;
+      }> = [];
+
+      for (const row of rows) {
+        const [lot] = await tx.select().from(lots).where(eq(lots.id, row.lotId));
+        if (!lot) throw new Error(`Lot ${row.lotId} not found`);
+        if (lot.coldStorageId !== coldStorageId) throw new Error("Lot does not belong to this cold storage");
+        if (lot.farmerLedgerId !== farmerLedgerId) throw new Error("Lot does not belong to this farmer");
+        if (row.exitBags <= 0) throw new Error("Exit bags must be > 0");
+        if (row.exitBags > lot.remainingSize) {
+          throw new Error(`Lot ${lot.lotNo}: only ${lot.remainingSize} bag(s) remaining`);
+        }
+
+        const useWaferRates = lot.bagType === "wafer";
+        const defaultColdCharge = useWaferRates ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
+        const defaultHammali = useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
+        const coldChargeRate = farmerRecord.customColdChargeRate ?? defaultColdCharge;
+        const hammaliRate = farmerRecord.customHammaliRate ?? defaultHammali;
+
+        // Auto-detect charge basis: clearing the lot → totalRemaining (so we
+        // mark base charges billed and never double-charge later).
+        const clearingLot = row.exitBags === lot.remainingSize;
+        const chargeBasis = clearingLot ? "totalRemaining" : "actual";
+        const chargeQuantity = row.exitBags; // exit equals sold for master nikasi
+
+        let storageCharge = 0;
+        let baseHammaliAmount = 0;
+        if (lot.baseColdChargesBilled === 1) {
+          storageCharge = 0;
+          baseHammaliAmount = 0;
+        } else if (effectiveChargeUnit === "quintal") {
+          const coldChargeQuintal = (lot.netWeight && lot.size > 0)
+            ? (lot.netWeight * chargeQuantity * coldChargeRate) / (lot.size * 100)
+            : 0;
+          const hammaliPerBag = hammaliRate * chargeQuantity;
+          storageCharge = coldChargeQuintal + hammaliPerBag;
+          baseHammaliAmount = hammaliPerBag;
+        } else {
+          storageCharge = chargeQuantity * (coldChargeRate + hammaliRate);
+          baseHammaliAmount = hammaliRate * chargeQuantity;
+        }
+
+        const kata = row.kataCharges || 0;
+        const extra = row.extraHammali || 0;
+        const grading = row.gradingCharges || 0;
+        const totalChargeForLot = storageCharge + kata + extra + grading;
+
+        const newRemainingSize = lot.remainingSize - row.exitBags;
+        const isLotFullySold = newRemainingSize === 0;
+
+        // Update the lot
+        const lotUpdate: Record<string, unknown> = {
+          remainingSize: newRemainingSize,
+          totalDueCharge: (lot.totalDueCharge || 0) + totalChargeForLot,
+        };
+        if (clearingLot && lot.baseColdChargesBilled !== 1) {
+          lotUpdate.baseColdChargesBilled = 1;
+        }
+        if (isLotFullySold) {
+          lotUpdate.saleStatus = "sold";
+          lotUpdate.paymentStatus = "due";
+          lotUpdate.saleCharge = storageCharge;
+          lotUpdate.soldAt = new Date();
+          lotUpdate.upForSale = 0;
+        }
+        await tx.update(lots).set(lotUpdate).where(eq(lots.id, lot.id));
+
+        // Lot edit history (mirrors partial-sale path)
+        await tx.insert(lotEditHistory).values({
+          id: randomUUID(),
+          lotId: lot.id,
+          changeType: isLotFullySold ? "final_sale" : "partial_sale",
+          previousData: JSON.stringify({ remainingSize: lot.remainingSize }),
+          newData: JSON.stringify(isLotFullySold
+            ? { remainingSize: 0, saleStatus: "sold" }
+            : { remainingSize: newRemainingSize }),
+          soldQuantity: row.exitBags,
+          pricePerBag: 0,
+          coldCharge: coldChargeRate,
+          hammali: hammaliRate,
+          pricePerKg: null,
+          buyerName: null,
+          totalPrice: 0,
+          salePaymentStatus: "due",
+          saleCharge: storageCharge,
+        });
+
+        // Get chamber name and update fill if fully sold
+        const chamber = await this.getChamber(lot.chamberId);
+        if (isLotFullySold && chamber) {
+          await tx.update(chambers)
+            .set({ currentFill: Math.max(0, chamber.currentFill - row.exitBags) })
+            .where(eq(chambers.id, chamber.id));
+        }
+
+        // Create sales_history row (self-sale, due, no buyer)
+        const saleId = await generateSequentialId('sales');
+        const [createdSale] = await tx.insert(salesHistory).values({
+          id: saleId,
+          coldStorageId: lot.coldStorageId,
+          farmerName: lot.farmerName,
+          village: lot.village,
+          tehsil: lot.tehsil,
+          district: lot.district,
+          state: lot.state,
+          contactNumber: lot.contactNumber,
+          lotNo: lot.lotNo,
+          marka: lot.marka || null,
+          lotId: lot.id,
+          chamberName: chamber?.name || "Unknown",
+          floor: lot.floor,
+          position: lot.position,
+          potatoType: lot.type,
+          bagType: lot.bagType,
+          bagTypeLabel: lot.bagTypeLabel || null,
+          quality: lot.quality,
+          originalLotSize: lot.size,
+          saleType: isLotFullySold ? "full" : "partial",
+          quantitySold: row.exitBags,
+          pricePerBag: coldChargeRate + hammaliRate,
+          coldCharge: coldChargeRate,
+          hammali: hammaliRate,
+          coldStorageCharge: totalChargeForLot,
+          kataCharges: kata,
+          extraHammali: extra,
+          gradingCharges: grading,
+          netWeight: null,
+          buyerName: null,
+          pricePerKg: null,
+          paymentStatus: "due",
+          paymentMode: null,
+          paidAmount: 0,
+          dueAmount: totalChargeForLot,
+          entryDate: lot.createdAt,
+          saleYear: new Date().getFullYear(),
+          chargeBasis,
+          chargeUnitAtSale: effectiveChargeUnit,
+          initialNetWeightKg: lot.netWeight || null,
+          baseChargeAmountAtSale: storageCharge,
+          baseHammaliAmount,
+          remainingSizeAtSale: lot.remainingSize,
+          isSelfSale: 1,
+          adjReceivableSelfDueAmount: 0,
+          farmerLedgerId: lot.farmerLedgerId || null,
+          farmerId: lot.farmerId || null,
+          buyerLedgerId: null,
+          buyerId: null,
+          soldAt: new Date(),
+        } as InsertSalesHistory).returning();
+
+        // Atomically allocate this sale's coldStorageBillNumber.
+        const csBillRow = await tx.update(coldStorages)
+          .set({ nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 1) + 1` })
+          .where(eq(coldStorages.id, coldStorageId))
+          .returning({ next: coldStorages.nextColdStorageBillNumber });
+        const coldStorageBillNumber = csBillRow.length > 0 && csBillRow[0].next != null
+          ? (csBillRow[0].next as number) - 1
+          : null;
+        if (coldStorageBillNumber != null) {
+          await tx.update(salesHistory)
+            .set({ coldStorageBillNumber })
+            .where(eq(salesHistory.id, saleId));
+        }
+
+        // Create exit_history row sharing the master bill number / date.
+        await tx.insert(exitHistory).values({
+          id: randomUUID(),
+          salesHistoryId: saleId,
+          lotId: lot.id,
+          coldStorageId: lot.coldStorageId,
+          bagsExited: row.exitBags,
+          billNumber: sharedExitBillNumber,
+          exitDate,
+        } as InsertExitHistory);
+
+        // Denormalize exit summary onto the sale row (single exit per sale here).
+        const dd = String(exitDate.getDate()).padStart(2, "0");
+        const mm = String(exitDate.getMonth() + 1).padStart(2, "0");
+        const yyyy = exitDate.getFullYear();
+        await tx.update(salesHistory)
+          .set({
+            exitBillNumbers: String(sharedExitBillNumber),
+            exitDates: `${dd}/${mm}/${yyyy}`,
+          })
+          .where(eq(salesHistory.id, saleId));
+
+        createdSales.push({
+          saleId,
+          lotId: lot.id,
+          lotNo: lot.lotNo,
+          marka: lot.marka || null,
+          bagsExited: row.exitBags,
+          baseColdCharge: storageCharge,
+          kataCharges: kata,
+          extraHammali: extra,
+          gradingCharges: grading,
+          totalColdStorageCharge: totalChargeForLot,
+          coldStorageBillNumber,
+          potatoType: lot.type,
+          bagType: lot.bagType,
+          chamberName: chamber?.name || "Unknown",
+          floor: lot.floor,
+          position: lot.position,
+        });
+      }
+
+      return {
+        sharedExitBillNumber,
+        exitDate,
+        sales: createdSales,
+        farmer: {
+          farmerName: farmerRecord.farmerName,
+          contactNumber: farmerRecord.contactNumber,
+          village: farmerRecord.village,
+          tehsil: farmerRecord.tehsil,
+          district: farmerRecord.district,
+          state: farmerRecord.state,
+          entityType: farmerEntityType,
+        },
+      };
+    });
+  }
+
   // Exit History methods
   async createExit(data: InsertExitHistory): Promise<ExitHistory> {
     // Get the current bill number (before incrementing)

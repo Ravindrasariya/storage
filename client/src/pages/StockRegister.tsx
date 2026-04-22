@@ -34,6 +34,7 @@ import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { SaleDialog } from "@/components/SaleDialog";
 import { ExitDialog } from "@/components/ExitDialog";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
+import { MasterNikasiDialog } from "@/components/MasterNikasiDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { ArrowLeft, Search, Phone, Package, User, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
@@ -127,6 +128,25 @@ export default function StockRegister() {
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
   const [saleLotInfo, setSaleLotInfo] = useState<SaleLotInfo | null>(null);
   const [isFetchingSaleInfo, setIsFetchingSaleInfo] = useState(false);
+  const [masterNikasiOpen, setMasterNikasiOpen] = useState(false);
+  const [masterNikasiCtx, setMasterNikasiCtx] = useState<{
+    farmerName: string; village: string; contactNumber: string;
+    farmerLedgerId: string | null; lots: LotWithCharges[];
+  } | null>(null);
+
+  const handleOpenMasterNikasi = (
+    farmer: { farmerName: string; village: string; contactNumber: string },
+    lots: LotWithCharges[],
+  ) => {
+    if (lots.length === 0) return;
+    const farmerLedgerId = lots.find(l => !!l.lot.farmerLedgerId)?.lot.farmerLedgerId || null;
+    if (!farmerLedgerId) {
+      toast({ title: "Cannot start Master Nikasi", description: "Farmer ledger not linked.", variant: "destructive" });
+      return;
+    }
+    setMasterNikasiCtx({ ...farmer, farmerLedgerId, lots });
+    setMasterNikasiOpen(true);
+  };
 
   const handleOpenSale = async (lot: Lot) => {
     if (isFetchingSaleInfo) return;
@@ -2175,6 +2195,10 @@ export default function StockRegister() {
                   onSale={handleOpenSale}
                   onExitSale={handleExitSale}
                   onPrintSale={handlePrintSale}
+                  onMasterNikasi={(lots) => handleOpenMasterNikasi(
+                    { farmerName: group.farmerName, village: group.village, contactNumber: group.contactNumber },
+                    lots,
+                  )}
                   canEdit={canEdit}
                   chargeUnit={coldStorage?.chargeUnit}
                 />
@@ -2687,6 +2711,21 @@ export default function StockRegister() {
             setPrintDialogOpen(open);
             if (!open) setPrintingSale(null);
           }}
+        />
+      )}
+
+      {masterNikasiCtx && (
+        <MasterNikasiDialog
+          open={masterNikasiOpen}
+          onOpenChange={(open) => {
+            setMasterNikasiOpen(open);
+            if (!open) setMasterNikasiCtx(null);
+          }}
+          farmerName={masterNikasiCtx.farmerName}
+          village={masterNikasiCtx.village}
+          contactNumber={masterNikasiCtx.contactNumber}
+          farmerLedgerId={masterNikasiCtx.farmerLedgerId}
+          lots={masterNikasiCtx.lots}
         />
       )}
     </div>
