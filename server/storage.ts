@@ -2045,6 +2045,19 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Cascade-reverse any non-reversed exits associated with this sale so they
+    // do not appear orphaned in the Exit Register or in raw exit_history reads
+    // after the sale row is hard-deleted below. Mirrors reverseLatestExit's
+    // soft-flag pattern (isReversed=1, reversedAt=now()) to preserve audit.
+    const cascadedExitsResult = await db.update(exitHistory)
+      .set({ isReversed: 1, reversedAt: new Date() })
+      .where(and(
+        eq(exitHistory.salesHistoryId, saleId),
+        eq(exitHistory.isReversed, 0),
+      ))
+      .returning({ id: exitHistory.id });
+    const cascadedExitsReversed = cascadedExitsResult.length;
+
     await db.delete(salesHistory).where(eq(salesHistory.id, saleId));
 
     await this.createEditHistory({
@@ -2058,7 +2071,8 @@ export class DatabaseStorage implements IStorage {
       newData: JSON.stringify({ 
         saleStatus: newSaleStatus, 
         remainingSize: newRemainingSize,
-        reversedQuantity: quantityToRestore 
+        reversedQuantity: quantityToRestore,
+        cascadedExitsReversed,
       }),
     });
 
