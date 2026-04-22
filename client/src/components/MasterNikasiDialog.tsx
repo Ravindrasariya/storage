@@ -644,12 +644,12 @@ export function MasterNikasiDialog({
                     <th>#</th>
                     <th className="lft">{t("receiptNo")}</th>
                     <th className="lft">{t("marka") || "Marka"}</th>
-                    <th>कुल बेचे / Sold</th>
-                    <th>निकासी / Exited</th>
-                    <th>बैग / Bag</th>
-                    <th>कक्ष / Chamber</th>
-                    <th>मंजिल / Floor</th>
-                    <th>स्थिति / Position</th>
+                    <th>{t("soldBags")}</th>
+                    <th>{t("bagsExited")}</th>
+                    <th>{t("bagTypeLabel")}</th>
+                    <th>{t("chamber")}</th>
+                    <th>{t("floor")}</th>
+                    <th>{t("position")}</th>
                   </tr>
                 </thead>
                 <tbody>
