@@ -1966,6 +1966,23 @@ export async function registerRoutes(
     }
   });
 
+  // Lookup all exits sharing a single bill number, scoped to the current
+  // cold storage. Used by the Exit dialog reprint to detect Master Nikasi
+  // batches and render a consolidated receipt instead of a single-lot one.
+  app.get("/api/exits/by-bill/:billNumber", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const billNumber = parseInt(req.params.billNumber, 10);
+      if (!Number.isFinite(billNumber) || billNumber <= 0) {
+        return res.status(400).json({ error: "Invalid bill number" });
+      }
+      const exits = await storage.getExitsByBillNumber(coldStorageId, billNumber);
+      res.json({ exits });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch exits by bill number" });
+    }
+  });
+
   app.post("/api/sales-history/:id/exits", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

@@ -248,6 +248,24 @@ export interface IStorage {
   createExit(data: InsertExitHistory): Promise<ExitHistory>;
   getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
+  getExitsByBillNumber(coldStorageId: string, billNumber: number): Promise<Array<{
+    exitId: string;
+    exitDate: Date;
+    billNumber: number;
+    bagsExited: number;
+    isReversed: number;
+    saleId: string;
+    lotNo: string;
+    marka: string | null;
+    bagType: string;
+    chamberName: string;
+    floor: number;
+    position: string;
+    farmerName: string;
+    village: string;
+    contactNumber: string;
+    farmerLedgerId: string | null;
+  }>>;
   getTotalBagsExited(coldStorageId: string, year?: number): Promise<number>;
   getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string; village?: string; bagType?: string }): Promise<ExitRegisterResponse>;
   getExitRegisterYears(coldStorageId: string): Promise<number[]>;
@@ -2520,6 +2538,35 @@ export class DatabaseStorage implements IStorage {
         eq(exitHistory.isReversed, 0)
       ));
     return exits.reduce((sum, exit) => sum + exit.bagsExited, 0);
+  }
+
+  async getExitsByBillNumber(coldStorageId: string, billNumber: number) {
+    const rows = await db.select({
+      exitId: exitHistory.id,
+      exitDate: exitHistory.exitDate,
+      billNumber: exitHistory.billNumber,
+      bagsExited: exitHistory.bagsExited,
+      isReversed: exitHistory.isReversed,
+      saleId: salesHistory.id,
+      lotNo: salesHistory.lotNo,
+      marka: salesHistory.marka,
+      bagType: salesHistory.bagType,
+      chamberName: salesHistory.chamberName,
+      floor: salesHistory.floor,
+      position: salesHistory.position,
+      farmerName: salesHistory.farmerName,
+      village: salesHistory.village,
+      contactNumber: salesHistory.contactNumber,
+      farmerLedgerId: salesHistory.farmerLedgerId,
+    })
+      .from(exitHistory)
+      .innerJoin(salesHistory, eq(salesHistory.id, exitHistory.salesHistoryId))
+      .where(and(
+        eq(exitHistory.coldStorageId, coldStorageId),
+        eq(exitHistory.billNumber, billNumber),
+      ))
+      .orderBy(asc(salesHistory.lotNo));
+    return rows;
   }
 
   async getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{

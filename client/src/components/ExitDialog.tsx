@@ -12,6 +12,26 @@ import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@
 import { LogOut, Printer, Save } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, ExitHistory, ColdStorage } from "@shared/schema";
+import { NikasiPrintable, printNikasiReceipt, type NikasiReceiptData } from "@/components/NikasiPrintable";
+
+type BatchExitRow = {
+  exitId: string;
+  exitDate: string;
+  billNumber: number;
+  bagsExited: number;
+  isReversed: number;
+  saleId: string;
+  lotNo: string;
+  marka: string | null;
+  bagType: string;
+  chamberName: string;
+  floor: number;
+  position: string;
+  farmerName: string;
+  village: string;
+  contactNumber: string;
+  farmerLedgerId: string | null;
+};
 
 interface ExitDialogProps {
   sale: SalesHistory | null;
@@ -27,6 +47,10 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   const [bagsToExit, setBagsToExit] = useState("");
   const [lastExit, setLastExit] = useState<ExitHistory | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
+  const [batchData, setBatchData] = useState<NikasiReceiptData | null>(null);
+  const [pendingBatchPrint, setPendingBatchPrint] = useState(false);
+  const [reprintingExitId, setReprintingExitId] = useState<string | null>(null);
+  const batchPrintRef = useRef<HTMLDivElement>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
@@ -37,6 +61,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   });
   const isCompany = !!sale?.farmerLedgerId && farmerLedgerData?.farmers?.find(f => f.id === sale.farmerLedgerId)?.entityType === "company";
   const partyRowLabel = isCompany ? "कंपनी / Company:" : "किसान / Farmer:";
+  const batchPartyLabel = isCompany ? "कंपनी / Company" : "किसान / Farmer";
 
   const { data: exitData, refetch: refetchExits } = useQuery<{ exits: ExitHistory[]; totalExited: number }>({
     queryKey: ["/api/sales-history", sale?.id, "exits"],
@@ -103,9 +128,79 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     createExitMutation.mutate(bags);
   };
 
-  const handleReprintExit = (exit: ExitHistory) => {
-    setLastExit(exit);
-    setPendingPrint(true);
+  // Auto-print when batchData is set and a batch print is pending.
+  useEffect(() => {
+    if (pendingBatchPrint && batchData) {
+      const timer = setTimeout(() => {
+        if (batchPrintRef.current) {
+          printNikasiReceipt(batchPrintRef.current.innerHTML, t("masterNikasi"));
+        }
+        setPendingBatchPrint(false);
+        setReprintingExitId(null);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingBatchPrint, batchData, t]);
+
+  const handleReprintExit = async (exit: ExitHistory) => {
+    // Detect Master Nikasi batch by counting siblings sharing this billNumber.
+    // If 2+ exits share it, render the consolidated Master Nikasi receipt;
+    // otherwise fall back to the existing single-lot Exit Receipt.
+    if (!exit.billNumber) {
+      setLastExit(exit);
+      setPendingPrint(true);
+      return;
+    }
+    setReprintingExitId(exit.id);
+    try {
+      const response = await authFetch(`/api/exits/by-bill/${exit.billNumber}`);
+      const json = await response.json() as { exits: BatchExitRow[] };
+      const siblings = json.exits || [];
+      if (siblings.length >= 2) {
+        // Build consolidated receipt data. Use the earliest exit date as the
+        // batch's exit date (all rows share it for true Master Nikasi batches,
+        // but be defensive in case of edge cases).
+        const sortedByDate = [...siblings].sort(
+          (a, b) => new Date(a.exitDate).getTime() - new Date(b.exitDate).getTime(),
+        );
+        const first = sortedByDate[0];
+        setBatchData({
+          sharedExitBillNumber: exit.billNumber,
+          exitDate: first.exitDate,
+          farmer: {
+            farmerName: first.farmerName,
+            village: first.village,
+            contactNumber: first.contactNumber,
+          },
+          sales: siblings.map(s => ({
+            saleId: s.saleId,
+            lotNo: s.lotNo,
+            marka: s.marka,
+            bagsExited: s.bagsExited,
+            bagType: s.bagType,
+            chamberName: s.chamberName,
+            floor: s.floor,
+            position: s.position,
+          })),
+        });
+        setPendingBatchPrint(true);
+      } else {
+        setLastExit(exit);
+        setPendingPrint(true);
+        setReprintingExitId(null);
+      }
+    } catch (err) {
+      // On lookup failure, fall back to single-lot reprint so the user still
+      // gets a receipt rather than a silent failure.
+      toast({
+        title: t("error"),
+        description: (err as Error).message || "Failed to check batch",
+        variant: "destructive",
+      });
+      setLastExit(exit);
+      setPendingPrint(true);
+      setReprintingExitId(null);
+    }
   };
 
   const handlePrint = () => {
@@ -307,6 +402,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                             size="icon"
                             className="h-7 w-7"
                             onClick={() => handleReprintExit(exit)}
+                            disabled={reprintingExitId === exit.id}
                             data-testid={`button-print-exit-${exit.id}`}
                           >
                             <Printer className="h-3.5 w-3.5" />
@@ -343,6 +439,21 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Hidden batch print content — used when reprinting an exit that
+          belongs to a Master Nikasi batch (2+ exits sharing one billNumber). */}
+      <div style={{ position: "absolute", left: "-9999px", top: 0, pointerEvents: "none" }}>
+        <div ref={batchPrintRef}>
+          {batchData && (
+            <NikasiPrintable
+              data={batchData}
+              coldStorage={coldStorage}
+              partyRowLabel={batchPartyLabel}
+              t={t}
+            />
+          )}
+        </div>
+      </div>
 
       {/* Hidden print content — rendered off-screen for printRef capture */}
       <div style={{ position: "absolute", left: "-9999px", top: 0, pointerEvents: "none" }}>
