@@ -383,8 +383,7 @@ export function MasterNikasiDialog({
           <p className="text-sm text-muted-foreground py-6 text-center">{t("noLotsAvailable")}</p>
         ) : duplicateKey ? (
           <p className="text-sm text-destructive py-6 text-center" data-testid="text-mn-duplicate-error">
-            Data error: more than one lot exists for Receipt#/Marka# "{duplicateKey.replace("::", " / ")}".
-            Fix the duplicate lot entries before proceeding.
+            {t("duplicateLotData")} "{duplicateKey.replace("::", " / ")}". {t("fixDuplicateLot")}
           </p>
         ) : (
           <div className="overflow-x-auto border border-blue-700 rounded-md">

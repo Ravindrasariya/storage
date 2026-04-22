@@ -439,6 +439,8 @@ const translations: Translations = {
   exitBillNumber: { en: "Exit Bill #", hi: "निकासी बिल #" },
   noLotsAvailable: { en: "No lots with remaining bags available.", hi: "कोई लॉट उपलब्ध नहीं है।" },
   duplicateReceipt: { en: "Each receipt # can only be used once per Master Nikasi.", hi: "प्रत्येक रसीद # एक मास्टर निकासी में केवल एक बार उपयोग की जा सकती है।" },
+  duplicateLotData: { en: "Data error: more than one lot exists for Receipt#/Marka#", hi: "डेटा त्रुटि: रसीद#/मार्का# के लिए एक से अधिक लॉट मौजूद हैं" },
+  fixDuplicateLot: { en: "Fix the duplicate lot entries before proceeding.", hi: "आगे बढ़ने से पहले डुप्लिकेट लॉट प्रविष्टियों को ठीक करें।" },
   exitReceipt: { en: "Exit Receipt", hi: "निकासी रसीद" },
   bagsToExit: { en: "Bags to Exit", hi: "निकासी के लिए बैग" },
   maxBagsToExit: { en: "Max bags available for exit", hi: "निकासी के लिए उपलब्ध अधिकतम बैग" },
