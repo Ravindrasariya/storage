@@ -1182,14 +1182,16 @@ export async function registerRoutes(
       // convention block in server/db.ts.
       let saleDate: Date;
       if (soldAtInput !== undefined && soldAtInput !== null && soldAtInput !== "") {
-        let parsed: Date;
-        if (typeof soldAtInput === "string" && /^\d{4}-\d{2}-\d{2}$/.test(soldAtInput)) {
-          parsed = new Date(`${soldAtInput}T12:00:00+05:30`);
-        } else if (typeof soldAtInput === "string" || typeof soldAtInput === "number") {
-          parsed = new Date(soldAtInput);
-        } else {
-          return res.status(400).json({ error: "Invalid sale date", field: "soldAt" });
+        // Strict YYYY-MM-DD only — keeps the parser unambiguous and
+        // matches what the SaleDialog actually sends. Reject anything
+        // else loudly instead of relying on lenient JS Date parsing.
+        if (typeof soldAtInput !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(soldAtInput)) {
+          return res.status(400).json({
+            error: "Sale date must be in YYYY-MM-DD format",
+            field: "soldAt",
+          });
         }
+        const parsed = new Date(`${soldAtInput}T12:00:00+05:30`);
         if (isNaN(parsed.getTime())) {
           return res.status(400).json({ error: "Invalid sale date", field: "soldAt" });
         }

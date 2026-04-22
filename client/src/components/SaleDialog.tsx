@@ -389,8 +389,12 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
                 type="date"
                 value={saleDateInput}
                 onChange={(e) => {
-                  setSaleDateInput(e.target.value);
-                  setSaleDateEdited(true);
+                  const next = e.target.value;
+                  setSaleDateInput(next);
+                  // Treat clearing the field as "back to auto" so the
+                  // pill's visual state stays in sync with what we
+                  // actually send (an empty value omits soldAt).
+                  setSaleDateEdited(next.length > 0);
                 }}
                 className="h-7 w-36 text-sm bg-background"
                 data-testid="input-partial-sale-date"
