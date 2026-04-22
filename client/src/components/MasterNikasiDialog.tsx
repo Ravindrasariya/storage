@@ -132,6 +132,10 @@ export function MasterNikasiDialog({
   // running counter; user may override to match a manual receipt book.
   const [sharedExitBillInput, setSharedExitBillInput] = useState<string>("");
   const [sharedExitBillEdited, setSharedExitBillEdited] = useState(false);
+  // Inline error displayed under the shared exit bill # input (or
+  // a generic banner if a per-row CS bill # collided), so the operator
+  // can correct duplicates without losing the toast.
+  const [billNumberError, setBillNumberError] = useState<string | null>(null);
 
   // Reset state whenever dialog opens. Pre-fill the shared exit bill # and
   // each row's cold-storage bill # from the cold-storage running counters.
@@ -145,6 +149,7 @@ export function MasterNikasiDialog({
       setRows([newRow(only?.lotNo || "", onlyMarkaState, startCs ? String(startCs) : "")]);
       setSharedExitBillInput(coldStorage?.nextExitBillNumber ? String(coldStorage.nextExitBillNumber) : "");
       setSharedExitBillEdited(false);
+      setBillNumberError(null);
       setResult(null);
     }
   }, [open, lots, coldStorage?.nextExitBillNumber, coldStorage?.nextColdStorageBillNumber]);
@@ -313,7 +318,11 @@ export function MasterNikasiDialog({
       }, 250);
     },
     onError: (err: Error) => {
-      toast({ title: t("error") || "Error", description: err.message, variant: "destructive" });
+      const msg = err.message || "Failed";
+      if (/Exit Bill #|exit bill number|Cold Storage Bill #|cold storage bill number/i.test(msg)) {
+        setBillNumberError(msg);
+      }
+      toast({ title: t("error") || "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -385,9 +394,11 @@ export function MasterNikasiDialog({
                   onChange={(e) => {
                     setSharedExitBillInput(e.target.value);
                     setSharedExitBillEdited(true);
+                    if (billNumberError) setBillNumberError(null);
                   }}
-                  className="h-8 w-24"
+                  className={`h-8 w-24 ${billNumberError && /Exit Bill/i.test(billNumberError) ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   data-testid="input-mn-shared-exit-bill"
+                  aria-invalid={!!(billNumberError && /Exit Bill/i.test(billNumberError))}
                 />
                 <span className={`text-[10px] uppercase tracking-wide ${
                   sharedExitBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
@@ -401,6 +412,14 @@ export function MasterNikasiDialog({
         {!result && (
           <p className="text-[11px] text-muted-foreground -mt-1 px-1">
             Auto-filled from your counter — please verify before submit.
+          </p>
+        )}
+        {billNumberError && (
+          <p
+            className="text-xs text-red-600 dark:text-red-400 px-1 -mt-1"
+            data-testid="error-mn-bill-number"
+          >
+            {billNumberError}
           </p>
         )}
 

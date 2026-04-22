@@ -307,7 +307,7 @@ export interface IStorage {
   // Bill number assignment
   assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number>;
   assignSpecificColdStorageBillNumber(saleId: string, billNumber: number): Promise<number>;
-  findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<boolean>;
+  findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<{ id: string; soldAt: Date } | null>;
   assignLotBillNumber(lotId: string): Promise<number>;
   // Admin - Cold Storage Management
   getAllColdStorages(): Promise<ColdStorage[]>;
@@ -1664,7 +1664,10 @@ export class DatabaseStorage implements IStorage {
           ))
           .limit(1);
         if (dup.length > 0) {
-          const onDate = new Date(dup[0].soldAt as any).toLocaleDateString("en-IN");
+          const conflictDate: Date = dup[0].soldAt instanceof Date
+            ? dup[0].soldAt
+            : new Date(dup[0].soldAt as string);
+          const onDate = conflictDate.toLocaleDateString("en-IN");
           throw new Error(`Cold Storage Bill # ${userCsBill} already used on ${onDate}`);
         }
         resolvedCsBill = userCsBill;
@@ -2320,6 +2323,12 @@ export class DatabaseStorage implements IStorage {
     const exitYear = exitDate.getFullYear();
 
     return await db.transaction(async (tx) => {
+      // Lock the cold-storage row up front. This serializes all bill-#
+      // checks (shared exit + per-row CS) for this cold storage so two
+      // concurrent batches submitting overlapping numbers cannot both
+      // pass their dup checks before either inserts.
+      await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${coldStorageId} FOR UPDATE`);
+
       // Allocate the shared exit bill number — either honor the user's
       // override (with calendar-year duplicate check, ignoring reversed
       // exits) or atomically reserve the next counter value.
@@ -2328,7 +2337,7 @@ export class DatabaseStorage implements IStorage {
         if (!Number.isFinite(userSharedExitBill) || userSharedExitBill <= 0) {
           throw new Error("Invalid exit bill number");
         }
-        const dup = await tx.select({ id: exitHistory.id })
+        const dup = await tx.select({ id: exitHistory.id, exitDate: exitHistory.exitDate })
           .from(exitHistory)
           .where(and(
             eq(exitHistory.coldStorageId, coldStorageId),
@@ -2337,7 +2346,11 @@ export class DatabaseStorage implements IStorage {
             sql`extract(year from ${exitHistory.exitDate}) = ${exitYear}`,
           ));
         if (dup.length > 0) {
-          throw new Error(`Exit bill number ${userSharedExitBill} is already used in ${exitYear}`);
+          const conflictDate: Date = dup[0].exitDate instanceof Date
+            ? dup[0].exitDate
+            : new Date(dup[0].exitDate as string);
+          const onDate = conflictDate.toLocaleDateString("en-IN");
+          throw new Error(`Exit Bill # ${userSharedExitBill} already used on ${onDate}`);
         }
         sharedExitBillNumber = userSharedExitBill;
         await tx.update(coldStorages)
@@ -2670,8 +2683,12 @@ export class DatabaseStorage implements IStorage {
         if (!Number.isFinite(userBill) || userBill <= 0) {
           throw new Error("Invalid exit bill number");
         }
+        // Lock the cold-storage row so two concurrent operators submitting
+        // the same explicit bill # serialize on this counter — closes the
+        // check+insert race for the common case.
+        await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${data.coldStorageId} FOR UPDATE`);
         // Calendar-year-scoped duplicate check, ignoring reversed exits.
-        const dup = await tx.select({ id: exitHistory.id })
+        const dup = await tx.select({ id: exitHistory.id, exitDate: exitHistory.exitDate })
           .from(exitHistory)
           .where(and(
             eq(exitHistory.coldStorageId, data.coldStorageId),
@@ -2680,7 +2697,11 @@ export class DatabaseStorage implements IStorage {
             sql`extract(year from ${exitHistory.exitDate}) = ${year}`,
           ));
         if (dup.length > 0) {
-          throw new Error(`Exit bill number ${userBill} is already used in ${year}`);
+          const conflictDate: Date = dup[0].exitDate instanceof Date
+            ? dup[0].exitDate
+            : new Date(dup[0].exitDate as string);
+          const onDate = conflictDate.toLocaleDateString("en-IN");
+          throw new Error(`Exit Bill # ${userBill} already used on ${onDate}`);
         }
         billNumber = userBill;
         // Bump counter forward so future auto-numbers skip past this one.
@@ -5520,8 +5541,8 @@ export class DatabaseStorage implements IStorage {
   // reject explicit user-supplied cold-storage bill numbers BEFORE any
   // sale/lot mutations occur. The same check is also enforced at
   // assignment time for safety against concurrent inserts.
-  async findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<boolean> {
-    const dup = await db.select({ id: salesHistory.id })
+  async findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<{ id: string; soldAt: Date } | null> {
+    const dup = await db.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
@@ -5529,7 +5550,7 @@ export class DatabaseStorage implements IStorage {
         sql`extract(year from ${salesHistory.soldAt}) = ${year}`,
       ))
       .limit(1);
-    return dup.length > 0;
+    return dup.length > 0 ? { id: dup[0].id, soldAt: dup[0].soldAt } : null;
   }
 
   // Assign a user-supplied cold-storage bill number to a sale, with a

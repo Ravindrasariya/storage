@@ -60,6 +60,10 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
   // override to match their physical receipt book.
   const [coldStorageBillInput, setColdStorageBillInput] = useState<string>("");
   const [coldStorageBillEdited, setColdStorageBillEdited] = useState(false);
+  // Inline error shown right under the CS # input when the server
+  // rejects a duplicate bill number, so the operator can correct it
+  // without hunting through a toast.
+  const [coldStorageBillError, setColdStorageBillError] = useState<string | null>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
@@ -111,6 +115,7 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       setChargeBasis(lot.baseColdChargesBilled === 1 ? "actual" : "actual");
       setColdStorageBillInput(coldStorage?.nextColdStorageBillNumber ? String(coldStorage.nextColdStorageBillNumber) : "");
       setColdStorageBillEdited(false);
+      setColdStorageBillError(null);
     } else if (!open) {
       // Reset all state when closing
       setPartialQuantity(0);
@@ -176,9 +181,15 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       onOpenChange(false);
     },
     onError: (err: Error) => {
+      const msg = err.message || "Failed to record partial sale";
+      // Map duplicate-bill errors to the inline field error so the
+      // operator can fix the number directly in the header strip.
+      if (/Cold Storage Bill #|cold storage bill number/i.test(msg)) {
+        setColdStorageBillError(msg);
+      }
       toast({
         title: t("error"),
-        description: err.message || "Failed to record partial sale",
+        description: msg,
         variant: "destructive",
       });
     },
@@ -364,10 +375,12 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
                 onChange={(e) => {
                   setColdStorageBillInput(e.target.value);
                   setColdStorageBillEdited(true);
+                  if (coldStorageBillError) setColdStorageBillError(null);
                 }}
                 placeholder="—"
-                className="h-7 w-20 text-sm bg-background"
+                className={`h-7 w-20 text-sm bg-background ${coldStorageBillError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                 data-testid="input-partial-cs-bill"
+                aria-invalid={!!coldStorageBillError}
               />
               <span className={`text-[10px] uppercase tracking-wide ${
                 coldStorageBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
@@ -376,6 +389,14 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
               </span>
             </div>
           </div>
+          {coldStorageBillError && (
+            <p
+              className="text-xs text-red-600 dark:text-red-400 mt-1"
+              data-testid="error-partial-cs-bill"
+            >
+              {coldStorageBillError}
+            </p>
+          )}
           <DialogDescription>
             {lot && `${lot.farmerName} - ${lot.lotNo}`}
           </DialogDescription>

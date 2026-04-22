@@ -1173,13 +1173,26 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Quantity exceeds remaining size" });
       }
 
-      // Validate shape only — the year-scoped duplicate check, sale
-      // insert, and counter bump all happen atomically inside
-      // createSalesHistory below, so a duplicate bill # rolls back the
-      // entire sale rather than leaving a phantom row.
+      // Defense-in-depth duplicate check for the user-supplied
+      // cold-storage bill #:
+      //   (a) Pre-flight here, BEFORE any lot / edit-history / ledger
+      //       mutation, so the common case (operator just typed a number
+      //       that already exists) fails fast with no partial writes.
+      //   (b) Atomic check + lock inside createSalesHistory below
+      //       handles the rare concurrent-insert race.
+      // Pure shape validation runs first either way.
       if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
         if (!Number.isInteger(coldStorageBillNumber)) {
           return res.status(400).json({ error: "Cold storage bill number must be a positive integer" });
+        }
+        const csYear = new Date().getFullYear();
+        const dup = await storage.findColdStorageBillDuplicate(lot.coldStorageId, coldStorageBillNumber, csYear);
+        if (dup) {
+          const onDate = dup.soldAt ? new Date(dup.soldAt).toLocaleDateString("en-IN") : `${csYear}`;
+          return res.status(400).json({
+            error: `Cold Storage Bill # ${coldStorageBillNumber} already used on ${onDate}`,
+            field: "coldStorageBillNumber",
+          });
         }
       }
 
@@ -1425,6 +1438,15 @@ export async function registerRoutes(
       res.json(updatedLot);
     } catch (error) {
       console.error("Partial sale error:", error);
+      // Surface duplicate-bill-# errors thrown from the atomic
+      // createSalesHistory transaction as 400s with the originating
+      // message ("Cold Storage Bill # X already used on dd/mm/yyyy"),
+      // so the dialog can map them inline to the bill # field instead
+      // of showing a generic 500.
+      const message = error instanceof Error ? error.message : "Failed to process partial sale";
+      if (/Cold Storage Bill #|Invalid cold storage bill number/i.test(message)) {
+        return res.status(400).json({ error: message, field: "coldStorageBillNumber" });
+      }
       res.status(500).json({ error: "Failed to process partial sale" });
     }
   });
@@ -2067,8 +2089,8 @@ export async function registerRoutes(
       }
       const message = error instanceof Error ? error.message : "Failed to create exit";
       // Surface duplicate-bill errors so the user can correct the number.
-      if (/already used in/.test(message) || /Invalid exit bill/.test(message)) {
-        return res.status(400).json({ error: message });
+      if (/already used (on|in)|Invalid exit bill|Exit Bill #/.test(message)) {
+        return res.status(400).json({ error: message, field: "billNumber" });
       }
       res.status(500).json({ error: "Failed to create exit" });
     }

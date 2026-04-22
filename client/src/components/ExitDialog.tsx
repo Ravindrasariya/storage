@@ -47,6 +47,9 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   const [bagsToExit, setBagsToExit] = useState("");
   const [billNumberInput, setBillNumberInput] = useState<string>("");
   const [billNumberEdited, setBillNumberEdited] = useState(false);
+  // Inline error shown right under the Exit Bill # field when the
+  // server rejects a duplicate, so the operator can correct it.
+  const [billNumberError, setBillNumberError] = useState<string | null>(null);
   const [lastExit, setLastExit] = useState<ExitHistory | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [batchData, setBatchData] = useState<NikasiReceiptData | null>(null);
@@ -66,6 +69,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     if (open && coldStorage?.nextExitBillNumber != null) {
       setBillNumberInput(String(coldStorage.nextExitBillNumber));
       setBillNumberEdited(false);
+      setBillNumberError(null);
     }
     if (!open) {
       setBillNumberInput("");
@@ -136,7 +140,11 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       refetchExits();
     },
     onError: (error: Error) => {
-      toast({ title: t("error"), description: error.message || t("failedToCreateExit"), variant: "destructive" });
+      const msg = error.message || t("failedToCreateExit");
+      if (/Exit Bill #|exit bill number/i.test(msg)) {
+        setBillNumberError(msg);
+      }
+      toast({ title: t("error"), description: msg, variant: "destructive" });
     },
   });
 
@@ -408,9 +416,11 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                         onChange={(e) => {
                           setBillNumberInput(e.target.value);
                           setBillNumberEdited(true);
+                          if (billNumberError) setBillNumberError(null);
                         }}
-                        className="w-28 h-8"
+                        className={`w-28 h-8 ${billNumberError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                         data-testid="input-exit-bill-number"
+                        aria-invalid={!!billNumberError}
                       />
                       <Badge
                         variant="outline"
@@ -427,6 +437,14 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                         ? "Edited — please verify before submit"
                         : "Auto-filled — please verify before submit"}
                     </span>
+                    {billNumberError && (
+                      <span
+                        className="text-[11px] text-red-600 dark:text-red-400"
+                        data-testid="error-exit-bill-number"
+                      >
+                        {billNumberError}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
