@@ -47,6 +47,12 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   const [bagsToExit, setBagsToExit] = useState("");
   const [billNumberInput, setBillNumberInput] = useState<string>("");
   const [billNumberEdited, setBillNumberEdited] = useState(false);
+  // Operator-editable Exit Date — defaults to today (IST) so back-dated
+  // niksais (recorded a day or two late) carry the real exit date
+  // through the row's exitDate, the bill #'s year window, and the
+  // printed Nikasi receipt. See Task #210.
+  const [exitDateInput, setExitDateInput] = useState<string>("");
+  const [exitDateEdited, setExitDateEdited] = useState(false);
   // Inline error shown right under the Exit Bill # field when the
   // server rejects a duplicate, so the operator can correct it.
   const [billNumberError, setBillNumberError] = useState<string | null>(null);
@@ -76,6 +82,26 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       setBillNumberEdited(false);
     }
   }, [open, coldStorage?.nextExitBillNumber]);
+
+  // Pre-fill the Exit Date with today (IST) when the dialog opens, and
+  // reset on close. Computed via Intl.DateTimeFormat in Asia/Kolkata so
+  // we always show the user's local calendar day regardless of the
+  // browser's timezone setting.
+  useEffect(() => {
+    if (open) {
+      const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+      setExitDateInput(today);
+      setExitDateEdited(false);
+    } else {
+      setExitDateInput("");
+      setExitDateEdited(false);
+    }
+  }, [open]);
 
   const { data: farmerLedgerData } = useQuery<{ farmers: Array<{ id: string; entityType: string }> }>({
     queryKey: ["/api/farmer-ledger"],
@@ -116,9 +142,14 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   }, [pendingPrint, lastExit]);
 
   const createExitMutation = useMutation({
-    mutationFn: async ({ bagsExited, billNumber }: { bagsExited: number; billNumber?: number }) => {
-      const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/exits`,
-        billNumber != null ? { bagsExited, billNumber } : { bagsExited });
+    mutationFn: async ({ bagsExited, billNumber, exitDate }: { bagsExited: number; billNumber?: number; exitDate?: string }) => {
+      // Build payload minimally: only include billNumber / exitDate when
+      // the operator actually provided them, so the server falls back to
+      // its auto/now() defaults otherwise.
+      const payload: { bagsExited: number; billNumber?: number; exitDate?: string } = { bagsExited };
+      if (billNumber != null) payload.billNumber = billNumber;
+      if (exitDate) payload.exitDate = exitDate;
+      const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/exits`, payload);
       return response.json();
     },
     onSuccess: (data: ExitHistory) => {
@@ -159,7 +190,13 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       toast({ title: t("error"), description: "Exit bill number must be a positive integer", variant: "destructive" });
       return;
     }
-    createExitMutation.mutate({ bagsExited: bags, billNumber: billNum });
+    createExitMutation.mutate({
+      bagsExited: bags,
+      billNumber: billNum,
+      // Send exitDate only when the operator edited the default — keeps
+      // the untouched flow stamping server-side now() as before.
+      exitDate: exitDateEdited ? exitDateInput : undefined,
+    });
   };
 
   // Auto-print when batchData is set and a batch print is pending.
@@ -249,10 +286,55 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <LogOut className="h-5 w-5" />
-              {t("exit")} / निकासी
-            </DialogTitle>
+            {/* Title + Exit Date pill share one tidy row, same shape as
+                the Sale dialog header (Task #206 / layout fix). flex-wrap
+                lets the date pill drop below the title on narrow widths
+                instead of clipping. */}
+            <div className="flex items-center gap-2 flex-wrap pr-6">
+              <DialogTitle className="flex items-center gap-2 flex-shrink-0">
+                <LogOut className="h-5 w-5" />
+                {t("exit")} / निकासी
+              </DialogTitle>
+              {/* Editable Exit Date — defaults to today (IST). Same
+                  amber-when-default / blue-when-edited pill treatment as
+                  the Sale Date pill. */}
+              <div className={`flex items-center gap-2 rounded-md px-2 py-1 border ${
+                exitDateEdited
+                  ? "border-blue-400 dark:border-blue-600 bg-blue-100/80 dark:bg-blue-900/40 ring-1 ring-blue-300/50"
+                  : "border-amber-400 dark:border-amber-600 bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-300/50"
+              }`}>
+                <Label
+                  htmlFor="exit-date"
+                  className={`text-xs font-semibold whitespace-nowrap ${
+                    exitDateEdited
+                      ? "text-blue-800 dark:text-blue-200"
+                      : "text-amber-800 dark:text-amber-200"
+                  }`}
+                >
+                  {t("date") || "Date"}
+                </Label>
+                <Input
+                  id="exit-date"
+                  type="date"
+                  value={exitDateInput}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setExitDateInput(next);
+                    // Clearing the field returns the pill to "auto" and
+                    // omits exitDate from the payload, matching the
+                    // visual state to the wire behaviour.
+                    setExitDateEdited(next.length > 0);
+                  }}
+                  className="h-7 w-36 text-sm bg-background"
+                  data-testid="input-exit-date"
+                />
+                <span className={`text-[10px] uppercase tracking-wide ${
+                  exitDateEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
+                }`}>
+                  {exitDateEdited ? "edited" : "auto"}
+                </span>
+              </div>
+            </div>
           </DialogHeader>
 
           <div className="space-y-3">

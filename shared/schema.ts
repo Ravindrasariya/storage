@@ -763,7 +763,12 @@ export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omi
 export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true });
 export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).omit({ id: true, changedAt: true });
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
-export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, billNumber: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });
+// exitDate is intentionally NOT omitted: callers may pass an explicit
+// effective exit date (e.g. operator back-dating an individual exit on
+// the Exit / Nikasi dialog — see Task #210). When omitted, the DB
+// defaultNow() applies. createExit in server/storage.ts reads
+// data.exitDate to drive the year-scoped exit-bill # duplicate check.
+export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, billNumber: true, createdAt: true, isReversed: true, reversedAt: true });
 export const insertCashReceiptSchema = createInsertSchema(cashReceipts).omit({ id: true, transactionId: true, createdAt: true, appliedAmount: true, unappliedAmount: true, isReversed: true, reversedAt: true });
 export const insertCashReceiptApplicationSchema = createInsertSchema(cashReceiptApplications).omit({ id: true, createdAt: true, appliedAt: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, transactionId: true, createdAt: true, isReversed: true, reversedAt: true });

@@ -2080,9 +2080,14 @@ export async function registerRoutes(
   });
 
   // Exit History (Nikasi)
+  // exitDate is an optional YYYY-MM-DD string; when present the route
+  // resolves it to a concrete IST-anchored Date and forwards it to
+  // storage.createExit so the exit row, the bill #'s year window, and
+  // the Nikasi receipt all reflect the operator's chosen date.
   const createExitSchema = z.object({
     bagsExited: z.number().min(1, "Must exit at least 1 bag"),
     billNumber: z.number().int().positive().optional(),
+    exitDate: z.string().optional(),
   });
 
   app.get("/api/sales-history/:id/exits", requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -2122,8 +2127,47 @@ export async function registerRoutes(
   app.post("/api/sales-history/:id/exits", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { bagsExited, billNumber } = createExitSchema.parse(req.body);
-      
+      const { bagsExited, billNumber, exitDate: exitDateInput } = createExitSchema.parse(req.body);
+
+      // Resolve the operator-picked exit date into a concrete Date
+      // anchored at noon IST so the calendar day is unambiguous across
+      // any TZ. Mirrors the Sale Date validation flow added in Task #206:
+      // strict YYYY-MM-DD, round-trip calendar check (rejects 2026-02-31),
+      // and a guard against materially future dates. When omitted the
+      // DB defaultNow() applies inside storage.createExit.
+      let resolvedExitDate: Date | undefined;
+      if (exitDateInput !== undefined && exitDateInput !== null && exitDateInput !== "") {
+        if (typeof exitDateInput !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(exitDateInput)) {
+          return res.status(400).json({
+            error: "Invalid exit date format (expected YYYY-MM-DD)",
+            field: "exitDate",
+          });
+        }
+        const parsed = new Date(`${exitDateInput}T12:00:00+05:30`);
+        if (Number.isNaN(parsed.getTime())) {
+          return res.status(400).json({ error: "Invalid exit date", field: "exitDate" });
+        }
+        // Round-trip the parsed instant back to an IST calendar string;
+        // anything that doesn't match (e.g. 2026-02-31 → 2026-03-03) is
+        // not a real calendar date for the user.
+        const istParts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(parsed);
+        if (istParts !== exitDateInput) {
+          return res.status(400).json({ error: "Exit date is not a real calendar date", field: "exitDate" });
+        }
+        // Reject dates more than ~1 day in the future to allow for clock
+        // skew while still preventing accidental year-typos like 2126.
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        if (parsed.getTime() > tomorrow.getTime()) {
+          return res.status(400).json({ error: "Exit date cannot be in the future", field: "exitDate" });
+        }
+        resolvedExitDate = parsed;
+      }
+
       // Get the sale to verify bags available
       const sales = await storage.getSalesHistory(coldStorageId, {});
       const sale = sales.find(s => s.id === req.params.id);
@@ -2146,6 +2190,7 @@ export async function registerRoutes(
         lotId: sale.lotId,
         coldStorageId: sale.coldStorageId,
         bagsExited,
+        ...(resolvedExitDate ? { exitDate: resolvedExitDate } : {}),
       }, { userBillNumber: billNumber ?? null });
 
       res.status(201).json(exit);
@@ -2157,6 +2202,11 @@ export async function registerRoutes(
       // Surface duplicate-bill errors so the user can correct the number.
       if (/already used (on|in)|Invalid exit bill|Exit Bill #/.test(message)) {
         return res.status(400).json({ error: message, field: "billNumber" });
+      }
+      // Pass through exit-date validation errors thrown by createExit
+      // (none today, but future-proof for parity with sale-date errors).
+      if (/exit date|Exit Date/i.test(message)) {
+        return res.status(400).json({ error: message, field: "exitDate" });
       }
       res.status(500).json({ error: "Failed to create exit" });
     }
