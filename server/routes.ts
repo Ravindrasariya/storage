@@ -1196,10 +1196,12 @@ export async function registerRoutes(
         }
       }
 
-      // Update position if provided
-      if (position) {
-        await storage.updateLot(req.params.id, { position });
-      }
+      // NOTE: Position update + main updateLot + createEditHistory are
+      // intentionally moved BELOW the createSalesHistory call. That way
+      // any duplicate-bill-# rejection from the atomic check inside
+      // createSalesHistory aborts before any lot/history mutation
+      // commits, eliminating the half-written-state risk under
+      // concurrent submissions of the same number.
 
       const previousData = {
         remainingSize: lot.remainingSize,
