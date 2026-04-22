@@ -1396,9 +1396,12 @@ export default function StockRegister() {
       
       const response = await authFetch(url);
       // Stale response: a newer search has been kicked off, drop this one.
+      // Re-check after EACH await so a request superseded mid-parse can never
+      // overwrite the latest results.
       if (requestId !== searchRequestIdRef.current) return;
       if (response.ok) {
         const data = await response.json();
+        if (requestId !== searchRequestIdRef.current) return;
         const sortedData = [...data].sort((a: Lot, b: Lot) => {
           const lotNoA = parseInt(a.lotNo, 10) || 0;
           const lotNoB = parseInt(b.lotNo, 10) || 0;
