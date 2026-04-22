@@ -361,7 +361,8 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="flex items-center justify-between gap-3 pr-6">
-            <DialogTitle className="flex-shrink-0">{t("sale")}</DialogTitle>
+            <div className="flex items-center gap-3 flex-wrap">
+              <DialogTitle className="flex-shrink-0">{t("sale")}</DialogTitle>
             {/* Editable Sale Date — defaults to today (IST) so back-
                 dated entries (sale recorded a day or two late) carry
                 the real sale date through the row's `soldAt`, the
@@ -399,6 +400,7 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
               }`}>
                 {saleDateEdited ? "edited" : "auto"}
               </span>
+            </div>
             </div>
             {/* Cold-storage receipt-book bill #, surfaced inline with the
                 Sale title so the operator sees and verifies it before

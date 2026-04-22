@@ -755,7 +755,12 @@ export const insertChamberSchema = createInsertSchema(chambers).omit({ id: true 
 export const insertChamberFloorSchema = createInsertSchema(chamberFloors).omit({ id: true });
 export const insertLotSchema = createInsertSchema(lots).omit({ id: true, createdAt: true });
 export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omit({ id: true, changedAt: true });
-export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, soldAt: true });
+// soldAt is intentionally NOT omitted: callers may pass an explicit
+// effective sale date (e.g. operator back-dating an individual sale on
+// the Sale dialog — see Task #206). When omitted, the DB defaultNow()
+// applies. createSalesHistory in server/storage.ts reads data.soldAt
+// to drive the year-scoped CS-bill # duplicate check.
+export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true });
 export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).omit({ id: true, changedAt: true });
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
 export const insertExitHistorySchema = createInsertSchema(exitHistory).omit({ id: true, billNumber: true, exitDate: true, createdAt: true, isReversed: true, reversedAt: true });

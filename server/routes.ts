@@ -1365,11 +1365,6 @@ export async function registerRoutes(
 
       // Sale insert first: atomic dup check + counter bump inside the tx.
       // If it throws, no lot/edit-history mutation has run.
-      // NOTE: insertSalesHistorySchema omits `soldAt` from its zod-derived
-      // type, but createSalesHistory explicitly reads `data.soldAt` (see
-      // server/storage.ts) to drive both the row's effective sale date and
-      // the year-scoped CS-bill # dup check. The cast threads the
-      // user-picked / server-stamped saleDate through that path.
       const createdSale = await storage.createSalesHistory({
         coldStorageId: lot.coldStorageId,
         farmerName: lot.farmerName,
@@ -1407,6 +1402,7 @@ export async function registerRoutes(
         dueAmount: saleDueAmount,
         entryDate: lot.createdAt,
         saleYear: saleDate.getFullYear(),
+        soldAt: saleDate,
         // Charge calculation context for edit dialog
         chargeBasis: chargeBasis || "actual",
         chargeUnitAtSale: effectiveChargeUnit, // Preserve effective charge unit used at sale time (company=quintal, farmer=global)
@@ -1424,8 +1420,6 @@ export async function registerRoutes(
         // Buyer ledger reference (ensure buyer exists and get IDs)
         buyerLedgerId: buyerEntry?.id || null,
         buyerId: buyerEntry?.buyerId || null,
-        // soldAt threaded via cast — see NOTE above this object literal.
-        ...({ soldAt: saleDate } as Record<string, unknown>),
       }, {
         // When the operator supplies an explicit cold-storage bill #
         // (to match their manual receipt book), createSalesHistory
