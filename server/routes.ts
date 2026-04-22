@@ -1195,6 +1195,19 @@ export async function registerRoutes(
         if (isNaN(parsed.getTime())) {
           return res.status(400).json({ error: "Invalid sale date", field: "soldAt" });
         }
+        // Round-trip check: JS Date silently normalizes impossible
+        // calendar inputs (e.g. 2026-02-31 → 2026-03-03). Re-format
+        // the parsed instant in IST and require it to match the
+        // original string, so we reject out-of-range days/months.
+        const istParts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(parsed);
+        if (istParts !== soldAtInput) {
+          return res.status(400).json({ error: "Sale date is not a real calendar date", field: "soldAt" });
+        }
         // Reject dates more than 1 day in the future (small grace
         // window for client/server clock skew across TZs).
         if (parsed.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
