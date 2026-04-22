@@ -985,14 +985,41 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const currentUtilization = allLots.reduce((sum, lot) => sum + lot.remainingSize, 0);
+    // Build a per-lot "physically remaining" count from non-reversed exits.
+    // physicalRemaining(lot) = lot.size - sum(non-reversed exit_history.bagsExited).
+    // This decouples the dashboard's "Remaining" tiles from sale state — sales
+    // alone don't shrink remaining; only physical exits do, and exit reversals
+    // restore them. Both standalone exits and Master Nikasi exits write to
+    // exit_history, so this single source captures both.
+    const lotIdsForYear = allLots.map((lot) => lot.id);
+    const exitedByLot = new Map<string, number>();
+    if (lotIdsForYear.length > 0) {
+      const exitRows = await db
+        .select({
+          lotId: exitHistory.lotId,
+          totalExited: sql<number>`COALESCE(SUM(${exitHistory.bagsExited}), 0)`.as("total_exited"),
+        })
+        .from(exitHistory)
+        .where(and(
+          inArray(exitHistory.lotId, lotIdsForYear),
+          eq(exitHistory.isReversed, 0),
+        ))
+        .groupBy(exitHistory.lotId);
+      for (const row of exitRows) {
+        exitedByLot.set(row.lotId, Number(row.totalExited) || 0);
+      }
+    }
+    const physicalRemaining = (lot: Lot): number =>
+      Math.max(0, lot.size - (exitedByLot.get(lot.id) ?? 0));
+
+    const currentUtilization = allLots.reduce((sum, lot) => sum + physicalRemaining(lot), 0);
     const peakUtilization = allLots.reduce((sum, lot) => sum + lot.size, 0);
     
     // Total unique farmers (all lots)
     const uniqueFarmers = new Set(allLots.map((lot) => lot.contactNumber));
-    // Remaining unique farmers (lots with remaining bags > 0)
+    // Remaining unique farmers (lots with bags physically still inside)
     const remainingFarmers = new Set(
-      allLots.filter((lot) => lot.remainingSize > 0).map((lot) => lot.contactNumber)
+      allLots.filter((lot) => physicalRemaining(lot) > 0).map((lot) => lot.contactNumber)
     );
     
     const totalWaferBags = allLots
@@ -1000,25 +1027,27 @@ export class DatabaseStorage implements IStorage {
       .reduce((sum, lot) => sum + lot.size, 0);
     const remainingWaferBags = allLots
       .filter((lot) => lot.bagType === "wafer")
-      .reduce((sum, lot) => sum + lot.remainingSize, 0);
+      .reduce((sum, lot) => sum + physicalRemaining(lot), 0);
     const totalSeedBags = allLots
       .filter((lot) => lot.bagType === "seed")
       .reduce((sum, lot) => sum + lot.size, 0);
     const remainingSeedBags = allLots
       .filter((lot) => lot.bagType === "seed")
-      .reduce((sum, lot) => sum + lot.remainingSize, 0);
+      .reduce((sum, lot) => sum + physicalRemaining(lot), 0);
     const totalRationBags = allLots
       .filter((lot) => lot.bagType === "Ration")
       .reduce((sum, lot) => sum + lot.size, 0);
     const remainingRationBags = allLots
       .filter((lot) => lot.bagType === "Ration")
-      .reduce((sum, lot) => sum + lot.remainingSize, 0);
+      .reduce((sum, lot) => sum + physicalRemaining(lot), 0);
     
-    const remainingLots = allLots.filter((lot) => lot.remainingSize > 0).length;
+    const remainingLots = allLots.filter((lot) => physicalRemaining(lot) > 0).length;
 
+    // Use chambers.currentFill directly — it is the authoritative physical
+    // bag count after Task #193 (entry/exit/exit-reversal/lot-size-edit are
+    // the only mutators).
     const chamberStats = allChambers.map((chamber) => {
-      const chamberLots = allLots.filter((lot) => lot.chamberId === chamber.id);
-      const currentFill = chamberLots.reduce((sum, lot) => sum + lot.remainingSize, 0);
+      const currentFill = chamber.currentFill;
       return {
         id: chamber.id,
         name: chamber.name,
