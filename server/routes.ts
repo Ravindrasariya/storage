@@ -973,10 +973,17 @@ export async function registerRoutes(
         soldAt?: Date;
       }> = { ...validated };
 
-      // Adjust remainingSize by the same delta when size changes
+      // Adjust remainingSize by the same delta when size changes, and apply
+      // the same delta to the chamber's currentFill — the lot's bags are
+      // physically present in its chamber, so changing the recorded size
+      // changes the chamber fill by the same amount. Atomic SQL delta
+      // clamped to [0, capacity] avoids lost updates.
       if (validated.size !== undefined && validated.size !== lot.size) {
         const delta = validated.size - lot.size;
         updateData.remainingSize = lot.remainingSize + delta;
+        if (lot.chamberId) {
+          await storage.applyChamberFillDelta(lot.chamberId, delta);
+        }
       }
       if (validated.lotNo && validated.lotNo !== lot.lotNo) {
         updateData.entrySequence = parseInt(validated.lotNo, 10);
@@ -1283,13 +1290,10 @@ export async function registerRoutes(
         saleCharge: storageCharge,
       });
 
-      // Get chamber for sales history and chamber fill update
+      // Get chamber for sales history (chamber fill is no longer changed on
+      // sale — fill tracks physical bag movement and only changes on entry,
+      // exit, exit-reversal, and lot size edits).
       const chamber = await storage.getChamber(lot.chamberId);
-      
-      // Update chamber fill when lot is fully sold
-      if (isLotFullySold && chamber) {
-        await storage.updateChamberFill(chamber.id, Math.max(0, chamber.currentFill - quantitySold));
-      }
       
       // Ensure buyer exists in buyer ledger and get IDs (skip for self-sales)
       let buyerEntry: { id: string; buyerId: string } | null = null;
