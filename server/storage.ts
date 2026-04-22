@@ -1613,7 +1613,7 @@ export class DatabaseStorage implements IStorage {
 
 
   // Sales History Methods
-  async createSalesHistory(data: InsertSalesHistory): Promise<SalesHistory> {
+  async createSalesHistory(data: InsertSalesHistory, opts?: { userColdStorageBillNumber?: number | null }): Promise<SalesHistory> {
     const id = await generateSequentialId('sales');
     // Seed paidCash / paidAccount counters from inline payment, if any.
     // Sales created with a non-zero paidAmount and an explicit paymentMode
@@ -1634,14 +1634,59 @@ export class DatabaseStorage implements IStorage {
         ? data.extraDueToMerchantOriginal
         : (data.extraDueToMerchant ?? 0);
 
-    const [sale] = await db.insert(salesHistory).values({
-      ...data,
-      id,
-      paidCash: seedCash,
-      paidAccount: seedAccount,
-      extraDueToMerchantOriginal: seedExtraDueOriginal,
-    }).returning();
-    return sale;
+    const userCsBill = opts?.userColdStorageBillNumber ?? null;
+
+    // Wrap the insert so the cold-storage bill # assignment (when the
+    // user supplied one) and the counter bump happen in the SAME
+    // transaction as the salesHistory row insert. That way a duplicate
+    // bill # rejection rolls back the entire sale write — the operator
+    // can never end up with a half-recorded sale because the bill #
+    // collided.
+    return await db.transaction(async (tx) => {
+      let resolvedCsBill: number | null = null;
+      if (userCsBill != null) {
+        if (!Number.isFinite(userCsBill) || userCsBill <= 0) {
+          throw new Error("Invalid cold storage bill number");
+        }
+        // Lock the cold-storage row so concurrent transactions serialize
+        // on the same counter — closes the dup-check race for the
+        // common case where two operators submit the same number at the
+        // same time.
+        await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${data.coldStorageId} FOR UPDATE`);
+
+        const csYear = new Date().getFullYear();
+        const dup = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, data.coldStorageId),
+            eq(salesHistory.coldStorageBillNumber, userCsBill),
+            sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+          ))
+          .limit(1);
+        if (dup.length > 0) {
+          const onDate = new Date(dup[0].soldAt as any).toLocaleDateString("en-IN");
+          throw new Error(`Cold Storage Bill # ${userCsBill} already used on ${onDate}`);
+        }
+        resolvedCsBill = userCsBill;
+      }
+
+      const [sale] = await tx.insert(salesHistory).values({
+        ...data,
+        id,
+        paidCash: seedCash,
+        paidAccount: seedAccount,
+        extraDueToMerchantOriginal: seedExtraDueOriginal,
+        ...(resolvedCsBill != null ? { coldStorageBillNumber: resolvedCsBill } : {}),
+      }).returning();
+
+      if (resolvedCsBill != null) {
+        await tx.update(coldStorages)
+          .set({ nextColdStorageBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextColdStorageBillNumber}, 1), ${resolvedCsBill + 1})` })
+          .where(eq(coldStorages.id, data.coldStorageId));
+      }
+
+      return sale;
+    });
   }
 
   async getSalesHistory(coldStorageId: string, filters?: {
