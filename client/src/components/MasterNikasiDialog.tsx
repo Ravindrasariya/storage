@@ -431,7 +431,7 @@ export function MasterNikasiDialog({
 
                   return (
                     <tr key={r.rowKey} data-testid={`row-mn-${idx}`}>
-                      <td className="p-2 w-[90px]">
+                      <td className="p-2 w-[110px]">
                         <Select
                           value={r.lotNo || undefined}
                           onValueChange={(newLotNo) => {
@@ -478,7 +478,7 @@ export function MasterNikasiDialog({
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className="p-2 w-[110px]">
+                      <td className="p-2 w-[130px]">
                         <Select
                           value={r.marka || undefined}
                           onValueChange={(newMarkaSel) => {
