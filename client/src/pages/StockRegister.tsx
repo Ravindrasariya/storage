@@ -2749,6 +2749,9 @@ export default function StockRegister() {
           setSaleDialogOpen(open);
           if (!open) setSaleLotInfo(null);
         }}
+        onSaleSuccess={() => {
+          if (hasSearched) handleSearch();
+        }}
       />
 
       <ExitDialog
@@ -2783,6 +2786,9 @@ export default function StockRegister() {
           contactNumber={masterNikasiCtx.contactNumber}
           farmerLedgerId={masterNikasiCtx.farmerLedgerId}
           lots={masterNikasiCtx.lots}
+          onSaleSuccess={() => {
+            if (hasSearched) handleSearch();
+          }}
         />
       )}
     </div>

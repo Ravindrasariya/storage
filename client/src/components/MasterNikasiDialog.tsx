@@ -29,6 +29,7 @@ interface MasterNikasiDialogProps {
   contactNumber: string;
   farmerLedgerId: string | null;
   lots: LotWithCharges[];
+  onSaleSuccess?: () => void;
 }
 
 interface RowState {
@@ -108,6 +109,7 @@ export function MasterNikasiDialog({
   contactNumber,
   farmerLedgerId,
   lots,
+  onSaleSuccess,
 }: MasterNikasiDialogProps) {
   const { t } = useI18n();
   const { toast } = useToast();
@@ -316,6 +318,7 @@ export function MasterNikasiDialog({
       // Refresh the cold-storage counter so subsequent dialogs see the
       // bumped nextExitBillNumber / nextColdStorageBillNumber values.
       queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
+      onSaleSuccess?.();
       toast({ title: t("masterNikasi"), description: `${t("exitBillNumber")} ${data.sharedExitBillNumber}` });
       // Auto-print after a short delay so DOM renders the print block.
       setTimeout(() => {

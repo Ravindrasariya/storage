@@ -31,9 +31,10 @@ interface SaleDialogProps {
   lot: SaleLotInfo | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSaleSuccess?: () => void;
 }
 
-export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
+export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialogProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "due" | "partial">("due");
@@ -190,6 +191,7 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
         variant: "success",
       });
       onOpenChange(false);
+      onSaleSuccess?.();
     },
     onError: (err: Error) => {
       const msg = err.message || "Failed to record partial sale";
