@@ -2169,8 +2169,12 @@ export async function registerRoutes(
       // anchored at noon IST so the calendar day is unambiguous across
       // any TZ. Mirrors the Sale Date validation flow added in Task #206:
       // strict YYYY-MM-DD, round-trip calendar check (rejects 2026-02-31),
-      // and a guard against materially future dates. When omitted the
-      // DB defaultNow() applies inside storage.createExit.
+      // and a guard against materially future dates. When the client
+      // omits the field (operator did not edit the auto-filled value),
+      // we ALSO anchor at noon IST instead of letting the column's
+      // defaultNow() fire — that path stores a bare wall-clock timestamp
+      // that node-postgres later parses as UTC, shifting the displayed
+      // day forward by ~5.5h for any submission after ~6:30 PM IST.
       let resolvedExitDate: Date | undefined;
       if (exitDateInput !== undefined && exitDateInput !== null && exitDateInput !== "") {
         if (typeof exitDateInput !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(exitDateInput)) {
@@ -2202,6 +2206,17 @@ export async function registerRoutes(
           return res.status(400).json({ error: "Exit date cannot be in the future", field: "exitDate" });
         }
         resolvedExitDate = parsed;
+      } else {
+        // No-edit path: anchor today's IST calendar day at noon IST so
+        // the read-back JS Date (parsed as UTC by pg from the bare
+        // timestamp column) still falls on the same IST day.
+        const todayIST = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date());
+        resolvedExitDate = new Date(`${todayIST}T12:00:00+05:30`);
       }
 
       // Get the sale to verify bags available
@@ -2226,7 +2241,7 @@ export async function registerRoutes(
         lotId: sale.lotId,
         coldStorageId: sale.coldStorageId,
         bagsExited,
-        ...(resolvedExitDate ? { exitDate: resolvedExitDate } : {}),
+        exitDate: resolvedExitDate,
       }, { userBillNumber: billNumber ?? null });
 
       res.status(201).json(exit);
