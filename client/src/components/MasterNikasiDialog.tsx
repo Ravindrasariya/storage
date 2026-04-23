@@ -455,7 +455,9 @@ export function MasterNikasiDialog({
                   data-testid="select-mn-target-buyer"
                 >
                   {targetBuyerSel === SELF_BUYER ? (
-                    <span>{t("self") || "Self"} / स्वयं</span>
+                    <span>
+                      {t("self") || "Self"} — {isCompany ? (t("company") || "Company") : (t("farmer") || "किसान")}
+                    </span>
                   ) : (
                     <span className="truncate">
                       {(() => {
@@ -503,7 +505,7 @@ export function MasterNikasiDialog({
                               setBuyerSearchQuery("");
                               setBuyerError(null);
                             }}
-                            data-testid={`option-mn-buyer-${b.buyerId || b.id}`}
+                            data-testid={`option-mn-buyer-${b.id}`}
                           >
                             <Check className={`mr-2 h-4 w-4 ${targetBuyerSel === b.id ? "opacity-100" : "opacity-0"}`} />
                             <span className="flex items-center justify-between gap-2 w-full">
