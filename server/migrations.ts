@@ -537,6 +537,53 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Task #219 — Convert the bare `timestamp` columns whose value is shown
+    // to the user as a calendar day (or used in `getFullYear()` filters) to
+    // `timestamptz` so the absolute instant survives the `pg` driver
+    // round-trip. Per project convention every existing value was written
+    // as IST wall-clock (see server/db.ts), so `AT TIME ZONE 'Asia/Kolkata'`
+    // re-interprets the historic rows as IST and produces the correct UTC
+    // instant — which corrects the off-by-one bug for late-evening writes
+    // both going forward AND retroactively.
+    //
+    // exit_history.exit_date is intentionally excluded: Task #218 already
+    // fixed the route layer to anchor at noon IST, and the four
+    // `AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'` SQL wrappers in
+    // server/storage.ts depend on the column staying a bare timestamp.
+    name: "2026-04-23_convert_displayed_dates_to_timestamptz",
+    up: async () => {
+      const conversions: Array<{ table: string; column: string }> = [
+        { table: "lots", column: "created_at" },
+        { table: "sales_history", column: "sold_at" },
+        { table: "lot_edit_history", column: "changed_at" },
+        { table: "sale_edit_history", column: "changed_at" },
+        { table: "cash_receipts", column: "created_at" },
+        { table: "buyer_ledger", column: "created_at" },
+        { table: "buyer_ledger_edit_history", column: "modified_at" },
+        { table: "farmer_ledger_edit_history", column: "modified_at" },
+      ];
+      for (const { table, column } of conversions) {
+        // Idempotent: only convert if the column is still bare `timestamp`.
+        // Order-of-operations matters here — `npm run db:push` may run before
+        // this migration during a deploy and would have already done a
+        // default-cast (UTC interpretation) ALTER. The matching idempotent
+        // psql block in `scripts/post-merge.sh` runs BEFORE db:push and
+        // performs the IST-correct cast, so by the time we get here the
+        // column is usually already `timestamptz` and we no-op.
+        await db.execute(sql.raw(
+          `DO $$ BEGIN ` +
+          `IF (SELECT data_type FROM information_schema.columns ` +
+          `WHERE table_name = '${table}' AND column_name = '${column}') ` +
+          `= 'timestamp without time zone' THEN ` +
+          `ALTER TABLE ${table} ` +
+          `ALTER COLUMN ${column} TYPE timestamptz ` +
+          `USING ${column} AT TIME ZONE 'Asia/Kolkata'; ` +
+          `END IF; END $$`
+        ));
+      }
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

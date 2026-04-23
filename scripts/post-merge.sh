@@ -1,6 +1,34 @@
 #!/bin/bash
 set -e
 npm install
+
+# Task #219 — Convert displayed-date columns from bare `timestamp` to
+# `timestamptz` BEFORE `npm run db:push` so the auto-generated ALTER does not
+# fall back to a default cast (which interprets the historic IST wall-clock
+# values as UTC and shifts every visible date by ~5h30m). Each block is
+# idempotent: it only runs if the column is still `timestamp without time
+# zone`. This is mirrored by the runtime migration
+# `2026-04-23_convert_displayed_dates_to_timestamptz` for any environment
+# that skips this script.
+if [ -n "$DATABASE_URL" ]; then
+  for pair in \
+    "lots created_at" \
+    "sales_history sold_at" \
+    "lot_edit_history changed_at" \
+    "sale_edit_history changed_at" \
+    "cash_receipts created_at" \
+    "buyer_ledger created_at" \
+    "buyer_ledger_edit_history modified_at" \
+    "farmer_ledger_edit_history modified_at"; do
+    set -- $pair
+    table=$1
+    column=$2
+    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+      "DO \$\$ BEGIN IF (SELECT data_type FROM information_schema.columns WHERE table_name = '$table' AND column_name = '$column') = 'timestamp without time zone' THEN ALTER TABLE $table ALTER COLUMN $column TYPE timestamptz USING $column AT TIME ZONE 'Asia/Kolkata'; END IF; END \$\$;" \
+      || echo "[post-merge] timestamptz conversion for $table.$column skipped (non-fatal)"
+  done
+fi
+
 npm run db:push
 
 # Guardrail: every sale-touching React Query mutation must call

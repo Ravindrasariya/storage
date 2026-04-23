@@ -114,7 +114,10 @@ export const lots = pgTable("lots", {
   totalPaidCharge: real("total_paid_charge").default(0), // Accumulated paid charges from partial sales
   totalDueCharge: real("total_due_charge").default(0), // Accumulated due charges from partial sales
   soldAt: timestamp("sold_at"), // When the lot was sold
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  // timestamptz so the absolute instant survives the pg driver round-trip
+  // (bare timestamp + IST session writes wall-clock and reads back as UTC,
+  // shifting the displayed entry date forward — see Task #219).
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   entryBillNumber: integer("entry_bill_number"), // DEPRECATED: Use entrySequence instead
   baseColdChargesBilled: integer("base_cold_charges_billed").notNull().default(0), // 0 = not billed, 1 = billed (set when partial sale uses totalRemaining charge basis)
   // Entry-time deductions (Advance, Freight/Gadi Bhada, Other)
@@ -172,7 +175,10 @@ export const salesHistory = pgTable("sales_history", {
   // Timestamps
   entryDate: timestamp("entry_date"), // When lot was originally entered in cold storage (nullable for existing records)
   saleYear: integer("sale_year").notNull(),
-  soldAt: timestamp("sold_at").notNull().defaultNow(),
+  // timestamptz: sale date is rendered everywhere as a calendar day. Bare
+  // timestamp + IST session would shift any post-6:30 PM IST sale forward
+  // by one day on read-back. See Task #219.
+  soldAt: timestamp("sold_at", { withTimezone: true }).notNull().defaultNow(),
   // Bill numbers (assigned on first print, null means never printed)
   coldStorageBillNumber: integer("cold_storage_bill_number"), // Bill number for cold storage deduction receipt
   salesBillNumber: integer("sales_bill_number"), // Bill number for sales bill
@@ -247,7 +253,8 @@ export const lotEditHistory = pgTable("lot_edit_history", {
   totalPrice: real("total_price"), // For partial sales
   salePaymentStatus: text("sale_payment_status"), // For partial sales: 'paid' or 'due'
   saleCharge: real("sale_charge"), // Storage charge for this partial sale
-  changedAt: timestamp("changed_at").notNull().defaultNow(),
+  // timestamptz: rendered as dd/MM/yyyy HH:mm in audit trail UI. See Task #219.
+  changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Sale Edit History - tracks changes to sales after initial entry
@@ -257,7 +264,8 @@ export const saleEditHistory = pgTable("sale_edit_history", {
   fieldChanged: text("field_changed").notNull(), // e.g., 'buyerName', 'paymentStatus', 'netWeight'
   oldValue: text("old_value"), // Previous value (as string)
   newValue: text("new_value"), // New value (as string)
-  changedAt: timestamp("changed_at").notNull().defaultNow(),
+  // timestamptz: rendered as dd/MM/yyyy HH:mm in audit trail UI. See Task #219.
+  changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Maintenance records for cold storage
@@ -303,7 +311,9 @@ export const cashReceipts = pgTable("cash_receipts", {
   notes: text("notes"),
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
   reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  // timestamptz: rendered as "addedOn dd/MM/yyyy" in receivables list and
+  // CSV exports. See Task #219.
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   // Farmer ledger reference (for farmer payer type)
   farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table
   farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format)
@@ -634,7 +644,8 @@ export const farmerLedgerEditHistory = pgTable("farmer_ledger_edit_history", {
   mergedSalesCount: integer("merged_sales_count"), // Number of sales transferred
   mergedTotalDues: text("merged_total_dues"), // Total dues transferred as string to preserve precision
   modifiedBy: text("modified_by"), // User who made the change
-  modifiedAt: timestamp("modified_at").notNull().defaultNow(),
+  // timestamptz: rendered as dd/MM/yyyy HH:mm in farmer ledger audit UI. See Task #219.
+  modifiedAt: timestamp("modified_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Buyer Ledger - master buyer records per cold storage
@@ -649,7 +660,10 @@ export const buyerLedger = pgTable("buyer_ledger", {
   isFlagged: integer("is_flagged").notNull().default(0), // 0 = normal, 1 = flagged
   isArchived: integer("is_archived").notNull().default(0), // 0 = active, 1 = archived
   archivedAt: timestamp("archived_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  // timestamptz: client uses .getFullYear() on this for the year filter on
+  // the Buyer Ledger page; bare timestamp would mis-bucket buyers added
+  // after 6:30 PM IST on Dec 31 into the following year. See Task #219.
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   // Composite unique: buyerId is unique within each cold storage
   uniqueBuyerIdPerColdStorage: uniqueIndex("buyer_ledger_cs_bid_idx").on(table.coldStorageId, table.buyerId),
@@ -673,7 +687,8 @@ export const buyerLedgerEditHistory = pgTable("buyer_ledger_edit_history", {
   mergedTransfersCount: integer("merged_transfers_count"), // Number of transfers transferred
   mergedTotalDues: text("merged_total_dues"), // Total dues transferred as string to preserve precision
   modifiedBy: text("modified_by"), // User who made the change
-  modifiedAt: timestamp("modified_at").notNull().defaultNow(),
+  // timestamptz: rendered as dd/MM/yy HH:mm in buyer ledger audit UI. See Task #219.
+  modifiedAt: timestamp("modified_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Assets - fixed asset register for balance sheet tracking
