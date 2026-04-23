@@ -14,7 +14,7 @@ This project operates entirely in India Standard Time (`Asia/Kolkata`). When wor
 
 - **Node process** is pinned to IST: `process.env.TZ = 'Asia/Kolkata'` at the top of `server/index.ts`. So `new Date()`, `Date.getFullYear()`, date-fns `format(...)`, and any Date→string conversion on the server runs in IST.
 - **Postgres session** is pinned to IST: every pooled connection runs `SET TIME ZONE 'Asia/Kolkata'` (see the `connect` listener in `server/db.ts`). So `now()`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, `EXTRACT`, `date_trunc`, `::date`, and every column with `.defaultNow()` operate in IST wall-clock.
-- **Schema** uses `timestamp(...)` columns (`TIMESTAMP WITHOUT TIME ZONE`) which store the IST wall-clock value as written. A small set of columns whose value is rendered to the user as a calendar day (or used in JS year filters) was migrated to `timestamptz` — see "Off-by-one TZ bug — per-column resolution" below.
+- **Schema** uses `timestamp(..., { withTimezone: true })` (`TIMESTAMPTZ`) for every column except `exit_history.exit_date`. See "Off-by-one TZ bug — schema-wide resolution" below.
 
 Rules for new code:
 - Use `new Date()` for "now". Do **not** use `new Date(Date.UTC(...))` to populate a timestamp column.
@@ -22,32 +22,13 @@ Rules for new code:
 - New raw SQL date math may rely on the session being IST (no need to wrap in `AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'`). The four pre-existing wrappers in `server/storage.ts` are kept as-is for stability.
 - Client-side formatting uses the browser TZ; users are in India so this resolves to IST naturally. Only force `timeZone: 'Asia/Kolkata'` if you have a specific reason.
 
-### Off-by-one TZ bug — per-column resolution
+### Off-by-one TZ bug — schema-wide resolution
 
-The Postgres session is IST, so `defaultNow()` writes IST wall-clock values into bare `timestamp` columns. The `pg` driver later parses those values as UTC, which shifts any post-6:30 PM IST value forward by one calendar day. Task #218 fixed this for `exit_history.exit_date` at the route layer; Task #219 audited every other `timestamp` + `defaultNow()` column and applied one of three strategies. **Strategy per column:**
+Background: the Postgres session is IST, so `defaultNow()` writes IST wall-clock values into bare `timestamp` columns. The `pg` driver later parses those values as UTC, which shifts any post-6:30 PM IST value forward by one calendar day whenever the column is rendered. Task #218 patched `exit_history.exit_date` at the route layer; Task #219 migrated the eight columns that were already user-visible to `timestamptz`; Task #220 then converted **every remaining bare `timestamp` column** in `shared/schema.ts` to `timestamptz` so the bug class can never resurface (e.g. when a future feature starts rendering an audit `created_at`).
 
-| Column | Strategy | Why |
-| --- | --- | --- |
-| `lots.created_at` | **timestamptz** | Shown as "प्रवेश दिनांक" on the entry receipt. |
-| `sales_history.sold_at` | **timestamptz** | Shown as the sale date everywhere; also feeds `extract(year ...)` filters which work the same on tstz with session=IST. |
-| `lot_edit_history.changed_at` | **timestamptz** | Audit row rendered as `dd/MM/yyyy HH:mm`. |
-| `sale_edit_history.changed_at` | **timestamptz** | Audit row rendered as `dd/MM/yyyy HH:mm`. |
-| `cash_receipts.created_at` | **timestamptz** | Shown as "addedOn dd/MM/yyyy" in receivables list and CSV export. |
-| `buyer_ledger.created_at` | **timestamptz** | Client uses `.getFullYear()` for the year filter on Buyer Ledger. |
-| `buyer_ledger_edit_history.modified_at` | **timestamptz** | Audit row rendered as `dd/MM/yy HH:mm`. |
-| `farmer_ledger_edit_history.modified_at` | **timestamptz** | Audit row rendered as `dd/MM/yyyy HH:mm`. |
-| `exit_history.exit_date` | **route-layer fix (Task #218)** | Already fixed; the `EXTRACT(... FROM (exit_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))` SQL wrappers in `server/storage.ts` depend on the column staying a bare timestamp. |
-| `exit_history.created_at`, `reversed_at` | **fine — never displayed as a calendar day** | Internal audit only. |
-| `migrations.applied_at` | **fine — never displayed** | Internal migration registry. |
-| `cold_storage_users.created_at`, `user_sessions.created_at`, `user_sessions.last_accessed_at` | **fine — never displayed as a calendar day** | Server-only metadata. |
-| `chamber_floors`, `maintenance_records.created_at` | **fine — never displayed as a calendar day** | Internal records. |
-| `cash_receipt_applications.applied_at`, `created_at` | **fine — never displayed** | Internal junction-table audit. |
-| `expenses.created_at`, `cash_transfers.created_at`, `discounts.created_at`, `bank_accounts.created_at`, `cash_opening_balances.created_at`/`updated_at`, `opening_receivables.created_at`, `opening_payables.created_at` | **fine — never displayed as a calendar day** | These tables surface their explicit business date (`paid_at`, `transferred_at`, `discount_date`, etc.) which is set by the caller, not `defaultNow()`. The `created_at` is purely an audit column. |
-| `farmer_advance_freight.created_at`, `merchant_advance.created_at`, `merchant_advance_events.created_at`, `farmer_loan.created_at`, `farmer_loan_events.created_at` | **fine — never displayed as a calendar day** | Same as above — display uses caller-supplied `effective_date` / `event_date`. |
-| `farmer_ledger.created_at`, `buyer_ledger_edit_history` parent `buyer_ledger.created_at` (handled above), `farmer_ledger.archived_at` | **fine — `farmer_ledger.created_at` not currently displayed** | If a future feature renders this as a date, convert it the same way. |
-| `assets.created_at`, `asset_depreciation_log.calculated_at`, `liabilities.created_at`, `liability_payments.created_at` | **fine — never displayed as a calendar day** | Caller-supplied `purchase_date` / `start_date` / `paid_at` are what the UI shows. |
+**Single documented exception: `exit_history.exit_date`.** It stays a bare `timestamp` because Task #218 already fixed it at the route layer (anchoring to noon IST), and four `EXTRACT(... FROM (exit_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))` SQL wrappers in `server/storage.ts` depend on it staying a bare timestamp.
 
-**Migration mechanics:** the conversion happens in two complementary places — `scripts/post-merge.sh` (idempotent psql block, runs BEFORE `npm run db:push` so drizzle's auto-generated ALTER doesn't fall back to a default UTC cast) and the runtime migration `2026-04-23_convert_displayed_dates_to_timestamptz` in `server/migrations.ts` (also idempotent, safety net for environments that skip post-merge). Both use `... AT TIME ZONE 'Asia/Kolkata'` so the historic IST wall-clock values are re-interpreted correctly — which fixes the off-by-one bug for both new and old data.
+**Migration mechanics:** the conversion happens in two complementary places — `scripts/post-merge.sh` (idempotent psql loop, runs BEFORE `npm run db:push` so drizzle's auto-generated ALTER doesn't fall back to a default UTC cast) and the runtime migration `2026-04-23_convert_all_timestamps_to_timestamptz` in `server/migrations.ts` (also idempotent, safety net for environments that skip post-merge). Both use `... AT TIME ZONE 'Asia/Kolkata'` so the historic IST wall-clock values are re-interpreted correctly — which fixes the off-by-one bug for both new and old data. The earlier, narrower migration `2026-04-23_convert_displayed_dates_to_timestamptz` is retained in the registry as a no-op for environments that already applied it.
 
 ## System Architecture
 

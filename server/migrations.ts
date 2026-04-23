@@ -553,24 +553,111 @@ const MIGRATIONS: Migration[] = [
     // server/storage.ts depend on the column staying a bare timestamp.
     name: "2026-04-23_convert_displayed_dates_to_timestamptz",
     up: async () => {
+      // Superseded by `2026-04-23_convert_all_timestamps_to_timestamptz`
+      // (Task #220), which is a strict superset of the original 8-column
+      // conversion list. Kept as an empty entry so the migration name
+      // continues to be recorded as applied on environments that ran the
+      // earlier version. New environments will simply see this entry as a
+      // no-op and then apply the table-wide migration immediately below.
+    },
+  },
+  {
+    // Task #220 — Pre-emptively convert every remaining bare `timestamp`
+    // column in the schema to `timestamptz` so the off-by-one IST/UTC bug
+    // class is eliminated entirely (not just for the columns that happen to
+    // be displayed today). Strict superset of the Task #219 conversion list
+    // above. Idempotent per-column: each ALTER only runs when the column is
+    // still `timestamp without time zone`, so re-runs and partial overlaps
+    // with the post-merge.sh psql block are no-ops.
+    //
+    // exit_history.exit_date remains the single documented exception — see
+    // schema.ts and replit.md for why (Task #218 fixed it at the route layer
+    // and four `AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'` SQL wrappers
+    // in server/storage.ts depend on it staying a bare timestamp).
+    name: "2026-04-23_convert_all_timestamps_to_timestamptz",
+    up: async () => {
       const conversions: Array<{ table: string; column: string }> = [
+        { table: "migrations", column: "applied_at" },
+        { table: "cold_storage_users", column: "created_at" },
+        { table: "user_sessions", column: "created_at" },
+        { table: "user_sessions", column: "last_accessed_at" },
+        { table: "lots", column: "sold_at" },
         { table: "lots", column: "created_at" },
+        { table: "sales_history", column: "paid_at" },
+        { table: "sales_history", column: "entry_date" },
         { table: "sales_history", column: "sold_at" },
+        { table: "sales_history", column: "transfer_date" },
+        { table: "sales_history", column: "transfer_reversed_at" },
         { table: "lot_edit_history", column: "changed_at" },
         { table: "sale_edit_history", column: "changed_at" },
+        { table: "maintenance_records", column: "created_at" },
+        { table: "exit_history", column: "reversed_at" },
+        { table: "exit_history", column: "created_at" },
+        { table: "cash_receipts", column: "received_at" },
+        { table: "cash_receipts", column: "reversed_at" },
         { table: "cash_receipts", column: "created_at" },
+        { table: "cash_receipt_applications", column: "applied_at" },
+        { table: "cash_receipt_applications", column: "created_at" },
+        { table: "expenses", column: "paid_at" },
+        { table: "expenses", column: "reversed_at" },
+        { table: "expenses", column: "created_at" },
+        { table: "cash_transfers", column: "transferred_at" },
+        { table: "cash_transfers", column: "reversed_at" },
+        { table: "cash_transfers", column: "created_at" },
+        { table: "cash_opening_balances", column: "created_at" },
+        { table: "cash_opening_balances", column: "updated_at" },
+        { table: "opening_receivables", column: "effective_date" },
+        { table: "opening_receivables", column: "last_accrual_date" },
+        { table: "opening_receivables", column: "previous_effective_date" },
+        { table: "opening_receivables", column: "created_at" },
+        { table: "opening_payables", column: "created_at" },
+        { table: "discounts", column: "discount_date" },
+        { table: "discounts", column: "reversed_at" },
+        { table: "discounts", column: "created_at" },
+        { table: "bank_accounts", column: "created_at" },
+        { table: "farmer_advance_freight", column: "effective_date" },
+        { table: "farmer_advance_freight", column: "last_accrual_date" },
+        { table: "farmer_advance_freight", column: "previous_effective_date" },
+        { table: "farmer_advance_freight", column: "reversed_at" },
+        { table: "farmer_advance_freight", column: "created_at" },
+        { table: "merchant_advance", column: "effective_date" },
+        { table: "merchant_advance", column: "last_accrual_date" },
+        { table: "merchant_advance", column: "original_effective_date" },
+        { table: "merchant_advance", column: "previous_effective_date" },
+        { table: "merchant_advance", column: "reversed_at" },
+        { table: "merchant_advance", column: "created_at" },
+        { table: "merchant_advance_events", column: "event_date" },
+        { table: "merchant_advance_events", column: "effective_date_before" },
+        { table: "merchant_advance_events", column: "effective_date_after" },
+        { table: "merchant_advance_events", column: "created_at" },
+        { table: "farmer_loan", column: "effective_date" },
+        { table: "farmer_loan", column: "last_accrual_date" },
+        { table: "farmer_loan", column: "original_effective_date" },
+        { table: "farmer_loan", column: "previous_effective_date" },
+        { table: "farmer_loan", column: "reversed_at" },
+        { table: "farmer_loan", column: "created_at" },
+        { table: "farmer_loan_events", column: "event_date" },
+        { table: "farmer_loan_events", column: "effective_date_before" },
+        { table: "farmer_loan_events", column: "effective_date_after" },
+        { table: "farmer_loan_events", column: "created_at" },
+        { table: "farmer_ledger", column: "archived_at" },
+        { table: "farmer_ledger", column: "created_at" },
+        { table: "farmer_ledger_edit_history", column: "modified_at" },
+        { table: "buyer_ledger", column: "archived_at" },
         { table: "buyer_ledger", column: "created_at" },
         { table: "buyer_ledger_edit_history", column: "modified_at" },
-        { table: "farmer_ledger_edit_history", column: "modified_at" },
+        { table: "assets", column: "purchase_date" },
+        { table: "assets", column: "disposed_at" },
+        { table: "assets", column: "created_at" },
+        { table: "asset_depreciation_log", column: "calculated_at" },
+        { table: "liabilities", column: "start_date" },
+        { table: "liabilities", column: "due_date" },
+        { table: "liabilities", column: "settled_at" },
+        { table: "liabilities", column: "created_at" },
+        { table: "liability_payments", column: "paid_at" },
+        { table: "liability_payments", column: "created_at" },
       ];
       for (const { table, column } of conversions) {
-        // Idempotent: only convert if the column is still bare `timestamp`.
-        // Order-of-operations matters here — `npm run db:push` may run before
-        // this migration during a deploy and would have already done a
-        // default-cast (UTC interpretation) ALTER. The matching idempotent
-        // psql block in `scripts/post-merge.sh` runs BEFORE db:push and
-        // performs the IST-correct cast, so by the time we get here the
-        // column is usually already `timestamptz` and we no-op.
         await db.execute(sql.raw(
           `DO $$ BEGIN ` +
           `IF (SELECT data_type FROM information_schema.columns ` +

@@ -5,7 +5,7 @@ import { z } from "zod";
 // One-time data migrations registry
 export const migrations = pgTable("migrations", {
   name: varchar("name").primaryKey(),
-  appliedAt: timestamp("applied_at").notNull().defaultNow(),
+  appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Cold Storage Configuration
@@ -47,7 +47,7 @@ export const coldStorageUsers = pgTable("cold_storage_users", {
   mobileNumber: text("mobile_number").notNull(),
   password: text("password").notNull(), // Stored as plain text for admin viewing (simple system)
   accessType: text("access_type").notNull(), // 'view' or 'edit'
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // User Sessions - persistent sessions for logged in users
@@ -55,8 +55,8 @@ export const userSessions = pgTable("user_sessions", {
   id: varchar("id").primaryKey(), // This is the token
   userId: varchar("user_id").notNull(),
   coldStorageId: varchar("cold_storage_id").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  lastAccessedAt: timestamp("last_accessed_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Chambers in cold storage
@@ -113,7 +113,7 @@ export const lots = pgTable("lots", {
   saleCharge: real("sale_charge"), // Total storage charge when fully sold
   totalPaidCharge: real("total_paid_charge").default(0), // Accumulated paid charges from partial sales
   totalDueCharge: real("total_due_charge").default(0), // Accumulated due charges from partial sales
-  soldAt: timestamp("sold_at"), // When the lot was sold
+  soldAt: timestamp("sold_at", { withTimezone: true }), // When the lot was sold
   // timestamptz so the absolute instant survives the pg driver round-trip
   // (bare timestamp + IST session writes wall-clock and reads back as UTC,
   // shifting the displayed entry date forward — see Task #219).
@@ -171,9 +171,9 @@ export const salesHistory = pgTable("sales_history", {
   paidAccount: real("paid_account").default(0), // Cumulative account portion of paidAmount (incremented at every account receipt application)
   discountAllocated: real("discount_allocated").default(0), // Amount of discount allocated to this sale (actualCashPaid = paidAmount - discountAllocated)
   dueAmount: real("due_amount").default(0), // Amount due for this sale
-  paidAt: timestamp("paid_at"), // When marked as paid
+  paidAt: timestamp("paid_at", { withTimezone: true }), // When marked as paid
   // Timestamps
-  entryDate: timestamp("entry_date"), // When lot was originally entered in cold storage (nullable for existing records)
+  entryDate: timestamp("entry_date", { withTimezone: true }), // When lot was originally entered in cold storage (nullable for existing records)
   saleYear: integer("sale_year").notNull(),
   // timestamptz: sale date is rendered everywhere as a calendar day. Bare
   // timestamp + IST session would shift any post-6:30 PM IST sale forward
@@ -187,7 +187,7 @@ export const salesHistory = pgTable("sales_history", {
   transferredAmount: real("transferred_amount").default(0), // Amount transferred from previous buyers (liability, not cash)
   transferToBuyerName: text("transfer_to_buyer_name"), // When dues are transferred to another buyer
   transferGroupId: text("transfer_group_id"), // Links transfer-out and transfer-in entries for audit trail
-  transferDate: timestamp("transfer_date"), // When the transfer occurred
+  transferDate: timestamp("transfer_date", { withTimezone: true }), // When the transfer occurred
   transferRemarks: text("transfer_remarks"), // Notes about the transfer
   transferTransactionId: varchar("transfer_transaction_id"), // CF transaction ID for buyer-to-buyer transfers (format: CFYYYYMMDD + natural number)
   transferAmount: real("transfer_amount"), // Original B2B transfer amount (preserved even after FIFO payments)
@@ -222,7 +222,7 @@ export const salesHistory = pgTable("sales_history", {
   fifoExclusion: integer("fifo_exclusion").default(0), // 0 = participates in FIFO (default), 1 = excluded from FIFO
   // Transfer reversal tracking
   isTransferReversed: integer("is_transfer_reversed").default(0), // 0 = active transfer, 1 = reversed
-  transferReversedAt: timestamp("transfer_reversed_at"), // When the transfer was reversed
+  transferReversedAt: timestamp("transfer_reversed_at", { withTimezone: true }), // When the transfer was reversed
   // Farmer ledger reference (for linking to farmer ledger)
   farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
   farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format) - populated by sync
@@ -275,7 +275,7 @@ export const maintenanceRecords = pgTable("maintenance_records", {
   taskDescription: text("task_description").notNull(),
   responsiblePerson: text("responsible_person").notNull(),
   nextDueDate: text("next_due_date").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Exit history - tracks when sold bags are physically removed from cold storage
@@ -288,8 +288,8 @@ export const exitHistory = pgTable("exit_history", {
   billNumber: integer("bill_number").notNull().default(0), // Unique bill number for this exit, auto-incremented
   exitDate: timestamp("exit_date").notNull().defaultNow(),
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Cash Receipts - tracks inward cash/account payments from buyers
@@ -304,13 +304,13 @@ export const cashReceipts = pgTable("cash_receipts", {
   accountId: varchar("account_id"), // Reference to bankAccounts table - new dynamic account system
   amount: real("amount").notNull(),
   roundOff: real("round_off").notNull().default(0), // Round-off concession given by storage; included in `amount` (gross) but excluded from cash/account balance accumulation
-  receivedAt: timestamp("received_at").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
   appliedAmount: real("applied_amount").notNull().default(0), // Amount applied to sales
   unappliedAmount: real("unapplied_amount").notNull().default(0), // Remaining amount not yet applied
   dueBalanceAfter: real("due_balance_after"), // Remaining dues for this buyer after this transaction (for cold_merchant type)
   notes: text("notes"),
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
-  reversedAt: timestamp("reversed_at"),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
   // timestamptz: rendered as "addedOn dd/MM/yyyy" in receivables list and
   // CSV exports. See Task #219.
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -339,8 +339,8 @@ export const cashReceiptApplications = pgTable("cash_receipt_applications", {
   cashReceiptId: varchar("cash_receipt_id").notNull(),
   salesHistoryId: varchar("sales_history_id").notNull(),
   amountApplied: real("amount_applied").notNull(),
-  appliedAt: timestamp("applied_at").notNull().defaultNow(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   byReceipt: index("cra_receipt_idx").on(table.cashReceiptId),
   bySale: index("cra_sale_idx").on(table.salesHistoryId),
@@ -359,11 +359,11 @@ export const expenses = pgTable("expenses", {
   accountType: text("account_type"), // DEPRECATED: Use accountId instead. Legacy values: 'limit' or 'current'
   accountId: varchar("account_id"), // Reference to bankAccounts table - new dynamic account system
   amount: real("amount").notNull(),
-  paidAt: timestamp("paid_at").notNull(),
+  paidAt: timestamp("paid_at", { withTimezone: true }).notNull(),
   remarks: text("remarks"),
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqueTxnPerColdStorage: uniqueIndex("expenses_cs_txn_idx").on(table.coldStorageId, table.transactionId),
 }));
@@ -378,11 +378,11 @@ export const cashTransfers = pgTable("cash_transfers", {
   fromAccountId: varchar("from_account_id"), // Reference to bankAccounts table - null means 'cash'
   toAccountId: varchar("to_account_id"), // Reference to bankAccounts table - null means 'cash'
   amount: real("amount").notNull(),
-  transferredAt: timestamp("transferred_at").notNull(),
+  transferredAt: timestamp("transferred_at", { withTimezone: true }).notNull(),
   remarks: text("remarks"),
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqueTxnPerColdStorage: uniqueIndex("cash_transfers_cs_txn_idx").on(table.coldStorageId, table.transactionId),
 }));
@@ -395,8 +395,8 @@ export const cashOpeningBalances = pgTable("cash_opening_balances", {
   cashInHand: real("cash_in_hand").notNull().default(0),
   limitBalance: real("limit_balance").notNull().default(0),
   currentBalance: real("current_balance").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Opening Receivables - outstanding receivables at start of year
@@ -415,15 +415,15 @@ export const openingReceivables = pgTable("opening_receivables", {
   state: text("state"),
   dueAmount: real("due_amount").notNull(), // Principal amount (original input)
   rateOfInterest: real("rate_of_interest").notNull().default(0), // Annual rate in % (0 = no interest)
-  effectiveDate: timestamp("effective_date"), // Date from which interest starts accruing (null = no interest)
+  effectiveDate: timestamp("effective_date", { withTimezone: true }), // Date from which interest starts accruing (null = no interest)
   finalAmount: real("final_amount"), // Current amount with accrued interest (null = use dueAmount for backward compat)
   latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
-  lastAccrualDate: timestamp("last_accrual_date"), // Last date interest was computed (null = never accrued)
-  previousEffectiveDate: timestamp("previous_effective_date"), // Saved before payment resets effectiveDate; restored on reversal
+  lastAccrualDate: timestamp("last_accrual_date", { withTimezone: true }), // Last date interest was computed (null = never accrued)
+  previousEffectiveDate: timestamp("previous_effective_date", { withTimezone: true }), // Saved before payment resets effectiveDate; restored on reversal
   previousLatestPrincipal: real("previous_latest_principal"), // Saved before payment resets latestPrincipal; restored on reversal
   paidAmount: real("paid_amount").notNull().default(0), // Track FIFO payments against this receivable
   remarks: text("remarks"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   farmerLedgerId: varchar("farmer_ledger_id"), // Reference to farmer_ledger table (nullable for backward compatibility)
   farmerId: text("farmer_id"), // User-friendly farmer ID (FMYYYYMMDD format) - populated by sync
   buyerLedgerId: varchar("buyer_ledger_id"), // Reference to buyer_ledger table (for cold_merchant type)
@@ -439,7 +439,7 @@ export const openingPayables = pgTable("opening_payables", {
   receiverName: text("receiver_name"),
   dueAmount: real("due_amount").notNull(),
   remarks: text("remarks"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Daily ID Counters - tracks sequential counters per entity type per day (globally unique)
@@ -461,7 +461,7 @@ export const discounts = pgTable("discounts", {
   contactNumber: text("contact_number").notNull(),
   // Discount details
   totalAmount: real("total_amount").notNull(), // Total discount amount
-  discountDate: timestamp("discount_date").notNull(),
+  discountDate: timestamp("discount_date", { withTimezone: true }).notNull(),
   remarks: text("remarks"),
   // Buyer allocations stored as JSON array: [{buyerName, amount}]
   buyerAllocations: text("buyer_allocations").notNull(), // JSON string of allocations
@@ -471,8 +471,8 @@ export const discounts = pgTable("discounts", {
   farmerId: text("farmer_id"),
   // Status tracking
   isReversed: integer("is_reversed").notNull().default(0), // 0 = active, 1 = reversed
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqueTxnPerColdStorage: uniqueIndex("discounts_cs_txn_idx").on(table.coldStorageId, table.transactionId),
 }));
@@ -485,7 +485,7 @@ export const bankAccounts = pgTable("bank_accounts", {
   accountType: text("account_type").notNull(), // 'current', 'limit', 'saving'
   openingBalance: real("opening_balance").notNull().default(0),
   year: integer("year").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Farmer Advance & Freight - tracks advance/freight given to farmers with optional interest
@@ -497,17 +497,17 @@ export const farmerAdvanceFreight = pgTable("farmer_advance_freight", {
   type: text("type").notNull(), // 'advance' or 'freight'
   amount: real("amount").notNull(), // Principal amount (used for cash/account balance deduction)
   rateOfInterest: real("rate_of_interest").notNull().default(0), // Annual rate in % (0 = no interest)
-  effectiveDate: timestamp("effective_date").notNull(), // Date from which interest starts accruing
+  effectiveDate: timestamp("effective_date", { withTimezone: true }).notNull(), // Date from which interest starts accruing
   finalAmount: real("final_amount").notNull(), // Current amount with accrued interest (updated daily)
   latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
-  lastAccrualDate: timestamp("last_accrual_date").notNull(), // Last date interest was computed
-  previousEffectiveDate: timestamp("previous_effective_date"), // Saved before payment resets effectiveDate; restored on reversal
+  lastAccrualDate: timestamp("last_accrual_date", { withTimezone: true }).notNull(), // Last date interest was computed
+  previousEffectiveDate: timestamp("previous_effective_date", { withTimezone: true }), // Saved before payment resets effectiveDate; restored on reversal
   previousLatestPrincipal: real("previous_latest_principal"), // Saved before payment resets latestPrincipal; restored on reversal
   paidAmount: real("paid_amount").notNull().default(0),
   expenseId: varchar("expense_id"), // Reference to the expense record
   isReversed: integer("is_reversed").notNull().default(0),
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Merchant Advance - tracks advance given to merchants (buyers) with optional interest
@@ -518,32 +518,32 @@ export const merchantAdvance = pgTable("merchant_advance", {
   buyerId: text("buyer_id").notNull(),
   amount: real("amount").notNull(),
   rateOfInterest: real("rate_of_interest").notNull().default(0),
-  effectiveDate: timestamp("effective_date").notNull(),
+  effectiveDate: timestamp("effective_date", { withTimezone: true }).notNull(),
   finalAmount: real("final_amount").notNull(),
   latestPrincipal: real("latest_principal"), // Principal used for interest calc; min(prev principal, prev finalAmount); resets at year boundary
-  lastAccrualDate: timestamp("last_accrual_date").notNull(),
-  originalEffectiveDate: timestamp("original_effective_date"), // Immutable: the actual disbursement date, never modified by accrual/payments
-  previousEffectiveDate: timestamp("previous_effective_date"), // Saved before payment resets effectiveDate; restored on reversal
+  lastAccrualDate: timestamp("last_accrual_date", { withTimezone: true }).notNull(),
+  originalEffectiveDate: timestamp("original_effective_date", { withTimezone: true }), // Immutable: the actual disbursement date, never modified by accrual/payments
+  previousEffectiveDate: timestamp("previous_effective_date", { withTimezone: true }), // Saved before payment resets effectiveDate; restored on reversal
   previousLatestPrincipal: real("previous_latest_principal"), // Saved before payment resets latestPrincipal; restored on reversal
   paidAmount: real("paid_amount").notNull().default(0),
   expenseId: varchar("expense_id"),
   remarks: text("remarks"),
   isReversed: integer("is_reversed").notNull().default(0),
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const merchantAdvanceEvents = pgTable("merchant_advance_events", {
   id: varchar("id").primaryKey(),
   merchantAdvanceId: varchar("merchant_advance_id").notNull(),
   eventType: text("event_type").notNull(),
-  eventDate: timestamp("event_date").notNull(),
+  eventDate: timestamp("event_date", { withTimezone: true }).notNull(),
   amount: real("amount").notNull(),
   rateOfInterest: real("rate_of_interest").notNull().default(0),
   latestPrincipalBefore: real("latest_principal_before"),
   latestPrincipalAfter: real("latest_principal_after"),
-  effectiveDateBefore: timestamp("effective_date_before"),
-  effectiveDateAfter: timestamp("effective_date_after"),
+  effectiveDateBefore: timestamp("effective_date_before", { withTimezone: true }),
+  effectiveDateAfter: timestamp("effective_date_after", { withTimezone: true }),
   finalAmountBefore: real("final_amount_before"),
   finalAmountAfter: real("final_amount_after"),
   paidAmountBefore: real("paid_amount_before"),
@@ -551,7 +551,7 @@ export const merchantAdvanceEvents = pgTable("merchant_advance_events", {
   paymentAmount: real("payment_amount"),
   receiptId: varchar("receipt_id"),
   interestCompounded: real("interest_compounded"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type MerchantAdvanceEvent = typeof merchantAdvanceEvents.$inferSelect;
@@ -563,32 +563,32 @@ export const farmerLoan = pgTable("farmer_loan", {
   farmerId: text("farmer_id").notNull(),
   amount: real("amount").notNull(),
   rateOfInterest: real("rate_of_interest").notNull().default(0),
-  effectiveDate: timestamp("effective_date").notNull(),
+  effectiveDate: timestamp("effective_date", { withTimezone: true }).notNull(),
   finalAmount: real("final_amount").notNull(),
   latestPrincipal: real("latest_principal"),
-  lastAccrualDate: timestamp("last_accrual_date").notNull(),
-  originalEffectiveDate: timestamp("original_effective_date"),
-  previousEffectiveDate: timestamp("previous_effective_date"),
+  lastAccrualDate: timestamp("last_accrual_date", { withTimezone: true }).notNull(),
+  originalEffectiveDate: timestamp("original_effective_date", { withTimezone: true }),
+  previousEffectiveDate: timestamp("previous_effective_date", { withTimezone: true }),
   previousLatestPrincipal: real("previous_latest_principal"),
   paidAmount: real("paid_amount").notNull().default(0),
   expenseId: varchar("expense_id"),
   remarks: text("remarks"),
   isReversed: integer("is_reversed").notNull().default(0),
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const farmerLoanEvents = pgTable("farmer_loan_events", {
   id: varchar("id").primaryKey(),
   farmerLoanId: varchar("farmer_loan_id").notNull(),
   eventType: text("event_type").notNull(),
-  eventDate: timestamp("event_date").notNull(),
+  eventDate: timestamp("event_date", { withTimezone: true }).notNull(),
   amount: real("amount").notNull(),
   rateOfInterest: real("rate_of_interest").notNull().default(0),
   latestPrincipalBefore: real("latest_principal_before"),
   latestPrincipalAfter: real("latest_principal_after"),
-  effectiveDateBefore: timestamp("effective_date_before"),
-  effectiveDateAfter: timestamp("effective_date_after"),
+  effectiveDateBefore: timestamp("effective_date_before", { withTimezone: true }),
+  effectiveDateAfter: timestamp("effective_date_after", { withTimezone: true }),
   finalAmountBefore: real("final_amount_before"),
   finalAmountAfter: real("final_amount_after"),
   paidAmountBefore: real("paid_amount_before"),
@@ -596,7 +596,7 @@ export const farmerLoanEvents = pgTable("farmer_loan_events", {
   paymentAmount: real("payment_amount"),
   receiptId: varchar("receipt_id"),
   interestCompounded: real("interest_compounded"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type FarmerLoanEvent = typeof farmerLoanEvents.$inferSelect;
@@ -618,8 +618,8 @@ export const farmerLedger = pgTable("farmer_ledger", {
   customHammaliRate: real("custom_hammali_rate"), // nullable — if set, overrides global hammali rate
   isFlagged: integer("is_flagged").notNull().default(0), // 0 = normal, 1 = flagged for negative behavior
   isArchived: integer("is_archived").notNull().default(0), // 0 = active, 1 = archived
-  archivedAt: timestamp("archived_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   // Composite unique: farmerId is unique within each cold storage
   uniqueFarmerIdPerColdStorage: uniqueIndex("farmer_ledger_cs_fid_idx").on(table.coldStorageId, table.farmerId),
@@ -659,7 +659,7 @@ export const buyerLedger = pgTable("buyer_ledger", {
   contactNumber: text("contact_number"),
   isFlagged: integer("is_flagged").notNull().default(0), // 0 = normal, 1 = flagged
   isArchived: integer("is_archived").notNull().default(0), // 0 = active, 1 = archived
-  archivedAt: timestamp("archived_at"),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   // timestamptz: client uses .getFullYear() on this for the year filter on
   // the Buyer Ledger page; bare timestamp would mis-bucket buyers added
   // after 6:30 PM IST on Dec 31 into the following year. See Task #219.
@@ -697,7 +697,7 @@ export const assets = pgTable("assets", {
   coldStorageId: varchar("cold_storage_id").notNull(),
   assetName: text("asset_name").notNull(),
   assetCategory: text("asset_category").notNull(), // 'building', 'plant_machinery', 'furniture', 'vehicles', 'computers', 'electrical_fittings', 'other'
-  purchaseDate: timestamp("purchase_date").notNull(),
+  purchaseDate: timestamp("purchase_date", { withTimezone: true }).notNull(),
   originalCost: real("original_cost").notNull(),
   currentBookValue: real("current_book_value").notNull(),
   depreciationRate: real("depreciation_rate").notNull(), // Annual rate in % (WDV method)
@@ -705,10 +705,10 @@ export const assets = pgTable("assets", {
   isOpening: integer("is_opening").notNull().default(0), // 1 = entered as existing asset, 0 = from new expense
   linkedExpenseId: varchar("linked_expense_id"), // FK to expenses table (set when created via capital expense)
   isDisposed: integer("is_disposed").notNull().default(0), // 0 = active, 1 = disposed/sold
-  disposedAt: timestamp("disposed_at"),
+  disposedAt: timestamp("disposed_at", { withTimezone: true }),
   disposalAmount: real("disposal_amount"),
   remarks: text("remarks"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Asset Depreciation Log - yearly depreciation records per asset (FY-based: April–March)
@@ -721,7 +721,7 @@ export const assetDepreciationLog = pgTable("asset_depreciation_log", {
   depreciationAmount: real("depreciation_amount").notNull(),
   closingValue: real("closing_value").notNull(),
   monthsUsed: integer("months_used").notNull(), // For proration tracking
-  calculatedAt: timestamp("calculated_at").notNull().defaultNow(),
+  calculatedAt: timestamp("calculated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqueAssetFY: uniqueIndex("asset_dep_log_asset_fy_idx").on(table.assetId, table.financialYear),
 }));
@@ -736,14 +736,14 @@ export const liabilities = pgTable("liabilities", {
   originalAmount: doublePrecision("original_amount").notNull(),
   outstandingAmount: doublePrecision("outstanding_amount").notNull(),
   interestRate: real("interest_rate").notNull().default(0), // Annual rate in %
-  startDate: timestamp("start_date").notNull(),
-  dueDate: timestamp("due_date"),
+  startDate: timestamp("start_date", { withTimezone: true }).notNull(),
+  dueDate: timestamp("due_date", { withTimezone: true }),
   emiAmount: doublePrecision("emi_amount"),
   isOpening: integer("is_opening").notNull().default(0), // 1 = existing liability, 0 = new
   isSettled: integer("is_settled").notNull().default(0), // 0 = active, 1 = settled
-  settledAt: timestamp("settled_at"),
+  settledAt: timestamp("settled_at", { withTimezone: true }),
   remarks: text("remarks"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Liability Payments - tracks payments made against liabilities
@@ -754,13 +754,13 @@ export const liabilityPayments = pgTable("liability_payments", {
   amount: doublePrecision("amount").notNull(),
   principalComponent: doublePrecision("principal_component").notNull(),
   interestComponent: doublePrecision("interest_component").notNull(),
-  paidAt: timestamp("paid_at").notNull(),
+  paidAt: timestamp("paid_at", { withTimezone: true }).notNull(),
   paymentMode: text("payment_mode").notNull(), // 'cash' or 'account'
   accountId: varchar("account_id"),
   linkedExpenseId: varchar("linked_expense_id"), // FK to expenses table
   isReversed: integer("is_reversed").notNull().default(0),
   remarks: text("remarks"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Insert schemas
