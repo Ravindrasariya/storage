@@ -2247,6 +2247,7 @@ export class DatabaseStorage implements IStorage {
   async createMasterNikasi(args: {
     coldStorageId: string;
     farmerLedgerId: string;
+    buyerLedgerId?: string | null;
     exitDate: Date;
     sharedExitBillNumber?: number | null;
     rows: Array<{
@@ -2288,8 +2289,13 @@ export class DatabaseStorage implements IStorage {
       state: string;
       entityType: string;
     };
+    buyer: {
+      buyerLedgerId: string;
+      buyerId: string | null;
+      buyerName: string;
+    } | null;
   }> {
-    const { coldStorageId, farmerLedgerId, exitDate, rows } = args;
+    const { coldStorageId, farmerLedgerId, buyerLedgerId, exitDate, rows } = args;
     // Sale rows are recorded "now"; exitDate may be backdated.
     // Year-scope for CS bill # dup checks comes from saleDate, not exitDate.
     const saleDate = new Date();
@@ -2329,6 +2335,20 @@ export class DatabaseStorage implements IStorage {
     if (!farmerRecord) throw new Error("Farmer not found");
     const farmerEntityType = farmerRecord.entityType || "farmer";
     const effectiveChargeUnit = farmerEntityType === "company" ? "quintal" : (coldStorage.chargeUnit || "bag");
+
+    // Resolve target buyer (when set the bulk exit is billed to that buyer
+    // instead of being a self-sale; default behavior — null/omitted — keeps
+    // the legacy self-sale path).
+    let buyerRecord: { id: string; buyerId: string | null; buyerName: string } | null = null;
+    if (buyerLedgerId) {
+      const [b] = await db.select().from(buyerLedger).where(and(
+        eq(buyerLedger.id, buyerLedgerId),
+        eq(buyerLedger.coldStorageId, coldStorageId),
+      ));
+      if (!b) throw new Error("Buyer not found in this cold storage");
+      if (b.isArchived === 1) throw new Error("Selected buyer is archived");
+      buyerRecord = { id: b.id, buyerId: b.buyerId ?? null, buyerName: b.buyerName };
+    }
 
     const userSharedExitBill = args.sharedExitBillNumber ?? null;
     const exitYear = exitDate.getFullYear();
@@ -2506,7 +2526,7 @@ export class DatabaseStorage implements IStorage {
           coldCharge: coldChargeRate,
           hammali: hammaliRate,
           pricePerKg: null,
-          buyerName: null,
+          buyerName: buyerRecord?.buyerName ?? null,
           totalPrice: 0,
           salePaymentStatus: "due",
           saleCharge: storageCharge,
@@ -2559,7 +2579,7 @@ export class DatabaseStorage implements IStorage {
           extraHammali: extraTotal,
           gradingCharges: grading,
           netWeight: null,
-          buyerName: null,
+          buyerName: buyerRecord?.buyerName ?? null,
           pricePerKg: null,
           paymentStatus: "due",
           paymentMode: null,
@@ -2573,12 +2593,15 @@ export class DatabaseStorage implements IStorage {
           baseChargeAmountAtSale: storageCharge,
           baseHammaliAmount,
           remainingSizeAtSale: lot.remainingSize,
-          isSelfSale: 1,
+          // When buyerRecord is set the bulk exit is billed to that buyer
+          // (regular sale, due tracked under cold_merchant); otherwise the
+          // legacy self-sale path is preserved (due tracked under farmer).
+          isSelfSale: buyerRecord ? 0 : 1,
           adjReceivableSelfDueAmount: 0,
           farmerLedgerId: lot.farmerLedgerId || null,
           farmerId: lot.farmerId || null,
-          buyerLedgerId: null,
-          buyerId: null,
+          buyerLedgerId: buyerRecord?.id ?? null,
+          buyerId: buyerRecord?.buyerId ?? null,
           soldAt: saleDate,
         } as InsertSalesHistory).returning();
 
@@ -2680,6 +2703,13 @@ export class DatabaseStorage implements IStorage {
           state: farmerRecord.state,
           entityType: farmerEntityType,
         },
+        buyer: buyerRecord
+          ? {
+              buyerLedgerId: buyerRecord.id,
+              buyerId: buyerRecord.buyerId,
+              buyerName: buyerRecord.buyerName,
+            }
+          : null,
       };
     });
   }

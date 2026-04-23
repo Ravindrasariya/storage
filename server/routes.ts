@@ -1545,6 +1545,9 @@ export async function registerRoutes(
   // shares a single freshly allocated bill number and exit date.
   const masterNikasiSchema = z.object({
     farmerLedgerId: z.string().min(1),
+    // Optional buyer the bulk exit is billed to. When omitted/null, the
+    // legacy self-sale path is used (due tracked under the farmer).
+    buyerLedgerId: z.string().uuid().nullable().optional(),
     exitDate: z.string().min(1),
     sharedExitBillNumber: z.number().int().positive().optional(),
     rows: z.array(z.object({
@@ -1569,6 +1572,7 @@ export async function registerRoutes(
       const result = await storage.createMasterNikasi({
         coldStorageId,
         farmerLedgerId: body.farmerLedgerId,
+        buyerLedgerId: body.buyerLedgerId ?? null,
         exitDate,
         sharedExitBillNumber: body.sharedExitBillNumber ?? null,
         rows: body.rows.map(r => ({

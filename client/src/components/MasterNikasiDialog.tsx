@@ -7,12 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { PackageMinus, Printer, Plus, Trash2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import type { ColdStorage } from "@shared/schema";
+import type { ColdStorage, BuyerLedgerEntry } from "@shared/schema";
 import type { LotWithCharges } from "@/components/FarmerLotGroup";
 import { NikasiPrintable, printNikasiReceipt } from "@/components/NikasiPrintable";
+
+// Special sentinel for the "Self" option in the buyer picker. Selecting it
+// (or leaving the field empty) keeps the legacy self-sale behavior — due
+// tracked under the farmer, no buyer ledger entry created/touched.
+const SELF_BUYER = "__self__";
 
 // Sentinel value used as the SelectItem `value` for lots whose marka is
 // blank/null. shadcn's SelectItem disallows empty-string values, so we
@@ -83,6 +88,11 @@ interface MasterNikasiResult {
     state: string;
     entityType: string;
   };
+  buyer: {
+    buyerLedgerId: string;
+    buyerId: string | null;
+    buyerName: string;
+  } | null;
 }
 
 const newRow = (lotNo = "", marka = "", coldStorageBillNumber = ""): RowState => ({
@@ -126,10 +136,25 @@ export function MasterNikasiDialog({
   const isCompany = farmerEntry?.entityType === "company";
   const partyRowLabel = isCompany ? "कंपनी / Company" : "किसान / Farmer";
 
+  // Active (non-archived) buyers — used to fill the optional "Buyer Name"
+  // picker. Default selection is Self, which preserves the legacy
+  // self-sale path (no buyer touched).
+  const { data: buyerLedgerData } = useQuery<{ buyers: BuyerLedgerEntry[] }>({
+    queryKey: ["/api/buyer-ledger", { includeArchived: false }],
+    queryFn: () => authFetch(`/api/buyer-ledger?includeArchived=false`).then(res => res.json()),
+  });
+  const buyers = useMemo(
+    () => (buyerLedgerData?.buyers ?? []).slice().sort((a, b) => a.buyerName.localeCompare(b.buyerName)),
+    [buyerLedgerData],
+  );
+
   const todayIso = new Date().toISOString().slice(0, 10);
   const [exitDate, setExitDate] = useState(todayIso);
   const [rows, setRows] = useState<RowState[]>(() => [newRow()]);
   const [result, setResult] = useState<MasterNikasiResult | null>(null);
+  // SELF_BUYER (default) keeps the legacy self-sale path; selecting a real
+  // buyer ledger id routes the whole nikasi to that buyer (regular sale).
+  const [targetBuyerSel, setTargetBuyerSel] = useState<string>(SELF_BUYER);
   // Shared exit bill # for the whole nikasi batch. Pre-filled from the
   // running counter; user may override to match a manual receipt book.
   const [sharedExitBillInput, setSharedExitBillInput] = useState<string>("");
@@ -158,6 +183,7 @@ export function MasterNikasiDialog({
       setBillNumberError(null);
       setCsBillRowErrors({});
       setResult(null);
+      setTargetBuyerSel(SELF_BUYER);
     }
   }, [open, lots, coldStorage?.nextExitBillNumber, coldStorage?.nextColdStorageBillNumber]);
 
@@ -303,8 +329,11 @@ export function MasterNikasiDialog({
         throw new Error("Exit bill # must be a positive integer");
       }
 
+      const buyerLedgerIdToSend = targetBuyerSel && targetBuyerSel !== SELF_BUYER ? targetBuyerSel : null;
+
       const res = await apiRequest("POST", "/api/farmers/master-nikasi", {
         farmerLedgerId,
+        buyerLedgerId: buyerLedgerIdToSend,
         exitDate: new Date(exitDate + "T00:00:00").toISOString(),
         sharedExitBillNumber: sharedExitBill,
         rows: cleaned,
@@ -319,7 +348,8 @@ export function MasterNikasiDialog({
       // bumped nextExitBillNumber / nextColdStorageBillNumber values.
       queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
       onSaleSuccess?.();
-      toast({ title: t("masterNikasi"), description: `${t("exitBillNumber")} ${data.sharedExitBillNumber}` });
+      const buyerSuffix = data.buyer ? ` · ${data.buyer.buyerName}` : "";
+      toast({ title: t("masterNikasi"), description: `${t("exitBillNumber")} ${data.sharedExitBillNumber}${buyerSuffix}` });
       // Auto-print after a short delay so DOM renders the print block.
       setTimeout(() => {
         handlePrint();
@@ -380,6 +410,31 @@ export function MasterNikasiDialog({
           <span className="text-xs text-muted-foreground">
             {village} · <span className="font-mono">{contactNumber}</span>
           </span>
+          {/* Buyer picker — Self by default. Selecting a real buyer routes
+              the whole nikasi to that buyer (regular sale, due tracked under
+              cold_merchant). Locked label "Buyer Name" matches SaleDialog. */}
+          <div className="flex items-center gap-2">
+            <Label htmlFor="mn-buyer" className="text-xs whitespace-nowrap">{t("buyerName") || "Buyer Name"}</Label>
+            <Select
+              value={targetBuyerSel}
+              onValueChange={(v) => setTargetBuyerSel(v)}
+              disabled={!!result}
+            >
+              <SelectTrigger id="mn-buyer" className="h-8 w-56" data-testid="select-mn-buyer">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SELF_BUYER} data-testid="select-mn-buyer-self">
+                  {t("self") || "Self"} / स्वयं
+                </SelectItem>
+                {buyers.map(b => (
+                  <SelectItem key={b.id} value={b.id} data-testid={`select-mn-buyer-${b.id}`}>
+                    {b.buyerName}{b.buyerId ? ` (${b.buyerId})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="ml-auto flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Label htmlFor="mn-exit-date" className="text-xs whitespace-nowrap">{t("exitDate")}</Label>
@@ -744,6 +799,7 @@ export function MasterNikasiDialog({
                     village: result.farmer.village,
                     contactNumber: result.farmer.contactNumber,
                   },
+                  buyerName: result.buyer?.buyerName ?? null,
                   sales: result.sales.map(s => ({
                     saleId: s.saleId,
                     lotNo: s.lotNo,
