@@ -417,10 +417,10 @@ const translations: Translations = {
   // Exit (Nikasi)
   exit: { en: "Exit", hi: "निकासी" },
   masterNikasi: { en: "Master Nikasi", hi: "मास्टर निकासी" },
-  masterNikasiTitle: { en: "Master Nikasi (Bulk Self-Sale Exit)", hi: "मास्टर निकासी (एकमुश्त निजी बिक्री निकासी)" },
+  masterNikasiTitle: { en: "Master Nikasi", hi: "मास्टर निकासी" },
   masterNikasiDesc: {
-    en: "Record one combined nikasi for this farmer/company across multiple lots. All rows share one bill number and exit date. Each row becomes a self-sale (payment due).",
-    hi: "इस किसान/कंपनी के लिए कई लॉट की एक संयुक्त निकासी दर्ज करें। सभी पंक्तियों का एक ही बिल नंबर और निकासी तिथि होगी। हर पंक्ति एक निजी बिक्री बनेगी (भुगतान बकाया)।",
+    en: "Record one combined nikasi for this farmer/company across multiple lots. All rows share one bill number and exit date.",
+    hi: "इस किसान/कंपनी के लिए कई लॉट की एक संयुक्त निकासी दर्ज करें। सभी पंक्तियों का एक ही बिल नंबर और निकासी तिथि होगी।",
   },
   exitBags: { en: "Exit Bags", hi: "निकासी बोरी" },
   receiptNo: { en: "Receipt #", hi: "रसीद #" },

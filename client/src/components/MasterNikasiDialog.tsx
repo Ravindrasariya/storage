@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { PackageMinus, Printer, Plus, Trash2, Loader2, Check, ChevronsUpDown } from "lucide-react";
@@ -424,106 +423,91 @@ export function MasterNikasiDialog({
           <span className="text-xs text-muted-foreground">
             {village} · <span className="font-mono">{contactNumber}</span>
           </span>
-          {/* Mode pill — flips from Self-Sale (default) to Buyer-Sale once
-              the operator picks a real buyer. Visual cue so it's obvious
-              the nikasi is now booked under that buyer's ledger. */}
-          {(() => {
-            const selectedBuyer = targetBuyerSel !== SELF_BUYER ? buyers.find(b => b.id === targetBuyerSel) : null;
-            return selectedBuyer ? (
-              <Badge variant="default" className="text-[10px] uppercase" data-testid="badge-mn-mode-buyer">
-                {t("buyerSale") || "Buyer Sale"} · {selectedBuyer.buyerName}
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="text-[10px] uppercase" data-testid="badge-mn-mode-self">
-                {t("selfSale") || "Self Sale"}
-              </Badge>
-            );
-          })()}
-          {/* Buyer picker — Self by default. Selecting a real buyer routes
-              the whole nikasi to that buyer (regular sale, due tracked under
-              cold_merchant). Locked label "Buyer Name" matches SaleDialog. */}
-          <div className="flex items-center gap-2">
-            <Label htmlFor="mn-buyer" className="text-xs whitespace-nowrap">{t("buyerName") || "Buyer Name"}</Label>
-            <Popover open={buyerComboboxOpen} onOpenChange={(o) => { setBuyerComboboxOpen(o); if (o) setBuyerError(null); }}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={buyerComboboxOpen}
-                  disabled={!!result}
-                  className={`h-8 w-56 justify-between font-normal ${buyerError ? "border-destructive ring-1 ring-destructive" : ""}`}
-                  data-testid="select-mn-target-buyer"
-                >
-                  {targetBuyerSel === SELF_BUYER ? (
-                    <span>
-                      {t("self") || "Self"} — {isCompany ? (t("company") || "Company") : (t("farmer") || "किसान")}
-                    </span>
-                  ) : (
-                    <span className="truncate">
-                      {(() => {
-                        const sel = buyers.find(b => b.id === targetBuyerSel);
-                        return sel ? `${sel.buyerName}${sel.buyerId ? ` (${sel.buyerId})` : ""}` : (t("selectMerchant") || "Select buyer");
-                      })()}
-                    </span>
-                  )}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[320px] p-0" align="start">
-                <Command shouldFilter={false}>
-                  <CommandInput
-                    placeholder={t("searchBuyer") || "Search buyer..."}
-                    value={buyerSearchQuery}
-                    onValueChange={setBuyerSearchQuery}
-                    data-testid="input-mn-buyer-search"
-                  />
-                  <CommandList>
-                    <CommandEmpty>{t("noBuyersFound") || "No buyers found"}</CommandEmpty>
-                    <CommandGroup>
-                      <CommandItem
-                        value={SELF_BUYER}
-                        onSelect={() => {
-                          setTargetBuyerSel(SELF_BUYER);
-                          setBuyerComboboxOpen(false);
-                          setBuyerSearchQuery("");
-                          setBuyerError(null);
-                        }}
-                        data-testid="option-mn-buyer-self"
-                      >
-                        <Check className={`mr-2 h-4 w-4 ${targetBuyerSel === SELF_BUYER ? "opacity-100" : "opacity-0"}`} />
-                        {t("self") || "Self"} / स्वयं
-                      </CommandItem>
-                      {buyers
-                        .filter(b => !buyerSearchQuery || b.buyerName.toLowerCase().includes(buyerSearchQuery.toLowerCase()) || (b.buyerId || "").toLowerCase().includes(buyerSearchQuery.toLowerCase()))
-                        .map(b => (
-                          <CommandItem
-                            key={b.id}
-                            value={b.id}
-                            onSelect={() => {
-                              setTargetBuyerSel(b.id);
-                              setBuyerComboboxOpen(false);
-                              setBuyerSearchQuery("");
-                              setBuyerError(null);
-                            }}
-                            data-testid={`option-mn-buyer-${b.id}`}
-                          >
-                            <Check className={`mr-2 h-4 w-4 ${targetBuyerSel === b.id ? "opacity-100" : "opacity-0"}`} />
-                            <span className="flex items-center justify-between gap-2 w-full">
-                              <span className="truncate">{b.buyerName}</span>
-                              {b.buyerId && <span className="text-xs text-muted-foreground font-mono">{b.buyerId}</span>}
-                            </span>
-                          </CommandItem>
-                        ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            {buyerError && (
-              <span className="text-xs text-destructive" data-testid="text-mn-buyer-error">{buyerError}</span>
-            )}
-          </div>
           <div className="ml-auto flex items-center gap-3">
+            {/* Buyer picker — Self by default. Selecting a real buyer routes
+                the whole nikasi to that buyer (regular sale, due tracked under
+                cold_merchant). Locked label "Buyer Name" matches SaleDialog. */}
+            <div className="flex items-center gap-2">
+              <Label htmlFor="mn-buyer" className="text-xs whitespace-nowrap">{t("buyerName") || "Buyer Name"}</Label>
+              <Popover open={buyerComboboxOpen} onOpenChange={(o) => { setBuyerComboboxOpen(o); if (o) setBuyerError(null); }}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={buyerComboboxOpen}
+                    disabled={!!result}
+                    className={`h-8 w-56 justify-between font-normal ${buyerError ? "border-destructive ring-1 ring-destructive" : ""}`}
+                    data-testid="select-mn-target-buyer"
+                  >
+                    {targetBuyerSel === SELF_BUYER ? (
+                      <span>
+                        {t("self") || "Self"} — {isCompany ? (t("company") || "Company") : (t("farmer") || "किसान")}
+                      </span>
+                    ) : (
+                      <span className="truncate">
+                        {(() => {
+                          const sel = buyers.find(b => b.id === targetBuyerSel);
+                          return sel ? `${sel.buyerName}${sel.buyerId ? ` (${sel.buyerId})` : ""}` : (t("selectMerchant") || "Select buyer");
+                        })()}
+                      </span>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[320px] p-0" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder={t("searchBuyer") || "Search buyer..."}
+                      value={buyerSearchQuery}
+                      onValueChange={setBuyerSearchQuery}
+                      data-testid="input-mn-buyer-search"
+                    />
+                    <CommandList>
+                      <CommandEmpty>{t("noBuyersFound") || "No buyers found"}</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value={SELF_BUYER}
+                          onSelect={() => {
+                            setTargetBuyerSel(SELF_BUYER);
+                            setBuyerComboboxOpen(false);
+                            setBuyerSearchQuery("");
+                            setBuyerError(null);
+                          }}
+                          data-testid="option-mn-buyer-self"
+                        >
+                          <Check className={`mr-2 h-4 w-4 ${targetBuyerSel === SELF_BUYER ? "opacity-100" : "opacity-0"}`} />
+                          {t("self") || "Self"} / स्वयं
+                        </CommandItem>
+                        {buyers
+                          .filter(b => !buyerSearchQuery || b.buyerName.toLowerCase().includes(buyerSearchQuery.toLowerCase()) || (b.buyerId || "").toLowerCase().includes(buyerSearchQuery.toLowerCase()))
+                          .map(b => (
+                            <CommandItem
+                              key={b.id}
+                              value={b.id}
+                              onSelect={() => {
+                                setTargetBuyerSel(b.id);
+                                setBuyerComboboxOpen(false);
+                                setBuyerSearchQuery("");
+                                setBuyerError(null);
+                              }}
+                              data-testid={`option-mn-buyer-${b.id}`}
+                            >
+                              <Check className={`mr-2 h-4 w-4 ${targetBuyerSel === b.id ? "opacity-100" : "opacity-0"}`} />
+                              <span className="flex items-center justify-between gap-2 w-full">
+                                <span className="truncate">{b.buyerName}</span>
+                                {b.buyerId && <span className="text-xs text-muted-foreground font-mono">{b.buyerId}</span>}
+                              </span>
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {buyerError && (
+                <span className="text-xs text-destructive" data-testid="text-mn-buyer-error">{buyerError}</span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <Label htmlFor="mn-exit-date" className="text-xs whitespace-nowrap">{t("exitDate")}</Label>
               <Input
@@ -573,11 +557,6 @@ export function MasterNikasiDialog({
             )}
           </div>
         </div>
-        {!result && (
-          <p className="text-[11px] text-muted-foreground -mt-1 px-1">
-            Auto-filled from your counter — please verify before submit.
-          </p>
-        )}
         {billNumberError && (
           <p
             className="text-xs text-red-600 dark:text-red-400 px-1 -mt-1"
