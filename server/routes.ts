@@ -1605,6 +1605,12 @@ export async function registerRoutes(
       if (/Exit Bill #|Invalid .* bill/i.test(message)) {
         return res.status(400).json({ error: message, field: "sharedExitBillNumber" });
       }
+      // Buyer lookup / archived buyer failures originate from
+      // createMasterNikasi's buyerLedger guard. Map them to a structured
+      // 400 so the dialog can highlight the buyer picker.
+      if (/buyer.*not found|buyer.*archived|buyer.*does not belong/i.test(message)) {
+        return res.status(400).json({ error: message, field: "buyerLedgerId" });
+      }
       res.status(400).json({ error: message });
     }
   });
