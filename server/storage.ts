@@ -2311,9 +2311,13 @@ export class DatabaseStorage implements IStorage {
     } | null;
   }> {
     const { coldStorageId, farmerLedgerId, buyerLedgerId, exitDate, rows } = args;
-    // Sale rows are recorded "now"; exitDate may be backdated.
-    // Year-scope for CS bill # dup checks comes from saleDate, not exitDate.
-    const saleDate = new Date();
+    // Sale rows' soldAt mirrors the operator-picked exitDate so that:
+    //   (a) year(soldAt) == year(exitDate) — the spec's year-scoping rule
+    //       (year(soldAt)) lines up with the bill #'s exitDate-year
+    //       sequencing without an extra column, and
+    //   (b) backdated exits also backdate their sale rows, matching
+    //       createSalesHistory's user-supplied dataSoldAt convention.
+    const saleDate = exitDate;
 
     if (rows.length === 0) {
       throw new Error("No rows provided");
@@ -2601,7 +2605,7 @@ export class DatabaseStorage implements IStorage {
           paidAmount: 0,
           dueAmount: totalChargeForLot,
           entryDate: lot.createdAt,
-          saleYear: new Date().getFullYear(),
+          saleYear: saleDate.getFullYear(),
           chargeBasis,
           chargeUnitAtSale: effectiveChargeUnit,
           initialNetWeightKg: lot.netWeight || null,
@@ -2620,8 +2624,10 @@ export class DatabaseStorage implements IStorage {
           soldAt: saleDate,
         } as InsertSalesHistory).returning();
 
-        // Per-row CS bill #: dup check is scoped to the sale row's year
-        // (saleDate.getFullYear()), not the backdated exitDate.
+        // Per-row CS bill #: dup check and Variant B MAX+1 are scoped to
+        // year(soldAt). Since saleDate == exitDate above, this is the
+        // operator-picked exitDate year — matching the physical
+        // receipt's year sequence even on a backdated exit.
         let coldStorageBillNumber: number | null = null;
         const userCsBill = row.coldStorageBillNumber ?? null;
         const csYear = saleDate.getFullYear();

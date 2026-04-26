@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
+import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { SaleLotInfo, ColdStorage } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
@@ -92,10 +92,18 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
 
   // Live preview of the next CS bill # the server would auto-assign.
   // Best-effort hint only — the server recomputes at submit time, so a
-  // stale value here is safe.
+  // stale value here is safe. Key shape matches the spec
+  // ['/api/cold-storages', coldStorageId, 'next-cs-bill', year] so cache
+  // invalidation is granular per cold storage and year. Custom queryFn
+  // builds the spec endpoint URL with year as a query param.
   const { data: nextCsBillData } = useQuery<{ nextBillNumber: number }>({
-    queryKey: ["/api/cold-storage/next-cs-bill", saleYear],
-    enabled: open,
+    queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", saleYear],
+    enabled: open && !!coldStorage?.id,
+    queryFn: async () => {
+      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-cs-bill?year=${saleYear}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
   });
 
   const { data: buyersData } = useQuery<{ buyerName: string; isSelfSale: boolean }[]>({

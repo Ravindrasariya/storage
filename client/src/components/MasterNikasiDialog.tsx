@@ -150,26 +150,40 @@ export function MasterNikasiDialog({
     [buyerLedgerData],
   );
 
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const [exitDate, setExitDate] = useState(todayIso);
+  // Use Asia/Kolkata-based formatting (en-CA gives YYYY-MM-DD) so the
+  // default exit date is the operator's local IST calendar day. Plain
+  // toISOString().slice(0,10) is UTC-based and would shift to the prior
+  // day during IST early hours (before 05:30), which breaks the CS bill
+  // # year-bucket on Jan-1 mornings.
+  const todayIst = (): string =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const [exitDate, setExitDate] = useState<string>(todayIst);
 
-  // Year used for the live next-CS-bill # preview. Master Nikasi's
-  // server-side createMasterNikasi anchors soldAt to `new Date()` (NOT
-  // the picked exit-date), so CS bill # numbering always lands in the
-  // current calendar year regardless of what the operator picks for
-  // exit-date. The hint must follow the same rule to match what gets
-  // assigned. Computed once per open — operators don't leave this dialog
-  // open across a midnight/year boundary in practice, and even if they
-  // did, the server recomputes MAX+1 at submit, so a stale hint can
-  // never cause a duplicate or wrong assignment, only a momentarily
-  // mismatched preview that disappears on next open.
-  const previewYear = useMemo(() => new Date().getFullYear(), [open]);
+  // Year used for the live next-CS-bill # preview. Server-side
+  // createMasterNikasi scopes the CS bill # year to the picked
+  // exitDate's calendar year (not the row's soldAt, which is "now"), so
+  // the hint must follow the same rule. A new exitDate input ⇒ new
+  // previewYear ⇒ new query key ⇒ refreshed hint.
+  const previewYear = useMemo(() => {
+    if (exitDate && /^\d{4}-\d{2}-\d{2}$/.test(exitDate)) {
+      const y = parseInt(exitDate.slice(0, 4), 10);
+      if (Number.isFinite(y) && y > 1900 && y < 3000) return y;
+    }
+    return new Date().getFullYear();
+  }, [exitDate]);
 
   // Live preview of the next CS bill # the server would auto-assign.
-  // Best-effort hint only — the server recomputes at submit time.
+  // Best-effort hint only — the server recomputes at submit time. Key
+  // shape matches the spec ['/api/cold-storages', coldStorageId,
+  // 'next-cs-bill', year] and the URL uses year as a query param.
   const { data: nextCsBillData } = useQuery<{ nextBillNumber: number }>({
-    queryKey: ["/api/cold-storage/next-cs-bill", previewYear],
-    enabled: open,
+    queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", previewYear],
+    enabled: open && !!coldStorage?.id,
+    queryFn: async () => {
+      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-cs-bill?year=${previewYear}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
   });
 
   const [rows, setRows] = useState<RowState[]>(() => [newRow()]);
@@ -201,7 +215,7 @@ export function MasterNikasiDialog({
   // populated by the follow-up effect below once nextCsBillData arrives.
   useEffect(() => {
     if (open) {
-      setExitDate(new Date().toISOString().slice(0, 10));
+      setExitDate(todayIst());
       const only = lots.length === 1 ? lots[0].lot : null;
       const onlyMarka = (only?.marka || "").trim();
       const onlyMarkaState = only ? (onlyMarka === "" ? NO_MARKA : onlyMarka) : "";

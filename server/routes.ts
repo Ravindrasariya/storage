@@ -1709,14 +1709,19 @@ export async function registerRoutes(
   // so the displayed value matches what assignBillNumber /
   // createMasterNikasi would compute. The server still recomputes on
   // submit, so a stale hint is safe — never the source of truth.
-  app.get("/api/cold-storage/next-cs-bill/:year", requireAuth, async (req: AuthenticatedRequest, res) => {
+  // The :id path segment must match the caller's session cold storage;
+  // year is an optional query param defaulting to the current year.
+  app.get("/api/cold-storages/:id/next-cs-bill", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const coldStorageId = getColdStorageId(req);
-      const yearParam = parseInt(req.params.year, 10);
+      const sessionColdStorageId = getColdStorageId(req);
+      if (req.params.id !== sessionColdStorageId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const yearParam = typeof req.query.year === "string" ? parseInt(req.query.year, 10) : NaN;
       const year = Number.isFinite(yearParam) && yearParam > 1900 && yearParam < 3000
         ? yearParam
         : new Date().getFullYear();
-      const nextBillNumber = await storage.getNextColdStorageBillNumber(coldStorageId, year);
+      const nextBillNumber = await storage.getNextColdStorageBillNumber(sessionColdStorageId, year);
       res.json({ nextBillNumber });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch next cold storage bill number" });

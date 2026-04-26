@@ -157,11 +157,13 @@ export function invalidateSaleSideEffects(client: QueryClient): void {
         head.startsWith("/api/buyer-dues-for-farmer") ||
         head === "/api/merchant-advances/outstanding" ||
         head === "/api/farmer-loans/outstanding" ||
-        // Live next-CS-bill # preview is per-year — every sale, exit,
-        // reversal, or master-nikasi changes MAX(coldStorageBillNumber)
-        // for that year. Match all years so SaleDialog and
-        // MasterNikasiDialog re-fetch their hint.
-        head === "/api/cold-storage/next-cs-bill"
+        // Live next-CS-bill # preview is keyed
+        // ['/api/cold-storages', coldStorageId, 'next-cs-bill', year].
+        // Every sale, exit, reversal, or master-nikasi changes
+        // MAX(coldStorageBillNumber) for the affected (cold storage,
+        // year), so we match the third segment to refresh all years for
+        // every cold storage SaleDialog/MasterNikasiDialog has cached.
+        (head === "/api/cold-storages" && query.queryKey[2] === "next-cs-bill")
       );
     },
   });
