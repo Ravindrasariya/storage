@@ -5762,11 +5762,9 @@ export class DatabaseStorage implements IStorage {
     return dup.length > 0 ? { id: dup[0].id, soldAt: dup[0].soldAt } : null;
   }
 
-  // Assign a user-supplied cold-storage bill number to a sale, with a
-  // calendar-year-scoped duplicate check (using the sale's soldAt year).
-  // Bumps the cold storage's nextColdStorageBillNumber forward when the
-  // user picked a number at or beyond the current counter so future
-  // auto-numbers skip past it.
+  // Read-only hint for the SaleDialog / MasterNikasiDialog "next CS bill #"
+  // preview. Mirrors the MAX+1 rule used by assignBillNumber and
+  // createMasterNikasi at submit time.
   async getNextColdStorageBillNumber(coldStorageId: string, year: number): Promise<number> {
     // Read-only MAX(coldStorageBillNumber) + 1 over (cold_storage,
     // year(soldAt)) — same algorithm the authoritative assigners
