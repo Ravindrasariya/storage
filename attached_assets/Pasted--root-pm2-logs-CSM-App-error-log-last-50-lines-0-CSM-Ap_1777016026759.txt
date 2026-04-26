@@ -1,0 +1,51 @@
+/root/.pm2/logs/CSM-App-error.log last 50 lines:
+0|CSM-App  |   routine: 'pg_analyze_and_rewrite_varparams'
+0|CSM-App  | }
+0|CSM-App  | Error generating farmer ID via sequence: error: could not determine data type of parameter $1
+0|CSM-App  |     at /var/www/krashuved/csm-app/dist/index.cjs:64:13326
+0|CSM-App  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|CSM-App  |     at async mf.generateFarmerId (/var/www/krashuved/csm-app/dist/index.cjs:467:4754)
+0|CSM-App  |     at async mf.ensureFarmerLedgerEntry (/var/www/krashuved/csm-app/dist/index.cjs:480:4232)
+0|CSM-App  |     at async /var/www/krashuved/csm-app/dist/index.cjs:534:21342 {
+0|CSM-App  |   length: 124,
+0|CSM-App  |   severity: 'ERROR',
+0|CSM-App  |   code: '42P18',
+0|CSM-App  |   detail: undefined,
+0|CSM-App  |   hint: undefined,
+0|CSM-App  |   position: undefined,
+0|CSM-App  |   internalPosition: undefined,
+0|CSM-App  |   internalQuery: undefined,
+0|CSM-App  |   where: undefined,
+0|CSM-App  |   schema: undefined,
+0|CSM-App  |   table: undefined,
+0|CSM-App  |   column: undefined,
+0|CSM-App  |   dataType: undefined,
+0|CSM-App  |   constraint: undefined,
+0|CSM-App  |   file: 'postgres.c',
+0|CSM-App  |   line: '740',
+0|CSM-App  |   routine: 'pg_analyze_and_rewrite_varparams'
+0|CSM-App  | }
+0|CSM-App  | Error generating farmer ID via sequence: error: could not determine data type of parameter $1
+0|CSM-App  |     at /var/www/krashuved/csm-app/dist/index.cjs:64:13326
+0|CSM-App  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|CSM-App  |     at async mf.generateFarmerId (/var/www/krashuved/csm-app/dist/index.cjs:467:4754)
+0|CSM-App  |     at async mf.ensureFarmerLedgerEntry (/var/www/krashuved/csm-app/dist/index.cjs:480:4232)
+0|CSM-App  |     at async /var/www/krashuved/csm-app/dist/index.cjs:534:21342 {
+0|CSM-App  |   length: 124,
+0|CSM-App  |   severity: 'ERROR',
+0|CSM-App  |   code: '42P18',
+0|CSM-App  |   detail: undefined,
+0|CSM-App  |   hint: undefined,
+0|CSM-App  |   position: undefined,
+0|CSM-App  |   internalPosition: undefined,
+0|CSM-App  |   internalQuery: undefined,
+0|CSM-App  |   where: undefined,
+0|CSM-App  |   schema: undefined,
+0|CSM-App  |   table: undefined,
+0|CSM-App  |   column: undefined,
+0|CSM-App  |   dataType: undefined,
+0|CSM-App  |   constraint: undefined,
+0|CSM-App  |   file: 'postgres.c',
+0|CSM-App  |   line: '740',
+0|CSM-App  |   routine: 'pg_analyze_and_rewrite_varparams'
+0|CSM-App  | }
