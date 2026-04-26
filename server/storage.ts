@@ -2652,23 +2652,26 @@ export class DatabaseStorage implements IStorage {
           coldStorageBillNumber = userCsBill;
           // Counter bump removed (Variant B) — see createSalesHistory.
         } else {
-          // Variant B: pick MAX(coldStorageBillNumber) + 1 over the same cold
-          // storage and the same calendar year. The outer FOR UPDATE lock on
-          // cold_storages (taken at the top of this transaction) serialises
-          // concurrent assignments, and the per-row UPDATE below makes the
-          // chosen number visible to the next iteration's MAX query so
-          // consecutive rows in this batch take consecutive numbers without
+          // Variant B: lowest missing positive integer over the same
+          // (cold storage, year(soldAt)) so reversal-freed interior
+          // numbers (e.g. #2 out of #1/#2/#3) get reused, not skipped.
+          // The outer FOR UPDATE lock on cold_storages (taken at the
+          // top of this transaction) serialises concurrent assigners,
+          // and the per-row insert + UPDATE below makes each chosen
+          // number visible to the next iteration's read so consecutive
+          // rows in this batch take consecutive numbers without
           // colliding. Falls back to 1 when the year has no rows yet.
-          const maxRow = await tx.select({
-            max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
-          })
+          const used = await tx.select({ n: salesHistory.coldStorageBillNumber })
             .from(salesHistory)
             .where(and(
               eq(salesHistory.coldStorageId, coldStorageId),
               sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+              sql`${salesHistory.coldStorageBillNumber} IS NOT NULL`,
             ));
-          const maxNum = (maxRow[0]?.max as number | null) ?? 0;
-          coldStorageBillNumber = maxNum + 1;
+          const seen = new Set<number>(used.map(r => r.n as number));
+          let next = 1;
+          while (seen.has(next)) next++;
+          coldStorageBillNumber = next;
         }
         if (coldStorageBillNumber != null) {
           await tx.update(salesHistory)
@@ -5678,16 +5681,22 @@ export class DatabaseStorage implements IStorage {
       if (billType === "coldStorage") {
         await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${sale.coldStorageId} FOR UPDATE`);
         const csYear = new Date(sale.soldAt).getFullYear();
-        const maxRow = await tx.select({
-          max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
-        })
+        // Variant B: lowest missing positive integer over the same
+        // (cold storage, year(soldAt)) so reversing an interior bill #
+        // (e.g. #2 out of #1/#2/#3) frees that exact number for the
+        // next blank-input sale, not just trailing reversals. The
+        // FOR UPDATE lock above serialises concurrent assigners.
+        const used = await tx.select({ n: salesHistory.coldStorageBillNumber })
           .from(salesHistory)
           .where(and(
             eq(salesHistory.coldStorageId, sale.coldStorageId),
             sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+            sql`${salesHistory.coldStorageBillNumber} IS NOT NULL`,
           ));
-        const maxNum = (maxRow[0]?.max as number | null) ?? 0;
-        billNumber = maxNum + 1;
+        const seen = new Set<number>(used.map(r => r.n as number));
+        let next = 1;
+        while (seen.has(next)) next++;
+        billNumber = next;
       } else {
         // Sales bill # — atomic counter increment via UPDATE … RETURNING.
         const counterRow = await tx.update(coldStorages)
@@ -5755,21 +5764,24 @@ export class DatabaseStorage implements IStorage {
   // user picked a number at or beyond the current counter so future
   // auto-numbers skip past it.
   async getNextColdStorageBillNumber(coldStorageId: string, year: number): Promise<number> {
-    // Read-only MAX + 1 over (cold_storage, year(soldAt)). Returns 1 when
-    // the year has no rows yet. No transaction or lock — this is a UI
-    // hint; the authoritative assignment lives in assignBillNumber and
-    // createMasterNikasi, which take FOR UPDATE on cold_storages so two
-    // submissions never collide.
-    const maxRow = await db.select({
-      max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
-    })
+    // Read-only lowest-missing-positive-integer over (cold_storage,
+    // year(soldAt)) — same algorithm the authoritative assigners
+    // (assignBillNumber + createMasterNikasi) use, so the displayed
+    // hint matches what the server will commit. Returns 1 when the
+    // year has no rows yet. No transaction or lock — this is a UI
+    // hint; the authoritative assignment takes FOR UPDATE on
+    // cold_storages so two submissions never collide.
+    const used = await db.select({ n: salesHistory.coldStorageBillNumber })
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         sql`extract(year from ${salesHistory.soldAt}) = ${year}`,
+        sql`${salesHistory.coldStorageBillNumber} IS NOT NULL`,
       ));
-    const maxNum = (maxRow[0]?.max as number | null) ?? 0;
-    return maxNum + 1;
+    const seen = new Set<number>(used.map(r => r.n as number));
+    let next = 1;
+    while (seen.has(next)) next++;
+    return next;
   }
 
   async assignSpecificColdStorageBillNumber(saleId: string, billNumber: number): Promise<number> {
