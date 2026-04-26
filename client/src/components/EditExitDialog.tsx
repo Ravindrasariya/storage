@@ -135,11 +135,11 @@ export function EditExitDialog({ exit, open, onOpenChange, parentSaleId }: EditE
 
     const parsedBill = trimmedBill === "" ? NaN : parseInt(trimmedBill, 10);
     if (trimmedBill === "" || !Number.isFinite(parsedBill) || parsedBill <= 0) {
-      setBillNumberError("Exit bill number must be a positive integer");
+      setBillNumberError(t("exitBillNumberPositiveInteger"));
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
-      setExitDateError("Exit date is required (YYYY-MM-DD)");
+      setExitDateError(t("exitDateRequired"));
       return;
     }
 

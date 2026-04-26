@@ -2910,7 +2910,12 @@ export class DatabaseStorage implements IStorage {
     coldStorageId: string,
     oldBillNumber: number,
     opts: { newBillNumber?: number; newExitDate?: Date },
-  ): Promise<{ updatedCount: number; affectedSaleIds: string[]; effectiveBillNumber: number }> {
+  ): Promise<{
+    updatedCount: number;
+    affectedSaleIds: string[];
+    effectiveBillNumber: number;
+    updatedRows: ExitHistory[];
+  }> {
     if (opts.newBillNumber == null && opts.newExitDate == null) {
       throw new Error("Nothing to update");
     }

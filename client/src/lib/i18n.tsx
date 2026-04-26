@@ -467,6 +467,14 @@ const translations: Translations = {
     hi: "इस निकासी में {n} लॉट शामिल हैं — सहेजने पर सभी अद्यतन होंगे।",
   },
   affectedLots: { en: "Affected lots", hi: "प्रभावित लॉट" },
+  exitBillNumberPositiveInteger: {
+    en: "Exit bill number must be a positive integer",
+    hi: "निकासी बिल नंबर एक धनात्मक पूर्णांक होना चाहिए",
+  },
+  exitDateRequired: {
+    en: "Exit date is required (YYYY-MM-DD)",
+    hi: "निकासी तिथि आवश्यक है (YYYY-MM-DD)",
+  },
   coldStorageManagerSignature: { en: "Cold Store Manager Signature", hi: "शीत भंडार प्रबंधक हस्ताक्षर" },
   reversed: { en: "Reversed", hi: "वापस" },
   reverseEntry: { en: "Reverse Entry", hi: "प्रविष्टि वापस करें" },
