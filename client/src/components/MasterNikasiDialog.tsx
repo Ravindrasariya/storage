@@ -232,26 +232,43 @@ export function MasterNikasiDialog({
     }
   }, [open, lots, coldStorage?.nextExitBillNumber]);
 
-  // Keep the first row's CS bill # in sync with the live MAX+1 preview
-  // until the operator edits it. Each row carries its own
-  // `coldStorageBillEdited` flag (flipped to true on first keystroke in
-  // the input), so we only auto-fill while that flag is false. This
-  // means: opening the dialog → empty value → preview lands → fills in;
-  // a sale recorded elsewhere → preview re-fetches via
-  // invalidateSaleSideEffects → updates the input; user types → flag
-  // flips → we leave it alone. Subsequent rows added via "Add row"
-  // compute their value from the in-batch MAX so they don't need
-  // refreshing here.
+  // Keep every non-edited blank row's CS bill # in sync with the live
+  // MAX+1 preview, assigning consecutive numbers starting from `next`.
+  // Each row carries its own `coldStorageBillEdited` flag (flipped to
+  // true on first keystroke in the input), so we only auto-fill rows
+  // where that flag is false AND the value is currently empty. This
+  // covers two scenarios:
+  //   • opening the dialog with N rows → all empty → preview lands →
+  //     all rows fill in as next, next+1, next+2, …;
+  //   • a sale recorded elsewhere → preview re-fetches via
+  //     invalidateSaleSideEffects → all still-blank/non-edited rows
+  //     re-fill from the new base.
+  // Edited rows or rows the operator has already given a numeric value
+  // are skipped; the autofill counter advances past them so the next
+  // non-edited blank row picks the smallest sequential value the
+  // server's per-iteration MAX+1 will land on.
   useEffect(() => {
     if (!open || !nextCsBillData?.nextBillNumber) return;
     const next = nextCsBillData.nextBillNumber;
     setRows(prev => {
       if (prev.length === 0) return prev;
-      const first = prev[0];
-      if (first.coldStorageBillEdited) return prev;
-      const nextStr = String(next);
-      if (first.coldStorageBillNumber === nextStr) return prev;
-      return [{ ...first, coldStorageBillNumber: nextStr }, ...prev.slice(1)];
+      let counter = next;
+      let changed = false;
+      const out = prev.map(r => {
+        if (r.coldStorageBillEdited) return r;
+        const trimmed = r.coldStorageBillNumber.trim();
+        const existing = parseInt(trimmed, 10);
+        if (Number.isFinite(existing) && existing > 0) {
+          if (existing >= counter) counter = existing + 1;
+          return r;
+        }
+        const nextStr = String(counter);
+        counter += 1;
+        if (r.coldStorageBillNumber === nextStr) return r;
+        changed = true;
+        return { ...r, coldStorageBillNumber: nextStr };
+      });
+      return changed ? out : prev;
     });
   }, [open, nextCsBillData?.nextBillNumber]);
 
