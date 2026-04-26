@@ -403,7 +403,7 @@ export function MasterNikasiDialog({
       const res = await apiRequest("POST", "/api/farmers/master-nikasi", {
         farmerLedgerId,
         buyerLedgerId: buyerLedgerIdToSend,
-        exitDate: new Date(exitDate + "T00:00:00").toISOString(),
+        exitDate,
         sharedExitBillNumber: sharedExitBill,
         rows: cleaned,
       });

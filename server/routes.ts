@@ -1564,9 +1564,27 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const body = masterNikasiSchema.parse(req.body);
-      const exitDate = new Date(body.exitDate);
+      // IST-safe parse: client sends raw YYYY-MM-DD; we parse it as
+      // 12:00 IST so the resulting timestamptz lands unambiguously on
+      // the operator-picked calendar day in any DB session timezone
+      // and year(soldAt) — which is derived from this exitDate inside
+      // createMasterNikasi — matches the year shown in the live preview.
+      // Same pattern as the partial-sale route's soldAt parsing.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.exitDate)) {
+        return res.status(400).json({ error: "Invalid exit date format (expected YYYY-MM-DD)", field: "exitDate" });
+      }
+      const exitDate = new Date(`${body.exitDate}T12:00:00+05:30`);
       if (isNaN(exitDate.getTime())) {
-        return res.status(400).json({ error: "Invalid exit date" });
+        return res.status(400).json({ error: "Invalid exit date", field: "exitDate" });
+      }
+      const istParts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(exitDate);
+      if (istParts !== body.exitDate) {
+        return res.status(400).json({ error: "Exit date is not a real calendar date", field: "exitDate" });
       }
 
       const result = await storage.createMasterNikasi({

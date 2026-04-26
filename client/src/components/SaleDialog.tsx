@@ -397,9 +397,14 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
         const n = parseInt(coldStorageBillInput);
         return Number.isFinite(n) && n > 0 ? n : undefined;
       })(),
-      // Send the picked date only when the operator actually edited it.
-      // Untouched → omit so the server stamps current time as before.
-      soldAt: saleDateEdited && saleDateInput ? saleDateInput : undefined,
+      // Always send the (IST-defaulted) saleDateInput so the server's
+      // year(soldAt) matches the live preview key, even when the operator
+      // didn't edit the date pill. Cross-year IST scenarios (e.g.
+      // Jan-1 IST early hours on a UTC postgres session) would otherwise
+      // bucket the row in the previous year and diverge from the
+      // displayed CS bill # hint. Server still applies its own IST-noon
+      // anchoring + duplicate check, so a stale or invalid value is safe.
+      soldAt: saleDateInput && /^\d{4}-\d{2}-\d{2}$/.test(saleDateInput) ? saleDateInput : undefined,
     });
   };
 
