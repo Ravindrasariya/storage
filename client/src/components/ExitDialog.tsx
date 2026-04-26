@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
-import { LogOut, Printer, Save } from "lucide-react";
+import { LogOut, Pencil, Printer, Save } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, ExitHistory, ColdStorage } from "@shared/schema";
 import { NikasiPrintable, printNikasiReceipt, type NikasiReceiptData } from "@/components/NikasiPrintable";
+import { EditExitDialog } from "@/components/EditExitDialog";
 
 type BatchExitRow = {
   exitId: string;
@@ -61,6 +62,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   const [batchData, setBatchData] = useState<NikasiReceiptData | null>(null);
   const [pendingBatchPrint, setPendingBatchPrint] = useState(false);
   const [reprintingExitId, setReprintingExitId] = useState<string | null>(null);
+  const [editExit, setEditExit] = useState<ExitHistory | null>(null);
   const batchPrintRef = useRef<HTMLDivElement>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
@@ -448,6 +450,18 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                               Rev
                             </Badge>
                           )}
+                          {exit.isReversed !== 1 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => setEditExit(exit)}
+                              data-testid={`button-edit-exit-${exit.id}`}
+                              title={t("editExit")}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -490,6 +504,16 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Compact edit dialog for changing the bill # / exit date on an
+          existing nikasi. Updates every non-reversed sibling row that
+          shares the bill # in one transaction (Master Nikasi safe). */}
+      <EditExitDialog
+        exit={editExit}
+        open={!!editExit}
+        onOpenChange={(o) => { if (!o) setEditExit(null); }}
+        parentSaleId={sale?.id}
+      />
 
       {/* Hidden batch print content — used when reprinting an exit that
           belongs to a Master Nikasi batch (2+ exits sharing one billNumber). */}

@@ -2170,6 +2170,76 @@ export async function registerRoutes(
     }
   });
 
+  // Edit the bill # and/or exit date for an existing nikasi. For a
+  // single-lot exit this updates one row; for a Master Nikasi (one
+  // shared bill # spanning multiple lots) it updates every sibling
+  // non-reversed row in one transaction so the bill # / date stay in
+  // lock-step. Counter is bumped forward only — never rewound.
+  const updateExitsByBillSchema = z.object({
+    newBillNumber: z.number().int().positive().optional(),
+    newExitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).refine(
+    (d) => d.newBillNumber !== undefined || d.newExitDate !== undefined,
+    { message: "Provide newBillNumber or newExitDate" },
+  );
+
+  app.patch("/api/exits/by-bill/:billNumber", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const oldBillNumber = parseInt(req.params.billNumber, 10);
+      if (!Number.isFinite(oldBillNumber) || oldBillNumber <= 0) {
+        return res.status(400).json({ error: "Invalid bill number" });
+      }
+      const parsed = updateExitsByBillSchema.parse(req.body);
+
+      // IST-noon-anchored date parsing — same guard as POST exits so
+      // we never drift the calendar day across timezones, and we
+      // reject bogus calendar dates like 2026-02-31.
+      let resolvedExitDate: Date | undefined;
+      if (parsed.newExitDate !== undefined) {
+        const parsedDate = new Date(`${parsed.newExitDate}T12:00:00+05:30`);
+        if (Number.isNaN(parsedDate.getTime())) {
+          return res.status(400).json({ error: "Invalid exit date", field: "newExitDate" });
+        }
+        const istParts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(parsedDate);
+        if (istParts !== parsed.newExitDate) {
+          return res.status(400).json({ error: "Exit date is not a real calendar date", field: "newExitDate" });
+        }
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        if (parsedDate.getTime() > tomorrow.getTime()) {
+          return res.status(400).json({ error: "Exit date cannot be in the future", field: "newExitDate" });
+        }
+        resolvedExitDate = parsedDate;
+      }
+
+      const result = await storage.updateExitsByBillNumber(coldStorageId, oldBillNumber, {
+        newBillNumber: parsed.newBillNumber,
+        newExitDate: resolvedExitDate,
+      });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid update data", details: error.errors });
+      }
+      const message = error instanceof Error ? error.message : "Failed to update exits";
+      if (/already used (on|in)|Invalid exit bill|Exit Bill #/i.test(message)) {
+        return res.status(400).json({ error: message, field: "newBillNumber" });
+      }
+      if (/exit date|Exit Date/i.test(message)) {
+        return res.status(400).json({ error: message, field: "newExitDate" });
+      }
+      if (/No active exits/i.test(message)) {
+        return res.status(404).json({ error: message });
+      }
+      res.status(400).json({ error: message });
+    }
+  });
+
   app.post("/api/sales-history/:id/exits", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

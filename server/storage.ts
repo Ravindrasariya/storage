@@ -271,6 +271,11 @@ export interface IStorage {
   getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string; village?: string; bagType?: string }): Promise<ExitRegisterResponse>;
   getExitRegisterYears(coldStorageId: string): Promise<number[]>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
+  updateExitsByBillNumber(
+    coldStorageId: string,
+    oldBillNumber: number,
+    opts: { newBillNumber?: number; newExitDate?: Date },
+  ): Promise<{ updatedCount: number; affectedSaleIds: string[]; effectiveBillNumber: number }>;
   getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
     saleId: string;
     soldAt: Date;
@@ -2887,6 +2892,104 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(asc(salesHistory.lotNo));
     return rows;
+  }
+
+  // Edit the bill # and/or exit date for every non-reversed exit row that
+  // shares oldBillNumber within this cold storage (i.e. one single-lot
+  // nikasi OR all sibling rows of a Master Nikasi). Mirrors the
+  // year-scoped uniqueness check used by createExit / createMasterNikasi
+  // so we can't accidentally collide with another active bill in the
+  // target year. Counter is bumped forward only — never rewound — when
+  // newBillNumber > current next.
+  async updateExitsByBillNumber(
+    coldStorageId: string,
+    oldBillNumber: number,
+    opts: { newBillNumber?: number; newExitDate?: Date },
+  ): Promise<{ updatedCount: number; affectedSaleIds: string[]; effectiveBillNumber: number }> {
+    if (opts.newBillNumber == null && opts.newExitDate == null) {
+      throw new Error("Nothing to update");
+    }
+    if (opts.newBillNumber != null && (!Number.isFinite(opts.newBillNumber) || opts.newBillNumber <= 0)) {
+      throw new Error("Invalid exit bill number");
+    }
+
+    const result = await db.transaction(async (tx) => {
+      // Lock the cold-storage row so concurrent edits / inserts targeting
+      // the same bill # serialize on this counter.
+      await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${coldStorageId} FOR UPDATE`);
+
+      const targetRows = await tx.select({
+        id: exitHistory.id,
+        salesHistoryId: exitHistory.salesHistoryId,
+        exitDate: exitHistory.exitDate,
+      })
+        .from(exitHistory)
+        .where(and(
+          eq(exitHistory.coldStorageId, coldStorageId),
+          eq(exitHistory.billNumber, oldBillNumber),
+          eq(exitHistory.isReversed, 0),
+        ));
+
+      if (targetRows.length === 0) {
+        throw new Error(`No active exits found for bill # ${oldBillNumber}`);
+      }
+
+      const effectiveBillNumber = opts.newBillNumber ?? oldBillNumber;
+      const effectiveExitDate = opts.newExitDate ?? (targetRows[0].exitDate as Date);
+      const targetYear = new Date(effectiveExitDate).getFullYear();
+
+      // Year-scoped collision check, excluding the rows we're updating.
+      const targetIds = targetRows.map(r => r.id);
+      const dup = await tx.select({ id: exitHistory.id, exitDate: exitHistory.exitDate })
+        .from(exitHistory)
+        .where(and(
+          eq(exitHistory.coldStorageId, coldStorageId),
+          eq(exitHistory.billNumber, effectiveBillNumber),
+          eq(exitHistory.isReversed, 0),
+          sql`extract(year from ${exitHistory.exitDate}) = ${targetYear}`,
+          sql`${exitHistory.id} NOT IN (${sql.join(targetIds.map(id => sql`${id}`), sql`, `)})`,
+        ));
+      if (dup.length > 0) {
+        const conflictDate: Date = dup[0].exitDate instanceof Date
+          ? dup[0].exitDate
+          : new Date(dup[0].exitDate as string);
+        const onDate = conflictDate.toLocaleDateString("en-IN");
+        throw new Error(`Exit Bill # ${effectiveBillNumber} already used on ${onDate}`);
+      }
+
+      const updates: { billNumber?: number; exitDate?: Date } = {};
+      if (opts.newBillNumber != null) updates.billNumber = opts.newBillNumber;
+      if (opts.newExitDate != null) updates.exitDate = opts.newExitDate;
+
+      await tx.update(exitHistory)
+        .set(updates)
+        .where(and(
+          eq(exitHistory.coldStorageId, coldStorageId),
+          eq(exitHistory.billNumber, oldBillNumber),
+          eq(exitHistory.isReversed, 0),
+        ));
+
+      if (opts.newBillNumber != null) {
+        await tx.update(coldStorages)
+          .set({ nextExitBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextExitBillNumber}, 1), ${opts.newBillNumber + 1})` })
+          .where(eq(coldStorages.id, coldStorageId));
+      }
+
+      return {
+        updatedCount: targetRows.length,
+        affectedSaleIds: Array.from(new Set(targetRows.map(r => r.salesHistoryId))),
+        effectiveBillNumber,
+      };
+    });
+
+    // Refresh the denormalised exit-bill / exit-date strings on each
+    // affected sale row so sales-history consumers (NIKASI page, sales
+    // list, etc.) immediately reflect the edit.
+    for (const saleId of result.affectedSaleIds) {
+      await this.syncSaleExitSummary(saleId);
+    }
+
+    return result;
   }
 
   async getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
