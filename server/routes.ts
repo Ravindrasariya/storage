@@ -2224,7 +2224,25 @@ export async function registerRoutes(
       res.json(result);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid update data", details: error.errors });
+        // Map the first issue back to the offending field so the
+        // dialog can highlight the input even when callers bypass the
+        // UI's pre-flight checks. Matches the field-tagged contract
+        // used by the success path's collision/date errors below.
+        const first = error.errors[0];
+        const path = (first?.path?.[0] as string | undefined) ?? "";
+        const field = path === "newBillNumber" || path === "newExitDate"
+          ? path
+          : undefined;
+        // Empty-payload (.refine) shows up with an empty path; surface
+        // it as a bill-number-tagged error so the dialog highlights
+        // the field the operator most likely meant to change.
+        const fallbackField = field
+          ?? (first?.message?.includes("Provide newBillNumber") ? "newBillNumber" : undefined);
+        return res.status(400).json({
+          error: first?.message || "Invalid update data",
+          field: fallbackField,
+          details: error.errors,
+        });
       }
       const message = error instanceof Error ? error.message : "Failed to update exits";
       if (/already used (on|in)|Invalid exit bill|Exit Bill #/i.test(message)) {
@@ -2235,6 +2253,9 @@ export async function registerRoutes(
       }
       if (/No active exits/i.test(message)) {
         return res.status(404).json({ error: message });
+      }
+      if (/Nothing to update/i.test(message)) {
+        return res.status(400).json({ error: message, field: "newBillNumber" });
       }
       res.status(400).json({ error: message });
     }

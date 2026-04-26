@@ -275,7 +275,12 @@ export interface IStorage {
     coldStorageId: string,
     oldBillNumber: number,
     opts: { newBillNumber?: number; newExitDate?: Date },
-  ): Promise<{ updatedCount: number; affectedSaleIds: string[]; effectiveBillNumber: number }>;
+  ): Promise<{
+    updatedCount: number;
+    affectedSaleIds: string[];
+    effectiveBillNumber: number;
+    updatedRows: ExitHistory[];
+  }>;
   getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
     saleId: string;
     soldAt: Date;
@@ -2961,13 +2966,14 @@ export class DatabaseStorage implements IStorage {
       if (opts.newBillNumber != null) updates.billNumber = opts.newBillNumber;
       if (opts.newExitDate != null) updates.exitDate = opts.newExitDate;
 
-      await tx.update(exitHistory)
+      const updatedRows = await tx.update(exitHistory)
         .set(updates)
         .where(and(
           eq(exitHistory.coldStorageId, coldStorageId),
           eq(exitHistory.billNumber, oldBillNumber),
           eq(exitHistory.isReversed, 0),
-        ));
+        ))
+        .returning();
 
       if (opts.newBillNumber != null) {
         await tx.update(coldStorages)
@@ -2979,6 +2985,7 @@ export class DatabaseStorage implements IStorage {
         updatedCount: targetRows.length,
         affectedSaleIds: Array.from(new Set(targetRows.map(r => r.salesHistoryId))),
         effectiveBillNumber,
+        updatedRows,
       };
     });
 
