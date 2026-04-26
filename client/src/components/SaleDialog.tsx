@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,27 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
     queryKey: ["/api/cold-storage"],
   });
 
+  // Year used for the live next-CS-bill # preview. Derived from the
+  // current sale-date input so that, if the operator backdates the sale
+  // into a different calendar year, the hint matches what the server
+  // would actually assign (assignBillNumber computes MAX+1 over the same
+  // year(soldAt)). Falls back to today when the input is empty/invalid.
+  const saleYear = useMemo(() => {
+    if (saleDateInput && /^\d{4}-\d{2}-\d{2}$/.test(saleDateInput)) {
+      const y = parseInt(saleDateInput.slice(0, 4), 10);
+      if (Number.isFinite(y) && y > 1900 && y < 3000) return y;
+    }
+    return new Date().getFullYear();
+  }, [saleDateInput]);
+
+  // Live preview of the next CS bill # the server would auto-assign.
+  // Best-effort hint only — the server recomputes at submit time, so a
+  // stale value here is safe.
+  const { data: nextCsBillData } = useQuery<{ nextBillNumber: number }>({
+    queryKey: ["/api/cold-storage/next-cs-bill", saleYear],
+    enabled: open,
+  });
+
   const { data: buyersData } = useQuery<{ buyerName: string; isSelfSale: boolean }[]>({
     queryKey: ["/api/buyers/lookup"],
   });
@@ -121,7 +142,9 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       setEditableColdCharge(lot.coldCharge.toString());
       setEditableHammali(lot.hammali.toString());
       setChargeBasis(lot.baseColdChargesBilled === 1 ? "actual" : "actual");
-      setColdStorageBillInput(coldStorage?.nextColdStorageBillNumber ? String(coldStorage.nextColdStorageBillNumber) : "");
+      // Pre-fill is now driven by the live nextCsBillData query in the
+      // follow-up effect below; start empty so a stale value never shows.
+      setColdStorageBillInput("");
       setColdStorageBillEdited(false);
       setColdStorageBillError(null);
       setSaleDateInput(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()));
@@ -150,7 +173,21 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       setSaleDateInput("");
       setSaleDateEdited(false);
     }
-  }, [open, lot?.id, coldStorage?.nextColdStorageBillNumber]);
+  }, [open, lot?.id]);
+
+  // Pre-fill / refresh the CS bill # input from the live preview, but
+  // only while the operator hasn't typed into it. If the saleYear or the
+  // server's MAX+1 changes (e.g. another sale was just recorded), the
+  // hint updates in place. Once the user edits the input we leave it
+  // alone — coldStorageBillEdited stays true until the dialog reopens.
+  useEffect(() => {
+    if (!open || !lot || coldStorageBillEdited) return;
+    if (nextCsBillData?.nextBillNumber) {
+      setColdStorageBillInput(String(nextCsBillData.nextBillNumber));
+    } else {
+      setColdStorageBillInput("");
+    }
+  }, [open, lot?.id, coldStorageBillEdited, nextCsBillData?.nextBillNumber]);
 
   const partialSaleMutation = useMutation({
     mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {

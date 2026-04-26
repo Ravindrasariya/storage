@@ -156,7 +156,12 @@ export function invalidateSaleSideEffects(client: QueryClient): void {
         head.startsWith("/api/farmer-dues") ||
         head.startsWith("/api/buyer-dues-for-farmer") ||
         head === "/api/merchant-advances/outstanding" ||
-        head === "/api/farmer-loans/outstanding"
+        head === "/api/farmer-loans/outstanding" ||
+        // Live next-CS-bill # preview is per-year — every sale, exit,
+        // reversal, or master-nikasi changes MAX(coldStorageBillNumber)
+        // for that year. Match all years so SaleDialog and
+        // MasterNikasiDialog re-fetch their hint.
+        head === "/api/cold-storage/next-cs-bill"
       );
     },
   });

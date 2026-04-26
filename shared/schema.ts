@@ -27,7 +27,7 @@ export const coldStorages = pgTable("cold_storages", {
   chargeUnit: text("charge_unit").notNull().default("bag"), // 'bag' or 'quintal'
   linkedPhones: text("linked_phones").array().notNull(), // Mobile numbers with access
   nextExitBillNumber: integer("next_exit_bill_number").notNull().default(1), // Auto-increment counter for exit bills
-  nextColdStorageBillNumber: integer("next_cold_storage_bill_number").notNull().default(1), // Counter for cold storage deduction bills
+  nextColdStorageBillNumber: integer("next_cold_storage_bill_number").notNull().default(1), // DEPRECATED — no longer read or written by app code. Bill # auto-assignment now uses MAX(coldStorageBillNumber) + 1 over (cold_storage, year(soldAt)) so reversals free gaps that get filled. Column kept to avoid a destructive migration; safe to drop in a follow-up once stable.
   nextSalesBillNumber: integer("next_sales_bill_number").notNull().default(1), // Counter for sales bills
   nextEntryBillNumber: integer("next_entry_bill_number").notNull().default(1), // Counter for lot entry receipts
   nextWaferLotNumber: integer("next_wafer_lot_number").notNull().default(1), // Counter for wafer lot numbers

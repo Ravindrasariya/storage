@@ -317,6 +317,12 @@ export interface IStorage {
   // Bill number assignment
   assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number>;
   assignSpecificColdStorageBillNumber(saleId: string, billNumber: number): Promise<number>;
+  // Hint-only live preview of the next CS bill # the server would assign
+  // for an auto-assignment in (coldStorageId, year). Same MAX+1 rule as
+  // assignBillNumber's coldStorage branch but read-only and without a
+  // FOR UPDATE lock — UI uses it to pre-fill the input; the server still
+  // recomputes at submit time, so the hint is best-effort.
+  getNextColdStorageBillNumber(coldStorageId: string, year: number): Promise<number>;
   findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<{ id: string; soldAt: Date } | null>;
   assignLotBillNumber(lotId: string): Promise<number>;
   // Admin - Cold Storage Management
@@ -1700,11 +1706,10 @@ export class DatabaseStorage implements IStorage {
         ...(resolvedCsBill != null ? { coldStorageBillNumber: resolvedCsBill } : {}),
       }).returning();
 
-      if (resolvedCsBill != null) {
-        await tx.update(coldStorages)
-          .set({ nextColdStorageBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextColdStorageBillNumber}, 1), ${resolvedCsBill + 1})` })
-          .where(eq(coldStorages.id, data.coldStorageId));
-      }
+      // Counter bump removed — CS bill # now derives from MAX(existing) + 1
+      // per cold storage + year (Variant B), so the legacy
+      // next_cold_storage_bill_number column is no longer the source of
+      // truth and need not be advanced here.
 
       return sale;
     });
@@ -2639,17 +2644,25 @@ export class DatabaseStorage implements IStorage {
             throw new Error(`Cold Storage Bill # ${userCsBill} already used on ${dd}/${mm}/${yyyy} [row ${rowIndex}]`);
           }
           coldStorageBillNumber = userCsBill;
-          await tx.update(coldStorages)
-            .set({ nextColdStorageBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextColdStorageBillNumber}, 1), ${userCsBill + 1})` })
-            .where(eq(coldStorages.id, coldStorageId));
+          // Counter bump removed (Variant B) — see createSalesHistory.
         } else {
-          const csBillRow = await tx.update(coldStorages)
-            .set({ nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 1) + 1` })
-            .where(eq(coldStorages.id, coldStorageId))
-            .returning({ next: coldStorages.nextColdStorageBillNumber });
-          coldStorageBillNumber = csBillRow.length > 0 && csBillRow[0].next != null
-            ? (csBillRow[0].next as number) - 1
-            : null;
+          // Variant B: pick MAX(coldStorageBillNumber) + 1 over the same cold
+          // storage and the same calendar year. The outer FOR UPDATE lock on
+          // cold_storages (taken at the top of this transaction) serialises
+          // concurrent assignments, and the per-row UPDATE below makes the
+          // chosen number visible to the next iteration's MAX query so
+          // consecutive rows in this batch take consecutive numbers without
+          // colliding. Falls back to 1 when the year has no rows yet.
+          const maxRow = await tx.select({
+            max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
+          })
+            .from(salesHistory)
+            .where(and(
+              eq(salesHistory.coldStorageId, coldStorageId),
+              sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+            ));
+          const maxNum = (maxRow[0]?.max as number | null) ?? 0;
+          coldStorageBillNumber = maxNum + 1;
         }
         if (coldStorageBillNumber != null) {
           await tx.update(salesHistory)
@@ -5629,11 +5642,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number> {
-    // Concurrency-safe assignment: wraps the (read existing → atomically
-    // bump counter → conditionally write back) trio in a single
-    // transaction. The counter increment uses UPDATE … RETURNING so two
-    // concurrent calls cannot both read the same value and produce
-    // duplicate bill numbers across different sales.
+    // Concurrency-safe assignment in a single transaction.
+    //
+    // For "coldStorage" the next number is computed as
+    // MAX(coldStorageBillNumber) + 1 over the same cold storage and the
+    // same calendar year (year(soldAt)) — gaps freed by reversal are
+    // filled (Variant B). The FOR UPDATE lock on the cold-storages row
+    // serialises concurrent CS-bill assignments so each transaction sees
+    // a fresh MAX in turn instead of racing.
+    //
+    // For "sales" the legacy forward-only counter is preserved (out of
+    // scope for #230).
     return await db.transaction(async (tx) => {
       const [sale] = await tx.select()
         .from(salesHistory)
@@ -5649,27 +5668,37 @@ export class DatabaseStorage implements IStorage {
         return existingBillNumber;
       }
 
-      // Atomic increment — returns the post-increment counter value.
-      // Postgres serialises updates on the same row, so concurrent
-      // callers each receive a unique value here.
-      const counterRow = billType === "coldStorage"
-        ? await tx.update(coldStorages)
-            .set({ nextColdStorageBillNumber: sql`COALESCE(${coldStorages.nextColdStorageBillNumber}, 1) + 1` })
-            .where(eq(coldStorages.id, sale.coldStorageId))
-            .returning({ next: coldStorages.nextColdStorageBillNumber })
-        : await tx.update(coldStorages)
-            .set({ nextSalesBillNumber: sql`COALESCE(${coldStorages.nextSalesBillNumber}, 1) + 1` })
-            .where(eq(coldStorages.id, sale.coldStorageId))
-            .returning({ next: coldStorages.nextSalesBillNumber });
-
-      if (counterRow.length === 0 || counterRow[0].next == null) {
-        throw new Error("Cold storage not found");
+      let billNumber: number;
+      if (billType === "coldStorage") {
+        await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${sale.coldStorageId} FOR UPDATE`);
+        const csYear = new Date(sale.soldAt).getFullYear();
+        const maxRow = await tx.select({
+          max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
+        })
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, sale.coldStorageId),
+            sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+          ));
+        const maxNum = (maxRow[0]?.max as number | null) ?? 0;
+        billNumber = maxNum + 1;
+      } else {
+        // Sales bill # — atomic counter increment via UPDATE … RETURNING.
+        const counterRow = await tx.update(coldStorages)
+          .set({ nextSalesBillNumber: sql`COALESCE(${coldStorages.nextSalesBillNumber}, 1) + 1` })
+          .where(eq(coldStorages.id, sale.coldStorageId))
+          .returning({ next: coldStorages.nextSalesBillNumber });
+        if (counterRow.length === 0 || counterRow[0].next == null) {
+          throw new Error("Cold storage not found");
+        }
+        billNumber = (counterRow[0].next as number) - 1;
       }
-      const billNumber = (counterRow[0].next as number) - 1;
 
       // Conditional write — only assign if still null. If two callers
-      // race for the SAME saleId, the loser's increment is wasted (a
-      // skipped number) but no duplicate bill is ever assigned.
+      // race for the SAME saleId, the loser's computed number is simply
+      // discarded (no DB-level gap is created for coldStorage since we
+      // don't increment a counter; for sales the loser's number is wasted
+      // as before).
       const wrote = billType === "coldStorage"
         ? await tx.update(salesHistory)
             .set({ coldStorageBillNumber: billNumber })
@@ -5719,6 +5748,24 @@ export class DatabaseStorage implements IStorage {
   // Bumps the cold storage's nextColdStorageBillNumber forward when the
   // user picked a number at or beyond the current counter so future
   // auto-numbers skip past it.
+  async getNextColdStorageBillNumber(coldStorageId: string, year: number): Promise<number> {
+    // Read-only MAX + 1 over (cold_storage, year(soldAt)). Returns 1 when
+    // the year has no rows yet. No transaction or lock — this is a UI
+    // hint; the authoritative assignment lives in assignBillNumber and
+    // createMasterNikasi, which take FOR UPDATE on cold_storages so two
+    // submissions never collide.
+    const maxRow = await db.select({
+      max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
+    })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        sql`extract(year from ${salesHistory.soldAt}) = ${year}`,
+      ));
+    const maxNum = (maxRow[0]?.max as number | null) ?? 0;
+    return maxNum + 1;
+  }
+
   async assignSpecificColdStorageBillNumber(saleId: string, billNumber: number): Promise<number> {
     if (!Number.isFinite(billNumber) || billNumber <= 0) {
       throw new Error("Invalid cold storage bill number");
@@ -5753,9 +5800,7 @@ export class DatabaseStorage implements IStorage {
         return refetched?.coldStorageBillNumber ?? billNumber;
       }
 
-      await tx.update(coldStorages)
-        .set({ nextColdStorageBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextColdStorageBillNumber}, 1), ${billNumber + 1})` })
-        .where(eq(coldStorages.id, sale.coldStorageId));
+      // Counter bump removed (Variant B) — see createSalesHistory.
 
       return billNumber;
     });
@@ -5885,11 +5930,14 @@ export class DatabaseStorage implements IStorage {
     }
     await db.delete(chambers).where(eq(chambers.coldStorageId, id));
     
-    // Reset bill number counters and set status to active
+    // Reset bill number counters and set status to active.
+    // nextColdStorageBillNumber is omitted on purpose — it is deprecated
+    // (#230) and no longer drives CS bill # assignment, which now derives
+    // from MAX(coldStorageBillNumber) per (cold_storage, year). With every
+    // sale row deleted above, the implicit "next" is 1 anyway.
     await db.update(coldStorages)
       .set({
         nextExitBillNumber: 1,
-        nextColdStorageBillNumber: 1,
         nextSalesBillNumber: 1,
         nextEntryBillNumber: 1,
         nextWaferLotNumber: 1,

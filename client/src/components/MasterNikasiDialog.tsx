@@ -152,6 +152,26 @@ export function MasterNikasiDialog({
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const [exitDate, setExitDate] = useState(todayIso);
+
+  // Year used for the live next-CS-bill # preview. Master Nikasi's
+  // server-side createMasterNikasi anchors soldAt to `new Date()` (NOT
+  // the picked exit-date), so CS bill # numbering always lands in the
+  // current calendar year regardless of what the operator picks for
+  // exit-date. The hint must follow the same rule to match what gets
+  // assigned. Computed once per open — operators don't leave this dialog
+  // open across a midnight/year boundary in practice, and even if they
+  // did, the server recomputes MAX+1 at submit, so a stale hint can
+  // never cause a duplicate or wrong assignment, only a momentarily
+  // mismatched preview that disappears on next open.
+  const previewYear = useMemo(() => new Date().getFullYear(), [open]);
+
+  // Live preview of the next CS bill # the server would auto-assign.
+  // Best-effort hint only — the server recomputes at submit time.
+  const { data: nextCsBillData } = useQuery<{ nextBillNumber: number }>({
+    queryKey: ["/api/cold-storage/next-cs-bill", previewYear],
+    enabled: open,
+  });
+
   const [rows, setRows] = useState<RowState[]>(() => [newRow()]);
   const [result, setResult] = useState<MasterNikasiResult | null>(null);
   // SELF_BUYER (default) keeps the legacy self-sale path; selecting a real
@@ -175,16 +195,17 @@ export function MasterNikasiDialog({
   // at the conflicting row.
   const [csBillRowErrors, setCsBillRowErrors] = useState<Record<string, string>>({});
 
-  // Reset state whenever dialog opens. Pre-fill the shared exit bill # and
-  // each row's cold-storage bill # from the cold-storage running counters.
+  // Reset state whenever dialog opens. The shared exit bill # is still
+  // pre-filled from the cold-storage running counter (out of scope for
+  // #230). The first row's cold-storage bill # starts empty and is
+  // populated by the follow-up effect below once nextCsBillData arrives.
   useEffect(() => {
     if (open) {
       setExitDate(new Date().toISOString().slice(0, 10));
       const only = lots.length === 1 ? lots[0].lot : null;
       const onlyMarka = (only?.marka || "").trim();
       const onlyMarkaState = only ? (onlyMarka === "" ? NO_MARKA : onlyMarka) : "";
-      const startCs = coldStorage?.nextColdStorageBillNumber ?? null;
-      setRows([newRow(only?.lotNo || "", onlyMarkaState, startCs ? String(startCs) : "")]);
+      setRows([newRow(only?.lotNo || "", onlyMarkaState, "")]);
       setSharedExitBillInput(coldStorage?.nextExitBillNumber ? String(coldStorage.nextExitBillNumber) : "");
       setSharedExitBillEdited(false);
       setBillNumberError(null);
@@ -195,7 +216,30 @@ export function MasterNikasiDialog({
       setBuyerSearchQuery("");
       setBuyerError(null);
     }
-  }, [open, lots, coldStorage?.nextExitBillNumber, coldStorage?.nextColdStorageBillNumber]);
+  }, [open, lots, coldStorage?.nextExitBillNumber]);
+
+  // Keep the first row's CS bill # in sync with the live MAX+1 preview
+  // until the operator edits it. Each row carries its own
+  // `coldStorageBillEdited` flag (flipped to true on first keystroke in
+  // the input), so we only auto-fill while that flag is false. This
+  // means: opening the dialog → empty value → preview lands → fills in;
+  // a sale recorded elsewhere → preview re-fetches via
+  // invalidateSaleSideEffects → updates the input; user types → flag
+  // flips → we leave it alone. Subsequent rows added via "Add row"
+  // compute their value from the in-batch MAX so they don't need
+  // refreshing here.
+  useEffect(() => {
+    if (!open || !nextCsBillData?.nextBillNumber) return;
+    const next = nextCsBillData.nextBillNumber;
+    setRows(prev => {
+      if (prev.length === 0) return prev;
+      const first = prev[0];
+      if (first.coldStorageBillEdited) return prev;
+      const nextStr = String(next);
+      if (first.coldStorageBillNumber === nextStr) return prev;
+      return [{ ...first, coldStorageBillNumber: nextStr }, ...prev.slice(1)];
+    });
+  }, [open, nextCsBillData?.nextBillNumber]);
 
   // Index lots by (lotNo, marka) so a row can resolve its database lot id
   // from the user-facing identity. Per the operator workflow, the same
@@ -840,7 +884,11 @@ export function MasterNikasiDialog({
                 const used = prev
                   .map(r => parseInt(r.coldStorageBillNumber))
                   .filter(n => Number.isFinite(n) && n > 0);
-                const counterStart = coldStorage?.nextColdStorageBillNumber ?? 0;
+                // Base for the new row when no rows in this batch have a
+                // numeric CS bill # yet: the live MAX+1 preview from the
+                // server. Falls back to 0 (i.e. blank input) if the
+                // preview hasn't loaded; the operator can fill it in.
+                const counterStart = nextCsBillData?.nextBillNumber ?? 0;
                 const next = used.length > 0 ? Math.max(...used) + 1 : counterStart;
                 return [...prev, newRow("", "", next > 0 ? String(next) : "")];
               })}

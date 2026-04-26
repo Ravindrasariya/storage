@@ -1703,6 +1703,26 @@ export async function registerRoutes(
     }
   });
 
+  // Hint-only live preview of the next cold-storage bill # the server
+  // would auto-assign in (this cold storage, given calendar year). Used
+  // by SaleDialog and MasterNikasiDialog to pre-fill the CS bill # input
+  // so the displayed value matches what assignBillNumber /
+  // createMasterNikasi would compute. The server still recomputes on
+  // submit, so a stale hint is safe — never the source of truth.
+  app.get("/api/cold-storage/next-cs-bill/:year", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const yearParam = parseInt(req.params.year, 10);
+      const year = Number.isFinite(yearParam) && yearParam > 1900 && yearParam < 3000
+        ? yearParam
+        : new Date().getFullYear();
+      const nextBillNumber = await storage.getNextColdStorageBillNumber(coldStorageId, year);
+      res.json({ nextBillNumber });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch next cold storage bill number" });
+    }
+  });
+
   // Chamber management
   app.post("/api/chambers", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
