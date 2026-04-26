@@ -96,7 +96,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   // ['/api/cold-storages', coldStorageId, 'next-cs-bill', year] so cache
   // invalidation is granular per cold storage and year. Custom queryFn
   // builds the spec endpoint URL with year as a query param.
-  const { data: nextCsBillData } = useQuery<{ nextBillNumber: number }>({
+  const { data: nextCsBillData, isFetching: nextCsBillFetching } = useQuery<{ nextBillNumber: number }>({
     queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", saleYear],
     enabled: open && !!coldStorage?.id,
     queryFn: async () => {
@@ -184,18 +184,26 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   }, [open, lot?.id]);
 
   // Pre-fill / refresh the CS bill # input from the live preview, but
-  // only while the operator hasn't typed into it. If the saleYear or the
-  // server's MAX+1 changes (e.g. another sale was just recorded), the
-  // hint updates in place. Once the user edits the input we leave it
-  // alone — coldStorageBillEdited stays true until the dialog reopens.
+  // only while the operator hasn't typed into it AND the query is
+  // settled (not currently fetching). React-query exposes cached data
+  // immediately on a refetch, so without the isFetching gate we'd
+  // briefly show the previous (now stale) value before the new one
+  // lands. Clearing to empty during fetch keeps the displayed number
+  // honest — either it's the current server hint or it's empty. Once
+  // the user edits the input we leave it alone — coldStorageBillEdited
+  // stays true until the dialog reopens.
   useEffect(() => {
     if (!open || !lot || coldStorageBillEdited) return;
+    if (nextCsBillFetching) {
+      setColdStorageBillInput("");
+      return;
+    }
     if (nextCsBillData?.nextBillNumber) {
       setColdStorageBillInput(String(nextCsBillData.nextBillNumber));
     } else {
       setColdStorageBillInput("");
     }
-  }, [open, lot?.id, coldStorageBillEdited, nextCsBillData?.nextBillNumber]);
+  }, [open, lot?.id, coldStorageBillEdited, nextCsBillData?.nextBillNumber, nextCsBillFetching]);
 
   const partialSaleMutation = useMutation({
     mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {

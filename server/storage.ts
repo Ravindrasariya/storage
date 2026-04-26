@@ -5798,6 +5798,13 @@ export class DatabaseStorage implements IStorage {
       if (!sale) throw new Error("Sale not found");
       if (sale.coldStorageBillNumber) return sale.coldStorageBillNumber;
 
+      // Serialise concurrent assignment attempts on this cold storage so
+      // the duplicate check below cannot be raced past by another tx
+      // committing the same number between our SELECT and our UPDATE.
+      // Same FOR UPDATE pattern used in assignBillNumber and
+      // createMasterNikasi.
+      await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${sale.coldStorageId} FOR UPDATE`);
+
       const year = new Date(sale.soldAt).getFullYear();
       const dup = await tx.select({ id: salesHistory.id })
         .from(salesHistory)

@@ -176,7 +176,7 @@ export function MasterNikasiDialog({
   // Best-effort hint only — the server recomputes at submit time. Key
   // shape matches the spec ['/api/cold-storages', coldStorageId,
   // 'next-cs-bill', year] and the URL uses year as a query param.
-  const { data: nextCsBillData } = useQuery<{ nextBillNumber: number }>({
+  const { data: nextCsBillData, isFetching: nextCsBillFetching } = useQuery<{ nextBillNumber: number }>({
     queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", previewYear],
     enabled: open && !!coldStorage?.id,
     queryFn: async () => {
@@ -248,7 +248,26 @@ export function MasterNikasiDialog({
   // non-edited blank row picks the smallest sequential value the
   // server's per-iteration MAX+1 will land on.
   useEffect(() => {
-    if (!open || !nextCsBillData?.nextBillNumber) return;
+    if (!open) return;
+    // Gate on isFetching: react-query exposes the cached previous value
+    // immediately on a refetch, so without this guard a year-change or
+    // sale-side-effect invalidation would briefly show stale numbers
+    // before the fresh ones land. Clear non-edited rows to empty during
+    // fetch so the displayed value is always either the current server
+    // hint or empty (never a stale hint).
+    if (nextCsBillFetching || !nextCsBillData?.nextBillNumber) {
+      setRows(prev => {
+        let changed = false;
+        const out = prev.map(r => {
+          if (r.coldStorageBillEdited) return r;
+          if (r.coldStorageBillNumber === "") return r;
+          changed = true;
+          return { ...r, coldStorageBillNumber: "" };
+        });
+        return changed ? out : prev;
+      });
+      return;
+    }
     const next = nextCsBillData.nextBillNumber;
     setRows(prev => {
       if (prev.length === 0) return prev;
@@ -270,7 +289,7 @@ export function MasterNikasiDialog({
       });
       return changed ? out : prev;
     });
-  }, [open, nextCsBillData?.nextBillNumber]);
+  }, [open, nextCsBillData?.nextBillNumber, nextCsBillFetching]);
 
   // Index lots by (lotNo, marka) so a row can resolve its database lot id
   // from the user-facing identity. Per the operator workflow, the same
