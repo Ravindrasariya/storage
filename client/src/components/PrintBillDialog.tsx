@@ -11,8 +11,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Printer, FileText, Receipt, Share2, Loader2, IndianRupee } from "lucide-react";
-import type { SalesHistory, SalesHistoryWithLastPayment, ColdStorage, BankAccount } from "@shared/schema";
-import { apiRequest, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
+import type { SalesHistory, SalesHistoryWithLastPayment, ColdStorage, BankAccount, SalePayment } from "@shared/schema";
+import { apiRequest, authFetch, queryClient, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 
 // Format amount: round to 1 decimal if fractional, show integer if whole (e.g., 72.54 → "72.5", 72 → "72")
@@ -90,6 +90,43 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const isCompany = !!sale.farmerLedgerId && farmerLedgerData?.farmers?.find(f => f.id === sale.farmerLedgerId)?.entityType === "company";
   const partyDetailsLabel = isCompany ? "कंपनी विवरण" : "किसान विवरण";
 
+  // Fetch sibling sales sharing this Cold Storage bill # (and saleYear).
+  // When 2+ rows come back this print view aggregates totals into a
+  // single collective receipt; with 0–1 the dialog renders byte-for-byte
+  // identical to today (single-sale path).
+  //
+  // The query key uses `resolvedCsBillNumber` so it picks up a freshly
+  // assigned bill # immediately (sale prop is still stale right after
+  // POST /assign-bill-number returns). Disabled until a CS bill # is
+  // known.
+  const csYear = sale.saleYear ?? new Date(sale.soldAt as unknown as string).getFullYear();
+  const [resolvedCsBillNumber, setResolvedCsBillNumber] = useState<number | null>(sale.coldStorageBillNumber ?? null);
+  useEffect(() => {
+    setResolvedCsBillNumber(sale.coldStorageBillNumber ?? null);
+  }, [sale.coldStorageBillNumber]);
+  const csBillNumber = resolvedCsBillNumber;
+  const siblingsQueryKey = ["/api/sales-history/cs-bill-batch", csBillNumber, csYear] as const;
+  const siblingsQueryFn = async () => {
+    const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${csBillNumber}&year=${csYear}`);
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.json() as Promise<SalesHistoryWithLastPayment[]>;
+  };
+  const { data: siblingsData } = useQuery<SalesHistoryWithLastPayment[]>({
+    queryKey: siblingsQueryKey,
+    enabled: open && csBillNumber != null,
+    queryFn: siblingsQueryFn,
+  });
+  // The current sale row is always part of the batch — even when the
+  // server fetch hasn't landed yet — so we use [sale] as the safe
+  // single-row fallback. Once siblingsData arrives with 2+ rows, the
+  // aggregation path kicks in. Single-row batches keep `siblings ===
+  // [sale]` so every aggregate equals the per-row value, preserving the
+  // existing print view byte-for-byte.
+  const siblings: SalesHistoryWithLastPayment[] = (siblingsData && siblingsData.length > 0)
+    ? siblingsData
+    : [sale];
+  const isBatch = siblings.length >= 2;
+
   // Get discount allocated to this specific sale (tracked directly on salesHistory)
   const discountAllocated = sale.discountAllocated || 0;
   // Actual cash paid = paidAmount - discountAllocated
@@ -117,6 +154,28 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       console.error("Failed to resolve bill number:", err);
       onOpenChange(false);
       return;
+    }
+
+    // For deduction bills we MUST know the sibling set before printing,
+    // otherwise a true multi-row batch could render as a single-row
+    // receipt while the background sibling fetch is still in flight.
+    // `fetchQuery` reuses any in-flight request and resolves once cache
+    // is populated, so this is a no-op when siblings have already
+    // loaded. Failures fall back silently to the single-row path.
+    if (type === "deduction") {
+      setResolvedCsBillNumber(resolvedBillNumber);
+      try {
+        await queryClient.fetchQuery<SalesHistoryWithLastPayment[]>({
+          queryKey: ["/api/sales-history/cs-bill-batch", resolvedBillNumber, csYear],
+          queryFn: async () => {
+            const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${resolvedBillNumber}&year=${csYear}`);
+            if (!res.ok) throw new Error(`${res.status}`);
+            return res.json();
+          },
+        });
+      } catch (err) {
+        console.warn("Sibling fetch failed, falling back to single-row receipt:", err);
+      }
     }
 
     flushSync(() => {
@@ -283,7 +342,128 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   // Net Payable = Total Income - Net Cold Bill
   const netPayable = totalIncome - netColdBill;
 
-  const renderDeductionBill = () => (
+  // ---- Batch aggregation (deduction bill only) ----
+  // When 2+ sibling sales share this CS bill # we replace the per-row
+  // deduction receipt with a single collective receipt. Each sibling's
+  // cold/hammali split is recomputed locally with the same formula used
+  // for the per-row view so the totals match what a buyer would get if
+  // they printed each row separately, then summed.
+  const computeChargesForSibling = (s: SalesHistoryWithLastPayment) => {
+    const sIsQuintalBased = (s.chargeUnitAtSale || coldStorage?.chargeUnit || "bag") === "quintal";
+    const sBagsToUse = (s.chargeBasis || "actual") === "totalRemaining"
+      ? (s.remainingSizeAtSale || s.quantitySold)
+      : s.quantitySold;
+    const sQuintal = sIsQuintalBased && s.initialNetWeightKg && s.originalLotSize && s.originalLotSize > 0
+      ? (s.initialNetWeightKg * sBagsToUse) / (s.originalLotSize * 100)
+      : 0;
+    const sHasSeparate = s.coldCharge != null && s.hammali != null;
+    let sCold = 0;
+    let sHammali = 0;
+    if (s.baseChargeAmountAtSale === 0) {
+      // Base charges already billed in a previous sale → both zero.
+    } else if (sHasSeparate && s.coldCharge != null && s.hammali != null) {
+      if (sIsQuintalBased) {
+        sCold = (s.coldCharge || 0) * sQuintal;
+        sHammali = (s.hammali || 0) * sBagsToUse;
+      } else {
+        sCold = (s.coldCharge || 0) * sBagsToUse;
+        sHammali = (s.hammali || 0) * sBagsToUse;
+      }
+    } else {
+      const sExtras = (s.kataCharges || 0) + (s.extraHammali || 0) + (s.gradingCharges || 0);
+      sCold = (s.coldStorageCharge || 0) - sExtras - (s.adjReceivableSelfDueAmount || 0);
+    }
+    return { coldChargeAmount: sCold, hammaliAmount: sHammali };
+  };
+
+  const agg = (() => {
+    let bags = 0, cold = 0, hammali = 0, kata = 0, extraHam = 0, grading = 0;
+    let adjA = 0, adjP = 0, adjF = 0, adjAd = 0, adjS = 0;
+    let discount = 0, paid = 0, due = 0;
+    type TaggedPayment = SalePayment & { lotNo: string; marka: string | null };
+    const merged: TaggedPayment[] = [];
+    let latestMs = 0;
+    for (const s of siblings) {
+      const c = computeChargesForSibling(s);
+      bags += s.quantitySold || 0;
+      cold += c.coldChargeAmount;
+      hammali += c.hammaliAmount;
+      kata += s.kataCharges || 0;
+      extraHam += s.extraHammali || 0;
+      grading += s.gradingCharges || 0;
+      adjA += s.adjReceivableSelfDueAmount || 0;
+      adjP += s.adjPyReceivables || 0;
+      adjF += s.adjFreight || 0;
+      adjAd += s.adjAdvance || 0;
+      adjS += s.adjSelfDue || 0;
+      discount += s.discountAllocated || 0;
+      paid += s.paidAmount || 0;
+      due += s.dueAmount || 0;
+      // Latest payment date across the batch:
+      //   • fully-paid sale → its paidAt;
+      //   • partial sale → its most recent applied receipt;
+      //   • unpaid sale → no contribution.
+      const lp = s.paymentStatus === "paid"
+        ? s.paidAt
+        : s.paymentStatus === "partial"
+          ? (s.lastPaymentAt ?? null)
+          : null;
+      if (lp) {
+        const ms = new Date(lp as unknown as string).getTime();
+        if (Number.isFinite(ms) && ms > latestMs) latestMs = ms;
+      }
+      for (const p of (s.payments || [])) {
+        merged.push({ ...p, lotNo: s.lotNo, marka: s.marka });
+      }
+    }
+    merged.sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime());
+    const extras = kata + extraHam + grading;
+    const totalCharges = cold + hammali + extras + adjA;
+    const netColdBill = Math.max(0, totalCharges - discount);
+    const adjBreakdown = adjP + adjF + adjAd + adjS;
+    const hasAdjBreakdown = adjA > 0 && adjBreakdown > 0;
+    const actualCashPaid = Math.max(0, paid - discount);
+    // Batch status from rolled-up totals (mirrors single-row semantics):
+    // due≈0 → paid; some money/discount applied → partial; else due.
+    let status: "paid" | "partial" | "due";
+    if (due <= 0.5) status = "paid";
+    else if (paid > 0 || discount > 0) status = "partial";
+    else status = "due";
+    return {
+      bags, cold, hammali, kata, extraHam, grading,
+      adj: adjA, adjP, adjF, adjAd, adjS, hasAdjBreakdown,
+      discount, paid, due,
+      extras, totalCharges, netColdBill, actualCashPaid,
+      status,
+      latestPaymentAt: latestMs > 0 ? new Date(latestMs) : null,
+      mergedPayments: merged,
+    };
+  })();
+
+  const renderDeductionBill = () => {
+    // Single-row path renders byte-for-byte identical to the previous
+    // implementation: every value resolves to the per-row sale field.
+    // Multi-row (isBatch) path swaps in `agg.*` totals and replaces the
+    // single-sale विक्रय विवरण block with a per-lot table; the payment
+    // timeline tags each entry with Receipt # / Marka so the operator
+    // can trace which row a receipt closed.
+    const dispDiscount = isBatch ? agg.discount : discountAllocated;
+    const dispActualCashPaid = isBatch ? agg.actualCashPaid : actualCashPaid;
+    const dispTotalCharges = isBatch ? agg.totalCharges : totalCharges;
+    const dispNetColdBill = isBatch ? agg.netColdBill : netColdBill;
+    const dispDue = isBatch ? agg.due : (sale.dueAmount || 0);
+    const dispStatus: "paid" | "partial" | "due" = isBatch
+      ? agg.status
+      : (sale.paymentStatus as "paid" | "partial" | "due");
+    const dispLatestPaymentAt = isBatch
+      ? agg.latestPaymentAt
+      : (sale.paymentStatus === "paid"
+          ? (sale.paidAt ? new Date(sale.paidAt as unknown as string) : null)
+          : sale.paymentStatus === "partial"
+            ? (sale.lastPaymentAt ? new Date(sale.lastPaymentAt as unknown as string) : null)
+            : null);
+
+    return (
     <div>
       <div className="bill-header">
         <h1>{coldStorage?.name || "शीत भण्डार"}</h1>
@@ -313,30 +493,72 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           </div>
         </div>
 
-        <div className="section">
-          <div className="section-title">विक्रय विवरण</div>
-          <div className="info-row">
-            <span className="info-label">विक्रय तिथि:</span>
-            <span className="info-value">{format(new Date(sale.soldAt), "dd/MM/yyyy")}</span>
+        {isBatch ? (
+          <div className="section" data-testid="section-batch-summary">
+            <div className="section-title">विक्रय सारांश</div>
+            <div className="info-row">
+              <span className="info-label">कुल लॉट:</span>
+              <span className="info-value">{siblings.length}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">कुल बोरी:</span>
+              <span className="info-value">{agg.bags}</span>
+            </div>
           </div>
-          <div className="info-row">
-            <span className="info-label">रसीद नं. / Receipt #:</span>
-            <span className="info-value">{sale.lotNo}</span>
+        ) : (
+          <div className="section">
+            <div className="section-title">विक्रय विवरण</div>
+            <div className="info-row">
+              <span className="info-label">विक्रय तिथि:</span>
+              <span className="info-value">{format(new Date(sale.soldAt), "dd/MM/yyyy")}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">रसीद नं. / Receipt #:</span>
+              <span className="info-value">{sale.lotNo}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">लॉट नं. / Lot #:</span>
+              <span className="info-value">{sale.marka || "—"}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">बेची गई:</span>
+              <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">खरीदार:</span>
+              <span className="info-value">{sale.isSelfSale === 1 ? "स्वयं" : (sale.buyerName || "-")}</span>
+            </div>
           </div>
-          <div className="info-row">
-            <span className="info-label">लॉट नं. / Lot #:</span>
-            <span className="info-value">{sale.marka || "—"}</span>
-          </div>
-          <div className="info-row">
-            <span className="info-label">बेची गई:</span>
-            <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
-          </div>
-          <div className="info-row">
-            <span className="info-label">खरीदार:</span>
-            <span className="info-value">{sale.isSelfSale === 1 ? "स्वयं" : (sale.buyerName || "-")}</span>
-          </div>
-        </div>
+        )}
       </div>
+
+      {isBatch && (
+        <div className="section" data-testid="section-batch-lots">
+          <div className="section-title">लॉट विवरण</div>
+          <table className="charges-table">
+            <thead>
+              <tr>
+                <th>विक्रय तिथि</th>
+                <th>रसीद नं. / Receipt #</th>
+                <th>लॉट नं. / Lot #</th>
+                <th className="amount">बोरी</th>
+                <th>खरीदार</th>
+              </tr>
+            </thead>
+            <tbody>
+              {siblings.map((s) => (
+                <tr key={s.id} data-testid={`row-batch-lot-${s.id}`}>
+                  <td>{format(new Date(s.soldAt as unknown as string), "dd/MM/yyyy")}</td>
+                  <td>{s.lotNo}</td>
+                  <td>{s.marka || "—"}</td>
+                  <td className="amount">{s.quantitySold}</td>
+                  <td>{s.isSelfSale === 1 ? "स्वयं" : (s.buyerName || "-")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="section">
         <div className="section-title">शुल्क विवरण</div>
@@ -348,7 +570,69 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </tr>
           </thead>
           <tbody>
-            {hasSeparateCharges ? (
+            {isBatch ? (
+              <>
+                {/* Per-rate breakdown doesn't translate across siblings
+                    that may use different rates / charge units, so the
+                    batched view shows the rolled-up cold + hammali sums
+                    without a "(rate × bags)" qualifier. */}
+                <tr>
+                  <td>शीत भण्डार शुल्क (कुल)</td>
+                  <td className="amount">{formatAmount(agg.cold)}</td>
+                </tr>
+                {agg.hammali > 0 && (
+                  <tr>
+                    <td>हम्माली (कुल)</td>
+                    <td className="amount">{formatAmount(agg.hammali)}</td>
+                  </tr>
+                )}
+                <tr>
+                  <td>काटा (तौल शुल्क)</td>
+                  <td className="amount">{agg.kata > 0 ? formatAmount(agg.kata) : "-"}</td>
+                </tr>
+                <tr>
+                  <td>अतिरिक्त हम्माली</td>
+                  <td className="amount">{agg.extraHam > 0 ? formatAmount(agg.extraHam) : "-"}</td>
+                </tr>
+                <tr>
+                  <td>ग्रेडिंग शुल्क</td>
+                  <td className="amount">{agg.grading > 0 ? formatAmount(agg.grading) : "-"}</td>
+                </tr>
+                {agg.hasAdjBreakdown ? (
+                  <>
+                    {agg.adjP > 0 && (
+                      <tr>
+                        <td>पूर्व वर्ष बकाया (PY Receivables)</td>
+                        <td className="amount">{formatAmount(agg.adjP)}</td>
+                      </tr>
+                    )}
+                    {agg.adjF > 0 && (
+                      <tr>
+                        <td>किसान भाड़ा (Farmer Freight)</td>
+                        <td className="amount">{formatAmount(agg.adjF)}</td>
+                      </tr>
+                    )}
+                    {agg.adjAd > 0 && (
+                      <tr>
+                        <td>किसान अग्रिम (Farmer Advance)</td>
+                        <td className="amount">{formatAmount(agg.adjAd)}</td>
+                      </tr>
+                    )}
+                    {agg.adjS > 0 && (
+                      <tr>
+                        <td>स्वयं बिक्री बकाया (Self Due)</td>
+                        <td className="amount">{formatAmount(agg.adjS)}</td>
+                      </tr>
+                    )}
+                  </>
+                ) : agg.adj > 0 ? (
+                  <tr>
+                    <td>बकाया समायोजन (Adj Receivable & Self Due)</td>
+                    <td className="amount">{formatAmount(agg.adj)}</td>
+                  </tr>
+                ) : null}
+              </>
+            ) : hasSeparateCharges ? (
               <>
                 <tr>
                   <td>
@@ -372,69 +656,73 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
                 <td className="amount">{formatAmount(sale.coldStorageCharge || 0)}</td>
               </tr>
             )}
-            <tr>
-              <td>काटा (तौल शुल्क)</td>
-              <td className="amount">{(sale.kataCharges || 0) > 0 ? formatAmount(sale.kataCharges || 0) : "-"}</td>
-            </tr>
-            <tr>
-              <td>अतिरिक्त हम्माली</td>
-              <td className="amount">{(sale.extraHammali || 0) > 0 ? formatAmount(sale.extraHammali || 0) : "-"}</td>
-            </tr>
-            <tr>
-              <td>ग्रेडिंग शुल्क</td>
-              <td className="amount">{(sale.gradingCharges || 0) > 0 ? formatAmount(sale.gradingCharges || 0) : "-"}</td>
-            </tr>
-            {hasAdjBreakdown ? (
+            {!isBatch && (
               <>
-                {adjPy > 0 && (
+                <tr>
+                  <td>काटा (तौल शुल्क)</td>
+                  <td className="amount">{(sale.kataCharges || 0) > 0 ? formatAmount(sale.kataCharges || 0) : "-"}</td>
+                </tr>
+                <tr>
+                  <td>अतिरिक्त हम्माली</td>
+                  <td className="amount">{(sale.extraHammali || 0) > 0 ? formatAmount(sale.extraHammali || 0) : "-"}</td>
+                </tr>
+                <tr>
+                  <td>ग्रेडिंग शुल्क</td>
+                  <td className="amount">{(sale.gradingCharges || 0) > 0 ? formatAmount(sale.gradingCharges || 0) : "-"}</td>
+                </tr>
+                {hasAdjBreakdown ? (
+                  <>
+                    {adjPy > 0 && (
+                      <tr>
+                        <td>पूर्व वर्ष बकाया (PY Receivables)</td>
+                        <td className="amount">{formatAmount(adjPy)}</td>
+                      </tr>
+                    )}
+                    {adjFreightAmt > 0 && (
+                      <tr>
+                        <td>किसान भाड़ा (Farmer Freight)</td>
+                        <td className="amount">{formatAmount(adjFreightAmt)}</td>
+                      </tr>
+                    )}
+                    {adjAdvanceAmt > 0 && (
+                      <tr>
+                        <td>किसान अग्रिम (Farmer Advance)</td>
+                        <td className="amount">{formatAmount(adjAdvanceAmt)}</td>
+                      </tr>
+                    )}
+                    {adjSelfDueAmt > 0 && (
+                      <tr>
+                        <td>स्वयं बिक्री बकाया (Self Due)</td>
+                        <td className="amount">{formatAmount(adjSelfDueAmt)}</td>
+                      </tr>
+                    )}
+                  </>
+                ) : adjAmount > 0 ? (
                   <tr>
-                    <td>पूर्व वर्ष बकाया (PY Receivables)</td>
-                    <td className="amount">{formatAmount(adjPy)}</td>
+                    <td>बकाया समायोजन (Adj Receivable & Self Due)</td>
+                    <td className="amount">{formatAmount(adjAmount)}</td>
                   </tr>
-                )}
-                {adjFreightAmt > 0 && (
-                  <tr>
-                    <td>किसान भाड़ा (Farmer Freight)</td>
-                    <td className="amount">{formatAmount(adjFreightAmt)}</td>
-                  </tr>
-                )}
-                {adjAdvanceAmt > 0 && (
-                  <tr>
-                    <td>किसान अग्रिम (Farmer Advance)</td>
-                    <td className="amount">{formatAmount(adjAdvanceAmt)}</td>
-                  </tr>
-                )}
-                {adjSelfDueAmt > 0 && (
-                  <tr>
-                    <td>स्वयं बिक्री बकाया (Self Due)</td>
-                    <td className="amount">{formatAmount(adjSelfDueAmt)}</td>
-                  </tr>
-                )}
+                ) : null}
               </>
-            ) : adjAmount > 0 ? (
-              <tr>
-                <td>बकाया समायोजन (Adj Receivable & Self Due)</td>
-                <td className="amount">{formatAmount(adjAmount)}</td>
-              </tr>
-            ) : null}
+            )}
             <tr className="total-row">
               <td><strong>कुल शीत भण्डार शुल्क</strong></td>
-              <td className="amount"><strong>रु. {formatAmount(totalCharges)}</strong></td>
+              <td className="amount"><strong>रु. {formatAmount(dispTotalCharges)}</strong></td>
             </tr>
           </tbody>
         </table>
         
         {/* Discount Row - Show if discount was allocated */}
-        {discountAllocated > 0 && (
+        {dispDiscount > 0 && (
           <table className="charges-table" style={{ marginTop: "8px" }}>
             <tbody>
               <tr style={{ color: "#16a34a" }}>
                 <td><strong>छूट (Discount)</strong></td>
-                <td className="amount" style={{ color: "#16a34a" }}><strong>- रु. {formatAmount(discountAllocated)}</strong></td>
+                <td className="amount" style={{ color: "#16a34a" }}><strong>- रु. {formatAmount(dispDiscount)}</strong></td>
               </tr>
               <tr className="total-row" style={{ backgroundColor: "#e6f4ea" }}>
                 <td><strong>शुद्ध शीत भण्डार शुल्क</strong> (कुल शुल्क - छूट)</td>
-                <td className="amount"><strong>रु. {formatAmount(netColdBill)}</strong></td>
+                <td className="amount"><strong>रु. {formatAmount(dispNetColdBill)}</strong></td>
               </tr>
             </tbody>
           </table>
@@ -442,57 +730,67 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       </div>
 
       <div className="payment-status">
-        भुगतान स्थिति: {sale.paymentStatus === "paid" 
-          ? (discountAllocated > 0 
-              ? (actualCashPaid > 0 
-                  ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(actualCashPaid)}, छूट: रु. ${formatAmount(discountAllocated)})`
-                  : `भुगतान हो गया (छूट: रु. ${formatAmount(discountAllocated)})`)
+        भुगतान स्थिति: {dispStatus === "paid" 
+          ? (dispDiscount > 0 
+              ? (dispActualCashPaid > 0 
+                  ? `भुगतान हो गया (भुगतान: रु. ${formatAmount(dispActualCashPaid)}, छूट: रु. ${formatAmount(dispDiscount)})`
+                  : `भुगतान हो गया (छूट: रु. ${formatAmount(dispDiscount)})`)
               : "भुगतान हो गया")
-          : sale.paymentStatus === "partial" 
-            ? (discountAllocated > 0
-                ? (actualCashPaid > 0
-                    ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(actualCashPaid)}, छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
-                    : `आंशिक भुगतान (छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
-                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(actualCashPaid)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`)
-            : (discountAllocated > 0
-                ? `बकाया (छूट: रु. ${formatAmount(discountAllocated)}, बकाया: रु. ${formatAmount(sale.dueAmount || 0)})`
-                : `बकाया (रु. ${formatAmount(sale.dueAmount || 0)})`)}
+          : dispStatus === "partial" 
+            ? (dispDiscount > 0
+                ? (dispActualCashPaid > 0
+                    ? `आंशिक भुगतान (भुगतान: रु. ${formatAmount(dispActualCashPaid)}, छूट: रु. ${formatAmount(dispDiscount)}, बकाया: रु. ${formatAmount(dispDue)})`
+                    : `आंशिक भुगतान (छूट: रु. ${formatAmount(dispDiscount)}, बकाया: रु. ${formatAmount(dispDue)})`)
+                : `आंशिक भुगतान (भुगतान: रु. ${formatAmount(dispActualCashPaid)}, बकाया: रु. ${formatAmount(dispDue)})`)
+            : (dispDiscount > 0
+                ? `बकाया (छूट: रु. ${formatAmount(dispDiscount)}, बकाया: रु. ${formatAmount(dispDue)})`
+                : `बकाया (रु. ${formatAmount(dispDue)})`)}
       </div>
 
-      {(() => {
-        // Fully-paid sales keep showing the historical paidAt (set when FIFO
-        // or a manual receipt closed the sale). Partial sales fall back to the
-        // most recent applied cash receipt as a "latest payment" indicator.
-        const latestPaymentAt =
-          sale.paymentStatus === "paid"
-            ? sale.paidAt
-            : sale.paymentStatus === "partial"
-              ? (sale.lastPaymentAt ?? null)
-              : null;
-        return latestPaymentAt ? (
-          <div className="payment-status">
-            भुगतान तिथि: {format(new Date(latestPaymentAt), "dd/MM/yyyy")}
-          </div>
-        ) : null;
-      })()}
-
-      {sale.paymentStatus === "partial" && sale.payments && sale.payments.length > 0 && (
-        <div className="section" style={{ marginTop: "8px" }} data-testid="section-partial-payment-history">
-          <div className="section-title">भुगतान का विवरण</div>
-          {sale.payments.map((p, idx) => (
-            <div className="info-row" key={p.receiptId} data-testid={`row-payment-${p.receiptId}`}>
-              <span className="info-label">{idx + 1}. {format(new Date(p.receivedAt), "dd/MM/yyyy")}:</span>
-              <span className="info-value">रु. {formatAmount(p.amount)}</span>
-            </div>
-          ))}
+      {dispLatestPaymentAt && (
+        <div className="payment-status">
+          भुगतान तिथि: {format(dispLatestPaymentAt, "dd/MM/yyyy")}
         </div>
+      )}
+
+      {/* Partial-payment timeline. Single-row path keeps the existing
+          unlabeled rows; batched path uses the merged chronological list
+          and tags each entry with Receipt # / Marka so the farmer can
+          see which lot a receipt closed. */}
+      {isBatch ? (
+        dispStatus === "partial" && agg.mergedPayments.length > 0 && (
+          <div className="section" style={{ marginTop: "8px" }} data-testid="section-partial-payment-history">
+            <div className="section-title">भुगतान का विवरण</div>
+            {agg.mergedPayments.map((p, idx) => (
+              <div className="info-row" key={p.receiptId} data-testid={`row-payment-${p.receiptId}`}>
+                <span className="info-label">
+                  {idx + 1}. {format(new Date(p.receivedAt), "dd/MM/yyyy")} — Receipt #{p.lotNo}{p.marka ? ` / ${p.marka}` : ""}:
+                </span>
+                <span className="info-value">रु. {formatAmount(p.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        sale.paymentStatus === "partial" && sale.payments && sale.payments.length > 0 && (
+          <div className="section" style={{ marginTop: "8px" }} data-testid="section-partial-payment-history">
+            <div className="section-title">भुगतान का विवरण</div>
+            {sale.payments.map((p, idx) => (
+              <div className="info-row" key={p.receiptId} data-testid={`row-payment-${p.receiptId}`}>
+                <span className="info-label">{idx + 1}. {format(new Date(p.receivedAt), "dd/MM/yyyy")}:</span>
+                <span className="info-value">रु. {formatAmount(p.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )
       )}
 
       <div className="footer-note">
         यह बिल डिजिटल रूप से जनरेट किया गया है और इसमें किसी मुहर की आवश्यकता नहीं है।
       </div>
     </div>
-  );
+    );
+  };
 
   const renderSalesBill = () => (
     <div>

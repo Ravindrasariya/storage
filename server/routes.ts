@@ -1582,6 +1582,10 @@ export async function registerRoutes(
     buyerLedgerId: z.string().uuid().nullable().optional(),
     exitDate: z.string().min(1),
     sharedExitBillNumber: z.number().int().positive().optional(),
+    // Single Cold Storage bill # shared across every row in the batch
+    // (mirrors sharedExitBillNumber). When omitted, server takes
+    // MAX(coldStorageBillNumber)+1 over (cold storage, year(soldAt)).
+    sharedColdStorageBillNumber: z.number().int().positive().optional(),
     rows: z.array(z.object({
       lotId: z.string().min(1),
       exitBags: z.number().int().min(1),
@@ -1593,7 +1597,6 @@ export async function registerRoutes(
       kataCharges: z.number().min(0).default(0),
       extraHammaliPerBag: z.number().min(0).default(0),
       gradingCharges: z.number().min(0).default(0),
-      coldStorageBillNumber: z.number().int().positive().optional(),
     }).refine(r => (r.soldBags ?? r.exitBags) >= r.exitBags, {
       message: "soldBags must be >= exitBags",
       path: ["soldBags"],
@@ -1633,6 +1636,7 @@ export async function registerRoutes(
         buyerLedgerId: body.buyerLedgerId ?? null,
         exitDate,
         sharedExitBillNumber: body.sharedExitBillNumber ?? null,
+        sharedColdStorageBillNumber: body.sharedColdStorageBillNumber ?? null,
         rows: body.rows.map(r => ({
           lotId: r.lotId,
           exitBags: r.exitBags,
@@ -1641,7 +1645,6 @@ export async function registerRoutes(
           kataCharges: r.kataCharges,
           extraHammaliPerBag: r.extraHammaliPerBag,
           gradingCharges: r.gradingCharges,
-          coldStorageBillNumber: r.coldStorageBillNumber ?? null,
         })),
       });
 
@@ -1652,14 +1655,11 @@ export async function registerRoutes(
       }
       console.error("Master nikasi error:", error);
       const message = error instanceof Error ? error.message : "Failed to create master nikasi";
-      // [row N] suffix maps the error back to the offending grid row.
-      const csMatch = message.match(/^(Cold Storage Bill #.*?)(?:\s*\[row (\d+)\])?$/i);
-      if (csMatch) {
-        const rowIndex = csMatch[2] != null ? Number(csMatch[2]) : null;
+      // Single shared CS bill # — no row mapping anymore.
+      if (/^Cold Storage Bill #|invalid cold storage bill/i.test(message)) {
         return res.status(400).json({
-          error: csMatch[1],
-          field: "coldStorageBillNumber",
-          rowIndex,
+          error: message,
+          field: "sharedColdStorageBillNumber",
         });
       }
       if (/Exit Bill #|Invalid .* bill/i.test(message)) {
@@ -1871,6 +1871,32 @@ export async function registerRoutes(
       res.json(salesHistory);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch sales history" });
+    }
+  });
+
+  // Sibling sales for a given Cold Storage bill # in a given calendar year.
+  // Used by PrintBillDialog to render the collective deduction-bill view
+  // for Master Nikasi batches (2+ rows sharing a CS bill #). Single-row
+  // batches (length === 1) cause the dialog to fall back to its legacy
+  // per-row render unchanged.
+  app.get("/api/sales-history/cs-bill-batch", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const billNumberRaw = req.query.billNumber;
+      const yearRaw = req.query.year;
+      const billNumber = parseInt(String(billNumberRaw ?? ""), 10);
+      const year = parseInt(String(yearRaw ?? ""), 10);
+      if (!Number.isFinite(billNumber) || billNumber <= 0) {
+        return res.status(400).json({ error: "billNumber is required" });
+      }
+      if (!Number.isFinite(year) || year < 1900 || year > 9999) {
+        return res.status(400).json({ error: "year is required" });
+      }
+      const siblings = await storage.getSalesByColdStorageBillNumber(coldStorageId, billNumber, year);
+      res.json(siblings);
+    } catch (error) {
+      console.error("Failed to fetch CS bill batch:", error);
+      res.status(500).json({ error: "Failed to fetch CS bill batch" });
     }
   });
 

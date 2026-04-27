@@ -221,6 +221,9 @@ export interface IStorage {
     paymentStatus?: "paid" | "due";
     buyerName?: string;
   }): Promise<SalesHistoryWithLastPayment[]>;
+  // Sibling sales sharing the same Cold Storage bill # in a calendar
+  // year — used by PrintBillDialog's collective-bill view.
+  getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, year: number): Promise<SalesHistoryWithLastPayment[]>;
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
   reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }>;
@@ -1822,6 +1825,15 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, year: number): Promise<SalesHistoryWithLastPayment[]> {
+    // Sibling sales sharing (coldStorageId, coldStorageBillNumber,
+    // year(soldAt)). Reuses getSalesHistory's enrichment so every
+    // sibling row carries `payments` and `lastPaymentAt`, ready for the
+    // collective bill view to merge into a single chronological timeline.
+    const all = await this.getSalesHistory(coldStorageId, { year });
+    return all.filter(s => (s.coldStorageBillNumber ?? null) === billNumber);
+  }
+
   async markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined> {
     const [updated] = await db.update(salesHistory)
       .set({ 
@@ -2275,6 +2287,10 @@ export class DatabaseStorage implements IStorage {
     buyerLedgerId?: string | null;
     exitDate: Date;
     sharedExitBillNumber?: number | null;
+    // Single Cold Storage bill # shared across every row in the batch
+    // (mirrors sharedExitBillNumber). When null/omitted, server takes
+    // MAX(coldStorageBillNumber)+1 over (cold storage, year(soldAt)).
+    sharedColdStorageBillNumber?: number | null;
     rows: Array<{
       lotId: string;
       // Bags physically leaving the chamber on this nikasi.
@@ -2289,10 +2305,10 @@ export class DatabaseStorage implements IStorage {
       kataCharges: number;
       extraHammaliPerBag: number;
       gradingCharges: number;
-      coldStorageBillNumber?: number | null;
     }>;
   }): Promise<{
     sharedExitBillNumber: number;
+    sharedColdStorageBillNumber: number;
     exitDate: Date;
     sales: Array<{
       saleId: string;
@@ -2388,6 +2404,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const userSharedExitBill = args.sharedExitBillNumber ?? null;
+    const userSharedCsBill = args.sharedColdStorageBillNumber ?? null;
     const exitYear = exitDate.getFullYear();
 
     return await db.transaction(async (tx) => {
@@ -2435,19 +2452,52 @@ export class DatabaseStorage implements IStorage {
         sharedExitBillNumber = (counterRow[0].next as number) - 1;
       }
 
-      // Per-row user-supplied cold-storage bill numbers must be unique
-      // within the batch as well as within the calendar year.
-      const seenUserCsBill = new Set<number>();
-      for (const r of rows) {
-        if (r.coldStorageBillNumber != null) {
-          if (!Number.isFinite(r.coldStorageBillNumber) || r.coldStorageBillNumber <= 0) {
-            throw new Error("Invalid cold storage bill number");
-          }
-          if (seenUserCsBill.has(r.coldStorageBillNumber)) {
-            throw new Error(`Cold storage bill number ${r.coldStorageBillNumber} is repeated in the batch`);
-          }
-          seenUserCsBill.add(r.coldStorageBillNumber);
+      // Allocate the single shared CS bill # once before the row loop —
+      // mirrors the shared-exit-bill resolution above. The same value is
+      // written to every sales_history row in the batch so that
+      // (coldStorageId, coldStorageBillNumber, year(soldAt)) is the
+      // collective batch identity for the print path.
+      //
+      // year(soldAt) == year(exitDate) here (saleDate := exitDate above),
+      // so the dup check / MAX+1 are scoped to the operator-picked exit
+      // calendar year, matching the physical receipt-book year.
+      let sharedColdStorageBillNumber: number;
+      const csYear = saleDate.getFullYear();
+      if (userSharedCsBill != null) {
+        if (!Number.isFinite(userSharedCsBill) || userSharedCsBill <= 0) {
+          throw new Error("Invalid cold storage bill number");
         }
+        const dupCs = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            eq(salesHistory.coldStorageBillNumber, userSharedCsBill),
+            sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+          ))
+          .limit(1);
+        if (dupCs.length > 0) {
+          const conflictDate = dupCs[0].soldAt instanceof Date ? dupCs[0].soldAt : new Date();
+          const dd = String(conflictDate.getDate()).padStart(2, "0");
+          const mm = String(conflictDate.getMonth() + 1).padStart(2, "0");
+          const yyyy = conflictDate.getFullYear();
+          throw new Error(`Cold Storage Bill # ${userSharedCsBill} already used on ${dd}/${mm}/${yyyy}`);
+        }
+        sharedColdStorageBillNumber = userSharedCsBill;
+      } else {
+        // MAX(coldStorageBillNumber) + 1 over (cold storage, year(soldAt)).
+        // Identical sequencing rule to assignBillNumber + the legacy
+        // per-row Master Nikasi path so backdated batches still slot into
+        // the right year. The outer FOR UPDATE lock on cold_storages
+        // serialises concurrent assigners.
+        const [maxRow] = await tx.select({
+          max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
+        })
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+          ));
+        sharedColdStorageBillNumber = ((maxRow?.max as number | null) ?? 0) + 1;
       }
 
       const createdSales: Array<{
@@ -2654,61 +2704,14 @@ export class DatabaseStorage implements IStorage {
           soldAt: saleDate,
         } as InsertSalesHistory).returning();
 
-        // Per-row CS bill #: dup check and Variant B MAX+1 are scoped to
-        // year(soldAt). Since saleDate == exitDate above, this is the
-        // operator-picked exitDate year — matching the physical
-        // receipt's year sequence even on a backdated exit.
-        let coldStorageBillNumber: number | null = null;
-        const userCsBill = row.coldStorageBillNumber ?? null;
-        const csYear = saleDate.getFullYear();
-        if (userCsBill != null) {
-          const dupCs = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
-            .from(salesHistory)
-            .where(and(
-              eq(salesHistory.coldStorageId, coldStorageId),
-              eq(salesHistory.coldStorageBillNumber, userCsBill),
-              sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
-            ))
-            .limit(1);
-          if (dupCs.length > 0) {
-            const conflictDate = dupCs[0].soldAt instanceof Date ? dupCs[0].soldAt : new Date();
-            const dd = String(conflictDate.getDate()).padStart(2, "0");
-            const mm = String(conflictDate.getMonth() + 1).padStart(2, "0");
-            const yyyy = conflictDate.getFullYear();
-            // Suffix [row N] is parsed by the master-nikasi route to map
-            // the error back to the exact CS bill # input in the grid.
-            throw new Error(`Cold Storage Bill # ${userCsBill} already used on ${dd}/${mm}/${yyyy} [row ${rowIndex}]`);
-          }
-          coldStorageBillNumber = userCsBill;
-          // Counter bump removed (Variant B) — see createSalesHistory.
-        } else {
-          // MAX(coldStorageBillNumber) + 1 over (cold storage, year(soldAt)).
-          // Only the TRAILING gap left by reversing the most recent bill #
-          // is reused — interior gaps from older reversals are intentionally
-          // preserved (e.g. with [#1, #3] active because #2 was reversed,
-          // the next blank-input row gets #4, not #2). The outer FOR UPDATE
-          // lock on cold_storages (taken at the top of this transaction)
-          // serialises concurrent assigners, and the per-row insert +
-          // UPDATE below makes each chosen number visible to the next
-          // iteration's read so consecutive rows in this batch take
-          // consecutive numbers without colliding. Falls back to 1 when
-          // the year has no rows yet. Do NOT switch to lowest-missing —
-          // see Task #233 for the rationale.
-          const [maxRow] = await tx.select({
-            max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
-          })
-            .from(salesHistory)
-            .where(and(
-              eq(salesHistory.coldStorageId, coldStorageId),
-              sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
-            ));
-          coldStorageBillNumber = ((maxRow?.max as number | null) ?? 0) + 1;
-        }
-        if (coldStorageBillNumber != null) {
-          await tx.update(salesHistory)
-            .set({ coldStorageBillNumber })
-            .where(eq(salesHistory.id, saleId));
-        }
+        // Single shared CS bill # — resolved once before the row loop.
+        // Writing the same value to every row in this batch is what
+        // enables the collective bill view: the print path identifies
+        // siblings by (coldStorageId, coldStorageBillNumber, year(soldAt)).
+        const coldStorageBillNumber: number = sharedColdStorageBillNumber;
+        await tx.update(salesHistory)
+          .set({ coldStorageBillNumber })
+          .where(eq(salesHistory.id, saleId));
 
         // Create exit_history row sharing the master bill number / date.
         await tx.insert(exitHistory).values({
@@ -2755,6 +2758,7 @@ export class DatabaseStorage implements IStorage {
 
       return {
         sharedExitBillNumber,
+        sharedColdStorageBillNumber,
         exitDate,
         sales: createdSales,
         farmer: {
