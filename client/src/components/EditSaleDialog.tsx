@@ -413,6 +413,23 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       : "";
     const dateChanged = csBillDateInput !== "" && csBillDateInput !== dateInIst;
 
+    // Reject blank inputs that were originally set — there is no API
+    // semantic for "clear a CS bill #" (the column is set, not nullable
+    // by edit) or "clear a sale date" (NOT NULL in the DB), so a blank
+    // here is a typo/mistake, not a no-op. Surface the error inline so
+    // the operator sees it on the editor instead of silently dropping
+    // the change.
+    if (trimmedBill === "" && sale.coldStorageBillNumber != null) {
+      setCsBillNumberError(t("csBillNumberInvalid"));
+      setCsBillEditing(true);
+      return;
+    }
+    if (csBillDateInput === "" && sale.soldAt) {
+      setCsBillDateError(t("csBillDateInvalid"));
+      setCsBillEditing(true);
+      return;
+    }
+
     let csBillApplied = false;
     if (billChanged || dateChanged) {
       // Cascade runs FIRST so a duplicate-bill or bad-date error blocks
