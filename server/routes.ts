@@ -1553,10 +1553,18 @@ export async function registerRoutes(
     rows: z.array(z.object({
       lotId: z.string().min(1),
       exitBags: z.number().int().min(1),
+      // Optional commercial sold-bags. Defaults to exitBags when
+      // omitted (legacy contract). Server-side createMasterNikasi
+      // enforces the soldBags >= exitBags && soldBags <= remainingSize
+      // invariants per row.
+      soldBags: z.number().int().min(1).optional(),
       kataCharges: z.number().min(0).default(0),
       extraHammaliPerBag: z.number().min(0).default(0),
       gradingCharges: z.number().min(0).default(0),
       coldStorageBillNumber: z.number().int().positive().optional(),
+    }).refine(r => (r.soldBags ?? r.exitBags) >= r.exitBags, {
+      message: "soldBags must be >= exitBags",
+      path: ["soldBags"],
     })).min(1),
   });
 
@@ -1596,6 +1604,8 @@ export async function registerRoutes(
         rows: body.rows.map(r => ({
           lotId: r.lotId,
           exitBags: r.exitBags,
+          // Defaults to exitBags inside createMasterNikasi when undefined.
+          soldBags: r.soldBags,
           kataCharges: r.kataCharges,
           extraHammaliPerBag: r.extraHammaliPerBag,
           gradingCharges: r.gradingCharges,

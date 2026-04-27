@@ -48,7 +48,14 @@ interface RowState {
   // case where one Receipt # has more than one Marka option.
   lotNo: string;
   marka: string;
+  // Physical bags leaving the chamber on this nikasi.
   exitBags: string;
+  // Commercial bags being sold on this row. Defaults to exitBags but may
+  // be raised up to the lot's remainingSize (sold > exited means the
+  // unexited-but-sold portion stays in the chamber and can be physically
+  // exited later via the per-sale Exit dialog). Charges (base cold,
+  // hammali, extra hammali) are computed on soldBags.
+  soldBags: string;
   kataCharges: string;
   extraHammaliPerBag: string;
   gradingCharges: string;
@@ -102,6 +109,7 @@ const newRow = (lotNo = "", marka = "", coldStorageBillNumber = ""): RowState =>
   lotNo,
   marka,
   exitBags: "",
+  soldBags: "",
   kataCharges: "",
   extraHammaliPerBag: "",
   gradingCharges: "",
@@ -340,11 +348,13 @@ export function MasterNikasiDialog({
   );
 
   // Per-row live computation of base cold charge (mirrors server logic).
-  const calcBaseCharge = (lwc: LotWithCharges | undefined, exitBags: number): number => {
+  // `bags` is the *commercial* quantity (soldBags), not the physically
+  // exited count — base cold + hammali always scale with the sale.
+  const calcBaseCharge = (lwc: LotWithCharges | undefined, bags: number): number => {
     if (!coldStorage || !lwc) return 0;
     const lot = lwc.lot;
     if (lot.baseColdChargesBilled === 1) return 0;
-    if (!exitBags || exitBags <= 0) return 0;
+    if (!bags || bags <= 0) return 0;
     const useWafer = lot.bagType === "wafer";
     const gCold = useWafer ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
     const gHam = useWafer ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
@@ -353,28 +363,55 @@ export function MasterNikasiDialog({
     const effUnit = isCompany ? "quintal" : (coldStorage.chargeUnit || "bag");
     if (effUnit === "quintal") {
       const cQuintal = (lot.netWeight && lot.size > 0)
-        ? (lot.netWeight * exitBags * cRate) / (lot.size * 100)
+        ? (lot.netWeight * bags * cRate) / (lot.size * 100)
         : 0;
-      return cQuintal + hRate * exitBags;
+      return cQuintal + hRate * bags;
     }
-    return exitBags * (cRate + hRate);
+    return bags * (cRate + hRate);
   };
 
   const rowTotals = rows.map((r) => {
     const exitBags = Number(r.exitBags) || 0;
+    // soldBags defaults to exitBags when blank so an operator who only
+    // fills "Exit Bags" still sees correct charges before any keystroke
+    // in the sold cell. The auto-default in updateRow keeps this in
+    // sync once exit changes.
+    const soldBagsRaw = Number(r.soldBags);
+    const soldBags = Number.isFinite(soldBagsRaw) && soldBagsRaw > 0 ? soldBagsRaw : exitBags;
     const lwc = resolveLot(r.lotNo, r.marka);
-    const base = calcBaseCharge(lwc, exitBags);
+    const base = calcBaseCharge(lwc, soldBags);
     const kata = Number(r.kataCharges) || 0;
     const extraPerBag = Number(r.extraHammaliPerBag) || 0;
-    const extra = extraPerBag * exitBags;
+    const extra = extraPerBag * soldBags;
     const grading = Number(r.gradingCharges) || 0;
-    return { base, kata, extra, extraPerBag, grading, total: base + kata + extra + grading, exitBags };
+    return { base, kata, extra, extraPerBag, grading, total: base + kata + extra + grading, exitBags, soldBags };
   });
   const grandTotal = rowTotals.reduce((s, r) => s + r.total, 0);
-  const totalBags = rowTotals.reduce((s, r) => s + r.exitBags, 0);
+  const totalExitBags = rowTotals.reduce((s, r) => s + r.exitBags, 0);
+  const totalSoldBags = rowTotals.reduce((s, r) => s + r.soldBags, 0);
 
   const updateRow = (key: string, patch: Partial<RowState>) => {
     setRows(prev => prev.map(r => (r.rowKey === key ? { ...r, ...patch } : r)));
+  };
+
+  // When the operator types or changes Exit Bags on a row, default the
+  // Sold Bags column to match: empty Sold or Sold strictly less than
+  // the new Exit gets bumped up. Once the operator manually raises Sold
+  // above Exit, further Exit edits leave Sold alone (Sold stays >= Exit
+  // because we only auto-bump *up*, never down).
+  const updateExitBags = (key: string, newExitStr: string) => {
+    setRows(prev => prev.map(r => {
+      if (r.rowKey !== key) return r;
+      const newExit = Number(newExitStr);
+      const currentSold = Number(r.soldBags);
+      const soldIsBlank = r.soldBags === "" || !Number.isFinite(currentSold);
+      const shouldBump = Number.isFinite(newExit) && newExit > 0 && (soldIsBlank || currentSold < newExit);
+      return {
+        ...r,
+        exitBags: newExitStr,
+        soldBags: shouldBump ? newExitStr : r.soldBags,
+      };
+    }));
   };
 
   const removeRow = (key: string) => {
@@ -388,6 +425,7 @@ export function MasterNikasiDialog({
       const cleaned: Array<{
         lotId: string;
         exitBags: number;
+        soldBags: number;
         kataCharges: number;
         extraHammaliPerBag: number;
         gradingCharges: number;
@@ -400,7 +438,17 @@ export function MasterNikasiDialog({
         if (!r.lotNo || !r.marka || !Number.isFinite(bags) || bags <= 0) continue;
         const lwc = resolveLot(r.lotNo, r.marka);
         if (!lwc) throw new Error(`No lot matches Receipt ${r.lotNo} / Marka ${r.marka}`);
-        if (bags > lwc.lot.remainingSize) {
+
+        // Sold defaults to exit when blank (matches the live-totals
+        // fallback). The auto-bump in updateExitBags normally keeps the
+        // soldBags input populated, but a row whose exit was filled
+        // before this code path was deployed could still be blank.
+        const soldRaw = Number(r.soldBags);
+        const sold = Number.isFinite(soldRaw) && soldRaw > 0 ? soldRaw : bags;
+        if (sold < bags) {
+          throw new Error(`Lot ${lwc.lot.lotNo}: sold bags (${sold}) cannot be less than exit bags (${bags})`);
+        }
+        if (sold > lwc.lot.remainingSize) {
           throw new Error(`Lot ${lwc.lot.lotNo}: only ${lwc.lot.remainingSize} bag(s) remaining`);
         }
         const key = `${r.lotNo}::${canonMarka(r.marka)}`;
@@ -421,6 +469,7 @@ export function MasterNikasiDialog({
         cleaned.push({
           lotId: lwc.lot.id,
           exitBags: bags,
+          soldBags: sold,
           kataCharges: Number(r.kataCharges) || 0,
           extraHammaliPerBag: Number(r.extraHammaliPerBag) || 0,
           gradingCharges: Number(r.gradingCharges) || 0,
@@ -495,7 +544,13 @@ export function MasterNikasiDialog({
     if (!Number.isFinite(bags) || bags <= 0) return false;
     const lwc = resolveLot(r.lotNo, r.marka);
     if (!lwc) return false;
-    return bags <= lwc.lot.remainingSize;
+    if (bags > lwc.lot.remainingSize) return false;
+    // Sold defaults to exit when blank — same fallback as rowTotals.
+    const soldRaw = Number(r.soldBags);
+    const sold = Number.isFinite(soldRaw) && soldRaw > 0 ? soldRaw : bags;
+    if (sold < bags) return false;
+    if (sold > lwc.lot.remainingSize) return false;
+    return true;
   }).length;
   const canSubmit = !!farmerLedgerId && validRowCount > 0 && !duplicateKey && !submitMutation.isPending && !result;
 
@@ -691,7 +746,17 @@ export function MasterNikasiDialog({
                   const lwc = resolveLot(r.lotNo, r.marka);
                   const remaining = lwc?.lot.remainingSize ?? 0;
                   const totals = rowTotals[idx];
-                  const exceeds = lwc && totals.exitBags > remaining;
+                  const exceeds = !!lwc && totals.exitBags > remaining;
+                  // Sold validation: must be >= exit and <= remaining.
+                  // The cell renders red when out of range. We use the
+                  // raw input string to detect a true blank (vs. "0"),
+                  // so the row only goes invalid once the operator has
+                  // typed something — empty defaults to exit cleanly.
+                  const soldRaw = r.soldBags === "" ? NaN : Number(r.soldBags);
+                  const soldEntered = !Number.isNaN(soldRaw);
+                  const soldExceeds = !!lwc && soldEntered && soldRaw > remaining;
+                  const soldBelowExit = soldEntered && totals.exitBags > 0 && soldRaw < totals.exitBags;
+                  const soldInvalid = soldExceeds || soldBelowExit;
 
                   // Receipt # options: distinct lotNos. If a marka is already
                   // chosen but no Receipt yet, narrow to lotNos that have that
@@ -809,14 +874,31 @@ export function MasterNikasiDialog({
                           min={1}
                           max={remaining || undefined}
                           value={r.exitBags}
-                          onChange={(e) => updateRow(r.rowKey, { exitBags: e.target.value })}
+                          onChange={(e) => updateExitBags(r.rowKey, e.target.value)}
                           disabled={!!result || !r.lotNo || !r.marka}
-                          className={`h-8 w-14 text-right ${exceeds ? "border-destructive" : ""}`}
+                          className={`h-8 w-14 text-right ${exceeds || soldBelowExit ? "border-destructive" : ""}`}
                           data-testid={`input-mn-bags-${idx}`}
                         />
                       </td>
-                      <td className="p-2 text-right font-mono" data-testid={`text-mn-sold-${idx}`}>
-                        {totals.exitBags || "-"}
+                      <td className="p-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={remaining || undefined}
+                          value={r.soldBags}
+                          onChange={(e) => updateRow(r.rowKey, { soldBags: e.target.value })}
+                          disabled={!!result || !r.lotNo || !r.marka}
+                          className={`h-8 w-14 text-right ${soldInvalid ? "border-destructive" : ""}`}
+                          data-testid={`input-mn-sold-${idx}`}
+                          aria-invalid={soldInvalid}
+                          title={
+                            soldExceeds
+                              ? `Only ${remaining} bag(s) remaining`
+                              : soldBelowExit
+                                ? `Sold cannot be less than exit (${totals.exitBags})`
+                                : undefined
+                          }
+                        />
                       </td>
                       <td className="p-2 text-right font-mono" data-testid={`text-mn-base-${idx}`}>{fmt(totals.base)}</td>
                       <td className="p-2">
@@ -908,8 +990,8 @@ export function MasterNikasiDialog({
                 })}
                 <tr className="bg-muted/30 font-semibold">
                   <td className="p-2" colSpan={3}>{t("total") || "Total"}</td>
-                  <td className="p-2 text-right font-mono" data-testid="text-mn-total-bags">{totalBags}</td>
-                  <td className="p-2 text-right font-mono" data-testid="text-mn-total-sold">{totalBags}</td>
+                  <td className="p-2 text-right font-mono" data-testid="text-mn-total-bags">{totalExitBags}</td>
+                  <td className="p-2 text-right font-mono" data-testid="text-mn-total-sold">{totalSoldBags}</td>
                   <td className="p-2" colSpan={4}></td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-grand-total">{fmt(grandTotal)}</td>
                   <td></td>

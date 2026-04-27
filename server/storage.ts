@@ -2267,7 +2267,15 @@ export class DatabaseStorage implements IStorage {
     sharedExitBillNumber?: number | null;
     rows: Array<{
       lotId: string;
+      // Bags physically leaving the chamber on this nikasi.
       exitBags: number;
+      // Bags being commercially sold on this row. Defaults to exitBags
+      // when omitted by callers; must be in [exitBags, lot.remainingSize].
+      // Charges (base cold + hammali, extra hammali) all scale on
+      // soldBags, while exit_history / chamber.currentFill scale on
+      // exitBags. Sold-but-not-exited bags stay in the chamber and can
+      // be physically exited later via the per-sale Exit dialog.
+      soldBags?: number;
       kataCharges: number;
       extraHammaliPerBag: number;
       gradingCharges: number;
@@ -2459,7 +2467,18 @@ export class DatabaseStorage implements IStorage {
         if (lot.coldStorageId !== coldStorageId) throw new Error("Lot does not belong to this cold storage");
         if (lot.farmerLedgerId !== farmerLedgerId) throw new Error("Lot does not belong to this farmer");
         if (row.exitBags <= 0) throw new Error("Exit bags must be > 0");
-        if (row.exitBags > lot.remainingSize) {
+        // soldBags is the *commercial* quantity for this row. When the
+        // caller omits it, fall back to exitBags (the legacy contract:
+        // sold == exited). The relationship invariants are
+        //   exitBags >= 1 && soldBags >= exitBags && soldBags <= remainingSize.
+        // We deduct soldBags from remainingSize (commercial inventory)
+        // but only exitBags from chamber.currentFill (physical stock).
+        const soldBags = row.soldBags ?? row.exitBags;
+        if (soldBags <= 0) throw new Error("Sold bags must be > 0");
+        if (soldBags < row.exitBags) {
+          throw new Error(`Lot ${lot.lotNo}: sold bags (${soldBags}) cannot be less than exit bags (${row.exitBags})`);
+        }
+        if (soldBags > lot.remainingSize) {
           throw new Error(`Lot ${lot.lotNo}: only ${lot.remainingSize} bag(s) remaining`);
         }
 
@@ -2469,11 +2488,14 @@ export class DatabaseStorage implements IStorage {
         const coldChargeRate = farmerRecord.customColdChargeRate ?? defaultColdCharge;
         const hammaliRate = farmerRecord.customHammaliRate ?? defaultHammali;
 
-        // Auto-detect charge basis: clearing the lot → totalRemaining (so we
-        // mark base charges billed and never double-charge later).
-        const clearingLot = row.exitBags === lot.remainingSize;
-        const chargeBasis = clearingLot ? "totalRemaining" : "actual";
-        const chargeQuantity = row.exitBags; // exit equals sold for master nikasi
+        // Master Nikasi never uses the "totalRemaining" basis: each row
+        // bills only for what it actually sold (soldBags). The caller
+        // can split a lot across several MN rows without us
+        // pre-charging the unsold remainder, and we never flip
+        // baseColdChargesBilled here — that flag is reserved for the
+        // legacy partial-sale path only.
+        const chargeBasis = "actual";
+        const chargeQuantity = soldBags;
 
         let storageCharge = 0;
         let baseHammaliAmount = 0;
@@ -2494,25 +2516,23 @@ export class DatabaseStorage implements IStorage {
 
         const kata = row.kataCharges || 0;
         const extraPerBag = row.extraHammaliPerBag || 0;
-        const extraTotal = extraPerBag * row.exitBags;
+        const extraTotal = extraPerBag * soldBags;
         const grading = row.gradingCharges || 0;
         const totalChargeForLot = storageCharge + kata + extraTotal + grading;
 
         // Atomic, race-safe stock decrement: WHERE clause asserts current
         // remainingSize is sufficient. If any concurrent write reduced stock
-        // below row.exitBags, the UPDATE affects 0 rows and we abort the txn.
-        const decUpdate: Record<string, unknown> = {
-          remainingSize: sql`${lots.remainingSize} - ${row.exitBags}`,
-          totalDueCharge: sql`COALESCE(${lots.totalDueCharge}, 0) + ${totalChargeForLot}`,
-        };
-        if (clearingLot && lot.baseColdChargesBilled !== 1) {
-          decUpdate.baseColdChargesBilled = 1;
-        }
+        // below soldBags, the UPDATE affects 0 rows and we abort the txn.
+        // Note we deduct soldBags (commercial) here — the chamber fill
+        // decrement below uses exitBags (physical).
         const updatedLotRows = await tx.update(lots)
-          .set(decUpdate)
+          .set({
+            remainingSize: sql`${lots.remainingSize} - ${soldBags}`,
+            totalDueCharge: sql`COALESCE(${lots.totalDueCharge}, 0) + ${totalChargeForLot}`,
+          })
           .where(and(
             eq(lots.id, lot.id),
-            gte(lots.remainingSize, row.exitBags),
+            gte(lots.remainingSize, soldBags),
           ))
           .returning({ remainingSize: lots.remainingSize });
         if (updatedLotRows.length === 0) {
@@ -2540,7 +2560,7 @@ export class DatabaseStorage implements IStorage {
           newData: JSON.stringify(isLotFullySold
             ? { remainingSize: 0, saleStatus: "sold" }
             : { remainingSize: newRemainingSize }),
-          soldQuantity: row.exitBags,
+          soldQuantity: soldBags,
           pricePerBag: 0,
           coldCharge: coldChargeRate,
           hammali: hammaliRate,
@@ -2589,7 +2609,7 @@ export class DatabaseStorage implements IStorage {
           quality: lot.quality,
           originalLotSize: lot.size,
           saleType: isLotFullySold ? "full" : "partial",
-          quantitySold: row.exitBags,
+          quantitySold: soldBags,
           pricePerBag: coldChargeRate + hammaliRate,
           coldCharge: coldChargeRate,
           hammali: hammaliRate,
