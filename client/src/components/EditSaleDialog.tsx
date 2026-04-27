@@ -56,17 +56,14 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editExtraDueOtherMerchant, setEditExtraDueOtherMerchant] = useState("");
   const [editAdjAmount, setEditAdjAmount] = useState("");
 
-  // CS Bill # / Sale Date inline editor — surfaces a pencil that flips
-  // the read-only display row into a pair of inputs. For sales that share
-  // a CS bill # with siblings (Master Nikasi batches), the save cascades
-  // to every sibling; single-row sales cascade to themselves only.
+  // CS Bill # / Sale Date inline editor. For Master Nikasi batches the
+  // save cascades to every sibling sharing the (bill #, year); single-row
+  // sales cascade to themselves only. Reversed sales are hard-deleted
+  // from sales_history so they never reach this dialog (no isReversed
+  // column exists on the row to gate on).
   const [csBillEditing, setCsBillEditing] = useState(false);
   const [csBillInput, setCsBillInput] = useState("");
   const [csBillDateInput, setCsBillDateInput] = useState("");
-  // Inline error state for the CS Bill # / Date editor — the cascade
-  // endpoint returns a `field` tag ("newBillNumber" / "newSoldAt") on
-  // 400s so we can attach the message to the right input. Errors are
-  // cleared when the user edits the input or cancels the editor.
   const [csBillNumberError, setCsBillNumberError] = useState<string | null>(null);
   const [csBillDateError, setCsBillDateError] = useState<string | null>(null);
 
@@ -145,12 +142,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     enabled: !!sale?.id && open,
   });
 
-  // Fetch sibling sales sharing this CS bill # within the sale's year so
-  // the operator sees up front how many rows the cascade will touch. We
-  // only query when the sale already has a CS bill # — for first-time
-  // assignments there are no siblings to resolve.
-  // Reversed sales are hard-deleted from sales_history, so any sale we
-  // see here is by definition active — no isReversed guard needed.
+  // Fetch sibling sales sharing this (bill #, year) so the operator
+  // sees up front how many rows the cascade will touch. Skipped for
+  // first-time assignments (no siblings to resolve).
   const csBillBatchEnabled =
     !!sale?.coldStorageBillNumber && !!sale?.saleYear && open;
   const { data: csBillSiblings = [] } = useQuery<CsBillSibling[]>({
@@ -394,12 +388,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const handleSave = async () => {
     if (!sale) return;
 
-    // CS Bill # / Sale Date cascade dirty-check — independent of the
-    // inline editor's open/closed state. The operator may have edited the
-    // values, hit the inline confirm (which collapses the inline row), and
-    // then clicked the bottom Save; we still need to apply those edits.
-    // We always re-derive dirty-ness by comparing the input state to the
-    // sale's current values.
+    // CS Bill # / Sale Date dirty-check is independent of the inline
+    // editor's open state — the operator may have collapsed the inline
+    // row before clicking the bottom Save and we still need to apply
+    // those edits. Always re-derive from the input state.
     const trimmedBill = csBillInput.trim();
     const parsedBill = trimmedBill === "" ? NaN : parseInt(trimmedBill, 10);
     const billChanged = trimmedBill !== "" && parsedBill !== sale.coldStorageBillNumber;
@@ -413,12 +405,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       : "";
     const dateChanged = csBillDateInput !== "" && csBillDateInput !== dateInIst;
 
-    // Reject blank inputs that were originally set — there is no API
-    // semantic for "clear a CS bill #" (the column is set, not nullable
-    // by edit) or "clear a sale date" (NOT NULL in the DB), so a blank
-    // here is a typo/mistake, not a no-op. Surface the error inline so
-    // the operator sees it on the editor instead of silently dropping
-    // the change.
+    // Blank input on a previously-set field is a typo, not a no-op
+    // (we have no API semantic for "clear" — date is NOT NULL, bill #
+    // is only set, never cleared via edit).
     if (trimmedBill === "" && sale.coldStorageBillNumber != null) {
       setCsBillNumberError(t("csBillNumberInvalid"));
       setCsBillEditing(true);
