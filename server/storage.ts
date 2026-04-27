@@ -284,6 +284,21 @@ export interface IStorage {
     effectiveBillNumber: number;
     updatedRows: ExitHistory[];
   }>;
+  // Cascade-edit the CS Bill # / soldAt for every sales_history row
+  // sharing a given (coldStorageBillNumber, year) within one cold storage,
+  // OR assign a CS Bill # for the first time on a single saleId that
+  // currently has none. Mirrors updateExitsByBillNumber's semantics so
+  // batched and single-row sales stay in lock-step.
+  updateColdStorageBillByNumber(
+    coldStorageId: string,
+    oldBillNumber: number | null,
+    oldYear: number,
+    opts: { newBillNumber?: number; newSoldAt?: Date; saleId?: string },
+  ): Promise<{
+    updatedCount: number;
+    affectedSaleIds: string[];
+    effectiveBillNumber: number | null;
+  }>;
   getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
     saleId: string;
     soldAt: Date;
@@ -3057,6 +3072,139 @@ export class DatabaseStorage implements IStorage {
     for (const saleId of result.affectedSaleIds) {
       await this.syncSaleExitSummary(saleId);
     }
+
+    return result;
+  }
+
+  // Cascade-edit (or first-time-assign) the CS Bill # and/or sale date
+  // across every sales_history row sharing a (coldStorageBillNumber, year)
+  // within one cold storage. Mirrors updateExitsByBillNumber semantics:
+  //   • FOR UPDATE lock on cold_storages serializes concurrent assigns
+  //   • year-scoped collision check excluding the rows being updated
+  //   • IST-noon-anchored newSoldAt (caller validates calendar/future)
+  //   • saleId path supports first-time assignment when oldBillNumber=null
+  async updateColdStorageBillByNumber(
+    coldStorageId: string,
+    oldBillNumber: number | null,
+    oldYear: number,
+    opts: { newBillNumber?: number; newSoldAt?: Date; saleId?: string },
+  ): Promise<{
+    updatedCount: number;
+    affectedSaleIds: string[];
+    effectiveBillNumber: number | null;
+  }> {
+    if (opts.newBillNumber == null && opts.newSoldAt == null) {
+      throw new Error("Nothing to update");
+    }
+    if (opts.newBillNumber != null && (!Number.isFinite(opts.newBillNumber) || opts.newBillNumber <= 0)) {
+      throw new Error("Invalid CS bill number");
+    }
+
+    const result = await db.transaction(async (tx) => {
+      // Lock cold_storages row so concurrent assigns serialize.
+      await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${coldStorageId} FOR UPDATE`);
+
+      // Resolve target rows.
+      let targetRows: Array<{ id: string; soldAt: Date; coldStorageBillNumber: number | null }>;
+      if (oldBillNumber == null) {
+        // First-time assignment path: a single sale that has no CS bill #
+        // yet. saleId is required and the row must be active + bill-less.
+        if (!opts.saleId) {
+          throw new Error("saleId required for first-time CS bill # assignment");
+        }
+        const rows = await tx.select({
+          id: salesHistory.id,
+          soldAt: salesHistory.soldAt,
+          coldStorageBillNumber: salesHistory.coldStorageBillNumber,
+        })
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            eq(salesHistory.id, opts.saleId),
+          ));
+        if (rows.length === 0) {
+          // Reversed sales are hard-deleted from sales_history, so a
+          // missing row here means either truly-not-found or reversed.
+          throw new Error("Sale not found");
+        }
+        if (rows[0].coldStorageBillNumber != null) {
+          throw new Error(`Sale already has CS Bill # ${rows[0].coldStorageBillNumber}`);
+        }
+        if (opts.newBillNumber == null) {
+          // First-time assignment requires a bill # — date-only edits
+          // for bill-less sales are handled by the per-sale PATCH path.
+          throw new Error("newBillNumber required for first-time assignment");
+        }
+        targetRows = rows.map(r => ({
+          id: r.id,
+          soldAt: r.soldAt as Date,
+          coldStorageBillNumber: r.coldStorageBillNumber,
+        }));
+      } else {
+        const rows = await tx.select({
+          id: salesHistory.id,
+          soldAt: salesHistory.soldAt,
+          coldStorageBillNumber: salesHistory.coldStorageBillNumber,
+        })
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            eq(salesHistory.coldStorageBillNumber, oldBillNumber),
+            eq(salesHistory.saleYear, oldYear),
+          ));
+        if (rows.length === 0) {
+          throw new Error(`No sales found for CS Bill # ${oldBillNumber} in year ${oldYear}`);
+        }
+        targetRows = rows.map(r => ({
+          id: r.id,
+          soldAt: r.soldAt as Date,
+          coldStorageBillNumber: r.coldStorageBillNumber,
+        }));
+      }
+
+      const effectiveBillNumber = opts.newBillNumber ?? oldBillNumber;
+      const effectiveSoldAt = opts.newSoldAt ?? targetRows[0].soldAt;
+      const targetYear = new Date(effectiveSoldAt).getFullYear();
+      const targetIds = targetRows.map(r => r.id);
+
+      // Year-scoped collision check excluding the rows being updated.
+      // Skipped when bill # itself is unchanged (date-only edit) since
+      // the existing rows' (bill#, year) tuple is allowed to remain.
+      if (effectiveBillNumber != null) {
+        const dup = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
+          .from(salesHistory)
+          .where(and(
+            eq(salesHistory.coldStorageId, coldStorageId),
+            eq(salesHistory.coldStorageBillNumber, effectiveBillNumber),
+            eq(salesHistory.saleYear, targetYear),
+            sql`${salesHistory.id} NOT IN (${sql.join(targetIds.map(id => sql`${id}`), sql`, `)})`,
+          ));
+        if (dup.length > 0) {
+          const conflictDate: Date = dup[0].soldAt instanceof Date
+            ? dup[0].soldAt
+            : new Date(dup[0].soldAt as string);
+          const onDate = conflictDate.toLocaleDateString("en-IN");
+          throw new Error(`CS Bill # ${effectiveBillNumber} already used on ${onDate}`);
+        }
+      }
+
+      const updates: { coldStorageBillNumber?: number; soldAt?: Date; saleYear?: number } = {};
+      if (opts.newBillNumber != null) updates.coldStorageBillNumber = opts.newBillNumber;
+      if (opts.newSoldAt != null) {
+        updates.soldAt = opts.newSoldAt;
+        updates.saleYear = targetYear;
+      }
+
+      await tx.update(salesHistory)
+        .set(updates)
+        .where(inArray(salesHistory.id, targetIds));
+
+      return {
+        updatedCount: targetRows.length,
+        affectedSaleIds: targetIds,
+        effectiveBillNumber: effectiveBillNumber ?? null,
+      };
+    });
 
     return result;
   }

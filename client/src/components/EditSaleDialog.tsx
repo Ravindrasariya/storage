@@ -13,11 +13,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
-import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "lucide-react";
+import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency, formatCurrency } from "@/components/Currency";
+
+// Sibling sales returned by /api/sales-history/cs-bill-batch — same
+// SalesHistory shape (lotNo is the human-facing receipt # the operator
+// recognises, mirrored from the row).
+type CsBillSibling = SalesHistory;
 
 interface EditSaleDialogProps {
   sale: SalesHistory | null;
@@ -50,6 +55,14 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editExtraDueGradingMerchant, setEditExtraDueGradingMerchant] = useState("");
   const [editExtraDueOtherMerchant, setEditExtraDueOtherMerchant] = useState("");
   const [editAdjAmount, setEditAdjAmount] = useState("");
+
+  // CS Bill # / Sale Date inline editor — surfaces a pencil that flips
+  // the read-only display row into a pair of inputs. For sales that share
+  // a CS bill # with siblings (Master Nikasi batches), the save cascades
+  // to every sibling; single-row sales cascade to themselves only.
+  const [csBillEditing, setCsBillEditing] = useState(false);
+  const [csBillInput, setCsBillInput] = useState("");
+  const [csBillDateInput, setCsBillDateInput] = useState("");
 
   // Get charge unit from sale record (recorded at time of sale) with fallback to cold storage
   // This ensures edits use the same calculation method as the original sale
@@ -126,6 +139,31 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     enabled: !!sale?.id && open,
   });
 
+  // Fetch sibling sales sharing this CS bill # within the sale's year so
+  // the operator sees up front how many rows the cascade will touch. We
+  // only query when the sale already has a CS bill # — for first-time
+  // assignments there are no siblings to resolve.
+  // Reversed sales are hard-deleted from sales_history, so any sale we
+  // see here is by definition active — no isReversed guard needed.
+  const csBillBatchEnabled =
+    !!sale?.coldStorageBillNumber && !!sale?.saleYear && open;
+  const { data: csBillSiblings = [] } = useQuery<CsBillSibling[]>({
+    queryKey: [
+      "/api/sales-history/cs-bill-batch",
+      sale?.coldStorageBillNumber,
+      sale?.saleYear,
+    ],
+    queryFn: async () => {
+      if (!sale?.coldStorageBillNumber || !sale?.saleYear) return [];
+      const response = await authFetch(
+        `/api/sales-history/cs-bill-batch?billNumber=${sale.coldStorageBillNumber}&year=${sale.saleYear}`,
+      );
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: csBillBatchEnabled,
+  });
+
   // Get discount allocated to this specific sale (tracked directly on salesHistory)
   const discountAllocated = sale?.discountAllocated || 0;
   // Actual cash paid = paidAmount - discountAllocated
@@ -191,6 +229,24 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditExtraDueOtherMerchant(sale.extraDueOtherMerchant?.toString() || "0");
       setEditAdjAmount(sale.adjReceivableSelfDueAmount?.toString() || "0");
       setChargesOpen(false);
+
+      // Reset CS bill # / date editor; pre-fill inputs with current values
+      // so a cascade save without a manual edit is a no-op (skipped).
+      setCsBillEditing(false);
+      setCsBillInput(sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "");
+      // soldAt is an ISO string from the API; format to YYYY-MM-DD in IST
+      // to match the input[type=date] expectation and avoid TZ drift.
+      const soldAtDate = sale.soldAt ? new Date(sale.soldAt) : null;
+      setCsBillDateInput(
+        soldAtDate
+          ? new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Kolkata",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            }).format(soldAtDate)
+          : "",
+      );
     }
   }, [sale, open]);
   
@@ -202,6 +258,39 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const maxAdjAmount = farmerDuesForEdit 
     ? (farmerDuesForEdit.pyReceivables || 0) + (farmerDuesForEdit.advanceDue || 0) + (farmerDuesForEdit.freightDue || 0) + (farmerDuesForEdit.selfDue || 0) + (sale?.adjReceivableSelfDueAmount || 0)
     : 0;
+
+  // Cascade-update CS Bill # / sale date for the current sale and every
+  // sibling sharing the same (bill #, year). Invoked from handleSave
+  // BEFORE the per-sale PATCH so we can short-circuit the entire save if
+  // the cascade fails (e.g. duplicate bill #).
+  const updateCsBillMutation = useMutation({
+    mutationFn: async (vars: {
+      oldBillNumber: number | null;
+      oldYear: number;
+      newBillNumber?: number;
+      newSoldAt?: string;
+      saleId: string;
+    }) => {
+      const billPath = vars.oldBillNumber == null ? "none" : String(vars.oldBillNumber);
+      const yearQuery = vars.oldBillNumber == null ? "" : `?year=${vars.oldYear}`;
+      const body: Record<string, unknown> = { saleId: vars.saleId };
+      if (vars.newBillNumber !== undefined) body.newBillNumber = vars.newBillNumber;
+      if (vars.newSoldAt !== undefined) body.newSoldAt = vars.newSoldAt;
+      const response = await apiRequest(
+        "PATCH",
+        `/api/sales-history/cs-bill/${billPath}${yearQuery}`,
+        body,
+      );
+      return response.json();
+    },
+    onSuccess: () => {
+      // Cascade touches every sibling sale row sharing the bill # — fan
+      // out invalidations to every sale-aware view so the UI matches.
+      invalidateSaleSideEffects(queryClient);
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/cs-bill-batch"] });
+    },
+  });
 
   const updateMutation = useMutation({
     mutationFn: async (data: {
@@ -294,8 +383,56 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!sale) return;
+
+    // CS Bill # / Sale Date cascade — runs FIRST so a duplicate-bill or
+    // bad-date error blocks the rest of the save (which is what we want:
+    // we don't want partial updates leaking through). When the operator
+    // hasn't touched the inline editor, we skip the cascade entirely.
+    if (csBillEditing) {
+      const trimmedBill = csBillInput.trim();
+      const parsedBill = trimmedBill === "" ? NaN : parseInt(trimmedBill, 10);
+      const billChanged = trimmedBill !== "" && parsedBill !== sale.coldStorageBillNumber;
+      const dateInIst = sale.soldAt
+        ? new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date(sale.soldAt))
+        : "";
+      const dateChanged = csBillDateInput !== "" && csBillDateInput !== dateInIst;
+
+      if (billChanged || dateChanged) {
+        // Validate bill # client-side; the server re-validates but we
+        // surface obvious errors immediately.
+        if (trimmedBill !== "" && (!Number.isFinite(parsedBill) || parsedBill <= 0)) {
+          toast({ title: t("error"), description: t("csBillNumberInvalid"), variant: "destructive" });
+          return;
+        }
+        if (csBillDateInput !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(csBillDateInput)) {
+          toast({ title: t("error"), description: t("csBillDateInvalid"), variant: "destructive" });
+          return;
+        }
+
+        try {
+          await updateCsBillMutation.mutateAsync({
+            oldBillNumber: sale.coldStorageBillNumber ?? null,
+            oldYear: sale.saleYear ?? new Date(sale.soldAt).getFullYear(),
+            newBillNumber: billChanged ? parsedBill : undefined,
+            newSoldAt: dateChanged ? csBillDateInput : undefined,
+            saleId: sale.id,
+          });
+          toast({ title: t("success"), description: t("csBillUpdated"), variant: "success" });
+          // Cache invalidation runs in the mutation's onSuccess handler.
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : t("failedToUpdateSale");
+          toast({ title: t("error"), description: message, variant: "destructive" });
+          return; // Abort the rest of the save.
+        }
+      }
+    }
 
     const updates: Record<string, unknown> = {};
 
@@ -438,6 +575,129 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
         <div className="space-y-6">
           <div className="bg-muted/50 p-4 rounded-lg space-y-3">
             <h4 className="font-medium text-sm text-muted-foreground">{t("saleDetails")}</h4>
+
+            {/* CS Bill # / Sale Date inline editor — read-only with a pencil
+                that flips into a pair of inputs. Reversed sales are hard-
+                deleted from sales_history, so any sale we see is active. */}
+            <div className="border-b pb-3">
+              {!csBillEditing ? (
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div>
+                      <span className="text-muted-foreground">{t("csBillNumber")}:</span>{" "}
+                      <span className="font-medium" data-testid="text-edit-cs-bill-number">
+                        {sale.coldStorageBillNumber ?? "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">{t("saleDate")}:</span>{" "}
+                      <span className="font-medium" data-testid="text-edit-cs-bill-date">
+                        {sale.soldAt
+                          ? format(new Date(sale.soldAt), "dd/MM/yyyy")
+                          : "—"}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    onClick={() => setCsBillEditing(true)}
+                    title={t("editCsBill")}
+                    aria-label={t("editCsBill")}
+                    data-testid="button-edit-cs-bill"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="cs-bill-number-input" className="text-xs">
+                        {t("csBillNumber")}
+                      </Label>
+                      <Input
+                        id="cs-bill-number-input"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={csBillInput}
+                        onChange={(e) => setCsBillInput(e.target.value)}
+                        className="h-8"
+                        data-testid="input-edit-cs-bill-number"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="cs-bill-date-input" className="text-xs">
+                        {t("saleDate")}
+                      </Label>
+                      <Input
+                        id="cs-bill-date-input"
+                        type="date"
+                        value={csBillDateInput}
+                        onChange={(e) => setCsBillDateInput(e.target.value)}
+                        className="h-8"
+                        data-testid="input-edit-cs-bill-date"
+                      />
+                    </div>
+                  </div>
+                  {csBillSiblings.length >= 2 && (
+                    <p
+                      className="text-xs text-amber-700 dark:text-amber-400"
+                      data-testid="text-cs-bill-cascade-warning"
+                    >
+                      {t("csBillCoversNSales").replace(
+                        "{n}",
+                        String(csBillSiblings.length),
+                      )}
+                    </p>
+                  )}
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => {
+                        setCsBillEditing(false);
+                        setCsBillInput(
+                          sale.coldStorageBillNumber != null
+                            ? String(sale.coldStorageBillNumber)
+                            : "",
+                        );
+                        setCsBillDateInput(
+                          sale.soldAt
+                            ? new Intl.DateTimeFormat("en-CA", {
+                                timeZone: "Asia/Kolkata",
+                                year: "numeric",
+                                month: "2-digit",
+                                day: "2-digit",
+                              }).format(new Date(sale.soldAt))
+                            : "",
+                        );
+                      }}
+                      data-testid="button-cancel-cs-bill-edit"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => setCsBillEditing(false)}
+                      title={t("save")}
+                      data-testid="button-confirm-cs-bill-edit"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-muted-foreground">{t("farmerName")}:</span>

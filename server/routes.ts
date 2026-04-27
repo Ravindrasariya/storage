@@ -1902,6 +1902,122 @@ export async function registerRoutes(
     }
   });
 
+  // Edit the CS Bill # and/or sale date for an existing sale OR for every
+  // sibling sharing the same (CS bill #, year). For batched (Master Nikasi)
+  // rows the cascade keeps the bill # / date in lock-step across all
+  // siblings; for a non-batch row only that row is updated. Mirrors the
+  // exit-bill cascade pattern (PATCH /api/exits/by-bill/:billNumber).
+  //
+  // URL params:
+  //   :billNumber — numeric old CS bill #, or "none" / "0" for first-time
+  //   assignment of a bill # to a sale that currently has none.
+  // Query params:
+  //   year — required for the cascade path so we can scope the existing
+  //   batch; ignored for first-time assignment (saleId in body identifies
+  //   the row directly).
+  // Body:
+  //   { newBillNumber?, newSoldAt? "YYYY-MM-DD", saleId? }
+  const updateCsBillSchema = z.object({
+    newBillNumber: z.number().int().positive().optional(),
+    newSoldAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    saleId: z.string().optional(),
+  }).refine(
+    (d) => d.newBillNumber !== undefined || d.newSoldAt !== undefined,
+    { message: "Provide newBillNumber or newSoldAt" },
+  );
+
+  app.patch("/api/sales-history/cs-bill/:billNumber", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const oldBillRaw = req.params.billNumber;
+      let oldBillNumber: number | null;
+      if (oldBillRaw === "none" || oldBillRaw === "0") {
+        oldBillNumber = null;
+      } else {
+        const parsedBill = parseInt(oldBillRaw, 10);
+        if (!Number.isFinite(parsedBill) || parsedBill <= 0) {
+          return res.status(400).json({ error: "Invalid bill number" });
+        }
+        oldBillNumber = parsedBill;
+      }
+
+      let oldYear = 0;
+      if (oldBillNumber != null) {
+        const yearParam = parseInt(String(req.query.year ?? ""), 10);
+        if (!Number.isFinite(yearParam) || yearParam < 1900 || yearParam > 9999) {
+          return res.status(400).json({ error: "year query param is required" });
+        }
+        oldYear = yearParam;
+      }
+
+      const parsed = updateCsBillSchema.parse(req.body);
+      if (oldBillNumber == null && !parsed.saleId) {
+        return res.status(400).json({ error: "saleId required for first-time CS bill # assignment" });
+      }
+
+      // IST-noon-anchored sale date parsing — same guard as POST sales so
+      // we never drift the calendar day across timezones, and we reject
+      // bogus calendar dates like 2026-02-31 + materially future dates.
+      let resolvedSoldAt: Date | undefined;
+      if (parsed.newSoldAt !== undefined) {
+        const parsedDate = new Date(`${parsed.newSoldAt}T12:00:00+05:30`);
+        if (Number.isNaN(parsedDate.getTime())) {
+          return res.status(400).json({ error: "Invalid sale date", field: "newSoldAt" });
+        }
+        const istParts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(parsedDate);
+        if (istParts !== parsed.newSoldAt) {
+          return res.status(400).json({ error: "Sale date is not a real calendar date", field: "newSoldAt" });
+        }
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        if (parsedDate.getTime() > tomorrow.getTime()) {
+          return res.status(400).json({ error: "Sale date cannot be in the future", field: "newSoldAt" });
+        }
+        resolvedSoldAt = parsedDate;
+      }
+
+      const result = await storage.updateColdStorageBillByNumber(coldStorageId, oldBillNumber, oldYear, {
+        newBillNumber: parsed.newBillNumber,
+        newSoldAt: resolvedSoldAt,
+        saleId: parsed.saleId,
+      });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const first = error.errors[0];
+        const path = (first?.path?.[0] as string | undefined) ?? "";
+        const field = path === "newBillNumber" || path === "newSoldAt"
+          ? path
+          : undefined;
+        const fallbackField = field
+          ?? (first?.message?.includes("Provide newBillNumber") ? "newBillNumber" : undefined);
+        return res.status(400).json({
+          error: first?.message || "Invalid update data",
+          field: fallbackField,
+          details: error.errors,
+        });
+      }
+      const message = error instanceof Error ? error.message : "Failed to update CS bill";
+      if (/already used (on|in)|Invalid CS bill|CS Bill #/i.test(message)) {
+        return res.status(400).json({ error: message, field: "newBillNumber" });
+      }
+      if (/sale date|Sale Date/i.test(message)) {
+        return res.status(400).json({ error: message, field: "newSoldAt" });
+      }
+      if (/No active sales|Sale not found/i.test(message)) {
+        return res.status(404).json({ error: message });
+      }
+      if (/Nothing to update|saleId required|newBillNumber required/i.test(message)) {
+        return res.status(400).json({ error: message, field: "newBillNumber" });
+      }
+      res.status(400).json({ error: message });
+    }
+  });
+
   app.get("/api/sales-history/years", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
