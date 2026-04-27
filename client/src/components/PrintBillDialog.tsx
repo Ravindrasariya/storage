@@ -164,20 +164,31 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     // in flight. `fetchQuery` reuses any in-flight request and resolves
     // once cache is populated, so this is a no-op when siblings have
     // already loaded. Failures fall back silently to the single-row
-    // path. We always set `resolvedCsBillNumber` first so the siblings
-    // useQuery (keyed on it) is enabled before we await.
-    setResolvedCsBillNumber(resolvedBillNumber);
-    try {
-      await queryClient.fetchQuery<SalesHistoryWithLastPayment[]>({
-        queryKey: ["/api/sales-history/cs-bill-batch", resolvedBillNumber, csYear],
-        queryFn: async () => {
-          const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${resolvedBillNumber}&year=${csYear}`);
-          if (!res.ok) throw new Error(`${res.status}`);
-          return res.json();
-        },
-      });
-    } catch (err) {
-      console.warn("Sibling fetch failed, falling back to single-row receipt:", err);
+    // path.
+    //
+    // The siblings query is keyed on the COLD STORAGE bill # (never on
+    // salesBillNumber). For the deduction path `resolvedBillNumber` is
+    // already the CS bill # (and may be a freshly-assigned one), so we
+    // use it directly. For the sales path `resolvedBillNumber` is the
+    // salesBillNumber, so we fall back to the sale's existing
+    // coldStorageBillNumber. If neither is available there are no
+    // siblings to fetch and the single-row render path is correct.
+    const csBillForFetch =
+      type === "deduction" ? resolvedBillNumber : sale.coldStorageBillNumber;
+    if (csBillForFetch != null) {
+      setResolvedCsBillNumber(csBillForFetch);
+      try {
+        await queryClient.fetchQuery<SalesHistoryWithLastPayment[]>({
+          queryKey: ["/api/sales-history/cs-bill-batch", csBillForFetch, csYear],
+          queryFn: async () => {
+            const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${csBillForFetch}&year=${csYear}`);
+            if (!res.ok) throw new Error(`${res.status}`);
+            return res.json();
+          },
+        });
+      } catch (err) {
+        console.warn("Sibling fetch failed, falling back to single-row receipt:", err);
+      }
     }
 
     flushSync(() => {
@@ -766,9 +777,12 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           <div className="section-title">सामूहिक भुगतान सारांश</div>
           <table className="charges-table">
             <tbody>
+              {/* कुल देय = pre-discount total cold charges (sum of
+                  every sibling's coldStorageCharge). Discount is shown
+                  as its own line; net outstanding is "कुल बकाया". */}
               <tr>
-                <td>कुल देय (शुद्ध शीत भण्डार शुल्क)</td>
-                <td className="amount" data-testid="rollup-total-due">रु. {formatAmount(dispNetColdBill)}</td>
+                <td>कुल देय (कुल शीत भण्डार शुल्क)</td>
+                <td className="amount" data-testid="rollup-total-due">रु. {formatAmount(dispTotalCharges)}</td>
               </tr>
               <tr>
                 <td>कुल भुगतान</td>
