@@ -53,6 +53,7 @@ interface FarmerLotGroupProps {
   onSale?: (lot: Lot) => void;
   onExitSale?: (saleId: string) => void;
   onPrintSale?: (saleId: string) => void;
+  onEditSale?: (saleId: string) => void;
   onMasterNikasi?: (lots: LotWithCharges[]) => void;
   canEdit?: boolean;
   chargeUnit?: "bag" | "quintal";
@@ -126,6 +127,7 @@ export function FarmerLotGroup({
   onSale,
   onExitSale,
   onPrintSale,
+  onEditSale,
   onMasterNikasi,
   canEdit = true,
   chargeUnit,
