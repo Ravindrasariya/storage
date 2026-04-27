@@ -156,26 +156,28 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       return;
     }
 
-    // For deduction bills we MUST know the sibling set before printing,
-    // otherwise a true multi-row batch could render as a single-row
-    // receipt while the background sibling fetch is still in flight.
-    // `fetchQuery` reuses any in-flight request and resolves once cache
-    // is populated, so this is a no-op when siblings have already
-    // loaded. Failures fall back silently to the single-row path.
-    if (type === "deduction") {
-      setResolvedCsBillNumber(resolvedBillNumber);
-      try {
-        await queryClient.fetchQuery<SalesHistoryWithLastPayment[]>({
-          queryKey: ["/api/sales-history/cs-bill-batch", resolvedBillNumber, csYear],
-          queryFn: async () => {
-            const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${resolvedBillNumber}&year=${csYear}`);
-            if (!res.ok) throw new Error(`${res.status}`);
-            return res.json();
-          },
-        });
-      } catch (err) {
-        console.warn("Sibling fetch failed, falling back to single-row receipt:", err);
-      }
+    // BOTH bill types depend on the sibling set: the deduction receipt
+    // is fully aggregated, and the sales bill swaps in collective
+    // cold-side totals + a per-lot table when 2+ siblings exist.
+    // Without awaiting this, a true multi-row batch could render as a
+    // single-row receipt while the background sibling fetch is still
+    // in flight. `fetchQuery` reuses any in-flight request and resolves
+    // once cache is populated, so this is a no-op when siblings have
+    // already loaded. Failures fall back silently to the single-row
+    // path. We always set `resolvedCsBillNumber` first so the siblings
+    // useQuery (keyed on it) is enabled before we await.
+    setResolvedCsBillNumber(resolvedBillNumber);
+    try {
+      await queryClient.fetchQuery<SalesHistoryWithLastPayment[]>({
+        queryKey: ["/api/sales-history/cs-bill-batch", resolvedBillNumber, csYear],
+        queryFn: async () => {
+          const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${resolvedBillNumber}&year=${csYear}`);
+          if (!res.ok) throw new Error(`${res.status}`);
+          return res.json();
+        },
+      });
+    } catch (err) {
+      console.warn("Sibling fetch failed, falling back to single-row receipt:", err);
     }
 
     flushSync(() => {
