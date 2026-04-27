@@ -760,13 +760,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       }}
                       data-testid="button-cancel-cs-bill-edit"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      {t("cancel")}
                     </Button>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-7 px-2"
+                      className="h-7 px-2 text-xs"
                       onClick={() => setCsBillEditing(false)}
                       title={t("save")}
                       data-testid="button-confirm-cs-bill-edit"
@@ -1206,9 +1206,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
               <X className="h-4 w-4 mr-2" />
               {t("cancel")}
             </Button>
-            <Button onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save-edit">
+            <Button
+              onClick={handleSave}
+              disabled={updateMutation.isPending || updateCsBillMutation.isPending}
+              data-testid="button-save-edit"
+            >
               <Save className="h-4 w-4 mr-2" />
-              {updateMutation.isPending ? t("saving") : t("save")}
+              {updateMutation.isPending || updateCsBillMutation.isPending ? t("saving") : t("save")}
             </Button>
           </div>
           <Button 
