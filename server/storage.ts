@@ -3130,11 +3130,11 @@ export class DatabaseStorage implements IStorage {
         if (rows[0].coldStorageBillNumber != null) {
           throw new Error(`Sale already has CS Bill # ${rows[0].coldStorageBillNumber}`);
         }
-        if (opts.newBillNumber == null) {
-          // First-time assignment requires a bill # — date-only edits
-          // for bill-less sales are handled by the per-sale PATCH path.
-          throw new Error("newBillNumber required for first-time assignment");
-        }
+        // saleId path supports BOTH first-time bill # assignment AND
+        // date-only edits on a bill-less sale — the dialog exposes the
+        // sale date as editable independently of the bill #, and the
+        // outer "nothing to update" check already rejects fully-empty
+        // calls before we get here.
         targetRows = rows.map(r => ({
           id: r.id,
           soldAt: r.soldAt as Date,
@@ -3205,6 +3205,17 @@ export class DatabaseStorage implements IStorage {
         effectiveBillNumber: effectiveBillNumber ?? null,
       };
     });
+
+    // Mirror the exit-cascade pattern: after the cascade commits, fan out
+    // a per-sale refresh hook for every affected sale. syncSaleExitSummary
+    // re-derives the denormalised exit-bill / exit-date strings from the
+    // current exit_history rows; even though a CS-bill-only edit doesn't
+    // structurally change those, calling it keeps every sale-touching
+    // mutation consistent with the same post-commit invariant and is
+    // idempotent for unchanged exit data.
+    for (const saleId of result.affectedSaleIds) {
+      await this.syncSaleExitSummary(saleId);
+    }
 
     return result;
   }
