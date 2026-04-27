@@ -496,7 +496,7 @@ export function MasterNikasiDialog({
       // CS bill # is a single shared field now — no row mapping. Its
       // server error and the shared exit-bill error both render under
       // the matching shared input via substring on the message.
-      if (body?.field === "sharedColdStorageBillNumber" || /Cold Storage Bill #|cold storage bill number/i.test(msg)) {
+      if (body?.field === "coldStorageBillNumber" || /Cold Storage Bill #|cold storage bill number/i.test(msg)) {
         setBillNumberError(msg);
       } else if (body?.field === "sharedExitBillNumber" || /Exit Bill #|exit bill number/i.test(msg)) {
         setBillNumberError(msg);

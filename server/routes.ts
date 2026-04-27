@@ -1655,11 +1655,13 @@ export async function registerRoutes(
       }
       console.error("Master nikasi error:", error);
       const message = error instanceof Error ? error.message : "Failed to create master nikasi";
-      // Single shared CS bill # — no row mapping anymore.
+      // Single shared CS bill # — no row mapping anymore. The contract
+      // exposes the field as `coldStorageBillNumber` (no rowIndex) to
+      // mirror the per-row name the dialog/storage already use elsewhere.
       if (/^Cold Storage Bill #|invalid cold storage bill/i.test(message)) {
         return res.status(400).json({
           error: message,
-          field: "sharedColdStorageBillNumber",
+          field: "coldStorageBillNumber",
         });
       }
       if (/Exit Bill #|Invalid .* bill/i.test(message)) {
