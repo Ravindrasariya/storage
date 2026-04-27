@@ -63,6 +63,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [csBillEditing, setCsBillEditing] = useState(false);
   const [csBillInput, setCsBillInput] = useState("");
   const [csBillDateInput, setCsBillDateInput] = useState("");
+  // Inline error state for the CS Bill # / Date editor — the cascade
+  // endpoint returns a `field` tag ("newBillNumber" / "newSoldAt") on
+  // 400s so we can attach the message to the right input. Errors are
+  // cleared when the user edits the input or cancels the editor.
+  const [csBillNumberError, setCsBillNumberError] = useState<string | null>(null);
+  const [csBillDateError, setCsBillDateError] = useState<string | null>(null);
 
   // Get charge unit from sale record (recorded at time of sale) with fallback to cold storage
   // This ensures edits use the same calculation method as the original sale
@@ -233,6 +239,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       // Reset CS bill # / date editor; pre-fill inputs with current values
       // so a cascade save without a manual edit is a no-op (skipped).
       setCsBillEditing(false);
+      setCsBillNumberError(null);
+      setCsBillDateError(null);
       setCsBillInput(sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "");
       // soldAt is an ISO string from the API; format to YYYY-MM-DD in IST
       // to match the input[type=date] expectation and avoid TZ drift.
@@ -409,17 +417,25 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     if (billChanged || dateChanged) {
       // Cascade runs FIRST so a duplicate-bill or bad-date error blocks
       // the rest of the save — partial updates would be confusing and
-      // hard to undo.
+      // hard to undo. Validation errors are surfaced INLINE on the
+      // editor (not just as toasts) so the operator can correct
+      // immediately; we also force the editor open so the inline
+      // error is visible.
       if (trimmedBill !== "" && (!Number.isFinite(parsedBill) || parsedBill <= 0)) {
-        toast({ title: t("error"), description: t("csBillNumberInvalid"), variant: "destructive" });
+        setCsBillNumberError(t("csBillNumberInvalid"));
+        setCsBillEditing(true);
         return;
       }
       if (csBillDateInput !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(csBillDateInput)) {
-        toast({ title: t("error"), description: t("csBillDateInvalid"), variant: "destructive" });
+        setCsBillDateError(t("csBillDateInvalid"));
+        setCsBillEditing(true);
         return;
       }
 
       try {
+        // Clear any stale inline errors before retrying.
+        setCsBillNumberError(null);
+        setCsBillDateError(null);
         await updateCsBillMutation.mutateAsync({
           oldBillNumber: sale.coldStorageBillNumber ?? null,
           oldYear: sale.saleYear ?? new Date(sale.soldAt).getFullYear(),
@@ -430,8 +446,26 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
         csBillApplied = true;
         // Cache invalidation runs in the mutation's onSuccess handler.
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : t("failedToUpdateSale");
-        toast({ title: t("error"), description: message, variant: "destructive" });
+        // The cascade endpoint returns a `field` tag on 400s
+        // ("newBillNumber" / "newSoldAt"); apiRequest attaches the
+        // parsed JSON body to the thrown Error as `body`. Map the
+        // field to the right input and keep the editor open so the
+        // operator can see + fix the error immediately.
+        const errorObj = err as { message?: string; body?: { field?: string; error?: string } };
+        const field = errorObj.body?.field;
+        const message = errorObj.body?.error || errorObj.message || t("failedToUpdateSale");
+        if (field === "newBillNumber") {
+          setCsBillNumberError(message);
+          setCsBillEditing(true);
+        } else if (field === "newSoldAt") {
+          setCsBillDateError(message);
+          setCsBillEditing(true);
+        } else {
+          // Unknown field (e.g. 404 / 500) — fall back to a toast so
+          // the user sees the failure but the inline editor doesn't
+          // get a misleading red border on a working field.
+          toast({ title: t("error"), description: message, variant: "destructive" });
+        }
         return; // Abort the rest of the save.
       }
     }
@@ -634,10 +668,22 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         min={1}
                         step={1}
                         value={csBillInput}
-                        onChange={(e) => setCsBillInput(e.target.value)}
-                        className="h-8"
+                        onChange={(e) => {
+                          setCsBillInput(e.target.value);
+                          if (csBillNumberError) setCsBillNumberError(null);
+                        }}
+                        className={`h-8 ${csBillNumberError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                        aria-invalid={csBillNumberError ? true : undefined}
                         data-testid="input-edit-cs-bill-number"
                       />
+                      {csBillNumberError && (
+                        <p
+                          className="text-xs text-destructive"
+                          data-testid="error-cs-bill-number"
+                        >
+                          {csBillNumberError}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="cs-bill-date-input" className="text-xs">
@@ -647,10 +693,22 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         id="cs-bill-date-input"
                         type="date"
                         value={csBillDateInput}
-                        onChange={(e) => setCsBillDateInput(e.target.value)}
-                        className="h-8"
+                        onChange={(e) => {
+                          setCsBillDateInput(e.target.value);
+                          if (csBillDateError) setCsBillDateError(null);
+                        }}
+                        className={`h-8 ${csBillDateError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                        aria-invalid={csBillDateError ? true : undefined}
                         data-testid="input-edit-cs-bill-date"
                       />
+                      {csBillDateError && (
+                        <p
+                          className="text-xs text-destructive"
+                          data-testid="error-cs-bill-date"
+                        >
+                          {csBillDateError}
+                        </p>
+                      )}
                     </div>
                   </div>
                   {csBillSiblings.length >= 2 && (
@@ -682,6 +740,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       className="h-7 px-2"
                       onClick={() => {
                         setCsBillEditing(false);
+                        setCsBillNumberError(null);
+                        setCsBillDateError(null);
                         setCsBillInput(
                           sale.coldStorageBillNumber != null
                             ? String(sale.coldStorageBillNumber)
