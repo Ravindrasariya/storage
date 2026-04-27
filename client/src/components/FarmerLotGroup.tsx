@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
   Edit,
+  Pencil,
   Phone,
   MapPin,
   ShoppingCart,
@@ -364,6 +365,23 @@ export function FarmerLotGroup({
                         data-testid={`button-print-sale-${sale.saleId}`}
                       >
                         <Printer className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {sale && onEditSale && canEdit && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditSale(sale.saleId);
+                        }}
+                        className="h-7 w-7 bg-yellow-200 hover:bg-yellow-300 text-yellow-900 border-yellow-300 dark:bg-yellow-700/40 dark:hover:bg-yellow-700/60 dark:text-yellow-100 dark:border-yellow-700"
+                        aria-label={t("edit")}
+                        title={t("edit")}
+                        data-testid={`button-edit-sale-${sale.saleId}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     )}
                   </span>

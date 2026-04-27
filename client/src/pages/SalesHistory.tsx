@@ -11,13 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Pencil, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent } from "lucide-react";
+import { Search, X, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { EditSaleDialog } from "@/components/EditSaleDialog";
 import type { SalesHistory, ExitRegisterResponse, ExitRegisterRow } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
@@ -83,8 +82,6 @@ export default function SalesHistoryPage() {
     };
     localStorage.setItem(SALES_FILTERS_KEY, JSON.stringify(filters));
   }, [yearFilter, selectedMonths, selectedDays, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, villageFilter, paymentFilter, buyerFilter, typeFilter, activeTab]);
-  const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   // Autocomplete state
   const [showFarmerSuggestions, setShowFarmerSuggestions] = useState(false);
@@ -172,11 +169,6 @@ export default function SalesHistoryPage() {
       return response.json();
     },
   });
-
-  const handleEditSale = (sale: SalesHistory) => {
-    setEditingSale(sale);
-    setEditDialogOpen(true);
-  };
 
   const clearFilters = () => {
     setYearFilter("");
@@ -742,19 +734,7 @@ export default function SalesHistoryPage() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEditSale(sale)}
-                            data-testid={`button-edit-sale-${sale.id}`}
-                          >
-                            <Pencil className="h-4 w-4 mr-1" />
-                            {t("edit")}
-                          </Button>
-                        </div>
-                      </TableCell>
+                      <TableCell />
                     </TableRow>
                   ))}
                 </TableBody>
@@ -782,12 +762,6 @@ export default function SalesHistoryPage() {
           </div>
         </div>
       )}
-
-      <EditSaleDialog 
-        sale={editingSale}
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-      />
 
       </>
       )}

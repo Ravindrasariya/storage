@@ -35,6 +35,7 @@ import { SaleDialog } from "@/components/SaleDialog";
 import { ExitDialog } from "@/components/ExitDialog";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { MasterNikasiDialog } from "@/components/MasterNikasiDialog";
+import { EditSaleDialog } from "@/components/EditSaleDialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { ArrowLeft, Search, Phone, Package, PackageX, User, X, Download, Printer, CalendarDays, Pencil, Share2, ShoppingCart } from "lucide-react";
@@ -134,6 +135,13 @@ export default function StockRegister() {
     farmerName: string; village: string; contactNumber: string;
     farmerLedgerId: string | null; lots: LotWithCharges[];
   } | null>(null);
+  // Per-sale Edit dialog state. The dialog is the same one Bills History
+  // used to host; here we open it from the per-sale row's pencil icon.
+  // Looking the SalesHistory record up in the cached `/api/sales-history`
+  // query data (already loaded for this page) keeps the click instant —
+  // no extra fetch.
+  const [editingSale, setEditingSale] = useState<SalesHistory | null>(null);
+  const [editSaleDialogOpen, setEditSaleDialogOpen] = useState(false);
 
   const handleOpenMasterNikasi = (
     farmer: { farmerName: string; village: string; contactNumber: string },
@@ -2252,6 +2260,15 @@ export default function StockRegister() {
                   onSale={handleOpenSale}
                   onExitSale={handleExitSale}
                   onPrintSale={handlePrintSale}
+                  onEditSale={(saleId) => {
+                    const sale = allSalesHistory?.find(s => s.id === saleId);
+                    if (!sale) {
+                      toast({ title: t("error"), description: "Sale not found", variant: "destructive" });
+                      return;
+                    }
+                    setEditingSale(sale);
+                    setEditSaleDialogOpen(true);
+                  }}
                   onMasterNikasi={(lots) => handleOpenMasterNikasi(
                     { farmerName: group.farmerName, village: group.village, contactNumber: group.contactNumber },
                     lots,
@@ -2791,6 +2808,15 @@ export default function StockRegister() {
           }}
         />
       )}
+
+      <EditSaleDialog
+        sale={editingSale}
+        open={editSaleDialogOpen}
+        onOpenChange={(open) => {
+          setEditSaleDialogOpen(open);
+          if (!open) setEditingSale(null);
+        }}
+      />
     </div>
   );
 }
