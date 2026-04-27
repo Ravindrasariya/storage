@@ -547,33 +547,10 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         )}
       </div>
 
-      {isBatch && (
-        <div className="section" data-testid="section-batch-lots">
-          <div className="section-title">लॉट विवरण</div>
-          <table className="charges-table">
-            <thead>
-              <tr>
-                <th>विक्रय तिथि</th>
-                <th>रसीद नं. / Receipt #</th>
-                <th>लॉट नं. / Lot #</th>
-                <th className="amount">बोरी</th>
-                <th>खरीदार</th>
-              </tr>
-            </thead>
-            <tbody>
-              {siblings.map((s) => (
-                <tr key={s.id} data-testid={`row-batch-lot-${s.id}`}>
-                  <td>{format(new Date(s.soldAt as unknown as string), "dd/MM/yyyy")}</td>
-                  <td>{s.lotNo}</td>
-                  <td>{s.marka || "—"}</td>
-                  <td className="amount">{s.quantitySold}</td>
-                  <td>{s.isSelfSale === 1 ? "स्वयं" : (s.buyerName || "-")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Per-lot table intentionally omitted on the deduction bill —
+          total bags already appear in the विक्रय सारांश block above
+          and the per-receipt timeline below covers Receipt # / Lot #
+          attribution. */}
 
       <div className="section">
         <div className="section-title">शुल्क विवरण</div>
@@ -768,38 +745,13 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         </div>
       )}
 
-      {/* Collective payment rollup — batch only. Surfaces the four
-          headline numbers (कुल देय / कुल भुगतान / छूट / कुल बकाया) for
-          the entire shared CS bill so the farmer sees the batch-level
-          picture before the per-receipt timeline below. */}
-      {isBatch && (
-        <div className="section" style={{ marginTop: "8px" }} data-testid="section-collective-rollup">
-          <div className="section-title">सामूहिक भुगतान सारांश</div>
-          <table className="charges-table">
-            <tbody>
-              {/* कुल देय = pre-discount total cold charges (sum of
-                  every sibling's coldStorageCharge). Discount is shown
-                  as its own line; net outstanding is "कुल बकाया". */}
-              <tr>
-                <td>कुल देय (कुल शीत भण्डार शुल्क)</td>
-                <td className="amount" data-testid="rollup-total-due">रु. {formatAmount(dispTotalCharges)}</td>
-              </tr>
-              <tr>
-                <td>कुल भुगतान</td>
-                <td className="amount" data-testid="rollup-total-paid">रु. {formatAmount(dispActualCashPaid)}</td>
-              </tr>
-              <tr>
-                <td>छूट</td>
-                <td className="amount" data-testid="rollup-total-discount">रु. {formatAmount(dispDiscount)}</td>
-              </tr>
-              <tr className="total-row">
-                <td><strong>कुल बकाया</strong></td>
-                <td className="amount" data-testid="rollup-total-outstanding"><strong>रु. {formatAmount(dispDue)}</strong></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Collective payment rollup intentionally omitted — the same
+          four headline numbers (देय / भुगतान / छूट / बकाया) already
+          appear inline in the green भुगतान स्थिति line above, and the
+          per-receipt भुगतान का विवरण timeline below itemises every
+          payment. The single छूट + शुद्ध शीत भण्डार शुल्क block (also
+          driven by `dispDiscount`/`dispNetColdBill`) renders for both
+          single-row and batched bills, matching the per-sale layout. */}
 
       {/* Payment timeline. Single-row path keeps the existing
           unlabeled rows shown only on partial bills (byte-for-byte).
