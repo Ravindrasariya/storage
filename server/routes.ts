@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
 import { db } from "./db";
 import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema } from "@shared/schema";
+import { farmerGroupKey } from "@shared/farmer-key";
 import { z } from "zod";
 
 // Retry a transactional operation when Postgres aborts it due to a farmer_id
@@ -297,14 +298,14 @@ export async function registerRoutes(
 
       // Optionally extend the page so that the farmer at the tail of the page
       // is fully included — keeps grouped views from ever showing a partial
-      // farmer group at the loaded/unloaded boundary while scrolling.
+      // farmer group at the loaded/unloaded boundary while scrolling. Uses
+      // the same canonical key as the client (Stock Register) so the server
+      // boundary and the client grouping always agree even when the raw
+      // farmer_name / contact_number text on individual lots has drifted.
       if (req.query.completeLastFarmer === "true" && endIdx > startIdx && endIdx < totalCount) {
-        const boundary = lots[endIdx - 1];
-        const boundaryKey = `${boundary.contactNumber || ""}|${boundary.farmerName || ""}`;
+        const boundaryKey = farmerGroupKey(lots[endIdx - 1]);
         while (endIdx < totalCount) {
-          const next = lots[endIdx];
-          const nextKey = `${next.contactNumber || ""}|${next.farmerName || ""}`;
-          if (nextKey !== boundaryKey) break;
+          if (farmerGroupKey(lots[endIdx]) !== boundaryKey) break;
           endIdx++;
         }
       }
@@ -441,8 +442,21 @@ export async function registerRoutes(
             state: validatedData.state,
           }, tx);
 
+          // Overwrite the user-typed farmer fields with the canonical values
+          // already stored on the matched/created farmer_ledger row. Two
+          // separate receipts for the same farmer therefore always carry
+          // identical farmer_name / contact_number / village / tehsil /
+          // district / state text — preventing the per-receipt drift that
+          // used to split one farmer into multiple cards in the Stock
+          // Register grouping.
           return storage.createLot({
             ...validatedData,
+            farmerName: farmerEntry.name,
+            contactNumber: farmerEntry.contactNumber,
+            village: farmerEntry.village,
+            tehsil: farmerEntry.tehsil ?? validatedData.tehsil,
+            district: farmerEntry.district ?? validatedData.district,
+            state: farmerEntry.state ?? validatedData.state,
             coldStorageId: coldStorageId,
             remainingSize: validatedData.size,
             farmerLedgerId: farmerEntry.id,
@@ -523,13 +537,31 @@ export async function registerRoutes(
             entityType: farmer.entityType,
           }, tx);
 
+          // Use the canonical farmer fields from the matched/created
+          // farmer_ledger row instead of the raw request body, so every
+          // lot created in this batch (and across batches for the same
+          // farmer) stores exactly the same farmer_name / contact_number
+          // / village / tehsil / district / state text. This prevents the
+          // per-receipt drift (whitespace, NBSP, casing, "+91" prefix)
+          // that used to split one farmer into multiple cards in the
+          // Stock Register grouping.
+          const canonicalFarmer = {
+            ...farmer,
+            farmerName: farmerEntry.name,
+            contactNumber: farmerEntry.contactNumber,
+            village: farmerEntry.village,
+            tehsil: farmerEntry.tehsil ?? farmer.tehsil,
+            district: farmerEntry.district ?? farmer.district,
+            state: farmerEntry.state ?? farmer.state,
+          };
+
           // Prepare lots with farmer data (lotNo will be auto-assigned by storage)
           const lotsToCreate = lotDataArray.map(lotData => {
             // Destructure to remove deductions from the spread
             const { deductions, ...lotDataWithoutDeductions } = lotData;
 
             return {
-              ...farmer,
+              ...canonicalFarmer,
               ...lotDataWithoutDeductions,
               lotNo: "", // Will be set by createBatchLots
               coldStorageId: coldStorageId,
@@ -3851,7 +3883,12 @@ export async function registerRoutes(
           district,
           state,
         });
-        
+
+        // Use the canonical farmer text from the ledger row (not the
+        // user-typed values from req.body). This prevents whitespace /
+        // casing / "+91" drift across receivables that all link to the
+        // same farmer_ledger row, matching the canonicalisation we do
+        // in POST /api/lots and POST /api/lots/batch.
         const receivable = await storage.createOpeningReceivable({
           coldStorageId,
           year,
@@ -3861,12 +3898,12 @@ export async function registerRoutes(
           rateOfInterest: rateOfInterest || 0,
           effectiveDate: effectiveDate ? new Date(effectiveDate) : null,
           remarks: remarks || null,
-          farmerName: farmerName || null,
-          contactNumber: contactNumber || null,
-          village: village || null,
-          tehsil: tehsil || null,
-          district: district || null,
-          state: state || null,
+          farmerName: farmerEntry.name,
+          contactNumber: farmerEntry.contactNumber,
+          village: farmerEntry.village,
+          tehsil: farmerEntry.tehsil || null,
+          district: farmerEntry.district || null,
+          state: farmerEntry.state || null,
           farmerLedgerId: farmerEntry.id,
           farmerId: farmerEntry.farmerId,
         });
@@ -4169,6 +4206,33 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error syncing farmers:", error);
       res.status(500).json({ error: "Failed to sync farmers" });
+    }
+  });
+
+  // One-shot cleanup of pre-fix data drift: re-syncs the denormalised farmer
+  // text fields (farmer_name / contact_number / village / tehsil / district /
+  // state) on every touchpoint that is already linked to a farmer_ledger row,
+  // copying the canonical values from the ledger into lots, sales_history,
+  // opening_receivables, cash_receipts (buyer_name) and discounts. SAFE to
+  // run repeatedly: it never alters farmer_ledger_id linkage, only text
+  // fields. Touchpoints with NULL farmer_ledger_id are untouched (Stock
+  // Register handles them via its normalized fallback grouping). Run this
+  // once per cold storage after deploying the fix to repair existing splits
+  // (e.g. one farmer rendered as two cards on Receipt 571 vs Receipt 1142).
+  // Tip: call POST /api/farmer-ledger/sync first to backfill any missing
+  // farmer_ledger_id values on legacy touchpoints, then call this endpoint.
+  app.post("/api/farmer-ledger/resync-touchpoints", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.resyncTouchpointsFromFarmerLedger(coldStorageId);
+      res.json({
+        success: true,
+        message: "Farmer touchpoints re-synced from canonical ledger rows",
+        farmersScanned: result.farmersScanned,
+      });
+    } catch (error) {
+      console.error("Error resyncing farmer touchpoints:", error);
+      res.status(500).json({ error: "Failed to resync farmer touchpoints" });
     }
   });
 

@@ -50,6 +50,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lot, Chamber, LotEditHistory, SalesHistory, SalesHistoryWithLastPayment, SaleLotInfo } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
+import { farmerGroupKey } from "@shared/farmer-key";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency } from "@/components/Currency";
 
@@ -1083,7 +1084,7 @@ export default function StockRegister() {
     }> = [];
     const groupIndex: Record<string, number> = {};
     for (const item of computed) {
-      const k = `${item.lot.contactNumber || ""}|${item.lot.farmerName || ""}`;
+      const k = farmerGroupKey(item.lot);
       if (groupIndex[k] === undefined) {
         groupIndex[k] = farmerGroups.length;
         farmerGroups.push({
@@ -2205,7 +2206,13 @@ export default function StockRegister() {
             ) : null;
           }
           
-          // Group lots by farmer (contactNumber + farmerName) preserving order
+          // Group lots by farmer using the canonical key — prefers
+          // farmer_ledger_id when present so two lots that share a
+          // ledger row always render as ONE card even when their
+          // denormalised farmer_name / contact_number text drifted
+          // (whitespace, NBSP, casing, "+91" prefix). Falls back to
+          // a normalized phone+name+village key for legacy lots that
+          // pre-date farmer-ledger linking. See shared/farmer-key.ts.
           const farmerGroups: Array<{
             key: string;
             farmerName: string;
@@ -2217,7 +2224,7 @@ export default function StockRegister() {
           }> = [];
           const groupIndex: Record<string, number> = {};
           for (const item of sortedLots) {
-            const key = `${item.lot.contactNumber || ""}|${item.lot.farmerName || ""}`;
+            const key = farmerGroupKey(item.lot);
             if (groupIndex[key] === undefined) {
               groupIndex[key] = farmerGroups.length;
               farmerGroups.push({

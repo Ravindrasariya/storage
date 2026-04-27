@@ -443,6 +443,7 @@ export interface IStorage {
   }>;
   getFarmerDuesByLedgerId(farmerLedgerId: string, coldStorageId: string): Promise<{ pyReceivables: number; selfDue: number; merchantDue: number; advanceDue: number; freightDue: number; loanDue: number; totalDue: number }>;
   syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number; lotsLinked: number; receivablesLinked: number }>;
+  resyncTouchpointsFromFarmerLedger(coldStorageId: string): Promise<{ farmersScanned: number }>;
   generateFarmerId(coldStorageId: string): Promise<string>;
   checkPotentialMerge(id: string, updates: Partial<FarmerLedgerEntry>): Promise<{
     willMerge: boolean;
@@ -465,7 +466,16 @@ export interface IStorage {
     district?: string;
     state?: string;
     entityType?: string;
-  }, tx?: any): Promise<{ id: string; farmerId: string }>;
+  }, tx?: any): Promise<{
+    id: string;
+    farmerId: string;
+    name: string;
+    contactNumber: string;
+    village: string;
+    tehsil: string | null;
+    district: string | null;
+    state: string | null;
+  }>;
   createManualFarmer(coldStorageId: string, farmerData: {
     name: string;
     contactNumber: string;
@@ -9433,7 +9443,16 @@ export class DatabaseStorage implements IStorage {
     district?: string;
     state?: string;
     entityType?: string;
-  }, tx?: any): Promise<{ id: string; farmerId: string }> {
+  }, tx?: any): Promise<{
+    id: string;
+    farmerId: string;
+    name: string;
+    contactNumber: string;
+    village: string;
+    tehsil: string | null;
+    district: string | null;
+    state: string | null;
+  }> {
     const exec = tx ?? db;
     const key = this.getFarmerCompositeKey(farmerData.name, farmerData.contactNumber, farmerData.village);
     
@@ -9462,7 +9481,21 @@ export class DatabaseStorage implements IStorage {
           .where(eq(farmerLedger.id, existing.id));
       }
       
-      return { id: existing.id, farmerId: existing.farmerId };
+      // Return canonical fields from the ledger row (post-update) so that
+      // every new touchpoint inserted by the caller (lots, sales, receipts)
+      // copies the SAME canonical text — preventing per-receipt drift in
+      // farmer_name / contact_number / village that would later split the
+      // farmer into multiple cards in the Stock Register grouping.
+      return {
+        id: existing.id,
+        farmerId: existing.farmerId,
+        name: existing.name,
+        contactNumber: existing.contactNumber,
+        village: existing.village,
+        tehsil: updates.tehsil ?? existing.tehsil,
+        district: updates.district ?? existing.district,
+        state: updates.state ?? existing.state,
+      };
     }
     
     // Create new farmer ledger entry.
@@ -9470,6 +9503,16 @@ export class DatabaseStorage implements IStorage {
     // entire transaction in Postgres — we cannot catch and retry inline. Instead
     // we throw and let the caller re-run the whole transaction. When called
     // outside a transaction, we keep the original in-line retry loop.
+    // Canonical (trimmed) field values written to the new ledger row;
+    // also returned to the caller so a brand-new farmer's first lot
+    // stores exactly the same trimmed text as the ledger row.
+    const canonicalName = farmerData.name.trim();
+    const canonicalContact = farmerData.contactNumber.trim();
+    const canonicalVillage = farmerData.village.trim();
+    const canonicalTehsil = farmerData.tehsil?.trim() || null;
+    const canonicalDistrict = farmerData.district?.trim() || null;
+    const canonicalState = farmerData.state?.trim() || null;
+
     if (tx) {
       const farmerId = await this.generateFarmerId(coldStorageId);
       const newId = randomUUID();
@@ -9477,17 +9520,26 @@ export class DatabaseStorage implements IStorage {
         id: newId,
         coldStorageId,
         farmerId,
-        name: farmerData.name.trim(),
-        contactNumber: farmerData.contactNumber.trim(),
-        village: farmerData.village.trim(),
-        tehsil: farmerData.tehsil?.trim() || null,
-        district: farmerData.district?.trim() || null,
-        state: farmerData.state?.trim() || null,
+        name: canonicalName,
+        contactNumber: canonicalContact,
+        village: canonicalVillage,
+        tehsil: canonicalTehsil,
+        district: canonicalDistrict,
+        state: canonicalState,
         entityType: farmerData.entityType || "farmer",
         isFlagged: 0,
         isArchived: 0,
       });
-      return { id: newId, farmerId };
+      return {
+        id: newId,
+        farmerId,
+        name: canonicalName,
+        contactNumber: canonicalContact,
+        village: canonicalVillage,
+        tehsil: canonicalTehsil,
+        district: canonicalDistrict,
+        state: canonicalState,
+      };
     }
 
     const maxRetries = 3;
@@ -9500,18 +9552,27 @@ export class DatabaseStorage implements IStorage {
           id: newId,
           coldStorageId,
           farmerId,
-          name: farmerData.name.trim(),
-          contactNumber: farmerData.contactNumber.trim(),
-          village: farmerData.village.trim(),
-          tehsil: farmerData.tehsil?.trim() || null,
-          district: farmerData.district?.trim() || null,
-          state: farmerData.state?.trim() || null,
+          name: canonicalName,
+          contactNumber: canonicalContact,
+          village: canonicalVillage,
+          tehsil: canonicalTehsil,
+          district: canonicalDistrict,
+          state: canonicalState,
           entityType: farmerData.entityType || "farmer",
           isFlagged: 0,
           isArchived: 0,
         });
         
-        return { id: newId, farmerId };
+        return {
+          id: newId,
+          farmerId,
+          name: canonicalName,
+          contactNumber: canonicalContact,
+          village: canonicalVillage,
+          tehsil: canonicalTehsil,
+          district: canonicalDistrict,
+          state: canonicalState,
+        };
       } catch (error: any) {
         // Check if it's a unique constraint violation (PostgreSQL error code 23505)
         // Constraint name: farmer_ledger_cs_fid_idx (composite unique on coldStorageId + farmerId)
@@ -10339,6 +10400,29 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(discounts.id, d.id));
     }
+  }
+
+  // One-shot cleanup: re-sync the denormalised farmer text fields on every
+  // touchpoint (lots, sales_history, opening_receivables, cash_receipts,
+  // discounts) from the canonical farmer_ledger row they point to via
+  // farmer_ledger_id. Used to repair pre-fix data where the same farmer
+  // had drifting farmer_name / contact_number / village text across
+  // separate receipts (whitespace, NBSP, casing, "+91" prefix) and was
+  // therefore rendered as multiple cards in the Stock Register.
+  //
+  // SAFETY: this method NEVER mutates farmer_ledger_id linkage. It only
+  // copies text fields from farmer_ledger to its already-linked rows.
+  // Touchpoints with NULL farmer_ledger_id (legacy lots) are untouched —
+  // the Stock Register's normalized fallback grouping handles them on
+  // the read path.
+  async resyncTouchpointsFromFarmerLedger(coldStorageId: string): Promise<{ farmersScanned: number }> {
+    const farmers = await db.select()
+      .from(farmerLedger)
+      .where(eq(farmerLedger.coldStorageId, coldStorageId));
+    for (const f of farmers) {
+      await this.propagateFarmerDetailsToTouchpoints(f.id, f);
+    }
+    return { farmersScanned: farmers.length };
   }
 
   // Archive a farmer
