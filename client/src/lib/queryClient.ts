@@ -109,6 +109,7 @@ export function invalidateSaleSideEffects(client: QueryClient): void {
     "/api/sales-history/buyer-transfers",
     "/api/sales-history/years",
     "/api/sales-history/exits-summary",
+    "/api/sales-history/cs-bill-batch",
     "/api/exit-register",
     "/api/exit-register/years",
     "/api/exits",

@@ -764,7 +764,11 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           <div className="section" style={{ marginTop: "8px" }} data-testid="section-partial-payment-history">
             <div className="section-title">भुगतान का विवरण</div>
             {agg.mergedPayments.map((p, idx) => (
-              <div className="info-row" key={p.receiptId} data-testid={`row-payment-${p.receiptId}`}>
+              <div
+                className="info-row"
+                key={`${p.receiptId}-${p.lotNo}-${idx}`}
+                data-testid={`row-payment-${p.receiptId}-${p.lotNo}`}
+              >
                 <span className="info-label">
                   {idx + 1}. {format(new Date(p.receivedAt), "dd/MM/yyyy")} — Receipt #{p.lotNo}{p.marka ? ` / ${p.marka}` : ""}:
                 </span>
