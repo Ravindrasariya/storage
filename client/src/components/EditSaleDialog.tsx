@@ -386,51 +386,53 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const handleSave = async () => {
     if (!sale) return;
 
-    // CS Bill # / Sale Date cascade — runs FIRST so a duplicate-bill or
-    // bad-date error blocks the rest of the save (which is what we want:
-    // we don't want partial updates leaking through). When the operator
-    // hasn't touched the inline editor, we skip the cascade entirely.
-    if (csBillEditing) {
-      const trimmedBill = csBillInput.trim();
-      const parsedBill = trimmedBill === "" ? NaN : parseInt(trimmedBill, 10);
-      const billChanged = trimmedBill !== "" && parsedBill !== sale.coldStorageBillNumber;
-      const dateInIst = sale.soldAt
-        ? new Intl.DateTimeFormat("en-CA", {
-            timeZone: "Asia/Kolkata",
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-          }).format(new Date(sale.soldAt))
-        : "";
-      const dateChanged = csBillDateInput !== "" && csBillDateInput !== dateInIst;
+    // CS Bill # / Sale Date cascade dirty-check — independent of the
+    // inline editor's open/closed state. The operator may have edited the
+    // values, hit the inline confirm (which collapses the inline row), and
+    // then clicked the bottom Save; we still need to apply those edits.
+    // We always re-derive dirty-ness by comparing the input state to the
+    // sale's current values.
+    const trimmedBill = csBillInput.trim();
+    const parsedBill = trimmedBill === "" ? NaN : parseInt(trimmedBill, 10);
+    const billChanged = trimmedBill !== "" && parsedBill !== sale.coldStorageBillNumber;
+    const dateInIst = sale.soldAt
+      ? new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(sale.soldAt))
+      : "";
+    const dateChanged = csBillDateInput !== "" && csBillDateInput !== dateInIst;
 
-      if (billChanged || dateChanged) {
-        // Validate bill # client-side; the server re-validates but we
-        // surface obvious errors immediately.
-        if (trimmedBill !== "" && (!Number.isFinite(parsedBill) || parsedBill <= 0)) {
-          toast({ title: t("error"), description: t("csBillNumberInvalid"), variant: "destructive" });
-          return;
-        }
-        if (csBillDateInput !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(csBillDateInput)) {
-          toast({ title: t("error"), description: t("csBillDateInvalid"), variant: "destructive" });
-          return;
-        }
+    let csBillApplied = false;
+    if (billChanged || dateChanged) {
+      // Cascade runs FIRST so a duplicate-bill or bad-date error blocks
+      // the rest of the save — partial updates would be confusing and
+      // hard to undo.
+      if (trimmedBill !== "" && (!Number.isFinite(parsedBill) || parsedBill <= 0)) {
+        toast({ title: t("error"), description: t("csBillNumberInvalid"), variant: "destructive" });
+        return;
+      }
+      if (csBillDateInput !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(csBillDateInput)) {
+        toast({ title: t("error"), description: t("csBillDateInvalid"), variant: "destructive" });
+        return;
+      }
 
-        try {
-          await updateCsBillMutation.mutateAsync({
-            oldBillNumber: sale.coldStorageBillNumber ?? null,
-            oldYear: sale.saleYear ?? new Date(sale.soldAt).getFullYear(),
-            newBillNumber: billChanged ? parsedBill : undefined,
-            newSoldAt: dateChanged ? csBillDateInput : undefined,
-            saleId: sale.id,
-          });
-          toast({ title: t("success"), description: t("csBillUpdated"), variant: "success" });
-          // Cache invalidation runs in the mutation's onSuccess handler.
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : t("failedToUpdateSale");
-          toast({ title: t("error"), description: message, variant: "destructive" });
-          return; // Abort the rest of the save.
-        }
+      try {
+        await updateCsBillMutation.mutateAsync({
+          oldBillNumber: sale.coldStorageBillNumber ?? null,
+          oldYear: sale.saleYear ?? new Date(sale.soldAt).getFullYear(),
+          newBillNumber: billChanged ? parsedBill : undefined,
+          newSoldAt: dateChanged ? csBillDateInput : undefined,
+          saleId: sale.id,
+        });
+        csBillApplied = true;
+        // Cache invalidation runs in the mutation's onSuccess handler.
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : t("failedToUpdateSale");
+        toast({ title: t("error"), description: message, variant: "destructive" });
+        return; // Abort the rest of the save.
       }
     }
 
@@ -551,6 +553,14 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     }
 
     if (Object.keys(updates).length === 0) {
+      // CS-only edit: the cascade already succeeded above, so this is a
+      // genuine save (not a no-op). Surface the success toast and close
+      // the dialog the same way per-sale updateMutation.onSuccess does.
+      if (csBillApplied) {
+        toast({ title: t("success"), description: t("csBillUpdated"), variant: "success" });
+        onOpenChange(false);
+        return;
+      }
       toast({ description: t("noChanges") });
       return;
     }
@@ -585,13 +595,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                   <div className="flex items-center gap-4 flex-wrap">
                     <div>
                       <span className="text-muted-foreground">{t("csBillNumber")}:</span>{" "}
-                      <span className="font-medium" data-testid="text-edit-cs-bill-number">
+                      <span className="font-medium" data-testid="text-cs-bill-number">
                         {sale.coldStorageBillNumber ?? "—"}
                       </span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">{t("saleDate")}:</span>{" "}
-                      <span className="font-medium" data-testid="text-edit-cs-bill-date">
+                      <span className="font-medium" data-testid="text-cs-bill-date">
                         {sale.soldAt
                           ? format(new Date(sale.soldAt), "dd/MM/yyyy")
                           : "—"}
@@ -644,15 +654,25 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     </div>
                   </div>
                   {csBillSiblings.length >= 2 && (
-                    <p
-                      className="text-xs text-amber-700 dark:text-amber-400"
+                    <div
+                      className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5"
                       data-testid="text-cs-bill-cascade-warning"
                     >
-                      {t("csBillCoversNSales").replace(
-                        "{n}",
-                        String(csBillSiblings.length),
-                      )}
-                    </p>
+                      <p>
+                        {t("csBillCoversNSales").replace(
+                          "{n}",
+                          String(csBillSiblings.length),
+                        )}
+                      </p>
+                      <p
+                        className="font-medium"
+                        data-testid="text-cs-bill-cascade-receipts"
+                      >
+                        {csBillSiblings
+                          .map((sibling) => `#${sibling.lotNo}`)
+                          .join(", ")}
+                      </p>
+                    </div>
                   )}
                   <div className="flex justify-end gap-1">
                     <Button

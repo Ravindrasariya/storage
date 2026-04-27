@@ -1917,14 +1917,13 @@ export async function registerRoutes(
   //   the row directly).
   // Body:
   //   { newBillNumber?, newSoldAt? "YYYY-MM-DD", saleId? }
+  // Accept empty {} as a no-op (per task spec) — when neither field is
+  // provided we short-circuit and return a 200 with zero rows updated.
   const updateCsBillSchema = z.object({
     newBillNumber: z.number().int().positive().optional(),
     newSoldAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     saleId: z.string().optional(),
-  }).refine(
-    (d) => d.newBillNumber !== undefined || d.newSoldAt !== undefined,
-    { message: "Provide newBillNumber or newSoldAt" },
-  );
+  });
 
   app.patch("/api/sales-history/cs-bill/:billNumber", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
@@ -1951,6 +1950,14 @@ export async function registerRoutes(
       }
 
       const parsed = updateCsBillSchema.parse(req.body);
+
+      // Empty body → no-op (per task spec). Return a 200 with an empty
+      // result so the client can call this endpoint optimistically without
+      // pre-filtering "did anything actually change".
+      if (parsed.newBillNumber === undefined && parsed.newSoldAt === undefined) {
+        return res.json({ updatedCount: 0, affectedSaleIds: [], effectiveBillNumber: oldBillNumber ?? null });
+      }
+
       if (oldBillNumber == null && !parsed.saleId) {
         return res.status(400).json({ error: "saleId required for first-time CS bill # assignment" });
       }
@@ -1993,11 +2000,9 @@ export async function registerRoutes(
         const field = path === "newBillNumber" || path === "newSoldAt"
           ? path
           : undefined;
-        const fallbackField = field
-          ?? (first?.message?.includes("Provide newBillNumber") ? "newBillNumber" : undefined);
         return res.status(400).json({
           error: first?.message || "Invalid update data",
-          field: fallbackField,
+          field,
           details: error.errors,
         });
       }
