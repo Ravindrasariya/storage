@@ -372,12 +372,17 @@ export function MasterNikasiDialog({
 
   const rowTotals = rows.map((r) => {
     const exitBags = Number(r.exitBags) || 0;
-    // soldBags defaults to exitBags when blank so an operator who only
-    // fills "Exit Bags" still sees correct charges before any keystroke
-    // in the sold cell. The auto-default in updateRow keeps this in
-    // sync once exit changes.
-    const soldBagsRaw = Number(r.soldBags);
-    const soldBags = Number.isFinite(soldBagsRaw) && soldBagsRaw > 0 ? soldBagsRaw : exitBags;
+    // soldBags defaults to exitBags ONLY when the cell is truly blank
+    // or unparseable, so an operator who only fills "Exit Bags" still
+    // sees correct charges before any keystroke in the sold cell. An
+    // explicit non-positive entry (0, -1) is invalid: we surface it by
+    // billing on 0 here, and the row is also flagged red and rejected
+    // by `validRowCount` / submit. Do NOT silently coerce 0/-1 → exit.
+    const soldStr = r.soldBags;
+    const soldBagsRaw = Number(soldStr);
+    const soldBags = soldStr === "" || !Number.isFinite(soldBagsRaw)
+      ? exitBags
+      : (soldBagsRaw > 0 ? soldBagsRaw : 0);
     const lwc = resolveLot(r.lotNo, r.marka);
     const base = calcBaseCharge(lwc, soldBags);
     const kata = Number(r.kataCharges) || 0;
@@ -439,12 +444,23 @@ export function MasterNikasiDialog({
         const lwc = resolveLot(r.lotNo, r.marka);
         if (!lwc) throw new Error(`No lot matches Receipt ${r.lotNo} / Marka ${r.marka}`);
 
-        // Sold defaults to exit when blank (matches the live-totals
-        // fallback). The auto-bump in updateExitBags normally keeps the
-        // soldBags input populated, but a row whose exit was filled
-        // before this code path was deployed could still be blank.
-        const soldRaw = Number(r.soldBags);
-        const sold = Number.isFinite(soldRaw) && soldRaw > 0 ? soldRaw : bags;
+        // Sold defaults to exit ONLY when the cell is truly blank (the
+        // auto-bump in updateExitBags normally keeps it populated, but
+        // a row whose exit was filled before this code path was
+        // deployed could still be blank). An explicit non-positive
+        // entry (0, -1) is invalid and must be rejected here, NOT
+        // silently coerced to exitBags.
+        const soldStr = r.soldBags;
+        let sold: number;
+        if (soldStr === "") {
+          sold = bags;
+        } else {
+          const soldNum = Number(soldStr);
+          if (!Number.isFinite(soldNum) || soldNum <= 0) {
+            throw new Error(`Lot ${lwc.lot.lotNo}: sold bags must be a positive integer`);
+          }
+          sold = soldNum;
+        }
         if (sold < bags) {
           throw new Error(`Lot ${lwc.lot.lotNo}: sold bags (${sold}) cannot be less than exit bags (${bags})`);
         }
@@ -545,9 +561,18 @@ export function MasterNikasiDialog({
     const lwc = resolveLot(r.lotNo, r.marka);
     if (!lwc) return false;
     if (bags > lwc.lot.remainingSize) return false;
-    // Sold defaults to exit when blank — same fallback as rowTotals.
-    const soldRaw = Number(r.soldBags);
-    const sold = Number.isFinite(soldRaw) && soldRaw > 0 ? soldRaw : bags;
+    // Sold defaults to exit ONLY when blank. An explicit non-positive
+    // entry (0, -1) keeps the row invalid — never silently coerce it
+    // to exitBags. This mirrors the submit-time validation.
+    const soldStr = r.soldBags;
+    let sold: number;
+    if (soldStr === "") {
+      sold = bags;
+    } else {
+      const soldNum = Number(soldStr);
+      if (!Number.isFinite(soldNum) || soldNum <= 0) return false;
+      sold = soldNum;
+    }
     if (sold < bags) return false;
     if (sold > lwc.lot.remainingSize) return false;
     return true;
