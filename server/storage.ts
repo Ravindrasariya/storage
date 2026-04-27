@@ -3199,6 +3199,44 @@ export class DatabaseStorage implements IStorage {
         .set(updates)
         .where(inArray(salesHistory.id, targetIds));
 
+      // Audit trail: write one sale_edit_history row per affected sale for
+      // each field that actually changed. Mirrors the per-field history
+      // writes done by the main sales-history PATCH route so the Edit
+      // History panel surfaces CS Bill # / Sale Date edits the same way
+      // it surfaces every other editable field. Old/new values are
+      // serialized as plain strings (bill # → integer, soldAt → ISO
+      // timestamp); the EditSaleDialog formatter renders them.
+      const newBillStr = opts.newBillNumber != null ? String(opts.newBillNumber) : null;
+      const newSoldAtStr = opts.newSoldAt != null ? opts.newSoldAt.toISOString() : null;
+      for (const row of targetRows) {
+        if (opts.newBillNumber != null) {
+          const oldBillStr = row.coldStorageBillNumber != null ? String(row.coldStorageBillNumber) : null;
+          if (oldBillStr !== newBillStr) {
+            await tx.insert(saleEditHistory).values({
+              id: randomUUID(),
+              saleId: row.id,
+              fieldChanged: "coldStorageBillNumber",
+              oldValue: oldBillStr,
+              newValue: newBillStr,
+            });
+          }
+        }
+        if (opts.newSoldAt != null) {
+          const oldSoldAtIso = row.soldAt instanceof Date
+            ? row.soldAt.toISOString()
+            : new Date(row.soldAt as unknown as string).toISOString();
+          if (oldSoldAtIso !== newSoldAtStr) {
+            await tx.insert(saleEditHistory).values({
+              id: randomUUID(),
+              saleId: row.id,
+              fieldChanged: "soldAt",
+              oldValue: oldSoldAtIso,
+              newValue: newSoldAtStr,
+            });
+          }
+        }
+      }
+
       return {
         updatedCount: targetRows.length,
         affectedSaleIds: targetIds,

@@ -184,6 +184,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       extraHammali: t("extraHammaliPerBag"),
       gradingCharges: t("totalGradingCharges"),
       coldStorageCharge: t("totalColdStorageCharges"),
+      coldStorageBillNumber: t("csBillNumber"),
+      soldAt: t("saleDate"),
     };
     return labels[field] || field;
   };
@@ -200,6 +202,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
         field === "coldCharge" || field === "hammali" || field === "kataCharges" || 
         field === "extraHammali" || field === "gradingCharges" || field === "coldStorageCharge") {
       return `₹${formatCurrency(parseFloat(value))}`;
+    }
+    if (field === "soldAt") {
+      // sale_edit_history stores soldAt as an ISO timestamp; render as
+      // dd/MM/yyyy to match the rest of the dialog. Server anchors the
+      // date at IST noon so a local-tz format still hits the right day.
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? value : format(parsed, "dd/MM/yyyy");
     }
     return value;
   };
