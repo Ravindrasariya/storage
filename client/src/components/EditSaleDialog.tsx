@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
-import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import type { SalesHistory, SaleEditHistory } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
@@ -412,12 +412,14 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   });
 
   // Internal flag the confirm-clear AlertDialog flips on confirmation
-  // so the next handleSave call skips re-prompting. Stored in a ref-like
-  // local closure isn't viable (state updates don't observe across
-  // event-handler invocations) — we just gate the prompt on this flag.
+  // so a *fresh* Save click after the operator already confirmed once
+  // skips re-prompting. The AlertDialog's own confirm handler does NOT
+  // rely on this flag — it calls handleSave({ confirmedClear: true })
+  // directly to sidestep the stale-closure / batching race that used
+  // to surface the warning twice (Task #261).
   const [csBillClearConfirmed, setCsBillClearConfirmed] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = async (opts: { confirmedClear?: boolean } = {}) => {
     if (!sale) return;
 
     // CS Bill # / Sale Date dirty-check is independent of the inline
@@ -450,10 +452,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     }
 
     // Clear-to-NULL needs an explicit operator confirmation (cascade
-    // can affect sibling sales in a Master Nikasi batch). We open the
-    // AlertDialog and bail; the AlertDialog's confirm handler flips
-    // csBillClearConfirmed and re-invokes handleSave.
-    if (isClearBill && !csBillClearConfirmed) {
+    // can affect sibling sales in a Master Nikasi batch). Either the
+    // AlertDialog's confirm handler just invoked us with
+    // { confirmedClear: true }, OR a previous Save flipped the
+    // csBillClearConfirmed flag. Otherwise open the AlertDialog and
+    // bail.
+    if (isClearBill && !opts.confirmedClear && !csBillClearConfirmed) {
       setShowClearCsBillConfirm(true);
       return;
     }
@@ -805,6 +809,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       </p>
                     </div>
                   )}
+                  {/* Task #261 — only Cancel here. The right-tick was
+                      misleading: it just collapsed the editor without
+                      actually persisting the change (the dialog's main
+                      Save button is the single source of truth). */}
                   <div className="flex justify-end gap-1">
                     <Button
                       type="button"
@@ -834,17 +842,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       data-testid="button-cancel-cs-bill-edit"
                     >
                       {t("cancel")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setCsBillEditing(false)}
-                      title={t("save")}
-                      data-testid="button-confirm-cs-bill-edit"
-                    >
-                      <Check className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -1280,7 +1277,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
               {t("cancel")}
             </Button>
             <Button
-              onClick={handleSave}
+              onClick={() => { void handleSave(); }}
               disabled={updateMutation.isPending || updateCsBillMutation.isPending}
               data-testid="button-save-edit"
             >
@@ -1357,12 +1354,14 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
             <AlertDialogCancel data-testid="button-cancel-clear-cs-bill">{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
+                // Task #261 — pass confirmedClear directly instead of
+                // relying on a setState + setTimeout dance. The earlier
+                // approach captured the previous render's handleSave
+                // (whose closure still saw csBillClearConfirmed=false)
+                // and re-opened the same warning a second time.
                 setShowClearCsBillConfirm(false);
                 setCsBillClearConfirmed(true);
-                // Re-invoke save now that confirmation is recorded.
-                // setState batches before the next event loop tick, so
-                // queue the call to ensure the flag is observed.
-                setTimeout(() => { void handleSave(); }, 0);
+                void handleSave({ confirmedClear: true });
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-clear-cs-bill"
