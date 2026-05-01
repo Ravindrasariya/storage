@@ -1220,6 +1220,13 @@ export async function registerRoutes(
   });
 
   app.post("/api/lots/:id/partial-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    // Hoisted out of the try so the catch block can revert a successful
+    // base-cold-charges CAS claim if a downstream step throws (e.g. a
+    // duplicate CS bill #). Without revert, a winning CAS that then
+    // failed would strand lots.baseColdChargesBilled = 1 with no sale
+    // backing the charge, causing future sales to under-bill base.
+    let casClaimedForRevert = false;
+    let casClaimedLotId: string | null = null;
     try {
       const coldStorageId = getColdStorageId(req);
       const lot = await storage.getLot(req.params.id);
@@ -1353,15 +1360,43 @@ export async function registerRoutes(
       const coldChargeRate = customColdCharge !== undefined ? customColdCharge : (farmerCustomColdCharge ?? defaultColdCharge);
       const rate = coldChargeRate + hammaliRate;
       
-      // When chargeBasis is "totalRemaining", charge for all remaining bags (before this sale)
-      const chargeQuantity = chargeBasis === "totalRemaining" ? lot.remainingSize : quantitySold;
-      
-      // Calculate storage charge based on effective charge unit
-      // If baseColdChargesBilled is already set, skip base charges (only extras apply)
+      // Race-safe base-charge claim. When the operator picked "All Remaining
+      // Bags" (chargeBasis === "totalRemaining") we attempt to atomically
+      // flip lots.baseColdChargesBilled from 0 -> 1 BEFORE computing the
+      // storage charge. If the CAS succeeds we won the race and bill base
+      // for the lot's remaining bags; if it fails (a concurrent partial-sale
+      // or Master Nikasi row already flipped it) we downgrade silently to
+      // "actual" basis so this sale bills 0 base — matching the existing
+      // behaviour for any sale that runs after base has already been billed.
+      // We track casClaimed so we can revert (release) the flag if a
+      // downstream failure (e.g. duplicate CS bill #) aborts this sale —
+      // otherwise the flag would be stuck at 1 with no sale row to back it.
+      let baseAlreadyBilled = lot.baseColdChargesBilled === 1;
+      let effectiveChargeBasis: "actual" | "totalRemaining" =
+        chargeBasis === "totalRemaining" && !baseAlreadyBilled ? "totalRemaining" : "actual";
+      if (chargeBasis === "totalRemaining" && !baseAlreadyBilled) {
+        const claimed = await storage.claimBaseColdCharges(lot.id);
+        if (claimed) {
+          casClaimedForRevert = true;
+          casClaimedLotId = lot.id;
+        } else {
+          effectiveChargeBasis = "actual";
+          baseAlreadyBilled = true;
+        }
+      }
+
+      // When chargeBasis is "totalRemaining" (and we won the CAS), charge
+      // for all remaining bags before this sale; otherwise charge only for
+      // the bags being sold this row.
+      const chargeQuantity = effectiveChargeBasis === "totalRemaining" ? lot.remainingSize : quantitySold;
+
+      // Calculate storage charge based on effective charge unit.
+      // If base is already billed (flag was 1 on read OR our CAS lost the
+      // race), skip base charges (only extras apply).
       // For quintal mode without netWeight: coldCharge=0, hammali per bag (no bag-mode fallback)
       let storageCharge: number;
       let baseHammaliAmount: number;
-      if (lot.baseColdChargesBilled === 1) {
+      if (baseAlreadyBilled) {
         storageCharge = 0;
         baseHammaliAmount = 0;
       } else if (effectiveChargeUnit === "quintal") {
@@ -1403,10 +1438,10 @@ export async function registerRoutes(
         updateData.upForSale = 0;
       }
       
-      // Set baseColdChargesBilled flag when using totalRemaining charge basis (only if not already set)
-      if (chargeBasis === "totalRemaining" && lot.baseColdChargesBilled !== 1) {
-        updateData.baseColdChargesBilled = 1;
-      }
+      // baseColdChargesBilled is already flipped (or skipped) by the
+      // claimBaseColdCharges CAS above; do not re-set it here. Doing so
+      // would defeat the race-safety guarantee by reintroducing the
+      // read-then-write window.
       
       // Track paid and due charges separately (include all surcharges)
       if (paymentStatus === "paid") {
@@ -1486,8 +1521,12 @@ export async function registerRoutes(
         entryDate: lot.createdAt,
         saleYear: saleDate.getFullYear(),
         soldAt: saleDate,
-        // Charge calculation context for edit dialog
-        chargeBasis: chargeBasis || "actual",
+        // Charge calculation context for edit dialog. We persist the
+        // effective basis (after the CAS race resolution) — never the
+        // raw operator-requested basis — so the edit/print views reflect
+        // what was actually billed. A loser of the CAS race is recorded
+        // as "actual" with baseChargeAmountAtSale = 0.
+        chargeBasis: effectiveChargeBasis,
         chargeUnitAtSale: effectiveChargeUnit, // Preserve effective charge unit used at sale time (company=quintal, farmer=global)
         initialNetWeightKg: lot.netWeight || null,
         baseChargeAmountAtSale: storageCharge, // Base charge (cold+hammali) before extras; if 0, base already billed
@@ -1513,6 +1552,16 @@ export async function registerRoutes(
           ? coldStorageBillNumber
           : null,
       });
+
+      // Sale row is now persisted with the correct baseChargeAmountAtSale.
+      // From here on, lots.baseColdChargesBilled = 1 has a real sale row
+      // backing it, so we MUST NOT revert the CAS even if a downstream
+      // step (createEditHistory, recompute FIFO, etc.) throws — reverting
+      // would create a flag/sale mismatch and let a later sale double-bill
+      // base. The reverse-sale path will reset the flag if this sale is
+      // ever undone (see DatabaseStorage.reverseSale).
+      casClaimedForRevert = false;
+      casClaimedLotId = null;
 
       // Auto-mode (no user-supplied number): fall back to the legacy
       // counter-bump path so the sale still gets a CS bill # assigned.
@@ -1559,6 +1608,18 @@ export async function registerRoutes(
       res.json(updatedLot);
     } catch (error) {
       console.error("Partial sale error:", error);
+      // If we won the base-cold-charges CAS but the sale failed before
+      // it was persisted, revert the flag so the next attempt (this
+      // operator's retry, or a concurrent sale) can claim base again.
+      // Best-effort: a revert failure is logged but doesn't mask the
+      // original error the operator needs to see.
+      if (casClaimedForRevert && casClaimedLotId) {
+        try {
+          await storage.releaseBaseColdCharges(casClaimedLotId);
+        } catch (revertErr) {
+          console.error("Failed to revert baseColdChargesBilled CAS after partial-sale error:", revertErr);
+        }
+      }
       // Surface duplicate-bill-# errors thrown from the atomic
       // createSalesHistory transaction as 400s with the originating
       // message ("Cold Storage Bill # X already used on dd/mm/yyyy"),

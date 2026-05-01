@@ -192,6 +192,18 @@ export interface IStorage {
   getNextEntrySequence(coldStorageId: string): Promise<number>;
   getLot(id: string): Promise<Lot | undefined>;
   updateLot(id: string, updates: Partial<Lot>): Promise<Lot | undefined>;
+  // Atomic compare-and-set on lots.baseColdChargesBilled. Returns true only
+  // when this caller flipped the flag from 0 -> 1 (i.e. won the race to bill
+  // base cold charges). Returns false when the flag was already 1 (another
+  // sale/Master-Nikasi row already billed base) or the lot is missing. Used
+  // by the partial-sale and Master Nikasi paths to prevent two concurrent
+  // "totalRemaining" submissions from double-billing the farmer.
+  claimBaseColdCharges(lotId: string): Promise<boolean>;
+  // Best-effort revert of claimBaseColdCharges (1 -> 0) used by callers
+  // that successfully claimed but then failed downstream (e.g. duplicate
+  // CS bill #) so the next attempt can re-claim. Returns true if a row was
+  // updated. Safe to call when the flag is already 0 (returns false).
+  releaseBaseColdCharges(lotId: string): Promise<boolean>;
   searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]>;
   searchLotsByLotNoAndSize(lotNoFrom: string, lotNoTo: string, size: string, coldStorageId: string): Promise<Lot[]>;
   searchLotsByFarmerName(query: string, coldStorageId: string, village?: string, contactNumber?: string): Promise<Lot[]>;
@@ -942,6 +954,52 @@ export class DatabaseStorage implements IStorage {
     
     const [result] = await db.update(lots).set(updates).where(eq(lots.id, id)).returning();
     return result;
+  }
+
+  // Atomic compare-and-set: flip baseColdChargesBilled from 0 -> 1 in a
+  // single SQL UPDATE so two concurrent "totalRemaining" submissions on the
+  // same lot cannot both observe the flag as 0 and both bill base. The
+  // winner gets `true` (proceed to bill base); the loser gets `false` (treat
+  // base as already billed and bill 0). Race-safe by construction — no row
+  // lock needed because the predicate-on-flag UPDATE is the lock.
+  async claimBaseColdCharges(lotId: string): Promise<boolean> {
+    const updated = await db.update(lots)
+      .set({ baseColdChargesBilled: 1 })
+      .where(and(eq(lots.id, lotId), eq(lots.baseColdChargesBilled, 0)))
+      .returning({ id: lots.id });
+    return updated.length > 0;
+  }
+
+  // Inverse of claimBaseColdCharges. Used by the partial-sale route to
+  // revert its own claim when a downstream step (e.g. createSalesHistory's
+  // duplicate-CS-bill# check) throws after we've already won the CAS, so a
+  // retry can re-bill base. Two layers of defence keep us from clearing a
+  // flag that legitimately belongs to a different in-flight workflow:
+  //   (1) A pre-check rejects the release whenever ANY sales_history row
+  //       for this lot already records base charges
+  //       (baseChargeAmountAtSale > 0). If such a sale exists, the flag
+  //       correctly belongs to that sale and must not be touched.
+  //       Guards against rare ABA-style interleavings where a concurrent
+  //       workflow could in principle reclaim the flag between our claim
+  //       and our release.
+  //   (2) The UPDATE itself is predicate-gated on baseColdChargesBilled=1
+  //       so a no-op call (flag already 0) is harmless.
+  async releaseBaseColdCharges(lotId: string): Promise<boolean> {
+    const existingBaseBilling = await db.select({ id: salesHistory.id })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.lotId, lotId),
+        sql`COALESCE(${salesHistory.baseChargeAmountAtSale}, 0) > 0`,
+      ))
+      .limit(1);
+    if (existingBaseBilling.length > 0) {
+      return false;
+    }
+    const updated = await db.update(lots)
+      .set({ baseColdChargesBilled: 0 })
+      .where(and(eq(lots.id, lotId), eq(lots.baseColdChargesBilled, 1)))
+      .returning({ id: lots.id });
+    return updated.length > 0;
   }
 
   async searchLots(type: "phone", query: string, coldStorageId: string): Promise<Lot[]> {
@@ -2572,22 +2630,40 @@ export class DatabaseStorage implements IStorage {
 
         // Per-row charge basis (mirrors partial-sale path). When
         // "totalRemaining", we bill base cold + hammali against the
-        // lot's full remainingSize before this row's deduction and
-        // flip baseColdChargesBilled to 1 below so subsequent rows /
-        // sales don't double-bill base. Defensive guard: if the lot's
-        // flag is already 1, force basis back to "actual" — the
-        // calculator zeroes base anyway, but persisting a misleading
-        // "totalRemaining" basis would break edit/print logic.
+        // lot's full remainingSize before this row's deduction. We use a
+        // race-safe atomic compare-and-set on lots.baseColdChargesBilled
+        // (0 -> 1) here — winner bills base, loser silently downgrades
+        // to "actual" — so two concurrent submissions (this batch vs.
+        // another partial-sale or another Master Nikasi row hitting the
+        // same lot) cannot double-bill the farmer. Inside this txn the
+        // CAS is also what enforces the per-batch invariant: once an
+        // earlier row in this same loop wins, the second row's CAS sees
+        // the in-tx flag = 1 and downgrades on the spot. No revert path
+        // is needed because the surrounding tx auto-rolls back on error.
         const requestedBasis = row.chargeBasis ?? "actual";
-        const chargeBasis: "actual" | "totalRemaining" =
+        let chargeBasis: "actual" | "totalRemaining" =
           lot.baseColdChargesBilled === 1 ? "actual" : requestedBasis;
+        let baseAlreadyBilled = lot.baseColdChargesBilled === 1;
+        if (chargeBasis === "totalRemaining" && !baseAlreadyBilled) {
+          const cas = await tx.update(lots)
+            .set({ baseColdChargesBilled: 1 })
+            .where(and(
+              eq(lots.id, lot.id),
+              eq(lots.baseColdChargesBilled, 0),
+            ))
+            .returning({ id: lots.id });
+          if (cas.length === 0) {
+            chargeBasis = "actual";
+            baseAlreadyBilled = true;
+          }
+        }
         const chargeQuantity = chargeBasis === "totalRemaining"
           ? lot.remainingSize
           : soldBags;
 
         let storageCharge = 0;
         let baseHammaliAmount = 0;
-        if (lot.baseColdChargesBilled === 1) {
+        if (baseAlreadyBilled) {
           storageCharge = 0;
           baseHammaliAmount = 0;
         } else if (effectiveChargeUnit === "quintal") {
@@ -2613,21 +2689,18 @@ export class DatabaseStorage implements IStorage {
         // below soldBags, the UPDATE affects 0 rows and we abort the txn.
         // Note we deduct soldBags (commercial) here — the chamber fill
         // decrement below uses exitBags (physical).
-        // Atomic update: stock decrement + due-charge accrual + (when
-        // this row used "totalRemaining") flip baseColdChargesBilled
-        // to 1 so any later row in the same batch or any later sale
-        // sees base as already-billed and zeroes its own base charge.
-        // Folding the flag flip into this UPDATE keeps the single
-        // round-trip and the "insufficient remaining bags" race guard.
-        const lotUpdateSet: Record<string, unknown> = {
-          remainingSize: sql`${lots.remainingSize} - ${soldBags}`,
-          totalDueCharge: sql`COALESCE(${lots.totalDueCharge}, 0) + ${totalChargeForLot}`,
-        };
-        if (chargeBasis === "totalRemaining" && lot.baseColdChargesBilled !== 1) {
-          lotUpdateSet.baseColdChargesBilled = 1;
-        }
+        //
+        // The baseColdChargesBilled flag flip is NOT folded into this
+        // UPDATE — it's already done above via the predicate-gated CAS
+        // (lots.baseColdChargesBilled = 0 -> 1) so two concurrent
+        // submissions can't both win. Keeping the two updates separate
+        // is what makes the race-safety provable: the flag-flip's
+        // success is independent of the stock-decrement's success.
         const updatedLotRows = await tx.update(lots)
-          .set(lotUpdateSet)
+          .set({
+            remainingSize: sql`${lots.remainingSize} - ${soldBags}`,
+            totalDueCharge: sql`COALESCE(${lots.totalDueCharge}, 0) + ${totalChargeForLot}`,
+          })
           .where(and(
             eq(lots.id, lot.id),
             gte(lots.remainingSize, soldBags),
