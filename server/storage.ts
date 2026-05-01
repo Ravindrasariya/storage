@@ -1843,7 +1843,7 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
-    // Display sort for the Sales History page (Task #264):
+    // Display sort for the Sales History page (Tasks #264 + #266):
     //   1. soldAt DESC          — newest sale date at the top (existing behavior).
     //   2. createdAt DESC       — within a date, newest entered at the top.
     //                             For legacy rows the migration backfilled
@@ -1860,7 +1860,19 @@ export class DatabaseStorage implements IStorage {
     //                             chars defensively; NULLIF keeps an empty
     //                             string from blowing up the cast and the
     //                             NULLS LAST sends those to the bottom.
-    // All three keys compare absolute instants / integers, so the result is
+    //   4. (remaining_size_at_sale - quantity_sold) ASC NULLS LAST
+    //                           — Task #266: post-sale "Remaining # Bags"
+    //                             tiebreaker. Within a same-date, same-lot
+    //                             group of partial sales, the closing sale
+    //                             (0 bags remaining after) floats to the
+    //                             top. Reuses the exact formula the UI
+    //                             "Remaining # Bags" column displays
+    //                             (client/src/pages/SalesHistory.tsx:690).
+    //                             remaining_size_at_sale was backfilled
+    //                             for every legacy row by Task #262, so
+    //                             this expression is non-NULL on real
+    //                             data; NULLS LAST is purely defensive.
+    // All keys compare absolute instants / integers, so the result is
     // independent of the Postgres session timezone (which is also pinned to
     // Asia/Kolkata in server/db.ts).
     const sales = await db.select()
@@ -1870,6 +1882,7 @@ export class DatabaseStorage implements IStorage {
         desc(salesHistory.soldAt),
         desc(salesHistory.createdAt),
         sql`NULLIF(regexp_replace(${salesHistory.lotNo}, '[^0-9]', '', 'g'), '')::bigint ASC NULLS LAST`,
+        sql`(${salesHistory.remainingSizeAtSale} - ${salesHistory.quantitySold}) ASC NULLS LAST`,
       );
 
     if (sales.length === 0) return [];

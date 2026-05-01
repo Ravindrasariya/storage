@@ -871,9 +871,9 @@ function FarmerPaymentTracker() {
     if (trackerFarmerLedgerId) {
       filtered = filtered.filter((s) => s.farmerLedgerId === trackerFarmerLedgerId);
     }
-    // Mirror the server's three-key sort (Task #264) so the Farmer Payment
-    // Tracker tab shows rows in the same order as the main Sales History
-    // table.
+    // Mirror the server's four-key sort (Tasks #264 + #266) so the Farmer
+    // Payment Tracker tab shows rows in the same order as the main Sales
+    // History table.
     //   1. soldAt DESC      — newest sale date first.
     //   2. createdAt DESC   — newest entered within a date first.
     //   3. lotNo (Receipt#) — numeric ASC, with a lexicographic fallback
@@ -881,6 +881,16 @@ function FarmerPaymentTracker() {
     //                          bottom). All Date math here uses .getTime()
     //                          on UTC-instant strings, so the comparator is
     //                          timezone-neutral.
+    //   4. remaining bags after this sale ASC
+    //                       — Task #266: same formula the "Remaining # Bags"
+    //                          column displays (remainingSizeAtSale -
+    //                          quantitySold). 0 (the closing sale of a lot)
+    //                          floats to the top within the group; defensive
+    //                          Infinity / 0 fallbacks send any unexpectedly
+    //                          NULL row to the bottom (matches the server's
+    //                          NULLS LAST). Task #262 backfilled the column
+    //                          for every legacy row, so the fallback is only
+    //                          a guard against future schema drift.
     return filtered.slice().sort((a, b) => {
       const soldDiff = new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime();
       if (soldDiff !== 0) return soldDiff;
@@ -892,10 +902,20 @@ function FarmerPaymentTracker() {
       const bLot = parseInt(b.lotNo, 10);
       const aIsNum = !Number.isNaN(aLot);
       const bIsNum = !Number.isNaN(bLot);
-      if (aIsNum && bIsNum) return aLot - bLot;
-      if (aIsNum) return -1; // numeric before non-numeric
-      if (bIsNum) return 1;
-      return a.lotNo.localeCompare(b.lotNo);
+      if (aIsNum && bIsNum && aLot !== bLot) return aLot - bLot;
+      if (aIsNum && !bIsNum) return -1; // numeric before non-numeric
+      if (bIsNum && !aIsNum) return 1;
+      if (!aIsNum && !bIsNum) {
+        const lotCmp = a.lotNo.localeCompare(b.lotNo);
+        if (lotCmp !== 0) return lotCmp;
+      }
+      const aRemaining = a.remainingSizeAtSale != null
+        ? a.remainingSizeAtSale - (a.quantitySold ?? 0)
+        : Number.POSITIVE_INFINITY;
+      const bRemaining = b.remainingSizeAtSale != null
+        ? b.remainingSizeAtSale - (b.quantitySold ?? 0)
+        : Number.POSITIVE_INFINITY;
+      return aRemaining - bRemaining;
     });
   }, [allSalesHistory, trackerFarmerLedgerId]);
 
