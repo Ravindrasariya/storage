@@ -349,6 +349,10 @@ const translations: Translations = {
     hi: "इस बिक्री से शीत भण्डार बिल # हटा दिया जाएगा। यदि यह बिल # अन्य बिक्रियों के साथ साझा है (मास्टर निकासी बैच), तो वे सभी एक साथ हट जाएँगी।",
   },
   yesClear: { en: "Yes, remove", hi: "हाँ, हटाएं" },
+  skipCsBillHint: {
+    en: "Optional — leave blank to skip (lot already base-billed)",
+    hi: "वैकल्पिक — खाली छोड़ें (इस लॉट का मूल शीत भण्डार बिल पहले बन चुका है)",
+  },
   saleType: { en: "Sale Type", hi: "बिक्री प्रकार" },
   year: { en: "Year", hi: "वर्ष" },
   allYears: { en: "All Years", hi: "सभी वर्ष" },

@@ -798,6 +798,20 @@ export function MasterNikasiDialog({
             {billNumberError}
           </p>
         )}
+        {/* Task #256: hint that blank input is intentional when every
+            selected lot's base CS charges were already billed earlier
+            (whole batch saves with NULL CS Bill #). */}
+        {!result &&
+          allSelectedRowsBaseBilled &&
+          !sharedColdStorageBillEdited &&
+          !billNumberError && (
+            <p
+              className="text-[11px] text-muted-foreground px-1 -mt-1"
+              data-testid="hint-mn-cs-bill-skip"
+            >
+              {t("skipCsBillHint")}
+            </p>
+          )}
 
         {/* Grid */}
         {lots.length === 0 ? (

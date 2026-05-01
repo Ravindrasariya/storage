@@ -250,6 +250,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setCsBillNumberError(null);
       setCsBillDateError(null);
       setCsBillInput(sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "");
+      // Task #256: also clear the one-shot "clear-to-null already
+      // confirmed" flag and any stale AlertDialog open state on every
+      // dialog open / sale switch — guarantees the next clear-to-null
+      // attempt always re-prompts the operator (even after a previous
+      // failed save in the same dialog instance).
+      setCsBillClearConfirmed(false);
+      setShowClearCsBillConfirm(false);
       // soldAt is an ISO string from the API; format to YYYY-MM-DD in IST
       // to match the input[type=date] expectation and avoid TZ drift.
       const soldAtDate = sale.soldAt ? new Date(sale.soldAt) : null;

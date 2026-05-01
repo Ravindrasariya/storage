@@ -535,6 +535,16 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
               {coldStorageBillError}
             </p>
           )}
+          {/* Task #256: hint that blank input on an already-base-billed
+              lot is intentional (sale will be saved with no CS Bill #). */}
+          {lot?.baseColdChargesBilled === 1 && !coldStorageBillEdited && !coldStorageBillError && (
+            <p
+              className="text-[11px] text-muted-foreground mt-1"
+              data-testid="hint-partial-cs-bill-skip"
+            >
+              {t("skipCsBillHint")}
+            </p>
+          )}
           <DialogDescription>
             {lot && `${lot.farmerName} - ${lot.lotNo}`}
           </DialogDescription>
