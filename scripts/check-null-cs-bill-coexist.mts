@@ -225,6 +225,21 @@ async function main(): Promise<void> {
   const { registerRoutes } = await import("../server/routes.ts");
   const app = express();
   app.use(express.json());
+
+  // Request counter for /assign-bill-number — used by Test 4 below to
+  // prove that the print-resolve read traffic never triggers the
+  // bill-promotion endpoint, even indirectly via some future GET-handler
+  // side effect. Mounted BEFORE registerRoutes so it observes every hit.
+  // Keyed by `${method} ${path-without-id}` so we count both billType
+  // values (coldStorage vs sales). The counter resets per test below.
+  const assignBillCallLog: { method: string; url: string }[] = [];
+  app.use((req, _res, next) => {
+    if (/\/api\/sales-history\/[^/]+\/assign-bill-number\b/.test(req.url)) {
+      assignBillCallLog.push({ method: req.method, url: req.url });
+    }
+    next();
+  });
+
   const httpServer = createServer(app);
   await registerRoutes(httpServer, app);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
@@ -499,6 +514,10 @@ async function main(): Promise<void> {
       [sale4Id, fixtures.coldStorageId, lotIds[0], TEST_YEAR, new Date(`${TEST_DATE}T12:00:00+05:30`), fixtures.farmerLedgerId],
     );
 
+    // Reset the assign-bill request counter so step (b)'s assertion
+    // measures only the print-read traffic — not any prior test.
+    assignBillCallLog.length = 0;
+
     // (b) Hit the read-side endpoint the print dialog uses to hydrate
     // the sale row. The sibling-fetch endpoint (cs-bill-batch) is
     // intentionally NOT called here because the client-side query is
@@ -513,6 +532,20 @@ async function main(): Promise<void> {
     if (!listResp.ok) {
       failures++;
       console.error(`Test 4 FAIL — sales-history GET ${listResp.status}: ${await listResp.text()}`);
+    }
+
+    // (b.1) Network-level assertion: the print-read traffic above must
+    // NOT have caused any /assign-bill-number POST. Catches a future
+    // server-side regression that adds a side effect to a GET handler
+    // (more direct than (c)'s column-state check).
+    if (assignBillCallLog.length !== 0) {
+      failures++;
+      console.error(
+        `Test 4 FAIL — print-read traffic triggered ${assignBillCallLog.length} assign-bill-number call(s): ` +
+          JSON.stringify(assignBillCallLog),
+      );
+    } else {
+      console.log("Test 4 (network): ok — no assign-bill-number POST during print-read traffic");
     }
 
     // (c) Re-read the row directly from the DB after the simulated
