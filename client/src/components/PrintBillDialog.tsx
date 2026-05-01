@@ -71,6 +71,11 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   const [isSharing, setIsSharing] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  // Holds the deferred print() timer registered after flushSync so a
+  // quick dialog-close (or an unmount) can cancel it before it fires.
+  // Without this, closing the dialog within ~100 ms of clicking Print
+  // would still pop the print window — see Task #260 architect review.
+  const printTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
@@ -132,11 +137,22 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
   // Actual cash paid = paidAmount - discountAllocated
   const actualCashPaid = Math.max(0, (sale.paidAmount || 0) - discountAllocated);
 
-  const resolveBillNumber = async (type: "deduction" | "sales"): Promise<number> => {
-    const existing = type === "deduction" ? sale.coldStorageBillNumber : sale.salesBillNumber;
-    if (existing) return existing;
-    const apiType = type === "deduction" ? "coldStorage" : "sales";
-    const response = await apiRequest("POST", `/api/sales-history/${sale.id}/assign-bill-number`, { billType: apiType });
+  const resolveBillNumber = async (type: "deduction" | "sales"): Promise<number | null> => {
+    // Deduction (CS bill) path: NEVER auto-assign on print/share. After
+    // Task #256 NULL is a deliberate "no charge to bill" value; opening
+    // the print dialog must not silently consume a sequence slot. The
+    // saved value (positive integer or null) is rendered as-is — the
+    // header line already falls back to "—" when null. The first-time
+    // assignment button (Task #249) remains the only legit caller of
+    // /assign-bill-number for the CS side.
+    if (type === "deduction") {
+      return sale.coldStorageBillNumber ?? null;
+    }
+    // Sales bill path: keep the intentional "assign at print time"
+    // behaviour — the operator explicitly prints to generate the cash
+    // bill, which is the documented sales workflow.
+    if (sale.salesBillNumber) return sale.salesBillNumber;
+    const response = await apiRequest("POST", `/api/sales-history/${sale.id}/assign-bill-number`, { billType: "sales" });
     const data = await response.json();
     invalidateSaleSideEffects(queryClient);
     queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
@@ -147,7 +163,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     setAction(selectedAction);
     setBillType(type);
 
-    let resolvedBillNumber: number;
+    let resolvedBillNumber: number | null;
     try {
       resolvedBillNumber = await resolveBillNumber(type);
     } catch (err) {
@@ -196,11 +212,16 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       setBillNumber(resolvedBillNumber);
     });
 
+    // Filename slug: a numeric bill # when present, else "blank" for the
+    // NULL-CS-bill case (only reachable on the deduction path after
+    // Task #260 — sales path always resolves to a number).
+    const billSlug = resolvedBillNumber != null ? String(resolvedBillNumber) : "blank";
+
     if (selectedAction === "share") {
       if (!printRef.current) { onOpenChange(false); return; }
       const filename = type === "deduction"
-        ? `cold-storage-deduction-bill-${resolvedBillNumber}.pdf`
-        : `sales-bill-${resolvedBillNumber}.pdf`;
+        ? `cold-storage-deduction-bill-${billSlug}.pdf`
+        : `sales-bill-${billSlug}.pdf`;
       setIsSharing(true);
       try {
         await shareReceiptAsPdf(printRef.current, filename, BILL_PRINT_STYLES);
@@ -210,12 +231,42 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
         setIsSharing(false);
         onOpenChange(false);
       }
+    } else if (selectedAction === "print") {
+      // flushSync above guarantees the receipt DOM is painted before
+      // we read printRef. The 100 ms timeout matches the prior
+      // effect-based path so any lingering layout settles before
+      // window.print() reads the document. Calling handlePrint
+      // directly here (instead of via an effect gated on billNumber)
+      // lets us print receipts whose CS bill # is intentionally NULL —
+      // see Task #260.
+      //
+      // We pass `type` explicitly to handlePrint instead of letting it
+      // read `billType` from its enclosing closure: at this point the
+      // current closure's `billType` is still its render-M value (null
+      // on first click) — only the React state has been updated to
+      // render N by flushSync. Passing the param avoids a stale-title
+      // bug in the print window.
+      //
+      // The timer id is stored in printTimerRef so the on-close effect
+      // below can cancel it if the user dismisses the dialog before
+      // the print fires.
+      printTimerRef.current = setTimeout(() => {
+        printTimerRef.current = null;
+        handlePrint(type);
+        onOpenChange(false);
+      }, 100);
     }
   };
 
-  // Reset state when dialog closes
+  // Reset state when dialog closes. Also cancel any pending print
+  // timer so quickly-dismissing the dialog never pops a stale print
+  // window (see Task #260 architect review).
   useEffect(() => {
     if (!open) {
+      if (printTimerRef.current !== null) {
+        clearTimeout(printTimerRef.current);
+        printTimerRef.current = null;
+      }
       setBillType(null);
       setBillNumber(null);
       setAction(null);
@@ -223,27 +274,32 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     }
   }, [open]);
 
-  // Auto-print once bill type is selected and bill number is ready
+  // Belt-and-braces: clear the print timer on unmount as well, in case
+  // the parent unmounts the dialog without first toggling `open`.
   useEffect(() => {
-    if (billType && billNumber !== null && action === "print") {
-      const timer = setTimeout(() => {
-        handlePrint();
-        onOpenChange(false);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [billType, billNumber, action]);
+    return () => {
+      if (printTimerRef.current !== null) {
+        clearTimeout(printTimerRef.current);
+        printTimerRef.current = null;
+      }
+    };
+  }, []);
 
-  const handlePrint = () => {
+  // `printType` is passed explicitly by the deferred caller in
+  // handleBillTypeSelect so the print-window <title> stays correct
+  // even though the enclosing closure's `billType` state is stale at
+  // the moment the timer fires (see Task #260 architect review). It
+  // defaults to the live state for any other future caller.
+  const handlePrint = (printType: "deduction" | "sales" | null = billType) => {
     if (!printRef.current) return;
-    
+
     const printContent = printRef.current.innerHTML;
-    
+
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${billType === "deduction" ? "शीत भण्डार कटौती बिल" : "विक्रय बिल"}</title>
+        <title>${printType === "deduction" ? "शीत भण्डार कटौती बिल" : "विक्रय बिल"}</title>
         <style>${BILL_PRINT_STYLES}</style>
       </head>
       <body>

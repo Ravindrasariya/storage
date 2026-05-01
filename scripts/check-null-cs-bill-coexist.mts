@@ -466,6 +466,98 @@ async function main(): Promise<void> {
         );
       }
     }
+    // ---------------------------------------------------------------------
+    // Test 4 (Task #260): Opening the print dialog on a NULL-bill sale
+    // must not promote it to a real CS Bill #. The client print path
+    // calls /api/sales-history (to hydrate the row) and conditionally
+    // /api/sales-history/cs-bill-batch (only when bill # is non-null).
+    // It must NEVER call POST /assign-bill-number for the deduction
+    // path. This test:
+    //   a) inserts a NULL-bill sale,
+    //   b) hits the read-side endpoints the print dialog uses,
+    //   c) asserts the row is still NULL, AND
+    //   d) sanity-checks that POST /assign-bill-number STILL works for
+    //      the legitimate first-time-assignment button (Task #249) — so
+    //      we confirm the endpoint isn't broken, just no longer
+    //      side-effected by print.
+    // ---------------------------------------------------------------------
+    const sale4Id = `${RUN_ID}_sale4`;
+    await pool.query(
+      `INSERT INTO sales_history (
+         id, cold_storage_id, farmer_name, village, tehsil, district, state,
+         contact_number, lot_no, lot_id, chamber_name, floor, position,
+         potato_type, bag_type, quality, original_lot_size, sale_type,
+         quantity_sold, price_per_bag, cold_storage_charge, payment_status,
+         sale_year, sold_at, cold_storage_bill_number, farmer_ledger_id, is_self_sale
+       ) VALUES (
+         $1, $2, 'Smoke Farmer', 'X', 'X', 'X', 'X',
+         '0000000000', '__lot_smoke', $3, 'C1', 0, 'P1',
+         'seed', 'seed', 'good', 100, 'partial',
+         1, 0, 0, 'due',
+         $4, $5, NULL, $6, 1
+       )`,
+      [sale4Id, fixtures.coldStorageId, lotIds[0], TEST_YEAR, new Date(`${TEST_DATE}T12:00:00+05:30`), fixtures.farmerLedgerId],
+    );
+
+    // (b) Hit the read-side endpoint the print dialog uses to hydrate
+    // the sale row. The sibling-fetch endpoint (cs-bill-batch) is
+    // intentionally NOT called here because the client-side query is
+    // gated `enabled: open && csBillNumber != null` — for a NULL-bill
+    // sale the print path issues no batch fetch at all. The only
+    // network call we exercise here is the sales-history GET; if a
+    // regression slips a write side-effect into either GET handler,
+    // step (c) will detect it as a column promotion.
+    const listResp = await fetch(`${baseUrl}/api/sales-history`, {
+      headers: authHeaders,
+    });
+    if (!listResp.ok) {
+      failures++;
+      console.error(`Test 4 FAIL — sales-history GET ${listResp.status}: ${await listResp.text()}`);
+    }
+
+    // (c) Re-read the row directly from the DB after the simulated
+    // print-resolve traffic above. If a regression silently re-adds a
+    // server-side promote on print, this column will turn positive.
+    const sale4Bill = await getSaleBillNumber(sale4Id);
+    if (sale4Bill !== null) {
+      failures++;
+      console.error(
+        `Test 4 FAIL — print-resolve simulation promoted NULL → ${sale4Bill} ` +
+          `(expected NULL; the deduction print path must not call assign-bill-number)`,
+      );
+    } else {
+      console.log("Test 4 (print resolve preserves NULL): ok — row unchanged after read-side traffic");
+    }
+
+    // (d) Sanity counter-check: the assign-bill-number endpoint itself
+    // still works when called explicitly (the first-time-assignment
+    // button — Task #249 — depends on it). If this regresses, the
+    // endpoint has been broken or removed.
+    const assignResp = await fetch(
+      `${baseUrl}/api/sales-history/${sale4Id}/assign-bill-number`,
+      {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ billType: "coldStorage" }),
+      },
+    );
+    if (!assignResp.ok) {
+      failures++;
+      console.error(`Test 4d FAIL — assign-bill-number HTTP ${assignResp.status}: ${await assignResp.text()}`);
+    } else {
+      const assigned = (await assignResp.json()) as { billNumber: number };
+      const sale4BillAfter = await getSaleBillNumber(sale4Id);
+      if (typeof assigned.billNumber === "number" && sale4BillAfter === assigned.billNumber) {
+        console.log(
+          `Test 4d (explicit assign still works for Task #249 button): ok — promoted to #${assigned.billNumber}`,
+        );
+      } else {
+        failures++;
+        console.error(
+          `Test 4d FAIL — explicit assign returned ${JSON.stringify(assigned)} but db=${sale4BillAfter}`,
+        );
+      }
+    }
   } finally {
     await wipeByPrefix();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
