@@ -54,8 +54,14 @@ interface RowState {
   // be raised up to the lot's remainingSize (sold > exited means the
   // unexited-but-sold portion stays in the chamber and can be physically
   // exited later via the per-sale Exit dialog). Charges (base cold,
-  // hammali, extra hammali) are computed on soldBags.
+  // hammali, extra hammali) are computed on soldBags — unless the row
+  // picks "totalRemaining" charge basis, in which case base cold +
+  // hammali bill against the lot's full remainingSize.
   soldBags: string;
+  // Mirrors the partial-sale dialog: "actual" (default) bills base on
+  // soldBags, "totalRemaining" bills base on lot.remainingSize and
+  // flips the lot's baseColdChargesBilled flag on submit.
+  chargeBasis: "actual" | "totalRemaining";
   kataCharges: string;
   extraHammaliPerBag: string;
   gradingCharges: string;
@@ -106,6 +112,7 @@ const newRow = (lotNo = "", marka = ""): RowState => ({
   marka,
   exitBags: "",
   soldBags: "",
+  chargeBasis: "actual",
   kataCharges: "",
   extraHammaliPerBag: "",
   gradingCharges: "",
@@ -312,13 +319,21 @@ export function MasterNikasiDialog({
   );
 
   // Per-row live computation of base cold charge (mirrors server logic).
-  // `bags` is the *commercial* quantity (soldBags), not the physically
-  // exited count — base cold + hammali always scale with the sale.
-  const calcBaseCharge = (lwc: LotWithCharges | undefined, bags: number): number => {
+  // `bags` is the *commercial* quantity (soldBags) used when basis is
+  // "actual"; when basis is "totalRemaining" we substitute the lot's
+  // full remainingSize so the operator sees the same bhada the server
+  // will bill. Lot-level baseColdChargesBilled === 1 always wins and
+  // zeroes the charge regardless of basis.
+  const calcBaseCharge = (
+    lwc: LotWithCharges | undefined,
+    bags: number,
+    basis: "actual" | "totalRemaining" = "actual",
+  ): number => {
     if (!coldStorage || !lwc) return 0;
     const lot = lwc.lot;
     if (lot.baseColdChargesBilled === 1) return 0;
-    if (!bags || bags <= 0) return 0;
+    const chargeBags = basis === "totalRemaining" ? lot.remainingSize : bags;
+    if (!chargeBags || chargeBags <= 0) return 0;
     const useWafer = lot.bagType === "wafer";
     const gCold = useWafer ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
     const gHam = useWafer ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
@@ -327,11 +342,11 @@ export function MasterNikasiDialog({
     const effUnit = isCompany ? "quintal" : (coldStorage.chargeUnit || "bag");
     if (effUnit === "quintal") {
       const cQuintal = (lot.netWeight && lot.size > 0)
-        ? (lot.netWeight * bags * cRate) / (lot.size * 100)
+        ? (lot.netWeight * chargeBags * cRate) / (lot.size * 100)
         : 0;
-      return cQuintal + hRate * bags;
+      return cQuintal + hRate * chargeBags;
     }
-    return bags * (cRate + hRate);
+    return chargeBags * (cRate + hRate);
   };
 
   const rowTotals = rows.map((r) => {

@@ -1594,6 +1594,12 @@ export async function registerRoutes(
       // enforces the soldBags >= exitBags && soldBags <= remainingSize
       // invariants per row.
       soldBags: z.number().int().min(1).optional(),
+      // Per-row charge basis (mirrors the partial-sale dialog). When
+      // "totalRemaining", base cold + hammali are billed against the
+      // lot's full remaining bags before this sale and the lot's
+      // baseColdChargesBilled flag is flipped inside the same
+      // transaction. Defaults to "actual" (legacy MN behaviour).
+      chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
       kataCharges: z.number().min(0).default(0),
       extraHammaliPerBag: z.number().min(0).default(0),
       gradingCharges: z.number().min(0).default(0),
@@ -1642,6 +1648,7 @@ export async function registerRoutes(
           exitBags: r.exitBags,
           // Defaults to exitBags inside createMasterNikasi when undefined.
           soldBags: r.soldBags,
+          chargeBasis: r.chargeBasis,
           kataCharges: r.kataCharges,
           extraHammaliPerBag: r.extraHammaliPerBag,
           gradingCharges: r.gradingCharges,

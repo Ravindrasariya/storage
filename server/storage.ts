@@ -2317,6 +2317,13 @@ export class DatabaseStorage implements IStorage {
       // exitBags. Sold-but-not-exited bags stay in the chamber and can
       // be physically exited later via the per-sale Exit dialog.
       soldBags?: number;
+      // Per-row charge basis (mirrors the partial-sale dialog). When
+      // "totalRemaining", base cold + hammali bill against the lot's
+      // full remainingSize (before this row's deduction) and the lot's
+      // baseColdChargesBilled flag is flipped to 1 in the same tx.
+      // Defaults to "actual". When the lot's flag is already 1, this
+      // is forced back to "actual" defensively.
+      chargeBasis?: "actual" | "totalRemaining";
       kataCharges: number;
       extraHammaliPerBag: number;
       gradingCharges: number;
@@ -2563,14 +2570,20 @@ export class DatabaseStorage implements IStorage {
         const coldChargeRate = farmerRecord.customColdChargeRate ?? defaultColdCharge;
         const hammaliRate = farmerRecord.customHammaliRate ?? defaultHammali;
 
-        // Master Nikasi never uses the "totalRemaining" basis: each row
-        // bills only for what it actually sold (soldBags). The caller
-        // can split a lot across several MN rows without us
-        // pre-charging the unsold remainder, and we never flip
-        // baseColdChargesBilled here — that flag is reserved for the
-        // legacy partial-sale path only.
-        const chargeBasis = "actual";
-        const chargeQuantity = soldBags;
+        // Per-row charge basis (mirrors partial-sale path). When
+        // "totalRemaining", we bill base cold + hammali against the
+        // lot's full remainingSize before this row's deduction and
+        // flip baseColdChargesBilled to 1 below so subsequent rows /
+        // sales don't double-bill base. Defensive guard: if the lot's
+        // flag is already 1, force basis back to "actual" — the
+        // calculator zeroes base anyway, but persisting a misleading
+        // "totalRemaining" basis would break edit/print logic.
+        const requestedBasis = row.chargeBasis ?? "actual";
+        const chargeBasis: "actual" | "totalRemaining" =
+          lot.baseColdChargesBilled === 1 ? "actual" : requestedBasis;
+        const chargeQuantity = chargeBasis === "totalRemaining"
+          ? lot.remainingSize
+          : soldBags;
 
         let storageCharge = 0;
         let baseHammaliAmount = 0;
@@ -2600,11 +2613,21 @@ export class DatabaseStorage implements IStorage {
         // below soldBags, the UPDATE affects 0 rows and we abort the txn.
         // Note we deduct soldBags (commercial) here — the chamber fill
         // decrement below uses exitBags (physical).
+        // Atomic update: stock decrement + due-charge accrual + (when
+        // this row used "totalRemaining") flip baseColdChargesBilled
+        // to 1 so any later row in the same batch or any later sale
+        // sees base as already-billed and zeroes its own base charge.
+        // Folding the flag flip into this UPDATE keeps the single
+        // round-trip and the "insufficient remaining bags" race guard.
+        const lotUpdateSet: Record<string, unknown> = {
+          remainingSize: sql`${lots.remainingSize} - ${soldBags}`,
+          totalDueCharge: sql`COALESCE(${lots.totalDueCharge}, 0) + ${totalChargeForLot}`,
+        };
+        if (chargeBasis === "totalRemaining" && lot.baseColdChargesBilled !== 1) {
+          lotUpdateSet.baseColdChargesBilled = 1;
+        }
         const updatedLotRows = await tx.update(lots)
-          .set({
-            remainingSize: sql`${lots.remainingSize} - ${soldBags}`,
-            totalDueCharge: sql`COALESCE(${lots.totalDueCharge}, 0) + ${totalChargeForLot}`,
-          })
+          .set(lotUpdateSet)
           .where(and(
             eq(lots.id, lot.id),
             gte(lots.remainingSize, soldBags),
