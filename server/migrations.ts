@@ -671,6 +671,44 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // Task #262 — backfill `remaining_size_at_sale` for legacy sales rows
+    // created before the column was added to the schema. Without this, the
+    // new "Remaining # Bags" column on the Sales History table would render
+    // "—" for every historical sale on production databases (e.g. the
+    // Hostinger VPS) because only sales created AFTER the column existed
+    // have it populated by createSalesHistory.
+    //
+    // For every NULL row, set remaining_size_at_sale to:
+    //   original_lot_size − Σ quantity_sold of all PRIOR sales of the same
+    //   lot, ordered chronologically by (sold_at, id).
+    //
+    // This matches the semantics of the column ("remaining bags BEFORE this
+    // sale") so the UI's `remaining_size_at_sale - quantity_sold` formula
+    // produces the correct post-sale remaining for every historical row.
+    name: "2026-05-01_backfill_remaining_size_at_sale",
+    up: async () => {
+      await db.execute(sql`
+        UPDATE sales_history AS sh
+        SET remaining_size_at_sale = computed.remaining_before
+        FROM (
+          SELECT
+            id,
+            original_lot_size - COALESCE(
+              SUM(quantity_sold) OVER (
+                PARTITION BY lot_id
+                ORDER BY sold_at, id
+                ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+              ),
+              0
+            ) AS remaining_before
+          FROM sales_history
+        ) AS computed
+        WHERE sh.id = computed.id
+          AND sh.remaining_size_at_sale IS NULL
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

@@ -663,6 +663,7 @@ export default function SalesHistoryPage() {
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("marka")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("coldBillNo")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("originalBags")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("remainingBagsAfterSale")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("bagType")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("quantitySold")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("totalColdStorageCharges")}</TableHead>
@@ -684,6 +685,11 @@ export default function SalesHistoryPage() {
                       <TableCell className="text-xs" data-testid={`cell-marka-${sale.id}`}>{sale.marka || "—"}</TableCell>
                       <TableCell className="text-xs" data-testid={`cell-cold-bill-${sale.id}`}>{sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—"}</TableCell>
                       <TableCell className="text-right">{sale.originalLotSize}</TableCell>
+                      <TableCell className="text-right" data-testid={`cell-remaining-after-sale-${sale.id}`}>
+                        {sale.remainingSizeAtSale != null
+                          ? Math.max(0, sale.remainingSizeAtSale - sale.quantitySold)
+                          : "—"}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={sale.bagType === "wafer" ? "bg-chart-1/10 text-chart-1" : "bg-chart-2/10 text-chart-2"}>
                           {t(sale.bagType)}

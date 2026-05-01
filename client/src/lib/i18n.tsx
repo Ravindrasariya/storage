@@ -412,6 +412,7 @@ const translations: Translations = {
   resetSuccess: { en: "Season reset successful! Dashboard and lots have been cleared.", hi: "सीज़न रीसेट सफल! डैशबोर्ड और लॉट साफ़ कर दिए गए हैं।" },
   proceedWithReset: { en: "Proceed with Reset", hi: "रीसेट के साथ आगे बढ़ें" },
   remainingBags: { en: "Remaining Bags", hi: "बाकी बैग" },
+  remainingBagsAfterSale: { en: "Remaining # Bags", hi: "बाकी # बैग" },
   remainingLots: { en: "Remaining Lots", hi: "बाकी लॉट" },
 
   // Edit Sale Dialog
