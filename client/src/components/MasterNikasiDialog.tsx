@@ -69,7 +69,10 @@ interface RowState {
 
 interface MasterNikasiResult {
   sharedExitBillNumber: number;
-  sharedColdStorageBillNumber: number;
+  // Server returns null when every selected lot was already
+  // base-billed AND the operator left the shared CS Bill # blank
+  // (Task #256 — auto-skip path). Non-null otherwise.
+  sharedColdStorageBillNumber: number | null;
   exitDate: string;
   sales: Array<{
     saleId: string;
@@ -247,29 +250,6 @@ export function MasterNikasiDialog({
     }
   }, [open, lots, coldStorage?.nextExitBillNumber]);
 
-  // Keep the shared CS bill # input in sync with the live MAX+1
-  // preview while the operator hasn't manually edited it. Mirrors the
-  // shared-exit-bill autofill semantics:
-  //   • opening the dialog → input blank → preview lands → input fills;
-  //   • a sale recorded elsewhere → preview re-fetches via
-  //     invalidateSaleSideEffects → still-non-edited input re-fills
-  //     from the new base.
-  // Once the operator types into the input, `sharedColdStorageBillEdited`
-  // flips true and we stop overwriting their value.
-  useEffect(() => {
-    if (!open) return;
-    if (sharedColdStorageBillEdited) return;
-    // Gate on isFetching so we never display a stale cached number
-    // during a year change or post-sale invalidation: clear the input
-    // to empty until the fresh hint lands.
-    if (nextCsBillFetching || !nextCsBillData?.nextBillNumber) {
-      setSharedColdStorageBillInput(prev => (prev === "" ? prev : ""));
-      return;
-    }
-    const nextStr = String(nextCsBillData.nextBillNumber);
-    setSharedColdStorageBillInput(prev => (prev === nextStr ? prev : nextStr));
-  }, [open, nextCsBillData?.nextBillNumber, nextCsBillFetching, sharedColdStorageBillEdited]);
-
   // Index lots by (lotNo, marka) so a row can resolve its database lot id
   // from the user-facing identity. Per the operator workflow, the same
   // (lotNo, marka) pair must never appear on more than one lot — if it
@@ -311,6 +291,54 @@ export function MasterNikasiDialog({
     if (!lotNo || !marka) return undefined;
     return lotByKey.get(`${lotNo}::${canonMarka(marka)}`);
   };
+
+  // Task #256 — when EVERY selected (resolved) row points at a lot whose
+  // base cold-storage charges were already billed, autofill is suppressed
+  // and the input stays blank. The matching server path then writes
+  // NULL to coldStorageBillNumber for every sale in this MN batch (the
+  // sales remain bill-less, which is the correct outcome for already-
+  // billed lots). If the operator wants a bill # anyway, typing one
+  // flips sharedColdStorageBillEdited and we honour the override. We
+  // recompute "all rows base-billed" from the live rows + lotByKey so
+  // the suppression updates as rows are added / lot selections change.
+  const allSelectedRowsBaseBilled = useMemo(() => {
+    const resolved = rows
+      .filter(r => r.lotNo && r.marka)
+      .map(r => lotByKey.get(`${r.lotNo}::${canonMarka(r.marka)}`))
+      .filter((l): l is LotWithCharges => !!l);
+    if (resolved.length === 0) return false;
+    return resolved.every(l => l.lot.baseColdChargesBilled === 1);
+  }, [rows, lotByKey]);
+
+  // Keep the shared CS bill # input in sync with the live MAX+1
+  // preview while the operator hasn't manually edited it. Mirrors the
+  // shared-exit-bill autofill semantics:
+  //   • opening the dialog → input blank → preview lands → input fills;
+  //   • a sale recorded elsewhere → preview re-fetches via
+  //     invalidateSaleSideEffects → still-non-edited input re-fills
+  //     from the new base.
+  // Once the operator types into the input, `sharedColdStorageBillEdited`
+  // flips true and we stop overwriting their value.
+  useEffect(() => {
+    if (!open) return;
+    if (sharedColdStorageBillEdited) return;
+    if (allSelectedRowsBaseBilled) {
+      // All rows refer to already-billed lots → no auto-bill #. Force
+      // the input blank so the submit path sends nothing and the server
+      // writes NULL across every sibling row.
+      setSharedColdStorageBillInput(prev => (prev === "" ? prev : ""));
+      return;
+    }
+    // Gate on isFetching so we never display a stale cached number
+    // during a year change or post-sale invalidation: clear the input
+    // to empty until the fresh hint lands.
+    if (nextCsBillFetching || !nextCsBillData?.nextBillNumber) {
+      setSharedColdStorageBillInput(prev => (prev === "" ? prev : ""));
+      return;
+    }
+    const nextStr = String(nextCsBillData.nextBillNumber);
+    setSharedColdStorageBillInput(prev => (prev === nextStr ? prev : nextStr));
+  }, [open, nextCsBillData?.nextBillNumber, nextCsBillFetching, sharedColdStorageBillEdited, allSelectedRowsBaseBilled]);
 
   // Used (lotNo, marka) pairs across rows, so duplicates are blocked.
   const usedKeys = useMemo(
@@ -681,7 +709,14 @@ export function MasterNikasiDialog({
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-muted-foreground">CS Bill #</div>
-                  <div className="text-lg font-bold text-amber-600" data-testid="text-mn-cs-bill">#{result.sharedColdStorageBillNumber}</div>
+                  <div
+                    className="text-lg font-bold text-amber-600"
+                    data-testid="text-mn-cs-bill"
+                  >
+                    {result.sharedColdStorageBillNumber != null
+                      ? `#${result.sharedColdStorageBillNumber}`
+                      : "—"}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -739,10 +774,16 @@ export function MasterNikasiDialog({
                     data-testid="input-mn-shared-cs-bill"
                     aria-invalid={!!(billNumberError && /Cold Storage Bill/i.test(billNumberError))}
                   />
+                  {/* Task #256: when every row's lot is already base-billed
+                      AND the operator hasn't typed an override, show
+                      "skip" so it's clear no CS Bill # will be assigned
+                      to this batch (server writes NULL across siblings). */}
                   <span className={`text-[10px] uppercase tracking-wide ${
                     sharedColdStorageBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
                   }`}>
-                    {sharedColdStorageBillEdited ? "edited" : "auto"}
+                    {sharedColdStorageBillEdited
+                      ? "edited"
+                      : (allSelectedRowsBaseBilled ? "skip" : "auto")}
                   </span>
                 </div>
               </>

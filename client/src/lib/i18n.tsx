@@ -335,6 +335,20 @@ const translations: Translations = {
   csBillUpdated: { en: "CS Bill updated", hi: "शीत भण्डार बिल अपडेट हुआ" },
   csBillNumberInvalid: { en: "Invalid CS Bill number", hi: "अमान्य शीत भण्डार बिल संख्या" },
   csBillDateInvalid: { en: "Invalid sale date", hi: "अमान्य बिक्री तिथि" },
+  // Task #256 — UI strings for clearing a CS Bill # back to NULL.
+  clearCsBillHint: {
+    en: "Leave blank to remove this CS Bill #",
+    hi: "इस शीत भण्डार बिल # को हटाने के लिए खाली छोड़ें",
+  },
+  clearCsBillConfirmTitle: {
+    en: "Remove CS Bill #?",
+    hi: "शीत भण्डार बिल # हटाएं?",
+  },
+  clearCsBillConfirmMessage: {
+    en: "This sale will be saved with no CS Bill #. If this CS Bill # is shared by sibling sales (Master Nikasi batch), they will all be cleared together.",
+    hi: "इस बिक्री से शीत भण्डार बिल # हटा दिया जाएगा। यदि यह बिल # अन्य बिक्रियों के साथ साझा है (मास्टर निकासी बैच), तो वे सभी एक साथ हट जाएँगी।",
+  },
+  yesClear: { en: "Yes, remove", hi: "हाँ, हटाएं" },
   saleType: { en: "Sale Type", hi: "बिक्री प्रकार" },
   year: { en: "Year", hi: "वर्ष" },
   allYears: { en: "All Years", hi: "सभी वर्ष" },

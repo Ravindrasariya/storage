@@ -1765,6 +1765,12 @@ export class DatabaseStorage implements IStorage {
         await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${data.coldStorageId} FOR UPDATE`);
 
         const csYear = saleDate.getFullYear();
+        // eq(coldStorageBillNumber, userCsBill) excludes NULL rows by SQL
+        // three-valued logic (NULL = anything → unknown, not true). This
+        // is what makes Task #256's "multiple NULL-bill rows coexist"
+        // requirement safe by construction: only typed positive integers
+        // collide with each other; any number of bill-less sales in the
+        // same year are mutually invisible to this dup check.
         const dup = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
           .from(salesHistory)
           .where(and(
@@ -2388,7 +2394,10 @@ export class DatabaseStorage implements IStorage {
     }>;
   }): Promise<{
     sharedExitBillNumber: number;
-    sharedColdStorageBillNumber: number;
+    // null when every selected lot was already base-billed AND the
+    // operator left the shared CS Bill # input blank — see the auto-skip
+    // rule documented in createMasterNikasi (Task #256).
+    sharedColdStorageBillNumber: number | null;
     exitDate: Date;
     sales: Array<{
       saleId: string;
@@ -2541,12 +2550,26 @@ export class DatabaseStorage implements IStorage {
       // year(soldAt) == year(exitDate) here (saleDate := exitDate above),
       // so the dup check / MAX+1 are scoped to the operator-picked exit
       // calendar year, matching the physical receipt-book year.
-      let sharedColdStorageBillNumber: number;
+      //
+      // Task #256 — auto-skip rule: when the operator left the shared
+      // CS Bill # input blank AND every selected lot was ALREADY base-
+      // billed earlier (so this batch will only bill extras, if anything),
+      // we skip the MAX+1 lookup AND the per-row write entirely so every
+      // row in the batch lands with NULL coldStorageBillNumber. Eligibility
+      // is captured at SUBMIT time from the snapshot we read up-front in
+      // resolvedLots — mid-loop CAS flips inside this transaction do not
+      // retroactively change the decision, which keeps the batch's bill #
+      // (or absence thereof) consistent across all sibling rows.
+      const allLotsBaseBilled = resolvedLots.every(l => l.baseColdChargesBilled === 1);
+      let sharedColdStorageBillNumber: number | null;
       const csYear = saleDate.getFullYear();
       if (userSharedCsBill != null) {
         if (!Number.isFinite(userSharedCsBill) || userSharedCsBill <= 0) {
           throw new Error("Invalid cold storage bill number");
         }
+        // eq(coldStorageBillNumber, X) excludes NULL rows by SQL three-
+        // valued logic, so the dup check correctly ignores any sibling
+        // batches that legitimately landed with NULL CS bill #.
         const dupCs = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
           .from(salesHistory)
           .where(and(
@@ -2563,6 +2586,10 @@ export class DatabaseStorage implements IStorage {
           throw new Error(`Cold Storage Bill # ${userSharedCsBill} already used on ${dd}/${mm}/${yyyy}`);
         }
         sharedColdStorageBillNumber = userSharedCsBill;
+      } else if (allLotsBaseBilled) {
+        // Auto-skip: every lot is already base-billed, so this batch
+        // produces only extras (or nothing). Land all rows with NULL.
+        sharedColdStorageBillNumber = null;
       } else {
         // MAX(coldStorageBillNumber) + 1 over (cold storage, year(soldAt)).
         // Identical sequencing rule to assignBillNumber + the legacy
@@ -2819,10 +2846,16 @@ export class DatabaseStorage implements IStorage {
         // Writing the same value to every row in this batch is what
         // enables the collective bill view: the print path identifies
         // siblings by (coldStorageId, coldStorageBillNumber, year(soldAt)).
-        const coldStorageBillNumber: number = sharedColdStorageBillNumber;
-        await tx.update(salesHistory)
-          .set({ coldStorageBillNumber })
-          .where(eq(salesHistory.id, saleId));
+        // When sharedColdStorageBillNumber is null (auto-skip path —
+        // all lots already base-billed), we leave the column at its
+        // INSERT-time NULL and skip the write entirely so the row stays
+        // bill-less. NULL CS Bill # is a first-class value (Task #256).
+        const coldStorageBillNumber: number | null = sharedColdStorageBillNumber;
+        if (coldStorageBillNumber != null) {
+          await tx.update(salesHistory)
+            .set({ coldStorageBillNumber })
+            .where(eq(salesHistory.id, saleId));
+        }
 
         // Create exit_history row sharing the master bill number / date.
         await tx.insert(exitHistory).values({
@@ -3183,17 +3216,36 @@ export class DatabaseStorage implements IStorage {
     coldStorageId: string,
     oldBillNumber: number | null,
     oldYear: number,
-    opts: { newBillNumber?: number; newSoldAt?: Date; saleId?: string },
+    opts: {
+      // Three states:
+      //   undefined → don't touch the column
+      //   number    → set to this positive integer (year-scoped collision check)
+      //   null      → CLEAR the column to NULL (Task #256 — operator
+      //               removed the bill # via the Edit Sale dialog).
+      //               No collision check, since NULL never collides
+      //               with anything by SQL three-valued logic.
+      newBillNumber?: number | null;
+      newSoldAt?: Date;
+      saleId?: string;
+    },
   ): Promise<{
     updatedCount: number;
     affectedSaleIds: string[];
     effectiveBillNumber: number | null;
   }> {
-    if (opts.newBillNumber == null && opts.newSoldAt == null) {
+    const isClear = opts.newBillNumber === null;
+    const hasNewBill = opts.newBillNumber !== undefined; // includes null
+    if (!hasNewBill && opts.newSoldAt == null) {
       throw new Error("Nothing to update");
     }
     if (opts.newBillNumber != null && (!Number.isFinite(opts.newBillNumber) || opts.newBillNumber <= 0)) {
       throw new Error("Invalid CS bill number");
+    }
+    // Clear-to-NULL only makes sense when the row(s) currently have a
+    // bill # (oldBillNumber != null). First-time assignment paths use
+    // saleId + oldBillNumber == null and would have nothing to clear.
+    if (isClear && oldBillNumber == null) {
+      throw new Error("Cannot clear CS Bill # on a sale that already has none");
     }
 
     const result = await db.transaction(async (tx) => {
@@ -3258,7 +3310,13 @@ export class DatabaseStorage implements IStorage {
         }));
       }
 
-      const effectiveBillNumber = opts.newBillNumber ?? oldBillNumber;
+      // effectiveBillNumber semantics:
+      //   • undefined newBillNumber → bill # unchanged → keep oldBillNumber
+      //   • null newBillNumber      → CLEAR → effective is null
+      //   • number newBillNumber    → SET   → effective is that number
+      const effectiveBillNumber: number | null = hasNewBill
+        ? (opts.newBillNumber as number | null)
+        : oldBillNumber;
       const effectiveSoldAt = opts.newSoldAt ?? targetRows[0].soldAt;
       const targetYear = new Date(effectiveSoldAt).getFullYear();
       const targetIds = targetRows.map(r => r.id);
@@ -3266,6 +3324,9 @@ export class DatabaseStorage implements IStorage {
       // Year-scoped collision check excluding the rows being updated.
       // Skipped when bill # itself is unchanged (date-only edit) since
       // the existing rows' (bill#, year) tuple is allowed to remain.
+      // Also skipped when clearing to NULL — eq(coldStorageBillNumber, X)
+      // never matches NULL by SQL three-valued logic, so a NULL bill #
+      // can never collide with anything.
       if (effectiveBillNumber != null) {
         const dup = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
           .from(salesHistory)
@@ -3284,8 +3345,11 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      const updates: { coldStorageBillNumber?: number; soldAt?: Date; saleYear?: number } = {};
-      if (opts.newBillNumber != null) updates.coldStorageBillNumber = opts.newBillNumber;
+      // Drizzle requires explicit null in the .set() payload to write
+      // NULL (omitting the key leaves the column unchanged). Use a
+      // record typed as `unknown` to allow the null branch.
+      const updates: Record<string, unknown> = {};
+      if (hasNewBill) updates.coldStorageBillNumber = opts.newBillNumber; // number | null
       if (opts.newSoldAt != null) {
         updates.soldAt = opts.newSoldAt;
         updates.saleYear = targetYear;
@@ -3300,12 +3364,12 @@ export class DatabaseStorage implements IStorage {
       // writes done by the main sales-history PATCH route so the Edit
       // History panel surfaces CS Bill # / Sale Date edits the same way
       // it surfaces every other editable field. Old/new values are
-      // serialized as plain strings (bill # → integer, soldAt → ISO
-      // timestamp); the EditSaleDialog formatter renders them.
+      // serialized as plain strings (bill # → integer or NULL on clear,
+      // soldAt → ISO timestamp); the EditSaleDialog formatter renders them.
       const newBillStr = opts.newBillNumber != null ? String(opts.newBillNumber) : null;
       const newSoldAtStr = opts.newSoldAt != null ? opts.newSoldAt.toISOString() : null;
       for (const row of targetRows) {
-        if (opts.newBillNumber != null) {
+        if (hasNewBill) {
           const oldBillStr = row.coldStorageBillNumber != null ? String(row.coldStorageBillNumber) : null;
           if (oldBillStr !== newBillStr) {
             await tx.insert(saleEditHistory).values({

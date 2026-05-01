@@ -1298,6 +1298,9 @@ export async function registerRoutes(
       // rare concurrent-insert race. Any explicitly-provided value
       // (not undefined / null) must be a positive integer — we don't
       // silently fall back to auto-assignment on garbage input.
+      // BOTH `undefined` (field omitted) and `null` (explicit "no number")
+      // are accepted as the "leave blank" signal — see Task #256: NULL
+      // is a first-class CS bill # value, not a typo to reject.
       if (coldStorageBillNumber !== undefined && coldStorageBillNumber !== null) {
         if (typeof coldStorageBillNumber !== "number"
             || !Number.isInteger(coldStorageBillNumber)
@@ -1310,6 +1313,10 @@ export async function registerRoutes(
       }
       if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
         const csYear = saleDate.getFullYear();
+        // findColdStorageBillDuplicate does eq(coldStorageBillNumber, X)
+        // which by SQL three-valued logic NEVER matches NULL rows — so
+        // any number of NULL-bill sales in the same year coexist freely
+        // and only collide with TYPED positive-integer duplicates.
         const dup = await storage.findColdStorageBillDuplicate(lot.coldStorageId, coldStorageBillNumber, csYear);
         if (dup) {
           const onDate = dup.soldAt ? new Date(dup.soldAt).toLocaleDateString("en-IN") : `${csYear}`;
@@ -1564,8 +1571,17 @@ export async function registerRoutes(
       casClaimedLotId = null;
 
       // Auto-mode (no user-supplied number): fall back to the legacy
-      // counter-bump path so the sale still gets a CS bill # assigned.
-      if (!(typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0)) {
+      // counter-bump path so the sale still gets a CS bill # assigned —
+      // BUT skip auto-assignment when the lot's base cold-storage charges
+      // were ALREADY billed earlier (Task #256). Those follow-up sales
+      // typically carry only extras (kata / grading / extra hammali) or
+      // nothing, so giving them a CS deduction-bill # clutters the
+      // receipt book and wastes sequence slots. The operator can still
+      // override by typing a number into the dialog. baseAlreadyBilled
+      // is captured at the top of the route after the CAS race
+      // resolution and stays accurate for this sale's lifetime.
+      const userSuppliedCsBill = typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0;
+      if (!userSuppliedCsBill && !baseAlreadyBilled) {
         try {
           await storage.assignBillNumber(createdSale.id, "coldStorage");
         } catch (e) {
@@ -1644,9 +1660,13 @@ export async function registerRoutes(
     exitDate: z.string().min(1),
     sharedExitBillNumber: z.number().int().positive().optional(),
     // Single Cold Storage bill # shared across every row in the batch
-    // (mirrors sharedExitBillNumber). When omitted, server takes
-    // MAX(coldStorageBillNumber)+1 over (cold storage, year(soldAt)).
-    sharedColdStorageBillNumber: z.number().int().positive().optional(),
+    // (mirrors sharedExitBillNumber). When omitted OR explicitly null,
+    // server may auto-fill MAX(coldStorageBillNumber)+1 over
+    // (cold storage, year(soldAt)) — UNLESS every selected lot already
+    // has its base cold-storage charges billed, in which case the batch
+    // is intentionally written with NULL CS bill # on every row
+    // (Task #256). Operator can also type a positive integer to override.
+    sharedColdStorageBillNumber: z.number().int().positive().nullable().optional(),
     rows: z.array(z.object({
       lotId: z.string().min(1),
       exitBags: z.number().int().min(1),
@@ -1985,10 +2005,17 @@ export async function registerRoutes(
   //   the row directly).
   // Body:
   //   { newBillNumber?, newSoldAt? "YYYY-MM-DD", saleId? }
+  // newBillNumber is tri-state:
+  //   • omitted (undefined) → leave the column unchanged
+  //   • positive integer    → set / overwrite the bill #
+  //   • explicit null       → CLEAR the column to NULL (Task #256:
+  //                           operator removed the bill # in the Edit
+  //                           Sale dialog). For batched (MN) rows the
+  //                           clear cascades across all siblings.
   // Accept empty {} as a no-op (per task spec) — when neither field is
   // provided we short-circuit and return a 200 with zero rows updated.
   const updateCsBillSchema = z.object({
-    newBillNumber: z.number().int().positive().optional(),
+    newBillNumber: z.union([z.number().int().positive(), z.null()]).optional(),
     newSoldAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     saleId: z.string().optional(),
   });

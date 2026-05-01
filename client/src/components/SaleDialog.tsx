@@ -192,8 +192,20 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   // honest — either it's the current server hint or it's empty. Once
   // the user edits the input we leave it alone — coldStorageBillEdited
   // stays true until the dialog reopens.
+  //
+  // Task #256 — when the lot is already base-billed (baseColdChargesBilled
+  // === 1) we suppress the autofill entirely. Auto-numbering a sale
+  // whose cold-storage charges were already collected on a prior bill
+  // would burn a fresh bill # for what's effectively a bill-less sale.
+  // Operators who DO want to assign a bill # here can still type one
+  // manually; coldStorageBillEdited then locks the input.
   useEffect(() => {
     if (!open || !lot || coldStorageBillEdited) return;
+    if (lot.baseColdChargesBilled === 1) {
+      // Force the input blank so the (unedited) submit path sends NULL.
+      setColdStorageBillInput("");
+      return;
+    }
     if (nextCsBillFetching) {
       setColdStorageBillInput("");
       return;
@@ -203,7 +215,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
     } else {
       setColdStorageBillInput("");
     }
-  }, [open, lot?.id, coldStorageBillEdited, nextCsBillData?.nextBillNumber, nextCsBillFetching]);
+  }, [open, lot?.id, lot?.baseColdChargesBilled, coldStorageBillEdited, nextCsBillData?.nextBillNumber, nextCsBillFetching]);
 
   const partialSaleMutation = useMutation({
     mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {
@@ -502,10 +514,16 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
                 data-testid="input-partial-cs-bill"
                 aria-invalid={!!coldStorageBillError}
               />
+              {/* Task #256: when the lot's base cold-storage charges were
+                  already billed AND the operator hasn't typed an override,
+                  surface "skip" instead of "auto" so it's clear the sale
+                  will be saved with no CS Bill # (NULL). */}
               <span className={`text-[10px] uppercase tracking-wide ${
                 coldStorageBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
               }`}>
-                {coldStorageBillEdited ? "edited" : "auto"}
+                {coldStorageBillEdited
+                  ? "edited"
+                  : (lot?.baseColdChargesBilled === 1 ? "skip" : "auto")}
               </span>
             </div>
           </div>

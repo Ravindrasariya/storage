@@ -66,6 +66,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [csBillDateInput, setCsBillDateInput] = useState("");
   const [csBillNumberError, setCsBillNumberError] = useState<string | null>(null);
   const [csBillDateError, setCsBillDateError] = useState<string | null>(null);
+  // Task #256 — confirm dialog when the operator clears a previously-set
+  // CS Bill # to NULL. We need an explicit confirmation because for a
+  // Master Nikasi batch the clear cascades to every sibling sale sharing
+  // the bill #, which the operator may not realise.
+  const [showClearCsBillConfirm, setShowClearCsBillConfirm] = useState(false);
 
   // Get charge unit from sale record (recorded at time of sale) with fallback to cold storage
   // This ensures edits use the same calculation method as the original sale
@@ -278,14 +283,19 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     mutationFn: async (vars: {
       oldBillNumber: number | null;
       oldYear: number;
-      newBillNumber?: number;
+      // Tri-state: undefined = leave alone, number = set, null = CLEAR
+      // (Task #256 — operator removed an existing CS Bill #).
+      newBillNumber?: number | null;
       newSoldAt?: string;
       saleId: string;
     }) => {
       const billPath = vars.oldBillNumber == null ? "none" : String(vars.oldBillNumber);
       const yearQuery = vars.oldBillNumber == null ? "" : `?year=${vars.oldYear}`;
       const body: Record<string, unknown> = { saleId: vars.saleId };
-      if (vars.newBillNumber !== undefined) body.newBillNumber = vars.newBillNumber;
+      // Use `in vars` so an explicit null ("clear") is forwarded but
+      // a missing key ("don't touch") is not — `!== undefined` would
+      // also include null but is less explicit about the contract.
+      if ("newBillNumber" in vars) body.newBillNumber = vars.newBillNumber;
       if (vars.newSoldAt !== undefined) body.newSoldAt = vars.newSoldAt;
       const response = await apiRequest(
         "PATCH",
@@ -394,6 +404,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
   });
 
+  // Internal flag the confirm-clear AlertDialog flips on confirmation
+  // so the next handleSave call skips re-prompting. Stored in a ref-like
+  // local closure isn't viable (state updates don't observe across
+  // event-handler invocations) — we just gate the prompt on this flag.
+  const [csBillClearConfirmed, setCsBillClearConfirmed] = useState(false);
+
   const handleSave = async () => {
     if (!sale) return;
 
@@ -403,7 +419,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     // those edits. Always re-derive from the input state.
     const trimmedBill = csBillInput.trim();
     const parsedBill = trimmedBill === "" ? NaN : parseInt(trimmedBill, 10);
-    const billChanged = trimmedBill !== "" && parsedBill !== sale.coldStorageBillNumber;
+    // Task #256: blank input on a previously-set bill # now means
+    // "clear to NULL" (after operator confirms via AlertDialog). On a
+    // sale that already has no bill #, blank stays a no-op.
+    const isClearBill = trimmedBill === "" && sale.coldStorageBillNumber != null;
+    const billChanged = isClearBill ||
+      (trimmedBill !== "" && parsedBill !== sale.coldStorageBillNumber);
     const dateInIst = sale.soldAt
       ? new Intl.DateTimeFormat("en-CA", {
           timeZone: "Asia/Kolkata",
@@ -414,17 +435,19 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       : "";
     const dateChanged = csBillDateInput !== "" && csBillDateInput !== dateInIst;
 
-    // Blank input on a previously-set field is a typo, not a no-op
-    // (we have no API semantic for "clear" — date is NOT NULL, bill #
-    // is only set, never cleared via edit).
-    if (trimmedBill === "" && sale.coldStorageBillNumber != null) {
-      setCsBillNumberError(t("csBillNumberInvalid"));
-      setCsBillEditing(true);
-      return;
-    }
+    // Sale date is still NOT NULL — blank input there remains a typo.
     if (csBillDateInput === "" && sale.soldAt) {
       setCsBillDateError(t("csBillDateInvalid"));
       setCsBillEditing(true);
+      return;
+    }
+
+    // Clear-to-NULL needs an explicit operator confirmation (cascade
+    // can affect sibling sales in a Master Nikasi batch). We open the
+    // AlertDialog and bail; the AlertDialog's confirm handler flips
+    // csBillClearConfirmed and re-invokes handleSave.
+    if (isClearBill && !csBillClearConfirmed) {
+      setShowClearCsBillConfirm(true);
       return;
     }
 
@@ -436,7 +459,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       // editor (not just as toasts) so the operator can correct
       // immediately; we also force the editor open so the inline
       // error is visible.
-      if (trimmedBill !== "" && (!Number.isFinite(parsedBill) || parsedBill <= 0)) {
+      if (!isClearBill && trimmedBill !== "" && (!Number.isFinite(parsedBill) || parsedBill <= 0)) {
         setCsBillNumberError(t("csBillNumberInvalid"));
         setCsBillEditing(true);
         return;
@@ -451,14 +474,24 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
         // Clear any stale inline errors before retrying.
         setCsBillNumberError(null);
         setCsBillDateError(null);
+        // billChanged covers three sub-cases:
+        //   • isClearBill        → send explicit null (CLEAR)
+        //   • parsedBill is a #  → send the integer (SET / overwrite)
+        //   • !billChanged       → send undefined (handled by outer if)
+        const newBillForCascade: number | null | undefined = billChanged
+          ? (isClearBill ? null : parsedBill)
+          : undefined;
         await updateCsBillMutation.mutateAsync({
           oldBillNumber: sale.coldStorageBillNumber ?? null,
           oldYear: sale.saleYear ?? new Date(sale.soldAt).getFullYear(),
-          newBillNumber: billChanged ? parsedBill : undefined,
+          newBillNumber: newBillForCascade,
           newSoldAt: dateChanged ? csBillDateInput : undefined,
           saleId: sale.id,
         });
         csBillApplied = true;
+        // Reset the one-shot confirm flag now that the clear has been
+        // applied — a subsequent edit must re-prompt.
+        if (isClearBill) setCsBillClearConfirmed(false);
         // Cache invalidation runs in the mutation's onSuccess handler.
       } catch (err: unknown) {
         // The cascade endpoint returns a `field` tag on 400s
@@ -686,6 +719,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         onChange={(e) => {
                           setCsBillInput(e.target.value);
                           if (csBillNumberError) setCsBillNumberError(null);
+                          // Re-arm the clear-confirm prompt whenever the
+                          // user touches the input again — they may have
+                          // confirmed once, then changed their mind.
+                          if (csBillClearConfirmed) setCsBillClearConfirmed(false);
                         }}
                         className={`h-8 ${csBillNumberError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                         aria-invalid={csBillNumberError ? true : undefined}
@@ -699,6 +736,20 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                           {csBillNumberError}
                         </p>
                       )}
+                      {/* Hint shown only when there's a bill # to clear,
+                          and only while the input itself is blank — once
+                          the operator types a digit the cleanup hint is
+                          irrelevant. Task #256. */}
+                      {!csBillNumberError &&
+                        sale.coldStorageBillNumber != null &&
+                        csBillInput.trim() === "" && (
+                          <p
+                            className="text-xs text-muted-foreground"
+                            data-testid="hint-clear-cs-bill"
+                          >
+                            {t("clearCsBillHint")}
+                          </p>
+                        )}
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="cs-bill-date-input" className="text-xs">
@@ -1277,6 +1328,39 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
               data-testid="button-ok-later-sale-exists"
             >
               {t("ok")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Task #256 — clear-CS-Bill confirm. The cascade may touch every
+          sibling sale in a Master Nikasi batch, so we surface that fact
+          explicitly. On confirm we flip csBillClearConfirmed and re-run
+          handleSave (which short-circuits the "open dialog" branch and
+          proceeds to apply the clear + the rest of the edits). */}
+      <AlertDialog open={showClearCsBillConfirm} onOpenChange={setShowClearCsBillConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("clearCsBillConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("clearCsBillConfirmMessage")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-clear-cs-bill">{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowClearCsBillConfirm(false);
+                setCsBillClearConfirmed(true);
+                // Re-invoke save now that confirmation is recorded.
+                // setState batches before the next event loop tick, so
+                // queue the call to ensure the flag is observed.
+                setTimeout(() => { void handleSave(); }, 0);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-clear-cs-bill"
+            >
+              {t("yesClear")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
