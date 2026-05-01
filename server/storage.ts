@@ -1843,10 +1843,29 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
+    // Display sort for the Sales History page (Task #264):
+    //   1. soldAt DESC          — newest sale date at the top (existing behavior).
+    //   2. createdAt DESC       — within a date, newest entered at the top.
+    //                             For legacy rows the migration backfilled
+    //                             createdAt = soldAt, so legacy collisions
+    //                             still tie here and fall through to (3).
+    //   3. lot_no ASC, numeric  — receipt # tiebreaker, cast to integer so
+    //                             "2" sorts before "11" before "100".
+    //                             regexp_replace strips any non-numeric
+    //                             chars defensively; NULLIF keeps an empty
+    //                             string from blowing up the cast and the
+    //                             NULLS LAST sends those to the bottom.
+    // All three keys compare absolute instants / integers, so the result is
+    // independent of the Postgres session timezone (which is also pinned to
+    // Asia/Kolkata in server/db.ts).
     const sales = await db.select()
       .from(salesHistory)
       .where(and(...conditions))
-      .orderBy(desc(salesHistory.soldAt));
+      .orderBy(
+        desc(salesHistory.soldAt),
+        desc(salesHistory.createdAt),
+        sql`NULLIF(regexp_replace(${salesHistory.lotNo}, '[^0-9]', '', 'g'), '')::integer ASC NULLS LAST`,
+      );
 
     if (sales.length === 0) return [];
 

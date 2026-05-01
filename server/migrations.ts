@@ -709,6 +709,42 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Adds a true row-creation timestamp to sales_history so the Sales
+    // History display can sort same-date sales as "newest entered first"
+    // (Task #264). The existing `sold_at` column always stores noon IST of
+    // the operator-picked sale date, so it cannot tell two same-date sales
+    // apart. The legacy backfill below copies sold_at into created_at —
+    // this is best-effort: the true historical entry order of sales
+    // recorded before this migration was never persisted and is not
+    // recoverable. From this migration forward, every new sales_history
+    // INSERT auto-captures NOW() (which, with the connection-level
+    // SET TIME ZONE 'Asia/Kolkata' in server/db.ts, evaluates to IST
+    // wall-clock).
+    name: "2026-05-01_add_created_at_to_sales_history",
+    up: async () => {
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ADD COLUMN IF NOT EXISTS created_at timestamptz
+      `);
+      // Backfill any pre-existing rows with sold_at as a deterministic
+      // placeholder. timestamptz -> timestamptz is an instant copy, so
+      // no AT TIME ZONE wrapper is needed (or correct).
+      await db.execute(sql`
+        UPDATE sales_history
+        SET created_at = sold_at
+        WHERE created_at IS NULL
+      `);
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ALTER COLUMN created_at SET DEFAULT NOW()
+      `);
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ALTER COLUMN created_at SET NOT NULL
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

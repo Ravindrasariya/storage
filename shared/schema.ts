@@ -179,6 +179,15 @@ export const salesHistory = pgTable("sales_history", {
   // timestamp + IST session would shift any post-6:30 PM IST sale forward
   // by one day on read-back. See Task #219.
   soldAt: timestamp("sold_at", { withTimezone: true }).notNull().defaultNow(),
+  // True row-creation instant — captured at INSERT via DEFAULT NOW() (with the
+  // db connection pinned to Asia/Kolkata via SET TIME ZONE in server/db.ts,
+  // so NOW() reflects IST wall-clock). Used as the secondary key on the
+  // Sales-History display sort so same-date sales show newest-entered at the
+  // top. NEVER read this column for date-portion grouping/filtering without
+  // wrapping in `AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'` (same
+  // convention as exitDate filters in storage.ts:3570). Legacy rows backfilled
+  // to soldAt by 2026-05-01 migration — their true entry order is unrecoverable.
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   // Bill numbers (assigned on first print, null means never printed)
   coldStorageBillNumber: integer("cold_storage_bill_number"), // Bill number for cold storage deduction receipt
   salesBillNumber: integer("sales_bill_number"), // Bill number for sales bill
@@ -775,7 +784,7 @@ export const insertLotEditHistorySchema = createInsertSchema(lotEditHistory).omi
 // the Sale dialog — see Task #206). When omitted, the DB defaultNow()
 // applies. createSalesHistory in server/storage.ts reads data.soldAt
 // to drive the year-scoped CS-bill # duplicate check.
-export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true });
+export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, createdAt: true });
 export const insertSaleEditHistorySchema = createInsertSchema(saleEditHistory).omit({ id: true, changedAt: true });
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true });
 // exitDate is intentionally NOT omitted: callers may pass an explicit

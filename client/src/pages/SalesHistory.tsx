@@ -871,7 +871,32 @@ function FarmerPaymentTracker() {
     if (trackerFarmerLedgerId) {
       filtered = filtered.filter((s) => s.farmerLedgerId === trackerFarmerLedgerId);
     }
-    return filtered.sort((a, b) => new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime());
+    // Mirror the server's three-key sort (Task #264) so the Farmer Payment
+    // Tracker tab shows rows in the same order as the main Sales History
+    // table.
+    //   1. soldAt DESC      — newest sale date first.
+    //   2. createdAt DESC   — newest entered within a date first.
+    //   3. lotNo (Receipt#) — numeric ASC, with a lexicographic fallback
+    //                          for any non-numeric value (NaN sorts to the
+    //                          bottom). All Date math here uses .getTime()
+    //                          on UTC-instant strings, so the comparator is
+    //                          timezone-neutral.
+    return filtered.slice().sort((a, b) => {
+      const soldDiff = new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime();
+      if (soldDiff !== 0) return soldDiff;
+      const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const createdDiff = bCreated - aCreated;
+      if (createdDiff !== 0) return createdDiff;
+      const aLot = parseInt(a.lotNo, 10);
+      const bLot = parseInt(b.lotNo, 10);
+      const aIsNum = !Number.isNaN(aLot);
+      const bIsNum = !Number.isNaN(bLot);
+      if (aIsNum && bIsNum) return aLot - bLot;
+      if (aIsNum) return -1; // numeric before non-numeric
+      if (bIsNum) return 1;
+      return a.lotNo.localeCompare(b.lotNo);
+    });
   }, [allSalesHistory, trackerFarmerLedgerId]);
 
   const trackerFarmerSuggestions = useMemo(() => {
