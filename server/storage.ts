@@ -1849,8 +1849,13 @@ export class DatabaseStorage implements IStorage {
     //                             For legacy rows the migration backfilled
     //                             createdAt = soldAt, so legacy collisions
     //                             still tie here and fall through to (3).
-    //   3. lot_no ASC, numeric  — receipt # tiebreaker, cast to integer so
+    //   3. lot_no ASC, numeric  — receipt # tiebreaker, cast to bigint so
     //                             "2" sorts before "11" before "100".
+    //                             bigint (int8) is used instead of int4
+    //                             because some smoke-test/fixture rows use
+    //                             timestamp-based lot numbers that overflow
+    //                             a 32-bit signed integer; real receipt #s
+    //                             are small but we keep room defensively.
     //                             regexp_replace strips any non-numeric
     //                             chars defensively; NULLIF keeps an empty
     //                             string from blowing up the cast and the
@@ -1864,7 +1869,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(
         desc(salesHistory.soldAt),
         desc(salesHistory.createdAt),
-        sql`NULLIF(regexp_replace(${salesHistory.lotNo}, '[^0-9]', '', 'g'), '')::integer ASC NULLS LAST`,
+        sql`NULLIF(regexp_replace(${salesHistory.lotNo}, '[^0-9]', '', 'g'), '')::bigint ASC NULLS LAST`,
       );
 
     if (sales.length === 0) return [];
