@@ -687,7 +687,7 @@ export default function SalesHistoryPage() {
                       <TableCell className="text-right">{sale.originalLotSize}</TableCell>
                       <TableCell className="text-right" data-testid={`cell-remaining-after-sale-${sale.id}`}>
                         {sale.remainingSizeAtSale != null
-                          ? Math.max(0, sale.remainingSizeAtSale - sale.quantitySold)
+                          ? sale.remainingSizeAtSale - sale.quantitySold
                           : "—"}
                       </TableCell>
                       <TableCell>
