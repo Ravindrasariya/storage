@@ -363,7 +363,7 @@ export function MasterNikasiDialog({
       ? exitBags
       : (soldBagsRaw > 0 ? soldBagsRaw : 0);
     const lwc = resolveLot(r.lotNo, r.marka);
-    const base = calcBaseCharge(lwc, soldBags);
+    const base = calcBaseCharge(lwc, soldBags, r.chargeBasis);
     const kata = Number(r.kataCharges) || 0;
     const extraPerBag = Number(r.extraHammaliPerBag) || 0;
     const extra = extraPerBag * soldBags;
@@ -410,6 +410,7 @@ export function MasterNikasiDialog({
         lotId: string;
         exitBags: number;
         soldBags: number;
+        chargeBasis: "actual" | "totalRemaining";
         kataCharges: number;
         extraHammaliPerBag: number;
         gradingCharges: number;
@@ -452,6 +453,11 @@ export function MasterNikasiDialog({
           lotId: lwc.lot.id,
           exitBags: bags,
           soldBags: sold,
+          // Per-row basis (defaults to "actual" via newRow). When the
+          // lot's baseColdChargesBilled flag is already 1 the server
+          // forces this back to "actual" defensively, so we just send
+          // whatever the operator picked.
+          chargeBasis: r.chargeBasis,
           kataCharges: Number(r.kataCharges) || 0,
           extraHammaliPerBag: Number(r.extraHammaliPerBag) || 0,
           gradingCharges: Number(r.gradingCharges) || 0,
@@ -761,7 +767,7 @@ export function MasterNikasiDialog({
           </p>
         ) : (
           <div className="overflow-x-auto border border-blue-700 rounded-md">
-            <table className="w-full text-xs min-w-[1100px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_th]:whitespace-nowrap [&_td]:border [&_td]:border-border">
+            <table className="w-full text-xs min-w-[1240px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_th]:whitespace-nowrap [&_td]:border [&_td]:border-border">
               <thead className="bg-blue-700 text-white">
                 <tr>
                   <th className="p-2 text-left">{t("receiptNo")}</th>
@@ -769,6 +775,7 @@ export function MasterNikasiDialog({
                   <th className="p-2 text-right">{t("remainingBagsShort")}</th>
                   <th className="p-2 text-right">{t("exitBags")}</th>
                   <th className="p-2 text-right">{t("soldBags") || "Sold Bags"}</th>
+                  <th className="p-2 text-left">{t("chargeBasis")}</th>
                   <th className="p-2 text-right">{t("baseColdCharge")}</th>
                   <th className="p-2 text-right">{t("kataChargesShort")}</th>
                   <th className="p-2 text-right">{t("extraHammaliPerBagShort") || `${t("extraHammaliShort")}/Bag`}</th>
@@ -936,6 +943,47 @@ export function MasterNikasiDialog({
                           }
                         />
                       </td>
+                      <td className="p-2 w-[150px]">
+                        {/* Per-row charge basis: mirrors the partial-sale
+                            dialog. Disabled (and forced to "actual") when
+                            the lot's base cold charges have already been
+                            billed earlier — picking "totalRemaining" then
+                            would be misleading because the calculator
+                            zeroes base regardless. */}
+                        {(() => {
+                          const baseAlreadyBilled = lwc?.lot.baseColdChargesBilled === 1;
+                          const disabled = !!result || !r.lotNo || !r.marka || baseAlreadyBilled;
+                          // When the lot's base flag is already 1, force
+                          // the visible value to "actual" — the server
+                          // also forces this defensively, and the calc
+                          // zeroes base regardless, but showing "All
+                          // Remaining Bags" here would be misleading.
+                          const displayValue = baseAlreadyBilled ? "actual" : r.chargeBasis;
+                          return (
+                            <Select
+                              value={displayValue}
+                              onValueChange={(value: "actual" | "totalRemaining") =>
+                                updateRow(r.rowKey, { chargeBasis: value })
+                              }
+                              disabled={disabled}
+                            >
+                              <SelectTrigger
+                                className={`h-8 ${baseAlreadyBilled ? "bg-muted cursor-not-allowed" : ""}`}
+                                data-testid={`select-mn-charge-basis-${idx}`}
+                                title={baseAlreadyBilled
+                                  ? (t("baseChargesBilledChargeBasisHint") || "Base charges already billed - using actual bags only")
+                                  : undefined}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="actual">{t("actualBags")}</SelectItem>
+                                <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          );
+                        })()}
+                      </td>
                       <td className="p-2 text-right font-mono" data-testid={`text-mn-base-${idx}`}>{fmt(totals.base)}</td>
                       <td className="p-2">
                         <Input
@@ -992,7 +1040,8 @@ export function MasterNikasiDialog({
                   <td className="p-2" colSpan={3}>{t("total") || "Total"}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-bags">{totalExitBags}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-sold">{totalSoldBags}</td>
-                  <td className="p-2" colSpan={4}></td>
+                  {/* colSpan covers [chargeBasis, base, kata, extra, grading] */}
+                  <td className="p-2" colSpan={5}></td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-grand-total">{fmt(grandTotal)}</td>
                   <td></td>
                 </tr>
