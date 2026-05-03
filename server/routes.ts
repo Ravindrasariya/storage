@@ -3,9 +3,171 @@ import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
 import { db } from "./db";
-import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema } from "@shared/schema";
+import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema, exitHistory } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
+import { sql, eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
+
+// Shared filter pipeline used by both /api/lots/search and /api/lots/summary
+// so both endpoints derive their result set from the EXACT same filters
+// applied to the EXACT same DB snapshot. This is the contract that lets
+// the Stock Register summary card always be a fresh server query — the
+// client never has to re-derive numbers from rendered card data.
+interface RegisterFilterParams {
+  type?: "phone" | "lotNoSize" | "filter" | "farmerName";
+  query?: string;
+  lotNoFrom?: string;
+  lotNoTo?: string;
+  size?: string;
+  village?: string;
+  contactNumber?: string;
+  year?: number;
+  entryDate?: string;
+  quality?: string;
+  potatoType?: string;
+  paymentDue?: boolean;
+  upForSale?: boolean;
+  noExit?: boolean;
+  bagType?: string;
+  chamber?: string;
+  floor?: string;
+}
+
+function parseRegisterParams(q: any): RegisterFilterParams {
+  const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
+  const yearStr = typeof q.year === "string" ? q.year : undefined;
+  const yearNum = yearStr ? parseInt(yearStr, 10) : NaN;
+  return {
+    type: validTypes.includes(q.type) ? q.type : undefined,
+    query: typeof q.query === "string" ? q.query : undefined,
+    lotNoFrom: typeof q.lotNoFrom === "string" ? q.lotNoFrom : undefined,
+    lotNoTo: typeof q.lotNoTo === "string" ? q.lotNoTo : undefined,
+    size: typeof q.size === "string" ? q.size : undefined,
+    village: typeof q.village === "string" ? q.village : undefined,
+    contactNumber: typeof q.contactNumber === "string" ? q.contactNumber : undefined,
+    year: !isNaN(yearNum) ? yearNum : undefined,
+    entryDate: typeof q.entryDate === "string" ? q.entryDate : undefined,
+    quality: typeof q.quality === "string" ? q.quality : undefined,
+    potatoType: typeof q.potatoType === "string" ? q.potatoType : undefined,
+    paymentDue: q.paymentDue === "true",
+    upForSale: q.upForSale === "true",
+    noExit: q.noExit === "true",
+    bagType: typeof q.bagType === "string" ? q.bagType : undefined,
+    chamber: typeof q.chamber === "string" ? q.chamber : undefined,
+    floor: typeof q.floor === "string" ? q.floor : undefined,
+  };
+}
+
+async function getFilteredLotsForRegister(
+  coldStorageId: string,
+  params: RegisterFilterParams,
+): Promise<Lot[]> {
+  const {
+    type, query, lotNoFrom, lotNoTo, size, village, contactNumber,
+    year, entryDate, quality, potatoType, paymentDue, upForSale, noExit,
+    bagType, chamber, floor,
+  } = params;
+
+  // Initial fetch — chooses the cheapest storage method that already
+  // narrows on the primary input. Falls back to getAllLots when no
+  // primary input is provided (filter-only / summary-card path).
+  let lots: Lot[];
+  if (type === "lotNoSize") {
+    lots = await storage.searchLotsByLotNoAndSize(
+      lotNoFrom || "", lotNoTo || "", size || "", coldStorageId,
+    );
+  } else if (type === "farmerName") {
+    const queryStr = (query || "").trim();
+    if (!queryStr) {
+      // farmerName tab with no primary input (e.g. up-for-sale-only
+      // search): start from all lots, then optionally narrow by
+      // village / contactNumber if the caller supplied them.
+      lots = await storage.getAllLots(coldStorageId);
+      if (village) lots = lots.filter((l) => l.village === village);
+      if (contactNumber) lots = lots.filter((l) => l.contactNumber === contactNumber);
+    } else {
+      lots = await storage.searchLotsByFarmerName(
+        queryStr, coldStorageId, village, contactNumber,
+      );
+    }
+  } else if (type === "phone" && (query || "").trim()) {
+    lots = await storage.searchLots("phone", query as string, coldStorageId);
+  } else {
+    // type === "filter", or any unspecified / empty-primary case → all lots.
+    lots = await storage.getAllLots(coldStorageId);
+  }
+
+  if (bagType && bagType !== "all") {
+    if (bagType === "ration_seed") {
+      lots = lots.filter((l) => l.bagType === "Ration" || l.bagType === "seed");
+    } else {
+      lots = lots.filter((l) => l.bagType === bagType);
+    }
+  }
+
+  if (year !== undefined) {
+    lots = lots.filter((l) => {
+      if (!l.createdAt) return false;
+      return new Date(l.createdAt).getFullYear() === year;
+    });
+  }
+
+  if (entryDate && entryDate.trim()) {
+    const target = entryDate.trim();
+    lots = lots.filter((l) => {
+      if (!l.createdAt) return false;
+      const d = new Date(l.createdAt);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${dd}` === target;
+    });
+  }
+
+  if (chamber && chamber !== "all") {
+    if (chamber === "blank") {
+      lots = lots.filter((l) => !l.chamberId);
+    } else {
+      lots = lots.filter((l) => l.chamberId === chamber);
+    }
+  }
+
+  if (floor && floor !== "all") {
+    if (floor === "blank") {
+      lots = lots.filter((l) => !l.floor);
+    } else {
+      lots = lots.filter((l) => l.floor === Number(floor));
+    }
+  }
+
+  if (quality && ["poor", "medium", "good"].includes(quality)) {
+    lots = lots.filter((l) => l.quality === quality);
+  }
+
+  if (potatoType && potatoType.trim()) {
+    lots = lots.filter((l) => l.type === potatoType);
+  }
+
+  if (paymentDue) {
+    lots = lots.filter((l) => l.totalDueCharge && l.totalDueCharge > 0);
+  }
+
+  // Mirror getUpForSaleLots: also exclude lots whose remaining bags
+  // is 0 or whose status is already "sold" so any future write path
+  // that misses the invariant cannot leak ghost lots.
+  if (upForSale) {
+    lots = lots.filter(
+      (l) => l.upForSale === 1 && l.remainingSize > 0 && l.saleStatus !== "sold",
+    );
+  }
+
+  if (noExit) {
+    const incompleteIds = await storage.getLotIdsWithIncompleteExits(coldStorageId);
+    lots = lots.filter((l) => incompleteIds.has(l.id));
+  }
+
+  return lots;
+}
 
 // Retry a transactional operation when Postgres aborts it due to a farmer_id
 // unique-constraint collision (rare race during concurrent farmer creation).
@@ -324,45 +486,10 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const coldStorage = await storage.getColdStorage(coldStorageId);
-      let allLots = await storage.getAllLots(coldStorageId);
+      const params = parseRegisterParams(req.query);
+      const allLots = await getFilteredLotsForRegister(coldStorageId, params);
       const allSalesHistory = await storage.getSalesHistory(coldStorageId);
 
-      const { bagType, year, chamber, floor } = req.query;
-
-      if (bagType && typeof bagType === "string" && bagType !== "all") {
-        if (bagType === "ration_seed") {
-          allLots = allLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed");
-        } else {
-          allLots = allLots.filter(lot => lot.bagType === bagType);
-        }
-      }
-
-      if (year) {
-        const filterYear = parseInt(year as string, 10);
-        if (!isNaN(filterYear)) {
-          allLots = allLots.filter(lot => {
-            if (!lot.createdAt) return false;
-            return new Date(lot.createdAt).getFullYear() === filterYear;
-          });
-        }
-      }
-
-      if (chamber && typeof chamber === "string" && chamber !== "all") {
-        if (chamber === "blank") {
-          allLots = allLots.filter(lot => !lot.chamberId);
-        } else {
-          allLots = allLots.filter(lot => lot.chamberId === chamber);
-        }
-      }
-
-      if (floor && typeof floor === "string" && floor !== "all") {
-        if (floor === "blank") {
-          allLots = allLots.filter(lot => !lot.floor);
-        } else {
-          allLots = allLots.filter(lot => lot.floor === Number(floor));
-        }
-      }
-      
       // Calculate summary totals for filtered lots
       let totalBags = 0;
       let remainingBags = 0;
@@ -403,8 +530,6 @@ export async function registerRoutes(
       const exitedByLot = new Map<string, number>();
       const lotIdArray = Array.from(lotIds);
       if (lotIdArray.length > 0) {
-        const { exitHistory } = await import("@shared/schema");
-        const { sql, eq, and, inArray } = await import("drizzle-orm");
         const exitRows = await db
           .select({
             lotId: exitHistory.lotId,
@@ -764,122 +889,30 @@ export async function registerRoutes(
   app.get("/api/lots/search", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { type, query, size, quality, paymentDue, potatoType, year, entryDate, upForSale, noExit } = req.query;
-      const filterYear = year ? parseInt(year as string, 10) : undefined;
-      
       const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
-      if (!validTypes.includes(type as string)) {
+      if (!validTypes.includes(req.query.type as string)) {
         return res.status(400).json({ error: "Invalid search type" });
       }
-      
-      let lots;
-      if (type === "filter") {
-        // Get all lots and apply filters
-        lots = await storage.getAllLots(coldStorageId);
-      } else if (type === "lotNoSize") {
-        const { lotNoFrom, lotNoTo } = req.query;
-        lots = await storage.searchLotsByLotNoAndSize(
-          (lotNoFrom as string) || "",
-          (lotNoTo as string) || "",
-          size as string || "",
-          coldStorageId
-        );
-      } else if (type === "farmerName") {
-        const village = req.query.village as string | undefined;
-        const contactNumber = req.query.contactNumber as string | undefined;
-        const queryStr = (query as string) || "";
-        // Allow empty query when upForSale=true or noExit=true so users can search by these filters alone
-        if (!queryStr.trim() && upForSale !== "true" && noExit !== "true") {
-          return res.status(400).json({ error: "Missing query parameter" });
-        }
-        if (!queryStr.trim()) {
-          // Up-for-sale-only search: start from all lots, then apply optional village/contact filters
-          lots = await storage.getAllLots(coldStorageId);
-          if (village) {
-            lots = lots.filter((l) => l.village === village);
-          }
-          if (contactNumber) {
-            lots = lots.filter((l) => l.contactNumber === contactNumber);
-          }
-        } else {
-          lots = await storage.searchLotsByFarmerName(
-            queryStr,
-            coldStorageId,
-            village,
-            contactNumber
-          );
-        }
-      } else {
-        if (!query) {
-          return res.status(400).json({ error: "Missing query parameter" });
-        }
-        lots = await storage.searchLots(
-          type as "phone",
-          query as string,
-          coldStorageId
-        );
+
+      // Search-specific gates that the shared helper does NOT enforce
+      // (it treats missing primary input as a filter-only run). Keep
+      // the explicit "Missing query parameter" responses so UI bugs
+      // that fire empty searches still surface as 400s instead of
+      // silently returning every lot.
+      const type = req.query.type as string;
+      const query = (req.query.query as string) || "";
+      const upForSale = req.query.upForSale === "true";
+      const noExit = req.query.noExit === "true";
+      if (type === "phone" && !query.trim()) {
+        return res.status(400).json({ error: "Missing query parameter" });
       }
-      
-      // Apply year filter (based on createdAt date)
-      if (filterYear) {
-        lots = lots.filter((lot) => {
-          if (!lot.createdAt) return false;
-          const lotYear = new Date(lot.createdAt).getFullYear();
-          return lotYear === filterYear;
-        });
-      }
-      
-      // Apply entry date filter (match by calendar day in local date string)
-      if (entryDate && typeof entryDate === "string" && entryDate.trim()) {
-        lots = lots.filter((lot) => {
-          if (!lot.createdAt) return false;
-          const lotDate = new Date(lot.createdAt);
-          const y = lotDate.getFullYear();
-          const m = String(lotDate.getMonth() + 1).padStart(2, "0");
-          const d = String(lotDate.getDate()).padStart(2, "0");
-          return `${y}-${m}-${d}` === entryDate.trim();
-        });
+      if (type === "farmerName" && !query.trim() && !upForSale && !noExit) {
+        return res.status(400).json({ error: "Missing query parameter" });
       }
 
-      // Apply quality filter
-      if (quality && ["poor", "medium", "good"].includes(quality as string)) {
-        lots = lots.filter((lot) => lot.quality === quality);
-      }
-      
-      // Apply potato type filter
-      if (potatoType && typeof potatoType === "string" && potatoType.trim()) {
-        lots = lots.filter((lot) => lot.type === potatoType);
-      }
-      
-      // Apply payment due filter (lots that have cold storage charges due)
-      if (paymentDue === "true") {
-        lots = lots.filter((lot) => lot.totalDueCharge && lot.totalDueCharge > 0);
-      }
-
-      // Apply up-for-sale filter (lots flagged as up-for-sale).
-      // Mirror the canonical filter used by getUpForSaleLots: also exclude
-      // lots whose remaining bags is 0 or whose status is already "sold",
-      // so any future write path that misses the invariant cannot leak
-      // ghost lots into this search.
-      if (upForSale === "true") {
-        lots = lots.filter(
-          (lot) =>
-            lot.upForSale === 1 &&
-            lot.remainingSize > 0 &&
-            lot.saleStatus !== "sold",
-        );
-      }
-
-      // Apply No-Exit filter: keep lots with at least one active sale where
-      // bagsExited (sum of non-reversed exits) is less than quantitySold.
-      if (noExit === "true") {
-        const incompleteIds = await storage.getLotIdsWithIncompleteExits(coldStorageId);
-        lots = lots.filter((lot) => incompleteIds.has(lot.id));
-      }
-      
-      // Sort by lot number in ascending order
+      const params = parseRegisterParams(req.query);
+      let lots = await getFilteredLotsForRegister(coldStorageId, params);
       lots = lots.sort((a, b) => parseInt(a.lotNo, 10) - parseInt(b.lotNo, 10));
-      
       res.json(lots);
     } catch (error) {
       res.status(500).json({ error: "Failed to search lots" });
