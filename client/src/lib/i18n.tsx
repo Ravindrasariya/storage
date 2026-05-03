@@ -48,6 +48,7 @@ const translations: Translations = {
   totalChargesPaid: { en: "Charges Paid", hi: "भुगतान किया शुल्क" },
   totalChargesDue: { en: "Charges Due", hi: "बकाया शुल्क" },
   searchSummary: { en: "Search Summary", hi: "खोज सारांश" },
+  soldNoExit: { en: "Sold / No Exit", hi: "बिका / बिना निकासी" },
   addNewLot: { en: "Add New Lot", hi: "नया लॉट जोड़ें" },
   
   // Lot Entry Form

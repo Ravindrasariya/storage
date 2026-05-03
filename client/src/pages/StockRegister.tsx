@@ -398,6 +398,8 @@ export default function StockRegister() {
     chargesPaid: number;
     chargesDue: number;
     expectedColdCharges: number;
+    totalSold: number;
+    totalSoldNotExited: number;
   }>({
     queryKey: ["/api/lots/summary", { bagType: bagTypeFilter, year: selectedYear, chamber: chamberFilter, floor: floorFilter }],
     queryFn: async () => {
@@ -749,13 +751,28 @@ export default function StockRegister() {
     
     let chargesPaid = 0;
     let chargesDue = 0;
+    let totalSold = 0;
+    const soldByLot = new Map<string, number>();
     
     if (allSalesHistory) {
       for (const sale of allSalesHistory) {
         if (!lotIds.has(sale.lotId)) continue;
         chargesPaid += sale.paidAmount || 0;
         chargesDue += sale.dueAmount || 0;
+        const qty = sale.quantitySold || 0;
+        totalSold += qty;
+        soldByLot.set(sale.lotId, (soldByLot.get(sale.lotId) || 0) + qty);
       }
+    }
+
+    // "Sold but not yet physically exited" per lot, clamped at 0 to
+    // shrug off the oversold edge case (surfaced separately by the
+    // oversold-lots task). Mirrors server logic in /api/lots/summary.
+    let totalSoldNotExited = 0;
+    for (const lot of filteredResults) {
+      const soldForLot = soldByLot.get(lot.id) || 0;
+      const exitedForLot = lot.size - lot.remainingSize;
+      totalSoldNotExited += Math.max(0, soldForLot - exitedForLot);
     }
     
     const expectedColdCharges = filteredResults.reduce((sum, lot) => sum + calcExpectedCharge(lot), 0);
@@ -766,6 +783,8 @@ export default function StockRegister() {
       chargesPaid,
       chargesDue,
       expectedColdCharges,
+      totalSold,
+      totalSoldNotExited,
     };
   }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, chamberFilter, floorFilter, matchesChamberFilter, matchesFloorFilter, coldStorage, allLotsSummary, calcExpectedCharge]);
 
@@ -1265,6 +1284,10 @@ export default function StockRegister() {
           <div class="summary-item">
             <span class="summary-label">Remaining Bags</span>
             <span class="summary-value">${summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Sold / No Exit</span>
+            <span class="summary-value">${(summaryTotals.totalSold ?? 0).toLocaleString('en-IN')} / ${(summaryTotals.totalSoldNotExited ?? 0).toLocaleString('en-IN')}</span>
           </div>
           <div class="summary-item">
             <span class="summary-label">Total Expected Billed Charges</span>
@@ -2109,7 +2132,7 @@ export default function StockRegister() {
         <Card className="p-3 bg-muted/50">
           <div className="flex flex-col gap-2">
             <span className="font-semibold text-xs md:text-sm">{t("searchSummary")}:</span>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div className="flex flex-col items-center">
                 <span className="text-xs text-muted-foreground text-center">{t("totalBags")}</span>
                 <span className="font-bold text-sm md:text-base" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString('en-IN')}</span>
@@ -2117,6 +2140,10 @@ export default function StockRegister() {
               <div className="flex flex-col items-center">
                 <span className="text-xs text-muted-foreground text-center">{t("totalRemainingBags")}</span>
                 <span className="font-bold text-sm md:text-base" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-xs text-muted-foreground text-center">{t("soldNoExit")}</span>
+                <span className="font-bold text-sm md:text-base" data-testid="text-sold-no-exit">{(summaryTotals.totalSold ?? 0).toLocaleString('en-IN')} / {(summaryTotals.totalSoldNotExited ?? 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex flex-col items-center">
                 <span className="text-xs text-muted-foreground text-center">{t("totalExpectedColdCharges")}</span>

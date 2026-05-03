@@ -371,12 +371,22 @@ export async function registerRoutes(
       let expectedColdCharges = 0;
       
       const lotIds = new Set(allLots.map(lot => lot.id));
-      
+
+      // Per-lot Σ quantitySold drives both totalSold (the numerator on the
+      // new "Sold / No Exit" tile) AND, combined with size − remainingSize
+      // below, totalSoldNotExited (denominator). Reusing allSalesHistory
+      // here means no new DB call.
+      let totalSold = 0;
+      const soldByLot = new Map<string, number>();
+
       // Get paid and due amounts from sales history for these lots
       for (const sale of allSalesHistory) {
         if (lotIds.has(sale.lotId)) {
           chargesPaid += sale.paidAmount || 0;
           chargesDue += sale.dueAmount || 0;
+          const qty = sale.quantitySold || 0;
+          totalSold += qty;
+          soldByLot.set(sale.lotId, (soldByLot.get(sale.lotId) || 0) + qty);
         }
       }
       
@@ -385,9 +395,19 @@ export async function registerRoutes(
       const farmerMap = new Map(allFarmerRecords.map(f => [f.farmerLedgerId, f]));
       
       // Calculate expected cold charges and bag totals
+      let totalSoldNotExited = 0;
       for (const lot of allLots) {
         totalBags += lot.size;
         remainingBags += lot.remainingSize;
+
+        // "Sold but not yet physically exited" per lot. Invariant:
+        // Σ totalExited (non-reversed) = lot.size − lot.remainingSize.
+        // Clamp at 0 so an oversold lot (Σ sold > stored) can't push
+        // the denominator negative — that case is surfaced separately
+        // by the oversold-lots task.
+        const soldForLot = soldByLot.get(lot.id) || 0;
+        const exitedForLot = lot.size - lot.remainingSize;
+        totalSoldNotExited += Math.max(0, soldForLot - exitedForLot);
         
         // Look up farmer-level overrides
         const farmer = lot.farmerLedgerId ? farmerMap.get(lot.farmerLedgerId) : undefined;
@@ -417,6 +437,8 @@ export async function registerRoutes(
         chargesPaid,
         chargesDue,
         expectedColdCharges,
+        totalSold,
+        totalSoldNotExited,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch lots summary" });
