@@ -372,10 +372,12 @@ export async function registerRoutes(
       
       const lotIds = new Set(allLots.map(lot => lot.id));
 
-      // Per-lot Σ quantitySold drives both totalSold (the numerator on the
-      // new "Sold / No Exit" tile) AND, combined with size − remainingSize
-      // below, totalSoldNotExited (denominator). Reusing allSalesHistory
-      // here means no new DB call.
+      // Per-lot Σ quantitySold — drives totalSold (numerator on the
+      // "Sold / No Exit" tile). NOTE: in this codebase remainingSize
+      // is decremented at SALE time (partial-sale + master-nikasi), so
+      // lot.size − lot.remainingSize === Σ quantitySold and CANNOT be
+      // used as the "exited bags" count. Real physical exits live in
+      // exit_history, queried below.
       let totalSold = 0;
       const soldByLot = new Map<string, number>();
 
@@ -393,20 +395,45 @@ export async function registerRoutes(
       // Look up farmer records for entity type and custom rate overrides (include archived for charge accuracy)
       const allFarmerRecords = await storage.getFarmerRecords(coldStorageId, undefined, true);
       const farmerMap = new Map(allFarmerRecords.map(f => [f.farmerLedgerId, f]));
-      
+
+      // Per-lot Σ bagsExited (non-reversed) — the real physical-exit
+      // count. Mirrors the aggregation pattern at server/storage.ts:1111
+      // (the dashboard "physicalRemaining" computation). One grouped
+      // query, scoped to the filtered lot set.
+      const exitedByLot = new Map<string, number>();
+      const lotIdArray = Array.from(lotIds);
+      if (lotIdArray.length > 0) {
+        const { exitHistory } = await import("@shared/schema");
+        const { sql, eq, and, inArray } = await import("drizzle-orm");
+        const exitRows = await db
+          .select({
+            lotId: exitHistory.lotId,
+            totalExited: sql<number>`COALESCE(SUM(${exitHistory.bagsExited}), 0)`.as("total_exited"),
+          })
+          .from(exitHistory)
+          .where(and(
+            inArray(exitHistory.lotId, lotIdArray),
+            eq(exitHistory.isReversed, 0),
+          ))
+          .groupBy(exitHistory.lotId);
+        for (const row of exitRows) {
+          exitedByLot.set(row.lotId, Number(row.totalExited) || 0);
+        }
+      }
+
       // Calculate expected cold charges and bag totals
       let totalSoldNotExited = 0;
       for (const lot of allLots) {
         totalBags += lot.size;
         remainingBags += lot.remainingSize;
 
-        // "Sold but not yet physically exited" per lot. Invariant:
-        // Σ totalExited (non-reversed) = lot.size − lot.remainingSize.
-        // Clamp at 0 so an oversold lot (Σ sold > stored) can't push
-        // the denominator negative — that case is surfaced separately
-        // by the oversold-lots task.
+        // "Sold but not yet physically exited" per lot.
+        // Clamp at 0 so the oversold-lot edge case (Σ sold > Σ exited
+        // is the *normal* case here, but the clamp guards the inverse
+        // — exits exceeding sales due to data drift) can't push the
+        // denominator negative.
         const soldForLot = soldByLot.get(lot.id) || 0;
-        const exitedForLot = lot.size - lot.remainingSize;
+        const exitedForLot = exitedByLot.get(lot.id) || 0;
         totalSoldNotExited += Math.max(0, soldForLot - exitedForLot);
         
         // Look up farmer-level overrides

@@ -378,7 +378,7 @@ export default function StockRegister() {
   // FarmerLotGroup.
   const renderedLotIds = (hasSearched ? searchResults : displayedLots).map(l => l.id);
   const renderedLotIdsKey = [...renderedLotIds].sort().join(",");
-  const { data: salesByLot } = useQuery<Record<string, SaleSummary[]>>({
+  const { data: salesByLot, isLoading: salesByLotLoading, isError: salesByLotError } = useQuery<Record<string, SaleSummary[]>>({
     queryKey: ["/api/lots/sales-summary", renderedLotIdsKey],
     queryFn: async () => {
       if (!renderedLotIdsKey) return {};
@@ -765,14 +765,31 @@ export default function StockRegister() {
       }
     }
 
-    // "Sold but not yet physically exited" per lot, clamped at 0 to
-    // shrug off the oversold edge case (surfaced separately by the
-    // oversold-lots task). Mirrors server logic in /api/lots/summary.
-    let totalSoldNotExited = 0;
-    for (const lot of filteredResults) {
-      const soldForLot = soldByLot.get(lot.id) || 0;
-      const exitedForLot = lot.size - lot.remainingSize;
-      totalSoldNotExited += Math.max(0, soldForLot - exitedForLot);
+    // "Sold but not yet physically exited" per lot. Real exit count
+    // comes from salesByLot — the per-sale aggregate already pulled
+    // from /api/lots/sales-summary, which sums non-reversed
+    // exit_history.bagsExited per sale. (lot.size − lot.remainingSize
+    // CANNOT be used here because remainingSize is decremented at
+    // sale time in this codebase, so it equals Σ quantitySold.)
+    //
+    // If salesByLot is still loading or errored, set the denominator
+    // to null so the tile renders "—" instead of a silently-wrong
+    // inflated value (which would be Σ sold, since missing exit data
+    // would default to 0). Clamp at 0 once data is in to absorb any
+    // drift where exits exceed sales.
+    let totalSoldNotExited: number | null;
+    if (salesByLotLoading || salesByLotError || !salesByLot) {
+      totalSoldNotExited = null;
+    } else {
+      totalSoldNotExited = 0;
+      for (const lot of filteredResults) {
+        const soldForLot = soldByLot.get(lot.id) || 0;
+        const exitedForLot = (salesByLot[lot.id] ?? []).reduce(
+          (sum, s) => sum + (s.totalExited || 0),
+          0,
+        );
+        totalSoldNotExited += Math.max(0, soldForLot - exitedForLot);
+      }
     }
     
     const expectedColdCharges = filteredResults.reduce((sum, lot) => sum + calcExpectedCharge(lot), 0);
@@ -786,7 +803,7 @@ export default function StockRegister() {
       totalSold,
       totalSoldNotExited,
     };
-  }, [hasSearched, searchResults, initialLots, allSalesHistory, bagTypeFilter, chamberFilter, floorFilter, matchesChamberFilter, matchesFloorFilter, coldStorage, allLotsSummary, calcExpectedCharge]);
+  }, [hasSearched, searchResults, initialLots, allSalesHistory, salesByLot, salesByLotLoading, salesByLotError, bagTypeFilter, chamberFilter, floorFilter, matchesChamberFilter, matchesFloorFilter, coldStorage, allLotsSummary, calcExpectedCharge]);
 
   const floorOptions = useMemo(() => {
     if (chamberFilter === "all" || chamberFilter === "blank" || !chamberFloors) return [];
@@ -1287,7 +1304,7 @@ export default function StockRegister() {
           </div>
           <div class="summary-item">
             <span class="summary-label">Sold / No Exit</span>
-            <span class="summary-value">${(summaryTotals.totalSold ?? 0).toLocaleString('en-IN')} / ${(summaryTotals.totalSoldNotExited ?? 0).toLocaleString('en-IN')}</span>
+            <span class="summary-value">${(summaryTotals.totalSold ?? 0).toLocaleString('en-IN')} / ${summaryTotals.totalSoldNotExited == null ? '—' : summaryTotals.totalSoldNotExited.toLocaleString('en-IN')}</span>
           </div>
           <div class="summary-item">
             <span class="summary-label">Total Expected Billed Charges</span>
@@ -2143,7 +2160,7 @@ export default function StockRegister() {
               </div>
               <div className="flex flex-col items-center">
                 <span className="text-xs text-muted-foreground text-center">{t("soldNoExit")}</span>
-                <span className="font-bold text-sm md:text-base" data-testid="text-sold-no-exit">{(summaryTotals.totalSold ?? 0).toLocaleString('en-IN')} / {(summaryTotals.totalSoldNotExited ?? 0).toLocaleString('en-IN')}</span>
+                <span className="font-bold text-sm md:text-base" data-testid="text-sold-no-exit">{(summaryTotals.totalSold ?? 0).toLocaleString('en-IN')} / {summaryTotals.totalSoldNotExited == null ? '—' : summaryTotals.totalSoldNotExited.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex flex-col items-center">
                 <span className="text-xs text-muted-foreground text-center">{t("totalExpectedColdCharges")}</span>
