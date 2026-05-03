@@ -445,7 +445,11 @@ export default function StockRegister() {
     bagTypeFilter, selectedYear, chamberFilter, floorFilter,
   ]);
 
-  const { data: allLotsSummary } = useQuery<{
+  const {
+    data: allLotsSummary,
+    isLoading: allLotsSummaryLoading,
+    isError: allLotsSummaryError,
+  } = useQuery<{
     totalBags: number;
     remainingBags: number;
     chargesPaid: number;
@@ -2114,39 +2118,74 @@ export default function StockRegister() {
         );
       })()}
 
-      {summaryTotals && (
-        <Card className="p-3 bg-muted/50">
-          <div className="flex flex-col gap-2">
-            <span className="font-semibold text-xs md:text-sm">{t("searchSummary")}:</span>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-muted-foreground text-center">{t("totalBags")}</span>
-                <span className="font-bold text-sm md:text-base" data-testid="text-total-bags">{summaryTotals.totalBags.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-muted-foreground text-center">{t("totalRemainingBags")}</span>
-                <span className="font-bold text-sm md:text-base" data-testid="text-total-remaining">{summaryTotals.remainingBags.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-muted-foreground text-center">{t("soldNoExit")}</span>
-                <span className="font-bold text-sm md:text-base" data-testid="text-sold-no-exit">{(summaryTotals.totalSold ?? 0).toLocaleString('en-IN')} / {summaryTotals.totalSoldNotExited == null ? '—' : summaryTotals.totalSoldNotExited.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-muted-foreground text-center">{t("totalExpectedColdCharges")}</span>
-                <span className="font-bold text-sm md:text-base text-blue-600" data-testid="text-total-expected"><Currency amount={summaryTotals.expectedColdCharges} /></span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-muted-foreground text-center">{t("totalChargesPaid")}</span>
-                <span className="font-bold text-sm md:text-base text-green-600" data-testid="text-total-paid"><Currency amount={summaryTotals.chargesPaid} /></span>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-xs text-muted-foreground text-center">{t("totalChargesDue")}</span>
-                <span className="font-bold text-sm md:text-base text-red-600" data-testid="text-total-due"><Currency amount={summaryTotals.chargesDue} /></span>
+      {(() => {
+        // Render the summary card structure unconditionally so users
+        // always see the labels and have predictable layout. Each tile
+        // shows:
+        //   - the loaded value when the /api/lots/summary query has data
+        //   - a Skeleton placeholder while fetching (no cached data yet)
+        //   - an explicit "—" on fetch error so we never silently render
+        //     a stale or zero number while the underlying DB number is
+        //     unknown.
+        const tileContent = (render: (s: NonNullable<typeof summaryTotals>) => React.ReactNode) => {
+          if (allLotsSummaryError) return <span className="font-bold text-sm md:text-base">—</span>;
+          if (!summaryTotals) {
+            return allLotsSummaryLoading
+              ? <Skeleton className="h-5 w-16" />
+              : <span className="font-bold text-sm md:text-base">—</span>;
+          }
+          return render(summaryTotals);
+        };
+        return (
+          <Card className="p-3 bg-muted/50">
+            <div className="flex flex-col gap-2">
+              <span className="font-semibold text-xs md:text-sm">{t("searchSummary")}:</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="flex flex-col items-center">
+                  <span className="text-xs text-muted-foreground text-center">{t("totalBags")}</span>
+                  <span data-testid="text-total-bags">
+                    {tileContent((s) => <span className="font-bold text-sm md:text-base">{s.totalBags.toLocaleString('en-IN')}</span>)}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-xs text-muted-foreground text-center">{t("totalRemainingBags")}</span>
+                  <span data-testid="text-total-remaining">
+                    {tileContent((s) => <span className="font-bold text-sm md:text-base">{s.remainingBags.toLocaleString('en-IN')}</span>)}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-xs text-muted-foreground text-center">{t("soldNoExit")}</span>
+                  <span data-testid="text-sold-no-exit">
+                    {tileContent((s) => (
+                      <span className="font-bold text-sm md:text-base">
+                        {(s.totalSold ?? 0).toLocaleString('en-IN')} / {s.totalSoldNotExited == null ? '—' : s.totalSoldNotExited.toLocaleString('en-IN')}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-xs text-muted-foreground text-center">{t("totalExpectedColdCharges")}</span>
+                  <span data-testid="text-total-expected">
+                    {tileContent((s) => <span className="font-bold text-sm md:text-base text-blue-600"><Currency amount={s.expectedColdCharges} /></span>)}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-xs text-muted-foreground text-center">{t("totalChargesPaid")}</span>
+                  <span data-testid="text-total-paid">
+                    {tileContent((s) => <span className="font-bold text-sm md:text-base text-green-600"><Currency amount={s.chargesPaid} /></span>)}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-xs text-muted-foreground text-center">{t("totalChargesDue")}</span>
+                  <span data-testid="text-total-due">
+                    {tileContent((s) => <span className="font-bold text-sm md:text-base text-red-600"><Currency amount={s.chargesDue} /></span>)}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        </Card>
-      )}
+          </Card>
+        );
+      })()}
 
       {isSearching || isLoadingInitial ? (
         <div className="space-y-4">
