@@ -392,6 +392,59 @@ export default function StockRegister() {
   });
 
   // Fetch summary totals for ALL lots (with optional bag type and year filter)
+  // Single source of truth for the summary card: ALWAYS pulled fresh from
+  // /api/lots/summary. The server applies the same filter pipeline as
+  // /api/lots/search, so when a search is active we forward every search
+  // input + filter so the returned numbers describe exactly the same lot
+  // set that the cards on screen will render. When no search is active,
+  // we forward only the global filters (bagType / year / chamber / floor).
+  // Numbers — including sold / no-exit — come straight from the DB; the
+  // client never derives them from rendered card data.
+  const summaryQueryParams = useMemo(() => {
+    const params: Record<string, string> = {};
+    if (bagTypeFilter !== "all") params.bagType = bagTypeFilter;
+    if (selectedYear) params.year = String(selectedYear);
+    if (chamberFilter !== "all") params.chamber = chamberFilter;
+    if (floorFilter !== "all") params.floor = floorFilter;
+    if (hasSearched) {
+      const hasPrimary =
+        (searchType === "phone" && !!searchQuery.trim()) ||
+        (searchType === "lotNoSize" && (!!lotNoFrom.trim() || !!lotNoTo.trim() || !!sizeQuery.trim())) ||
+        (searchType === "farmerName" && !!farmerNameQuery.trim());
+      if (!hasPrimary) {
+        params.type = "filter";
+      } else if (searchType === "lotNoSize") {
+        params.type = "lotNoSize";
+        if (lotNoFrom.trim()) params.lotNoFrom = lotNoFrom;
+        if (lotNoTo.trim()) params.lotNoTo = lotNoTo;
+        if (sizeQuery.trim()) params.size = sizeQuery;
+      } else if (searchType === "farmerName") {
+        params.type = "farmerName";
+        params.query = farmerNameQuery;
+        if (farmerNameQuery.trim()) {
+          if (selectedFarmerVillage) params.village = selectedFarmerVillage;
+          if (selectedFarmerMobile) params.contactNumber = selectedFarmerMobile;
+        }
+      } else {
+        params.type = searchType;
+        params.query = searchQuery;
+      }
+      if (upForSaleOnly) params.upForSale = "true";
+      if (noExitOnly) params.noExit = "true";
+      if (qualityFilter && qualityFilter !== "all") params.quality = qualityFilter;
+      if (potatoTypeFilter && potatoTypeFilter !== "all") params.potatoType = potatoTypeFilter;
+      if (paymentDueFilter) params.paymentDue = "true";
+      if (filterEntryDate) params.entryDate = filterEntryDate;
+    }
+    return params;
+  }, [
+    hasSearched, searchType, searchQuery, lotNoFrom, lotNoTo, sizeQuery,
+    farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile,
+    upForSaleOnly, noExitOnly, qualityFilter, potatoTypeFilter,
+    paymentDueFilter, filterEntryDate,
+    bagTypeFilter, selectedYear, chamberFilter, floorFilter,
+  ]);
+
   const { data: allLotsSummary } = useQuery<{
     totalBags: number;
     remainingBags: number;
@@ -401,14 +454,10 @@ export default function StockRegister() {
     totalSold: number;
     totalSoldNotExited: number;
   }>({
-    queryKey: ["/api/lots/summary", { bagType: bagTypeFilter, year: selectedYear, chamber: chamberFilter, floor: floorFilter }],
+    queryKey: ["/api/lots/summary", summaryQueryParams],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (bagTypeFilter !== "all") params.set("bagType", bagTypeFilter);
-      if (selectedYear) params.set("year", String(selectedYear));
-      if (chamberFilter !== "all") params.set("chamber", chamberFilter);
-      if (floorFilter !== "all") params.set("floor", floorFilter);
-      const url = `/api/lots/summary${params.toString() ? `?${params.toString()}` : ""}`;
+      const qs = new URLSearchParams(summaryQueryParams).toString();
+      const url = `/api/lots/summary${qs ? `?${qs}` : ""}`;
       const response = await authFetch(url);
       if (!response.ok) throw new Error("Failed to fetch summary");
       return response.json();
@@ -721,89 +770,9 @@ export default function StockRegister() {
     return lot.floor === Number(floorFilter);
   }, [floorFilter]);
 
-  // Calculate summary totals from sales history for consistency with Analytics
-  const summaryTotals = useMemo(() => {
-    // When no search is active, use the API summary which covers ALL lots (with all filters applied server-side)
-    if (!hasSearched && allLotsSummary) {
-      return allLotsSummary;
-    }
-    
-    // Use search results when searched — apply all filters client-side
-    const baseLots = hasSearched ? searchResults : (initialLots || []);
-    if (baseLots.length === 0) return null;
-    
-    let filteredResults = bagTypeFilter === "all" 
-      ? baseLots 
-      : bagTypeFilter === "ration_seed"
-        ? baseLots.filter(lot => lot.bagType === "Ration" || lot.bagType === "seed")
-        : baseLots.filter(lot => lot.bagType === bagTypeFilter);
-
-    if (chamberFilter !== "all") {
-      filteredResults = filteredResults.filter(matchesChamberFilter);
-    }
-    if (floorFilter !== "all") {
-      filteredResults = filteredResults.filter(matchesFloorFilter);
-    }
-    
-    if (filteredResults.length === 0) return null;
-    
-    const lotIds = new Set(filteredResults.map(lot => lot.id));
-    
-    let chargesPaid = 0;
-    let chargesDue = 0;
-    let totalSold = 0;
-    const soldByLot = new Map<string, number>();
-    
-    if (allSalesHistory) {
-      for (const sale of allSalesHistory) {
-        if (!lotIds.has(sale.lotId)) continue;
-        chargesPaid += sale.paidAmount || 0;
-        chargesDue += sale.dueAmount || 0;
-        const qty = sale.quantitySold || 0;
-        totalSold += qty;
-        soldByLot.set(sale.lotId, (soldByLot.get(sale.lotId) || 0) + qty);
-      }
-    }
-
-    // "Sold but not yet physically exited" per lot. Real exit count
-    // comes from salesByLot — the per-sale aggregate already pulled
-    // from /api/lots/sales-summary, which sums non-reversed
-    // exit_history.bagsExited per sale. (lot.size − lot.remainingSize
-    // CANNOT be used here because remainingSize is decremented at
-    // sale time in this codebase, so it equals Σ quantitySold.)
-    //
-    // If salesByLot is still loading or errored, set the denominator
-    // to null so the tile renders "—" instead of a silently-wrong
-    // inflated value (which would be Σ sold, since missing exit data
-    // would default to 0). Clamp at 0 once data is in to absorb any
-    // drift where exits exceed sales.
-    let totalSoldNotExited: number | null;
-    if (salesByLotLoading || salesByLotError || !salesByLot) {
-      totalSoldNotExited = null;
-    } else {
-      totalSoldNotExited = 0;
-      for (const lot of filteredResults) {
-        const soldForLot = soldByLot.get(lot.id) || 0;
-        const exitedForLot = (salesByLot[lot.id] ?? []).reduce(
-          (sum, s) => sum + (s.totalExited || 0),
-          0,
-        );
-        totalSoldNotExited += Math.max(0, soldForLot - exitedForLot);
-      }
-    }
-    
-    const expectedColdCharges = filteredResults.reduce((sum, lot) => sum + calcExpectedCharge(lot), 0);
-    
-    return {
-      totalBags: filteredResults.reduce((sum, lot) => sum + lot.size, 0),
-      remainingBags: filteredResults.reduce((sum, lot) => sum + lot.remainingSize, 0),
-      chargesPaid,
-      chargesDue,
-      expectedColdCharges,
-      totalSold,
-      totalSoldNotExited,
-    };
-  }, [hasSearched, searchResults, initialLots, allSalesHistory, salesByLot, salesByLotLoading, salesByLotError, bagTypeFilter, chamberFilter, floorFilter, matchesChamberFilter, matchesFloorFilter, coldStorage, allLotsSummary, calcExpectedCharge]);
+  // Summary card values come directly from /api/lots/summary — same DB
+  // query whether or not a search is active. No client-side derivation.
+  const summaryTotals = allLotsSummary ?? null;
 
   const floorOptions = useMemo(() => {
     if (chamberFilter === "all" || chamberFilter === "blank" || !chamberFloors) return [];
