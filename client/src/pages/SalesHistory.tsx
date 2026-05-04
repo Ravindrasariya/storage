@@ -1326,8 +1326,8 @@ function ExitRegister() {
   const clearFilters = () => {
     const today = getTodayIST();
     setYear(String(today.year));
-    setMonths([today.month]);
-    setDays([today.day]);
+    setMonths([]);
+    setDays([]);
     setFarmerFilter("");
     setFarmerContact("");
     setVillageFilter("");
@@ -1338,8 +1338,8 @@ function ExitRegister() {
   const todayIST = getTodayIST();
   const hasFilters =
     year !== String(todayIST.year) ||
-    months.join(",") !== String(todayIST.month) ||
-    days.join(",") !== String(todayIST.day) ||
+    months.length > 0 ||
+    days.length > 0 ||
     !!farmerFilter || !!farmerContact || !!villageFilter || !!buyerFilter ||
     (typeFilter !== "" && typeFilter !== "all");
 
@@ -1637,8 +1637,8 @@ function ExitRegister() {
               )}
             </div>
 
-            <div className="flex items-center gap-2 w-56 sm:w-32">
-              <div className="flex-1">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="w-56 sm:w-32">
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
                   <SelectTrigger className="h-9" data-testid="select-exit-type-filter">
                     <SelectValue placeholder={t("filterByType")} />
@@ -1651,6 +1651,13 @@ function ExitRegister() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {hasFilters && (
+                <Button variant="outline" size="sm" onClick={clearFilters} data-testid="button-exit-clear-filters" className="sm:hidden h-9">
+                  <X className="h-4 w-4 mr-1" /> {t("clearFilters")}
+                </Button>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -1659,14 +1666,14 @@ function ExitRegister() {
                 data-testid="button-exit-print"
                 aria-label={t("printPdf")}
                 title={t("printPdf")}
-                className="sm:hidden h-9 px-2"
+                className="sm:hidden h-9 px-2 ml-auto"
               >
                 <Printer className="h-4 w-4" />
               </Button>
             </div>
 
             {hasFilters && (
-              <Button variant="outline" size="sm" onClick={clearFilters} data-testid="button-exit-clear-filters">
+              <Button variant="outline" size="sm" onClick={clearFilters} data-testid="button-exit-clear-filters-desktop" className="hidden sm:inline-flex">
                 <X className="h-4 w-4 mr-1" /> {t("clearFilters")}
               </Button>
             )}
