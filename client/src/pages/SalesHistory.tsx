@@ -298,32 +298,32 @@ export default function SalesHistoryPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <h1 className="text-2xl font-bold" data-testid="text-page-title">
           {activeTab === "tracker" ? t("farmerPaymentTracker") : activeTab === "exits" ? t("exitRegister") : t("salesHistory")}
         </h1>
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sales" | "tracker" | "exits")}>
-          <TabsList>
+          <TabsList className="flex-wrap h-auto gap-1">
             <TabsTrigger
               value="exits"
               data-testid="tab-exits"
-              className="data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
+              className="text-xs sm:text-sm data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
             >
-              <LogOut className="h-4 w-4 mr-1" />{t("exitRegister")}
+              <LogOut className="h-4 w-4 mr-1 hidden sm:inline-block" />{t("exitRegister")}
             </TabsTrigger>
             <TabsTrigger
               value="sales"
               data-testid="tab-sales"
-              className="data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
+              className="text-xs sm:text-sm data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
             >
               {t("salesHistory")}
             </TabsTrigger>
             <TabsTrigger
               value="tracker"
               data-testid="tab-tracker"
-              className="data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
+              className="text-xs sm:text-sm data-[state=active]:bg-chart-1 data-[state=active]:text-white data-[state=active]:hover:bg-chart-1/90"
             >
-              <HandCoins className="h-4 w-4 mr-1" />{t("farmerPaymentTracker")}
+              <HandCoins className="h-4 w-4 mr-1 hidden sm:inline-block" />{t("farmerPaymentTracker")}
             </TabsTrigger>
           </TabsList>
         </Tabs>
