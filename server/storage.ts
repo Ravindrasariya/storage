@@ -185,8 +185,6 @@ export interface IStorage {
   updateChamberFloor(id: string, updates: Partial<ChamberFloor>): Promise<ChamberFloor | undefined>;
   deleteChamberFloor(id: string): Promise<boolean>;
   deleteFloorsByChamber(chamberId: string): Promise<void>;
-  updateChamberFill(id: string, fill: number): Promise<void>;
-  applyChamberFillDelta(id: string, delta: number): Promise<void>;
   createLot(lot: InsertLot, tx?: any): Promise<Lot>;
   createBatchLots(lots: InsertLot[], coldStorageId: string, bagTypeCategory?: "wafer" | "rationSeed", manualLotNo?: number, entryDate?: string, tx?: any): Promise<{ lots: Lot[]; entrySequence: number }>;
   getNextEntrySequence(coldStorageId: string): Promise<number>;
@@ -667,30 +665,51 @@ export class DatabaseStorage implements IStorage {
 
   async getFloorCapacityByChamber(coldStorageId: string): Promise<Record<string, { floor: number; bags: number }[]>> {
     const allLots = await db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
+
+    const lotIds = allLots.map((l) => l.id);
+    const exitedByLot = new Map<string, number>();
+    if (lotIds.length > 0) {
+      const exitRows = await db
+        .select({
+          lotId: exitHistory.lotId,
+          totalExited: sql<number>`COALESCE(SUM(${exitHistory.bagsExited}), 0)`.as("total_exited"),
+        })
+        .from(exitHistory)
+        .where(and(
+          inArray(exitHistory.lotId, lotIds),
+          eq(exitHistory.isReversed, 0),
+        ))
+        .groupBy(exitHistory.lotId);
+      for (const row of exitRows) {
+        exitedByLot.set(row.lotId, Number(row.totalExited) || 0);
+      }
+    }
+    const physicalRemaining = (lot: Lot): number =>
+      Math.max(0, lot.size - (exitedByLot.get(lot.id) ?? 0));
+
     const floorData: Record<string, { floor: number; bags: number }[]> = {};
-    
+
     for (const lot of allLots) {
-      // Only include lots with remaining bags and valid floor numbers
-      if (lot.remainingSize <= 0) continue;
+      const remaining = physicalRemaining(lot);
+      if (remaining <= 0) continue;
       if (lot.floor === null || lot.floor === undefined) continue;
-      
+
       if (!floorData[lot.chamberId]) {
         floorData[lot.chamberId] = [];
       }
-      
+
       const existingFloor = floorData[lot.chamberId].find(f => f.floor === lot.floor);
       if (existingFloor) {
-        existingFloor.bags += lot.remainingSize;
+        existingFloor.bags += remaining;
       } else {
-        floorData[lot.chamberId].push({ floor: lot.floor, bags: lot.remainingSize });
+        floorData[lot.chamberId].push({ floor: lot.floor, bags: remaining });
       }
     }
-    
-    // Sort floors by floor number
+
     for (const chamberId in floorData) {
       floorData[chamberId].sort((a, b) => a.floor - b.floor);
     }
-    
+
     return floorData;
   }
 
@@ -735,21 +754,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(chamberFloors).where(eq(chamberFloors.chamberId, chamberId));
   }
 
-  async updateChamberFill(id: string, fill: number): Promise<void> {
-    await db.update(chambers).set({ currentFill: fill }).where(eq(chambers.id, id));
-  }
-
-  // Atomic, race-safe chamber fill adjustment. Applies `delta` (which may be
-  // negative) to currentFill and clamps the result to [0, capacity] in a
-  // single SQL statement so concurrent callers cannot lose updates.
-  async applyChamberFillDelta(id: string, delta: number): Promise<void> {
-    if (delta === 0) return;
-    await db.update(chambers)
-      .set({
-        currentFill: sql`LEAST(${chambers.capacity}, GREATEST(0, ${chambers.currentFill} + ${delta}))`,
-      })
-      .where(eq(chambers.id, id));
-  }
 
   async createLot(insertLot: InsertLot, tx?: any): Promise<Lot> {
     const exec = tx ?? db;
@@ -772,13 +776,6 @@ export class DatabaseStorage implements IStorage {
     };
 
     const [lot] = await exec.insert(lots).values(lotData).returning();
-
-    const [chamber] = await exec.select().from(chambers).where(eq(chambers.id, lot.chamberId));
-    if (chamber) {
-      await exec.update(chambers)
-        .set({ currentFill: chamber.currentFill + lot.size })
-        .where(eq(chambers.id, chamber.id));
-    }
 
     return lot;
   }
@@ -863,13 +860,6 @@ export class DatabaseStorage implements IStorage {
       const [lot] = await exec.insert(lots).values(lotData).returning();
       createdLots.push(lot);
 
-      // Update chamber fill
-      const [chamber] = await exec.select().from(chambers).where(eq(chambers.id, lot.chamberId));
-      if (chamber) {
-        await exec.update(chambers)
-          .set({ currentFill: chamber.currentFill + lot.size })
-          .where(eq(chambers.id, chamber.id));
-      }
     }
 
     return { lots: createdLots, entrySequence };
@@ -1086,26 +1076,14 @@ export class DatabaseStorage implements IStorage {
   async getDashboardStats(coldStorageId: string, year?: number): Promise<DashboardStats> {
     const coldStorage = await this.getColdStorage(coldStorageId);
     const allChambers = await this.getChambers(coldStorageId);
-    let allLots = await this.getAllLots(coldStorageId);
-    
-    // Filter lots by year if specified (based on createdAt)
-    if (year) {
-      allLots = allLots.filter(lot => {
-        if (!lot.createdAt) return false;
-        const lotYear = new Date(lot.createdAt).getFullYear();
-        return lotYear === year;
-      });
-    }
+    const allLotsUnfiltered = await this.getAllLots(coldStorageId);
 
-    // Build a per-lot "physically remaining" count from non-reversed exits.
-    // physicalRemaining(lot) = lot.size - sum(non-reversed exit_history.bagsExited).
-    // This decouples the dashboard's "Remaining" tiles from sale state — sales
-    // alone don't shrink remaining; only physical exits do, and exit reversals
-    // restore them. Both standalone exits and Master Nikasi exits write to
-    // exit_history, so this single source captures both.
-    const lotIdsForYear = allLots.map((lot) => lot.id);
+    // Build a per-lot "physically remaining" count from non-reversed exits
+    // across ALL lots (unfiltered) so chamber fill persistence is always
+    // correct regardless of the year filter applied for display stats.
+    const allLotIds = allLotsUnfiltered.map((lot) => lot.id);
     const exitedByLot = new Map<string, number>();
-    if (lotIdsForYear.length > 0) {
+    if (allLotIds.length > 0) {
       const exitRows = await db
         .select({
           lotId: exitHistory.lotId,
@@ -1113,7 +1091,7 @@ export class DatabaseStorage implements IStorage {
         })
         .from(exitHistory)
         .where(and(
-          inArray(exitHistory.lotId, lotIdsForYear),
+          inArray(exitHistory.lotId, allLotIds),
           eq(exitHistory.isReversed, 0),
         ))
         .groupBy(exitHistory.lotId);
@@ -1123,6 +1101,31 @@ export class DatabaseStorage implements IStorage {
     }
     const physicalRemaining = (lot: Lot): number =>
       Math.max(0, lot.size - (exitedByLot.get(lot.id) ?? 0));
+
+    // Compute and persist true live chamber fill from ALL lots (unfiltered)
+    // so the column always reflects exit-history truth regardless of which
+    // year the user happens to be viewing.
+    const liveChamberFillMap = new Map<string, number>();
+    for (const lot of allLotsUnfiltered) {
+      const prev = liveChamberFillMap.get(lot.chamberId) ?? 0;
+      liveChamberFillMap.set(lot.chamberId, prev + physicalRemaining(lot));
+    }
+    for (const chamber of allChambers) {
+      const liveFill = liveChamberFillMap.get(chamber.id) ?? 0;
+      await db.update(chambers)
+        .set({ currentFill: liveFill })
+        .where(eq(chambers.id, chamber.id));
+    }
+
+    // Apply year filter for display stats only
+    let allLots = allLotsUnfiltered;
+    if (year) {
+      allLots = allLots.filter(lot => {
+        if (!lot.createdAt) return false;
+        const lotYear = new Date(lot.createdAt).getFullYear();
+        return lotYear === year;
+      });
+    }
 
     const currentUtilization = allLots.reduce((sum, lot) => sum + physicalRemaining(lot), 0);
     const peakUtilization = allLots.reduce((sum, lot) => sum + lot.size, 0);
@@ -1155,18 +1158,17 @@ export class DatabaseStorage implements IStorage {
     
     const remainingLots = allLots.filter((lot) => physicalRemaining(lot) > 0).length;
 
-    // Use chambers.currentFill directly — it is the authoritative physical
-    // bag count after Task #193 (entry/exit/exit-reversal/lot-size-edit are
-    // the only mutators).
+    // Chamber fill rates always show true live physical state (unfiltered)
+    // — the persistence already happened above from allLotsUnfiltered.
     const chamberStats = allChambers.map((chamber) => {
-      const currentFill = chamber.currentFill;
+      const currentFill = liveChamberFillMap.get(chamber.id) ?? 0;
       return {
         id: chamber.id,
         name: chamber.name,
         capacity: chamber.capacity,
         currentFill,
-        fillPercentage: chamber.capacity > 0 
-          ? Math.round((currentFill / chamber.capacity) * 100) 
+        fillPercentage: chamber.capacity > 0
+          ? Math.round((currentFill / chamber.capacity) * 100)
           : 0,
       };
     });
@@ -2308,18 +2310,6 @@ export class DatabaseStorage implements IStorage {
       0,
     );
 
-    // Restore chamber fill only by the bags physically returning to the
-    // chamber via cascaded exit reversals. A sale that never had any exit
-    // didn't move bags out of the chamber, so reversing it must not touch
-    // the chamber fill. Atomic SQL delta clamped to [0, capacity].
-    if (lot.chamberId && cascadedBagsRestored > 0) {
-      await db.update(chambers)
-        .set({
-          currentFill: sql`LEAST(${chambers.capacity}, GREATEST(0, ${chambers.currentFill} + ${cascadedBagsRestored}))`,
-        })
-        .where(eq(chambers.id, lot.chamberId));
-    }
-
     await db.delete(salesHistory).where(eq(salesHistory.id, saleId));
 
     await this.createEditHistory({
@@ -2414,8 +2404,8 @@ export class DatabaseStorage implements IStorage {
       // Bags being commercially sold on this row. Defaults to exitBags
       // when omitted by callers; must be in [exitBags, lot.remainingSize].
       // Charges (base cold + hammali, extra hammali) all scale on
-      // soldBags, while exit_history / chamber.currentFill scale on
-      // exitBags. Sold-but-not-exited bags stay in the chamber and can
+      // soldBags, while exit_history scales on exitBags (chamber fill
+      // is derived from exit history). Sold-but-not-exited bags stay in the chamber and can
       // be physically exited later via the per-sale Exit dialog.
       soldBags?: number;
       // Per-row charge basis (mirrors the partial-sale dialog). When
@@ -2671,12 +2661,13 @@ export class DatabaseStorage implements IStorage {
         if (lot.coldStorageId !== coldStorageId) throw new Error("Lot does not belong to this cold storage");
         if (lot.farmerLedgerId !== farmerLedgerId) throw new Error("Lot does not belong to this farmer");
         if (row.exitBags <= 0) throw new Error("Exit bags must be > 0");
+        const chamber = await this.getChamber(lot.chamberId);
         // soldBags is the *commercial* quantity for this row. When the
         // caller omits it, fall back to exitBags (the legacy contract:
         // sold == exited). The relationship invariants are
         //   exitBags >= 1 && soldBags >= exitBags && soldBags <= remainingSize.
         // We deduct soldBags from remainingSize (commercial inventory)
-        // but only exitBags from chamber.currentFill (physical stock).
+        // but only exitBags go into exit_history (physical stock).
         const soldBags = row.soldBags ?? row.exitBags;
         if (soldBags <= 0) throw new Error("Sold bags must be > 0");
         if (soldBags < row.exitBags) {
@@ -2805,21 +2796,6 @@ export class DatabaseStorage implements IStorage {
           salePaymentStatus: "due",
           saleCharge: storageCharge,
         });
-
-        // Decrement chamber fill by the bags being exited. Master Nikasi
-        // physically removes bags from the chamber on every row, regardless
-        // of whether the lot is fully sold afterward. We use an atomic SQL
-        // delta (clamped to [0, capacity]) instead of read-then-set so that
-        // multiple rows in the same batch hitting the same chamber
-        // accumulate correctly without losing updates.
-        const chamber = await this.getChamber(lot.chamberId);
-        if (chamber) {
-          await tx.update(chambers)
-            .set({
-              currentFill: sql`LEAST(${chambers.capacity}, GREATEST(0, ${chambers.currentFill} - ${row.exitBags}))`,
-            })
-            .where(eq(chambers.id, chamber.id));
-        }
 
         // Create sales_history row (self-sale, due, no buyer)
         const saleId = await generateSequentialId('sales');
@@ -3018,18 +2994,6 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return inserted;
     });
-
-    // Decrement chamber fill — bags have physically left the chamber.
-    // Atomic SQL delta clamped to [0, capacity] avoids lost updates under
-    // concurrent operations on the same chamber.
-    const lotForChamber = await this.getLot(data.lotId);
-    if (lotForChamber?.chamberId) {
-      await db.update(chambers)
-        .set({
-          currentFill: sql`LEAST(${chambers.capacity}, GREATEST(0, ${chambers.currentFill} - ${data.bagsExited}))`,
-        })
-        .where(eq(chambers.id, lotForChamber.chamberId));
-    }
 
     // Refresh denormalised exit info on the parent sale row
     await this.syncSaleExitSummary(data.salesHistoryId);
@@ -3922,18 +3886,6 @@ export class DatabaseStorage implements IStorage {
         reversedAt: new Date() 
       })
       .where(eq(exitHistory.id, latestExit.id));
-
-    // Restore chamber fill — bags have come back into the chamber.
-    // Atomic SQL delta clamped to [0, capacity] avoids lost updates under
-    // concurrent operations on the same chamber.
-    const lotForChamber = await this.getLot(latestExit.lotId);
-    if (lotForChamber?.chamberId) {
-      await db.update(chambers)
-        .set({
-          currentFill: sql`LEAST(${chambers.capacity}, GREATEST(0, ${chambers.currentFill} + ${latestExit.bagsExited}))`,
-        })
-        .where(eq(chambers.id, lotForChamber.chamberId));
-    }
 
     // Refresh denormalised exit info on the parent sale row
     await this.syncSaleExitSummary(salesHistoryId);
