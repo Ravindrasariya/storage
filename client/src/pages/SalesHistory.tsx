@@ -1151,7 +1151,7 @@ function FarmerPaymentTracker() {
 // Exit / Nikasi Register
 // =====================
 
-const EXIT_DATE_FILTERS_KEY = "exit_register_date_filters";
+const EXIT_DATE_FILTERS_KEY = "exit_register_date_filters_v2";
 
 function getTodayIST() {
   const now = new Date();
@@ -1186,6 +1186,7 @@ function initExitDateFilters(): { year: string; months: number[]; days: number[]
       }
     }
   } catch {}
+  localStorage.removeItem(EXIT_DATE_FILTERS_KEY);
   return { year: String(today.year), months: [], days: [] };
 }
 
