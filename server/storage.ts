@@ -1158,10 +1158,16 @@ export class DatabaseStorage implements IStorage {
     
     const remainingLots = allLots.filter((lot) => physicalRemaining(lot) > 0).length;
 
-    // Chamber fill rates always show true live physical state (unfiltered)
-    // — the persistence already happened above from allLotsUnfiltered.
+    // Chamber fill rates in the response use the same year-filtered lot
+    // scope as currentUtilization so the numbers are always consistent.
+    // The live (unfiltered) fill was already persisted to currentFill above.
+    const displayChamberFillMap = new Map<string, number>();
+    for (const lot of allLots) {
+      const prev = displayChamberFillMap.get(lot.chamberId) ?? 0;
+      displayChamberFillMap.set(lot.chamberId, prev + physicalRemaining(lot));
+    }
     const chamberStats = allChambers.map((chamber) => {
-      const currentFill = liveChamberFillMap.get(chamber.id) ?? 0;
+      const currentFill = displayChamberFillMap.get(chamber.id) ?? 0;
       return {
         id: chamber.id,
         name: chamber.name,
