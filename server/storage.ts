@@ -1802,6 +1802,7 @@ export class DatabaseStorage implements IStorage {
       const [sale] = await tx.insert(salesHistory).values({
         ...data,
         id,
+        createdAt: new Date(),
         paidCash: seedCash,
         paidAccount: seedAccount,
         extraDueToMerchantOriginal: seedExtraDueOriginal,
@@ -2840,6 +2841,7 @@ export class DatabaseStorage implements IStorage {
           buyerLedgerId: buyerRecord?.id ?? null,
           buyerId: buyerRecord?.buyerId ?? null,
           soldAt: saleDate,
+          createdAt: new Date(),
         } as InsertSalesHistory).returning();
 
         // Single shared CS bill # — resolved once before the row loop.
