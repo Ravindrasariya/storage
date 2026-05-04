@@ -1186,7 +1186,7 @@ function initExitDateFilters(): { year: string; months: number[]; days: number[]
       }
     }
   } catch {}
-  return { year: String(today.year), months: [today.month], days: [today.day] };
+  return { year: String(today.year), months: [], days: [] };
 }
 
 function ExitRegister() {
@@ -1273,10 +1273,10 @@ function ExitRegister() {
       timer = setTimeout(() => {
         const today = getTodayIST();
         setYear(String(today.year));
-        setMonths([today.month]);
-        setDays([today.day]);
+        setMonths([]);
+        setDays([]);
         localStorage.removeItem(EXIT_DATE_FILTERS_KEY);
-        scheduleReset(); // reschedule for the next midnight
+        scheduleReset();
       }, getMsUntilMidnightIST());
     };
 
