@@ -1637,18 +1637,32 @@ function ExitRegister() {
               )}
             </div>
 
-            <div className="w-full sm:w-32">
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="h-9" data-testid="select-exit-type-filter">
-                  <SelectValue placeholder={t("filterByType")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("all")}</SelectItem>
-                  <SelectItem value="wafer">{t("wafer")}</SelectItem>
-                  <SelectItem value="seed">{t("seed")}</SelectItem>
-                  <SelectItem value="ration">{t("ration")}</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-2 w-56 sm:w-32">
+              <div className="flex-1">
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="h-9" data-testid="select-exit-type-filter">
+                    <SelectValue placeholder={t("filterByType")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("all")}</SelectItem>
+                    <SelectItem value="wafer">{t("wafer")}</SelectItem>
+                    <SelectItem value="seed">{t("seed")}</SelectItem>
+                    <SelectItem value="ration">{t("ration")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrint}
+                disabled={!summary || rows.length === 0}
+                data-testid="button-exit-print"
+                aria-label={t("printPdf")}
+                title={t("printPdf")}
+                className="sm:hidden h-9 px-2"
+              >
+                <Printer className="h-4 w-4" />
+              </Button>
             </div>
 
             {hasFilters && (
@@ -1662,9 +1676,10 @@ function ExitRegister() {
               size="sm"
               onClick={handlePrint}
               disabled={!summary || rows.length === 0}
-              data-testid="button-exit-print"
+              data-testid="button-exit-print-desktop"
               aria-label={t("printPdf")}
               title={t("printPdf")}
+              className="hidden sm:inline-flex"
             >
               <Printer className="h-4 w-4" />
             </Button>
