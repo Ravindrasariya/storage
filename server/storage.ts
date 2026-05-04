@@ -1864,7 +1864,7 @@ export class DatabaseStorage implements IStorage {
     //   4. lot_no ASC, numeric        — receipt # tiebreaker, cast to bigint.
     //   5. (remaining_size_at_sale - quantity_sold) ASC NULLS LAST
     //                                 — post-sale "Remaining # Bags" tiebreaker.
-    const sales = await db.select()
+    const salesQuery = db.select()
       .from(salesHistory)
       .where(and(...conditions))
       .orderBy(
@@ -1874,6 +1874,8 @@ export class DatabaseStorage implements IStorage {
         sql`NULLIF(regexp_replace(${salesHistory.lotNo}, '[^0-9]', '', 'g'), '')::bigint ASC NULLS LAST`,
         sql`(${salesHistory.remainingSizeAtSale} - ${salesHistory.quantitySold}) ASC NULLS LAST`,
       );
+    console.log("[DEBUG getSalesHistory] SQL:", salesQuery.toSQL());
+    const sales = await salesQuery;
 
     if (sales.length === 0) return [];
 
