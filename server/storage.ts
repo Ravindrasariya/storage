@@ -1110,16 +1110,13 @@ export class DatabaseStorage implements IStorage {
       const prev = liveChamberFillMap.get(lot.chamberId) ?? 0;
       liveChamberFillMap.set(lot.chamberId, prev + physicalRemaining(lot));
     }
-    const fillCases = allChambers.map((c) => {
-      const fill = liveChamberFillMap.get(c.id) ?? 0;
-      return sql`WHEN ${c.id} THEN ${fill}`;
-    });
-    if (fillCases.length > 0) {
-      await db.update(chambers)
-        .set({
-          currentFill: sql`CASE ${chambers.id} ${sql.join(fillCases, sql` `)} END`,
-        })
-        .where(inArray(chambers.id, allChambers.map(c => c.id)));
+    for (const chamber of allChambers) {
+      const liveFill = liveChamberFillMap.get(chamber.id) ?? 0;
+      if (liveFill !== chamber.currentFill) {
+        await db.update(chambers)
+          .set({ currentFill: liveFill })
+          .where(eq(chambers.id, chamber.id));
+      }
     }
 
     // Apply year filter for display stats only
