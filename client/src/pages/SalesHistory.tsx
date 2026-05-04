@@ -871,26 +871,6 @@ function FarmerPaymentTracker() {
     if (trackerFarmerLedgerId) {
       filtered = filtered.filter((s) => s.farmerLedgerId === trackerFarmerLedgerId);
     }
-    // Mirror the server's four-key sort (Tasks #264 + #266) so the Farmer
-    // Payment Tracker tab shows rows in the same order as the main Sales
-    // History table.
-    //   1. soldAt DESC      — newest sale date first.
-    //   2. createdAt DESC   — newest entered within a date first.
-    //   3. lotNo (Receipt#) — numeric ASC, with a lexicographic fallback
-    //                          for any non-numeric value (NaN sorts to the
-    //                          bottom). All Date math here uses .getTime()
-    //                          on UTC-instant strings, so the comparator is
-    //                          timezone-neutral.
-    //   4. remaining bags after this sale ASC
-    //                       — Task #266: same formula the "Remaining # Bags"
-    //                          column displays (remainingSizeAtSale -
-    //                          quantitySold). 0 (the closing sale of a lot)
-    //                          floats to the top within the group; defensive
-    //                          Infinity / 0 fallbacks send any unexpectedly
-    //                          NULL row to the bottom (matches the server's
-    //                          NULLS LAST). Task #262 backfilled the column
-    //                          for every legacy row, so the fallback is only
-    //                          a guard against future schema drift.
     return filtered.slice().sort((a, b) => {
       const soldDiff = new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime();
       if (soldDiff !== 0) return soldDiff;
@@ -898,12 +878,15 @@ function FarmerPaymentTracker() {
       const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       const createdDiff = bCreated - aCreated;
       if (createdDiff !== 0) return createdDiff;
+      const aBill = a.coldStorageBillNumber ?? -1;
+      const bBill = b.coldStorageBillNumber ?? -1;
+      if (aBill !== bBill) return bBill - aBill;
       const aLot = parseInt(a.lotNo, 10);
       const bLot = parseInt(b.lotNo, 10);
       const aIsNum = !Number.isNaN(aLot);
       const bIsNum = !Number.isNaN(bLot);
       if (aIsNum && bIsNum && aLot !== bLot) return aLot - bLot;
-      if (aIsNum && !bIsNum) return -1; // numeric before non-numeric
+      if (aIsNum && !bIsNum) return -1;
       if (bIsNum && !aIsNum) return 1;
       if (!aIsNum && !bIsNum) {
         const lotCmp = a.lotNo.localeCompare(b.lotNo);
