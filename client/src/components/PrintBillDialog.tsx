@@ -993,7 +993,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </div>
             <div className="info-row">
               <span className="info-label">कुल बोरी:</span>
-              <span className="info-value" data-testid="text-batch-bags-sales">{batchBagsForTop}</span>
+              <span className="info-value" data-testid="text-batch-bags-sales">{agg.bags}</span>
             </div>
             <div className="info-row">
               <span className="info-label">खरीदार:</span>
@@ -1017,7 +1017,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </div>
             <div className="info-row">
               <span className="info-label">बेची गई:</span>
-              <span className="info-value" data-testid="text-single-bags-sales">{bagsToUse} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
+              <span className="info-value" data-testid="text-single-bags-sales">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
             </div>
             <div className="info-row">
               <span className="info-label">खरीदार:</span>
@@ -1047,21 +1047,19 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             <tbody>
               {siblings.map((s) => {
                 const sIncome = (s.netWeight || 0) * (s.pricePerKg || 0);
-                // Per-row billed bags: same formula the batch rate × qty
-                // line items and the top-section "कुल बोरी" total use.
-                // No `baseChargeAmountAtSale === 0` fallback — within a
-                // single Master Nikasi all siblings share the same state,
-                // so applying the same formula uniformly guarantees the
-                // column sum reconciles to `batchBagsTotal`.
-                const sBagsToUse = (s.chargeBasis || "actual") === "totalRemaining"
-                  ? (s.remainingSizeAtSale || s.quantitySold)
-                  : s.quantitySold;
+                // Per-row actual sold bags — the sales bill is the
+                // farmer's settlement document, so this column shows the
+                // real sold quantity (matches the top "कुल बोरी" total
+                // which is also `agg.bags` = sum of `quantitySold`). The
+                // cold-store-billed quantity (which can differ under
+                // chargeBasis="totalRemaining") still appears on the
+                // deduction bill and inside the rate × qty labels below.
                 return (
                   <tr key={s.id} data-testid={`row-batch-lot-sales-${s.id}`}>
                     <td>{format(new Date(s.soldAt as unknown as string), "dd/MM/yyyy")}</td>
                     <td>{s.lotNo}</td>
                     <td>{s.marka || "—"}</td>
-                    <td className="amount">{sBagsToUse}</td>
+                    <td className="amount">{s.quantitySold}</td>
                     <td className="amount">{s.netWeight || 0} × {s.pricePerKg || 0}</td>
                     <td className="amount">{formatAmount(sIncome)}</td>
                   </tr>
