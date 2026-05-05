@@ -528,18 +528,27 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     batchRateRef.chargeUnitAtSale || coldStorage?.chargeUnit || "bag";
   const batchIsQuintalBased = batchChargeUnit === "quintal";
   const batchChargeBasis = batchRateRef.chargeBasis || "actual";
-  let batchBagsTotal = 0;
+  let batchBagsTotal = 0;        // billed siblings only — drives `rate × qty` math
+  let batchBagsAllSiblings = 0;  // every sibling — matches per-lot table column sum
   let batchQuintalTotal = 0;
   for (const s of siblings) {
-    if (s.baseChargeAmountAtSale === 0) continue;
     const sBagsToUse = (s.chargeBasis || "actual") === "totalRemaining"
       ? (s.remainingSizeAtSale || s.quantitySold)
       : s.quantitySold;
+    batchBagsAllSiblings += sBagsToUse;
+    if (s.baseChargeAmountAtSale === 0) continue;
     batchBagsTotal += sBagsToUse;
     if (batchIsQuintalBased && s.initialNetWeightKg && s.originalLotSize && s.originalLotSize > 0) {
       batchQuintalTotal += (s.initialNetWeightKg * sBagsToUse) / (s.originalLotSize * 100);
     }
   }
+  // Top-section bag count: prefer the billed-only total so it matches the
+  // `(rate × batchBagsTotal)` line items below. When the entire batch was
+  // already billed earlier (every sibling baseChargeAmountAtSale === 0,
+  // batchBagsTotal === 0), fall back to the sum across all siblings using
+  // the same `sBagsToUse` formula so it still reconciles with the per-lot
+  // table column sum.
+  const batchBagsForTop = batchBagsTotal > 0 ? batchBagsTotal : batchBagsAllSiblings;
   const batchQuintalDisplay = batchQuintalTotal > 0 ? batchQuintalTotal.toFixed(2) : "0";
 
   // Buyer for the batch (single shared buyer across all MN siblings).
@@ -610,7 +619,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </div>
             <div className="info-row">
               <span className="info-label">कुल बोरी:</span>
-              <span className="info-value">{agg.bags}</span>
+              <span className="info-value" data-testid="text-batch-bags-deduction">{batchBagsForTop}</span>
             </div>
             <div className="info-row">
               <span className="info-label">खरीदार:</span>
@@ -634,7 +643,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </div>
             <div className="info-row">
               <span className="info-label">बेची गई:</span>
-              <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
+              <span className="info-value" data-testid="text-single-bags-deduction">{bagsToUse} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
             </div>
             <div className="info-row">
               <span className="info-label">खरीदार:</span>
@@ -984,7 +993,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </div>
             <div className="info-row">
               <span className="info-label">कुल बोरी:</span>
-              <span className="info-value">{agg.bags}</span>
+              <span className="info-value" data-testid="text-batch-bags-sales">{batchBagsForTop}</span>
             </div>
             <div className="info-row">
               <span className="info-label">खरीदार:</span>
@@ -1008,7 +1017,7 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             </div>
             <div className="info-row">
               <span className="info-label">बेची गई:</span>
-              <span className="info-value">{sale.quantitySold} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
+              <span className="info-value" data-testid="text-single-bags-sales">{bagsToUse} {sale.bagType === "wafer" ? "वेफर" : "बीज"}{sale.bagTypeLabel ? ` (${sale.bagTypeLabel})` : ""}</span>
             </div>
             <div className="info-row">
               <span className="info-label">खरीदार:</span>
@@ -1038,12 +1047,21 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
             <tbody>
               {siblings.map((s) => {
                 const sIncome = (s.netWeight || 0) * (s.pricePerKg || 0);
+                // Per-row billed bags: same formula the batch rate × qty
+                // line items and the top-section "कुल बोरी" total use.
+                // No `baseChargeAmountAtSale === 0` fallback — within a
+                // single Master Nikasi all siblings share the same state,
+                // so applying the same formula uniformly guarantees the
+                // column sum reconciles to `batchBagsTotal`.
+                const sBagsToUse = (s.chargeBasis || "actual") === "totalRemaining"
+                  ? (s.remainingSizeAtSale || s.quantitySold)
+                  : s.quantitySold;
                 return (
                   <tr key={s.id} data-testid={`row-batch-lot-sales-${s.id}`}>
                     <td>{format(new Date(s.soldAt as unknown as string), "dd/MM/yyyy")}</td>
                     <td>{s.lotNo}</td>
                     <td>{s.marka || "—"}</td>
-                    <td className="amount">{s.quantitySold}</td>
+                    <td className="amount">{sBagsToUse}</td>
                     <td className="amount">{s.netWeight || 0} × {s.pricePerKg || 0}</td>
                     <td className="amount">{formatAmount(sIncome)}</td>
                   </tr>
