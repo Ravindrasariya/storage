@@ -511,6 +511,43 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
     };
   })();
 
+  // Batch rate metadata for rate × qty breakdown on Master Nikasi bills.
+  // Within a single MN, all sibling rows share the same buyer, the same
+  // charge rates (cold + hammali) and the same charge unit (bag/quintal),
+  // so the legacy-style "(rate × qty)" line items are recreated using
+  // the rate from the first rate-bearing sibling and quantities summed
+  // across siblings whose base charges were NOT already billed earlier
+  // (baseChargeAmountAtSale !== 0). The resulting cold/hammali totals
+  // equal agg.cold / agg.hammali by construction (rate is uniform).
+  const batchRateRef =
+    siblings.find(s => s.baseChargeAmountAtSale !== 0 && s.coldCharge != null && s.hammali != null)
+    ?? siblings[0];
+  const batchHasSeparateCharges =
+    batchRateRef.coldCharge != null && batchRateRef.hammali != null;
+  const batchChargeUnit =
+    batchRateRef.chargeUnitAtSale || coldStorage?.chargeUnit || "bag";
+  const batchIsQuintalBased = batchChargeUnit === "quintal";
+  const batchChargeBasis = batchRateRef.chargeBasis || "actual";
+  let batchBagsTotal = 0;
+  let batchQuintalTotal = 0;
+  for (const s of siblings) {
+    if (s.baseChargeAmountAtSale === 0) continue;
+    const sBagsToUse = (s.chargeBasis || "actual") === "totalRemaining"
+      ? (s.remainingSizeAtSale || s.quantitySold)
+      : s.quantitySold;
+    batchBagsTotal += sBagsToUse;
+    if (batchIsQuintalBased && s.initialNetWeightKg && s.originalLotSize && s.originalLotSize > 0) {
+      batchQuintalTotal += (s.initialNetWeightKg * sBagsToUse) / (s.originalLotSize * 100);
+    }
+  }
+  const batchQuintalDisplay = batchQuintalTotal > 0 ? batchQuintalTotal.toFixed(2) : "0";
+
+  // Buyer for the batch (single shared buyer across all MN siblings).
+  const batchIsSelfSale = (siblings[0].isSelfSale ?? sale.isSelfSale) === 1;
+  const batchBuyerName = batchIsSelfSale
+    ? "स्वयं"
+    : (siblings[0].buyerName || sale.buyerName || "-");
+
   const renderDeductionBill = () => {
     // Single-row path renders byte-for-byte identical to the previous
     // implementation: every value resolves to the per-row sale field.
@@ -575,6 +612,10 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               <span className="info-label">कुल बोरी:</span>
               <span className="info-value">{agg.bags}</span>
             </div>
+            <div className="info-row">
+              <span className="info-label">खरीदार:</span>
+              <span className="info-value" data-testid="text-batch-buyer-deduction">{batchBuyerName}</span>
+            </div>
           </div>
         ) : (
           <div className="section">
@@ -620,19 +661,46 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           <tbody>
             {isBatch ? (
               <>
-                {/* Per-rate breakdown doesn't translate across siblings
-                    that may use different rates / charge units, so the
-                    batched view shows the rolled-up cold + hammali sums
-                    without a "(rate × bags)" qualifier. */}
-                <tr>
-                  <td>शीत भण्डार शुल्क (कुल)</td>
-                  <td className="amount">{formatAmount(agg.cold)}</td>
-                </tr>
-                {agg.hammali > 0 && (
-                  <tr>
-                    <td>हम्माली (कुल)</td>
-                    <td className="amount">{formatAmount(agg.hammali)}</td>
-                  </tr>
+                {/* Master Nikasi siblings share a single buyer + a single
+                    set of rates + a single charge unit, so the bill shows
+                    the same legacy-style rate × qty line items the
+                    single-sale path renders, with bags/quintals summed
+                    across rate-bearing siblings (rows already billed
+                    earlier — baseChargeAmountAtSale === 0 — are excluded
+                    from the qty sum so rate × qty equals agg.*). */}
+                {batchHasSeparateCharges ? (
+                  <>
+                    <tr>
+                      <td>
+                        शीत भण्डार शुल्क {batchIsQuintalBased
+                          ? `(${batchRateRef.coldCharge} रु./क्विंटल × ${batchQuintalDisplay} क्विंटल)`
+                          : `(${batchRateRef.coldCharge} रु./बोरी × ${batchBagsTotal} बोरी)`}
+                        {batchChargeBasis === "totalRemaining" && <span style={{fontSize: "10px", color: "#666"}}> [कुल शेष आधार]</span>}
+                      </td>
+                      <td className="amount">{formatAmount(agg.cold)}</td>
+                    </tr>
+                    {agg.hammali > 0 && (
+                      <tr>
+                        <td>
+                          हम्माली ({batchRateRef.hammali} रु./बोरी × {batchBagsTotal} बोरी)
+                        </td>
+                        <td className="amount">{formatAmount(agg.hammali)}</td>
+                      </tr>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <tr>
+                      <td>शीत भण्डार शुल्क (कुल)</td>
+                      <td className="amount">{formatAmount(agg.cold)}</td>
+                    </tr>
+                    {agg.hammali > 0 && (
+                      <tr>
+                        <td>हम्माली (कुल)</td>
+                        <td className="amount">{formatAmount(agg.hammali)}</td>
+                      </tr>
+                    )}
+                  </>
                 )}
                 <tr>
                   <td>काटा (तौल शुल्क)</td>
@@ -918,6 +986,10 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
               <span className="info-label">कुल बोरी:</span>
               <span className="info-value">{agg.bags}</span>
             </div>
+            <div className="info-row">
+              <span className="info-label">खरीदार:</span>
+              <span className="info-value" data-testid="text-batch-buyer-sales">{batchBuyerName}</span>
+            </div>
           </div>
         ) : (
           <div className="section">
@@ -1009,19 +1081,45 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
           <tbody>
             {isBatch ? (
               <>
-                {/* Per-rate breakdown doesn't translate across siblings
-                    that may use different rates / charge units, so the
-                    batched view shows the rolled-up cold + hammali sums
-                    without a "(rate × bags)" qualifier. */}
-                <tr>
-                  <td>शीत भण्डार शुल्क (कुल)</td>
-                  <td className="amount">{formatAmount(dispCold)}</td>
-                </tr>
-                {dispHammali > 0 && (
-                  <tr>
-                    <td>हम्माली (कुल)</td>
-                    <td className="amount">{formatAmount(dispHammali)}</td>
-                  </tr>
+                {/* Master Nikasi siblings share a single buyer + a single
+                    set of rates + a single charge unit, so the bill shows
+                    the same legacy-style rate × qty line items the
+                    single-sale path renders, with bags/quintals summed
+                    across rate-bearing siblings (see deduction bill above
+                    for the same logic). */}
+                {batchHasSeparateCharges ? (
+                  <>
+                    <tr>
+                      <td>
+                        शीत भण्डार शुल्क {batchIsQuintalBased
+                          ? `(${batchRateRef.coldCharge} रु./क्विंटल × ${batchQuintalDisplay} क्विंटल)`
+                          : `(${batchRateRef.coldCharge} रु./बोरी × ${batchBagsTotal} बोरी)`}
+                        {batchChargeBasis === "totalRemaining" && <span style={{fontSize: "10px", color: "#666"}}> [कुल शेष आधार]</span>}
+                      </td>
+                      <td className="amount">{formatAmount(dispCold)}</td>
+                    </tr>
+                    {dispHammali > 0 && (
+                      <tr>
+                        <td>
+                          हम्माली ({batchRateRef.hammali} रु./बोरी × {batchBagsTotal} बोरी)
+                        </td>
+                        <td className="amount">{formatAmount(dispHammali)}</td>
+                      </tr>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <tr>
+                      <td>शीत भण्डार शुल्क (कुल)</td>
+                      <td className="amount">{formatAmount(dispCold)}</td>
+                    </tr>
+                    {dispHammali > 0 && (
+                      <tr>
+                        <td>हम्माली (कुल)</td>
+                        <td className="amount">{formatAmount(dispHammali)}</td>
+                      </tr>
+                    )}
+                  </>
                 )}
               </>
             ) : hasSeparateCharges ? (
