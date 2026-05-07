@@ -11,11 +11,18 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
-import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp } from "lucide-react";
+import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp, ChevronsUpDown, Check } from "lucide-react";
 import { format } from "date-fns";
-import type { SalesHistory, SaleEditHistory } from "@shared/schema";
+import type { SalesHistory, SaleEditHistory, BuyerLedgerEntry } from "@shared/schema";
+
+// Sentinel value for the Self option in the buyer picker. Anything else
+// is a real buyer ledger entry id. Mirrors MasterNikasiDialog so the
+// two pickers behave identically.
+const SELF_BUYER = "__self__";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency, formatCurrency } from "@/components/Currency";
 
@@ -55,6 +62,15 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editExtraDueGradingMerchant, setEditExtraDueGradingMerchant] = useState("");
   const [editExtraDueOtherMerchant, setEditExtraDueOtherMerchant] = useState("");
   const [editAdjAmount, setEditAdjAmount] = useState("");
+
+  // Task #278 — buyer picker state. SELF_BUYER means self-sale; any
+  // other value is the id of a buyer_ledger row. Initialized from the
+  // sale in the reset useEffect below. The combobox follows the exact
+  // pattern used in MasterNikasiDialog so behavior stays consistent.
+  const [selectedBuyerLedgerId, setSelectedBuyerLedgerId] = useState<string>(SELF_BUYER);
+  const [buyerComboboxOpen, setBuyerComboboxOpen] = useState(false);
+  const [buyerSearchQuery, setBuyerSearchQuery] = useState("");
+  const [buyerError, setBuyerError] = useState<string | null>(null);
 
   // CS Bill # / Sale Date inline editor. For Master Nikasi batches the
   // save cascades to every sibling sharing the (bill #, year); single-row
@@ -244,6 +260,18 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditAdjAmount(sale.adjReceivableSelfDueAmount?.toString() || "0");
       setChargesOpen(false);
 
+      // Buyer picker: Self when isSelfSale, else the row's buyerLedgerId
+      // (or SELF_BUYER fallback if a real buyer somehow has no ledger
+      // link — shouldn't happen for new sales but old data may).
+      setSelectedBuyerLedgerId(
+        sale.isSelfSale === 1
+          ? SELF_BUYER
+          : (sale.buyerLedgerId || SELF_BUYER)
+      );
+      setBuyerComboboxOpen(false);
+      setBuyerSearchQuery("");
+      setBuyerError(null);
+
       // Reset CS bill # / date editor; pre-fill inputs with current values
       // so a cascade save without a manual edit is a no-op (skipped).
       setCsBillEditing(false);
@@ -277,6 +305,41 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     queryKey: ["/api/farmer-dues", sale?.farmerLedgerId],
     enabled: !!sale?.farmerLedgerId && isNonSelfSale && open,
   });
+
+  // Active (non-archived) buyers for the picker — same query/key as
+  // MasterNikasiDialog so the cache is shared.
+  const { data: buyerLedgerData } = useQuery<{ buyers: BuyerLedgerEntry[] }>({
+    queryKey: ["/api/buyer-ledger", { includeArchived: false }],
+    queryFn: () => authFetch(`/api/buyer-ledger?includeArchived=false`).then(res => res.json()),
+    enabled: open,
+  });
+  const buyers = (buyerLedgerData?.buyers ?? []).slice().sort((a, b) => a.buyerName.localeCompare(b.buyerName));
+
+  // Legacy fallback: a non-self sale that pre-dates the ledger linkage
+  // will have `buyerLedgerId === null` but a non-empty `buyerName`. The
+  // initial reset useEffect can't resolve the picker correctly because
+  // the buyer ledger query is async — once it lands, match by name
+  // (case-insensitive, trimmed) and snap the picker to the right entry.
+  // If no match, the picker stays on Self and the user can pick
+  // explicitly.
+  useEffect(() => {
+    if (!sale || !open) return;
+    if (sale.isSelfSale === 1) return;
+    if (sale.buyerLedgerId) return;
+    if (!sale.buyerName || buyers.length === 0) return;
+    const norm = sale.buyerName.trim().toLowerCase();
+    const match = buyers.find(b => b.buyerName.trim().toLowerCase() === norm);
+    if (match) {
+      setSelectedBuyerLedgerId(match.id);
+    }
+  }, [sale, open, buyers]);
+
+  // Buyer-to-buyer transfer must be reversed before reassigning, since
+  // the dues currently live on the transfer target. Server enforces the
+  // same rule — UI just disables the picker with a helper line.
+  const transferBlocksBuyerChange = !!sale?.transferToBuyerName
+    && sale.transferToBuyerName.trim() !== ""
+    && (Number(sale.isTransferReversed ?? 0) !== 1);
   
   const maxAdjAmount = farmerDuesForEdit 
     ? (farmerDuesForEdit.pyReceivables || 0) + (farmerDuesForEdit.advanceDue || 0) + (farmerDuesForEdit.freightDue || 0) + (farmerDuesForEdit.selfDue || 0) + (sale?.adjReceivableSelfDueAmount || 0)
@@ -322,7 +385,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
 
   const updateMutation = useMutation({
     mutationFn: async (data: {
-      buyerName?: string;
+      buyerLedgerId?: string | null;
+      isSelfSale?: 0 | 1;
       pricePerKg?: number;
       netWeight?: number | null;
       paymentStatus?: "paid" | "due" | "partial";
@@ -343,7 +407,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       adjReceivableSelfDueAmount?: number;
     }) => {
       const response = await apiRequest("PATCH", `/api/sales-history/${sale!.id}`, data);
-      return response.json();
+      const body = await response.json();
+      if (!response.ok) {
+        throw body;
+      }
+      return body;
     },
     onSuccess: () => {
       toast({ title: t("success"), description: t("saleUpdated"), variant: "success" });
@@ -364,7 +432,14 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-dues") });
       onOpenChange(false);
     },
-    onError: () => {
+    onError: (error: unknown) => {
+      // Surface server's buyerLedgerId rejection inline next to the
+      // picker (active transfer / unknown buyer / archived buyer).
+      const body = error as { error?: string; field?: string } | undefined;
+      if (body && body.field === "buyerLedgerId") {
+        setBuyerError(body.error || t("error"));
+        return;
+      }
       toast({ title: t("error"), description: t("failedToUpdateSale"), variant: "destructive" });
     },
   });
@@ -629,6 +704,20 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       ['coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'netWeight', 'adjReceivableSelfDueAmount'].includes(key)
     ) || Math.abs(totalCharge - originalTotal) > 0.01;
     
+    // Task #278 — buyer reassignment. Only send when the picker selection
+    // actually differs from the row's current owner; the server treats
+    // missing fields as "don't touch" and skips the dual FIFO recompute.
+    const currentSel = sale.isSelfSale === 1 ? SELF_BUYER : (sale.buyerLedgerId || SELF_BUYER);
+    if (selectedBuyerLedgerId !== currentSel) {
+      if (selectedBuyerLedgerId === SELF_BUYER) {
+        updates.isSelfSale = 1;
+        updates.buyerLedgerId = null;
+      } else {
+        updates.isSelfSale = 0;
+        updates.buyerLedgerId = selectedBuyerLedgerId;
+      }
+    }
+
     if (chargeFieldsChanged) {
       updates.coldStorageCharge = totalCharge;
       // Recalculate dueAmount based on new total
@@ -887,9 +976,104 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                   <p className="font-medium">{sale.netWeight} kg</p>
                 </div>
               )}
-              <div className="col-span-2">
+              <div className="col-span-2 space-y-1">
                 <span className="text-muted-foreground">{t("buyerName")}:</span>
-                <p className="font-medium">{sale.isSelfSale === 1 ? t("self") : (sale.buyerName || "-")}</p>
+                <Popover
+                  open={buyerComboboxOpen}
+                  onOpenChange={(o) => {
+                    if (transferBlocksBuyerChange) return;
+                    setBuyerComboboxOpen(o);
+                    if (o) setBuyerError(null);
+                  }}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={buyerComboboxOpen}
+                      disabled={transferBlocksBuyerChange}
+                      className={`h-9 w-full justify-between font-normal ${buyerError ? "border-destructive ring-1 ring-destructive" : ""}`}
+                      data-testid="select-edit-sale-buyer"
+                    >
+                      {selectedBuyerLedgerId === SELF_BUYER ? (
+                        <span>{t("self") || "Self"}</span>
+                      ) : (
+                        <span className="truncate">
+                          {(() => {
+                            const sel = buyers.find(b => b.id === selectedBuyerLedgerId);
+                            if (sel) {
+                              return `${sel.buyerName}${sel.buyerId ? ` (${sel.buyerId})` : ""}`;
+                            }
+                            // Fallback: row has a buyer name but ledger
+                            // entry isn't loaded yet (or was archived).
+                            return sale.buyerName || (t("selectMerchant") || "Select buyer");
+                          })()}
+                        </span>
+                      )}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[320px] p-0" align="start">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder={t("searchBuyer") || "Search buyer..."}
+                        value={buyerSearchQuery}
+                        onValueChange={setBuyerSearchQuery}
+                        data-testid="input-edit-sale-buyer-search"
+                      />
+                      <CommandList>
+                        <CommandEmpty>{t("noBuyersFound") || "No buyers found"}</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value={SELF_BUYER}
+                            onSelect={() => {
+                              setSelectedBuyerLedgerId(SELF_BUYER);
+                              setBuyerComboboxOpen(false);
+                              setBuyerSearchQuery("");
+                              setBuyerError(null);
+                            }}
+                            data-testid="option-edit-sale-buyer-self"
+                          >
+                            <Check className={`mr-2 h-4 w-4 ${selectedBuyerLedgerId === SELF_BUYER ? "opacity-100" : "opacity-0"}`} />
+                            {t("self") || "Self"} / स्वयं
+                          </CommandItem>
+                          {buyers
+                            .filter(b => !buyerSearchQuery
+                              || b.buyerName.toLowerCase().includes(buyerSearchQuery.toLowerCase())
+                              || (b.buyerId || "").toLowerCase().includes(buyerSearchQuery.toLowerCase()))
+                            .map(b => (
+                              <CommandItem
+                                key={b.id}
+                                value={b.id}
+                                onSelect={() => {
+                                  setSelectedBuyerLedgerId(b.id);
+                                  setBuyerComboboxOpen(false);
+                                  setBuyerSearchQuery("");
+                                  setBuyerError(null);
+                                }}
+                                data-testid={`option-edit-sale-buyer-${b.id}`}
+                              >
+                                <Check className={`mr-2 h-4 w-4 ${selectedBuyerLedgerId === b.id ? "opacity-100" : "opacity-0"}`} />
+                                <span className="flex items-center justify-between gap-2 w-full">
+                                  <span className="truncate">{b.buyerName}</span>
+                                  {b.buyerId && <span className="text-xs text-muted-foreground font-mono">{b.buyerId}</span>}
+                                </span>
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {buyerError && (
+                  <p className="text-xs text-destructive" data-testid="error-edit-sale-buyer">{buyerError}</p>
+                )}
+                {transferBlocksBuyerChange && (
+                  <p className="text-xs text-muted-foreground" data-testid="hint-edit-sale-buyer-transfer">
+                    {t("reverseTransferToChangeBuyer") || "Reverse the active buyer-to-buyer transfer before changing the buyer."}
+                  </p>
+                )}
               </div>
             </div>
           </div>

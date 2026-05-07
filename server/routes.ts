@@ -2314,7 +2314,11 @@ export async function registerRoutes(
   });
 
   const updateSalesHistorySchema = z.object({
-    buyerName: z.string().optional(),
+    // Task #278 — `buyerName` is intentionally NOT accepted here.
+    // Owner identity is changed only through `{ isSelfSale, buyerLedgerId }`
+    // and `buyerName` / `buyerId` are derived server-side from the chosen
+    // buyer_ledger row. This prevents freehand merchant names and keeps
+    // the four owner columns atomically consistent.
     pricePerKg: z.number().optional(),
     paymentStatus: z.enum(["paid", "due", "partial"]).optional(),
     paidAmount: z.number().optional(),
@@ -2333,6 +2337,12 @@ export async function registerRoutes(
     extraDueGradingMerchant: z.number().optional(),
     extraDueOtherMerchant: z.number().optional(),
     adjReceivableSelfDueAmount: z.number().optional(),
+    // Task #278 — buyer reassignment from Edit Sale dialog. The two
+    // fields move together: Self → { isSelfSale: 1, buyerLedgerId: null },
+    // Buyer X → { isSelfSale: 0, buyerLedgerId: "<id>" }. Server resolves
+    // buyerName/buyerId from the ledger entry; clients must NOT pass them.
+    buyerLedgerId: z.string().nullable().optional(),
+    isSelfSale: z.union([z.literal(0), z.literal(1)]).optional(),
   });
 
   app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -2377,17 +2387,81 @@ export async function registerRoutes(
         }
       }
       
+      // Task #278 — buyer reassignment (Self ↔ ledger merchant ↔ another
+      // ledger merchant). Two fields (`isSelfSale`, `buyerLedgerId`)
+      // travel together; server is the single source of truth that
+      // resolves `buyerName` / `buyerId` from the ledger entry. We block
+      // the change when an unreversed buyer-to-buyer transfer is active
+      // because the dues live on the transfer target — moving the buyer
+      // would silently break that linkage. The operator must reverse the
+      // transfer first.
+      const buyerChangeRequested =
+        validatedData.buyerLedgerId !== undefined ||
+        validatedData.isSelfSale !== undefined;
+      let buyerOverrides: { buyerName: string | null; buyerId: string | null; buyerLedgerId: string | null; isSelfSale: 0 | 1 } | undefined;
+      if (buyerChangeRequested) {
+        const transferActive =
+          !!currentSale.transferToBuyerName &&
+          currentSale.transferToBuyerName.trim() !== '' &&
+          (currentSale.isTransferReversed ?? 0) !== 1;
+        if (transferActive) {
+          return res.status(400).json({
+            error: "Reverse the active buyer-to-buyer transfer before changing the buyer.",
+            field: "buyerLedgerId",
+          });
+        }
+        const wantSelf = validatedData.isSelfSale === 1 || validatedData.buyerLedgerId === null;
+        if (wantSelf) {
+          buyerOverrides = { buyerName: null, buyerId: null, buyerLedgerId: null, isSelfSale: 1 };
+        } else {
+          const ledgerId = validatedData.buyerLedgerId;
+          if (!ledgerId) {
+            return res.status(400).json({ error: "Buyer is required.", field: "buyerLedgerId" });
+          }
+          const { buyers } = await storage.getBuyerLedger(coldStorageId, false);
+          const ledgerEntry = buyers.find(b => b.id === ledgerId);
+          if (!ledgerEntry) {
+            return res.status(400).json({
+              error: "Selected buyer not found or archived. Pick an active buyer from the list.",
+              field: "buyerLedgerId",
+            });
+          }
+          buyerOverrides = {
+            buyerName: ledgerEntry.buyerName,
+            buyerId: ledgerEntry.buyerId,
+            buyerLedgerId: ledgerEntry.id,
+            isSelfSale: 0,
+          };
+        }
+      }
+
       const updated = await storage.updateSalesHistory(req.params.id, {
         ...validatedData,
+        ...(buyerOverrides ?? {}),
         ...(recomputedBaseHammali !== undefined ? { baseHammaliAmount: recomputedBaseHammali } : {}),
       });
       if (!updated) {
         return res.status(404).json({ error: "Sale not found" });
       }
+
+      // Did the owning *business party* actually change? Compare on the
+      // logical owner (Self vs. buyer name) — NOT on ledger-id. A legacy
+      // row with no `buyerLedgerId` that is now being linked to the
+      // matching ledger entry must not trigger FIFO recompute or an
+      // audit row ("Roop → Roop"). The storage layer still backfills
+      // the missing ledger linkage in that case; we just don't treat
+      // it as an ownership change.
+      const ownerChanged = !!buyerOverrides && (
+        (currentSale.isSelfSale === 1) !== (buyerOverrides.isSelfSale === 1) ||
+        ((currentSale.buyerName ?? null) !== (buyerOverrides.buyerName ?? null))
+      );
       
-      // Log changes to edit history
+      // Log changes to edit history. `buyerName` is dropped from the
+      // tracked list because the schema no longer accepts it directly —
+      // the dedicated owner-change audit row below covers Self ↔ Buyer
+      // reassignments with proper human labels.
       if (currentSale) {
-        const fieldsToTrack = ['buyerName', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'coldStorageCharge', 'extraDueToMerchant', 'extraDueHammaliMerchant', 'extraDueGradingMerchant', 'extraDueOtherMerchant'] as const;
+        const fieldsToTrack = ['pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'coldStorageCharge', 'extraDueToMerchant', 'extraDueHammaliMerchant', 'extraDueGradingMerchant', 'extraDueOtherMerchant'] as const;
         for (const field of fieldsToTrack) {
           if (validatedData[field as keyof typeof validatedData] !== undefined || field === 'coldStorageCharge') {
             const oldValue = currentSale[field as keyof typeof currentSale];
@@ -2404,6 +2478,17 @@ export async function registerRoutes(
             }
           }
         }
+        // Task #278 — single human-readable audit row for buyer reassignment.
+        if (ownerChanged) {
+          const oldLabel = currentSale.isSelfSale === 1 ? 'Self' : (currentSale.buyerName || '—');
+          const newLabel = updated.isSelfSale === 1 ? 'Self' : (updated.buyerName || '—');
+          await storage.createSaleEditHistory({
+            saleId: req.params.id,
+            fieldChanged: 'buyerName',
+            oldValue: oldLabel,
+            newValue: newLabel,
+          });
+        }
       }
       
       // If adj amount changed, trigger farmer FIFO recomputation
@@ -2414,12 +2499,39 @@ export async function registerRoutes(
         );
       }
       
-      // If cold storage charges changed, trigger FIFO recalculation
+      // Task #278 — when the owning party changes, re-run FIFO for BOTH
+      // sides: the OLD owner releases this sale's amount (their receipts
+      // re-flow onto remaining sales / sit unallocated), and the NEW
+      // owner picks it up (their receipts now flow into this sale per
+      // FIFO order). For Self we key by farmer ledger; for a real
+      // merchant we key by buyer name.
+      if (ownerChanged && updated) {
+        if (currentSale.isSelfSale === 1) {
+          if (currentSale.farmerName && currentSale.village) {
+            const oldDisplay = `${currentSale.farmerName} (${currentSale.village})`;
+            await storage.recomputeFarmerPayments(coldStorageId, currentSale.farmerLedgerId || null, oldDisplay);
+          }
+        } else if (currentSale.buyerName) {
+          await storage.recomputeBuyerPayments(currentSale.buyerName, coldStorageId);
+        }
+        if (updated.isSelfSale === 1) {
+          if (updated.farmerName && updated.village) {
+            const newDisplay = `${updated.farmerName} (${updated.village})`;
+            await storage.recomputeFarmerPayments(coldStorageId, updated.farmerLedgerId || null, newDisplay);
+          }
+        } else if (updated.buyerName) {
+          await storage.recomputeBuyerPayments(updated.buyerName, coldStorageId);
+        }
+      }
+
+      // If cold storage charges changed, trigger FIFO recalculation.
+      // Skipped when ownerChanged already covered it above (idempotent
+      // but wasteful to repeat).
       const chargeFieldsChanged = validatedData.coldStorageCharge !== undefined || 
         validatedData.coldCharge !== undefined || 
         validatedData.hammali !== undefined;
       
-      if (chargeFieldsChanged && updated) {
+      if (chargeFieldsChanged && updated && !ownerChanged) {
         // Check if this is a self-sale - trigger farmer FIFO instead of buyer FIFO
         if (updated.isSelfSale === 1 && updated.farmerName && updated.village) {
           // For self-sales, trigger farmer FIFO recalculation

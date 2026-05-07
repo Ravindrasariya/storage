@@ -2073,7 +2073,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateSalesHistory(saleId: string, updates: {
-    buyerName?: string;
+    buyerName?: string | null;
+    buyerId?: string | null;
+    buyerLedgerId?: string | null;
+    isSelfSale?: 0 | 1;
     pricePerKg?: number;
     paymentStatus?: "paid" | "due" | "partial";
     paidAmount?: number;
@@ -2101,6 +2104,19 @@ export class DatabaseStorage implements IStorage {
     
     if (updates.buyerName !== undefined) {
       updateData.buyerName = updates.buyerName || null;
+    }
+    // Task #278 — buyer reassignment fields. The route layer is the
+    // single source of truth that pre-resolves these together (Self vs
+    // ledger entry) and passes all four; we just persist whatever it
+    // set so the row stays internally consistent.
+    if (updates.buyerId !== undefined) {
+      updateData.buyerId = updates.buyerId;
+    }
+    if (updates.buyerLedgerId !== undefined) {
+      updateData.buyerLedgerId = updates.buyerLedgerId;
+    }
+    if (updates.isSelfSale !== undefined) {
+      updateData.isSelfSale = updates.isSelfSale;
     }
     if (updates.pricePerKg !== undefined) {
       updateData.pricePerKg = updates.pricePerKg || null;
