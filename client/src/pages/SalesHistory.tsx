@@ -17,7 +17,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import type { SalesHistory, ExitRegisterResponse, ExitRegisterRow } from "@shared/schema";
+import type { SalesHistory, SalesHistoryWithLastPayment, ExitRegisterResponse, ExitRegisterRow } from "@shared/schema";
+import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency, formatCurrency } from "@/components/Currency";
@@ -87,6 +88,12 @@ export default function SalesHistoryPage() {
   const [showFarmerSuggestions, setShowFarmerSuggestions] = useState(false);
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
   const [showVillageSuggestions, setShowVillageSuggestions] = useState(false);
+  // Per-row Print button state (mirrors Stock Register's wiring) — opens
+  // the same PrintBillDialog so manual cold-storage payments recorded
+  // here go through the same /api/sales/:id/manual-payment route and
+  // get the same fifoExclusion=1 stamping as the Stock Register flow.
+  const [printingSale, setPrintingSale] = useState<SalesHistoryWithLastPayment | null>(null);
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const farmerNav = useDropdownNavigation();
   const villageNav = useDropdownNavigation();
   const buyerNav = useDropdownNavigation();
@@ -160,7 +167,7 @@ export default function SalesHistoryPage() {
     return params.toString();
   };
 
-  const { data: salesHistory = [], isLoading: historyLoading } = useQuery<SalesHistory[]>({
+  const { data: salesHistory = [], isLoading: historyLoading } = useQuery<SalesHistoryWithLastPayment[]>({
     queryKey: ["/api/sales-history", yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, villageFilter, paymentFilter, buyerFilter],
     queryFn: async () => {
       const queryString = buildQueryString();
@@ -740,7 +747,24 @@ export default function SalesHistoryPage() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell />
+                      <TableCell>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPrintingSale(sale);
+                            setPrintDialogOpen(true);
+                          }}
+                          className="h-7 w-7 bg-yellow-200 hover:bg-yellow-300"
+                          aria-label={t("print")}
+                          title={t("print")}
+                          data-testid={`button-print-sale-${sale.id}`}
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -767,6 +791,17 @@ export default function SalesHistoryPage() {
             </span>
           </div>
         </div>
+      )}
+
+      {printingSale && (
+        <PrintBillDialog
+          sale={printingSale}
+          open={printDialogOpen}
+          onOpenChange={(open) => {
+            setPrintDialogOpen(open);
+            if (!open) setPrintingSale(null);
+          }}
+        />
       )}
 
       </>
