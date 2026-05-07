@@ -2348,11 +2348,7 @@ export async function registerRoutes(
   app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      // TEMP DEBUG (Task #279 follow-up): log raw + parsed body so we can
-      // see whether the client is actually sending buyer-change fields.
-      console.log("[DEBUG PATCH /api/sales-history/" + req.params.id + "] raw body:", JSON.stringify(req.body));
       const validatedData = updateSalesHistorySchema.parse(req.body);
-      console.log("[DEBUG PATCH /api/sales-history/" + req.params.id + "] parsed:", JSON.stringify(validatedData));
       
       // Get current sale data before update for logging - also serves as ownership check
       const currentSales = await storage.getSalesHistory(coldStorageId, {});

@@ -5616,12 +5616,21 @@ export class DatabaseStorage implements IStorage {
       await db.update(openingReceivables).set(resetFields).where(eq(openingReceivables.id, recv.id));
     }
 
-    // Step 2: Get all non-reversed receipts for this buyer, ordered by receivedAt (FIFO)
+    // Step 2: Get all non-reversed sale-side receipts for this buyer,
+    // ordered by receivedAt (FIFO). MUST filter by `payerType = 'cold_merchant'`
+    // — without this, advance/loan repayments (`cold_merchant_advance`,
+    // `farmer_loan`, `kata`) for the same buyerName get pulled in and
+    // FIFO-applied to sale dues, silently zeroing out a freshly-moved
+    // sale (Task #279 follow-up — buyer reassignment surfaced this).
+    // Those non-sale receipts are managed by their own dedicated
+    // recompute functions (`recomputeMerchantAdvancePayments`,
+    // `recomputeFarmerLoanPayments`, etc.) and must not be touched here.
     const activeReceipts = await db.select()
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
         sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerName}))`,
+        eq(cashReceipts.payerType, "cold_merchant"),
         eq(cashReceipts.isReversed, 0)
       ))
       .orderBy(cashReceipts.receivedAt);
