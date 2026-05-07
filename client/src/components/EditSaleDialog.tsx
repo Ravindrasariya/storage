@@ -299,7 +299,18 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
           : "",
       );
     }
-  }, [sale, open]);
+    // Task #279 — depend on `sale?.id` (and `open`), NOT the whole `sale`
+    // object reference. The parent feeds `sale` from a TanStack Query
+    // cache, so any background refetch / focus refetch / sibling
+    // mutation / freshly landing query produces a new object reference
+    // even when the row's content is unchanged. Watching the whole
+    // object made this effect re-fire on every parent re-render and
+    // silently overwrite every in-flight edit (most visibly the buyer
+    // picker selection — see #278 follow-up). Keying on the row id
+    // means the reset only runs when the dialog opens or the operator
+    // genuinely switches to a different sale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sale?.id, open]);
   
   const { data: farmerDuesForEdit } = useQuery<{ pyReceivables: number; freightDue: number; advanceDue: number; selfDue: number; totalDue: number }>({
     queryKey: ["/api/farmer-dues", sale?.farmerLedgerId],
