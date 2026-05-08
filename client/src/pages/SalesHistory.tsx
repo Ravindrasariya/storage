@@ -323,10 +323,6 @@ export default function SalesHistoryPage() {
       if (norm === "ration") return t("ration");
       return bagType;
     };
-    const isKnownBagType = (bagType: string | null | undefined): boolean => {
-      const norm = (bagType || "").toLowerCase();
-      return norm === "wafer" || norm === "seed" || norm === "ration";
-    };
     const bagTypePrintStyle = (bagType: string | null | undefined): string => {
       const norm = (bagType || "").toLowerCase();
       if (norm === "wafer") return "background:rgba(59,130,246,0.10);color:#2563eb;";
@@ -336,10 +332,9 @@ export default function SalesHistoryPage() {
     };
 
     const monthShortNames = t("monthsShort").split(",");
-    const yearLabel = yearFilter && yearFilter !== "all" ? yearFilter : t("all");
 
     const filterParts: string[] = [];
-    filterParts.push(`${t("year")}: ${yearLabel}`);
+    if (yearFilter && yearFilter !== "all") filterParts.push(`${t("year")}: ${yearFilter}`);
     if (selectedMonths.length) filterParts.push(`${t("monthsLabel")}: ${selectedMonths.map((m) => monthShortNames[m - 1]).join(", ")}`);
     if (selectedDays.length) filterParts.push(`${t("daysLabel")}: ${selectedDays.join(", ")}`);
     if (farmerFilter) filterParts.push(`${t("farmerName")}: ${farmerFilter}`);
