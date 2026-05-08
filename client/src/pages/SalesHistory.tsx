@@ -303,6 +303,162 @@ export default function SalesHistoryPage() {
   summary.amountPaid = Math.max(0, summary.amountPaid - summary.totalAdjSelfDue);
   summary.totalColdStorageCharges = Math.max(0, summary.totalColdStorageCharges - summary.totalAdjSelfDue);
 
+  const handleSalesPrint = () => {
+    if (filteredSalesHistory.length === 0) return;
+
+    const escape = (s: string | number | null | undefined): string =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    const fmtINR = (n: number): string =>
+      `\u20B9${(Math.round(n * 100) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+
+    const formatBagType = (bagType: string | null | undefined): string => {
+      if (!bagType) return "—";
+      const norm = bagType.toLowerCase();
+      if (norm === "wafer") return t("wafer");
+      if (norm === "seed") return t("seed");
+      if (norm === "ration") return t("ration");
+      return bagType;
+    };
+    const isKnownBagType = (bagType: string | null | undefined): boolean => {
+      const norm = (bagType || "").toLowerCase();
+      return norm === "wafer" || norm === "seed" || norm === "ration";
+    };
+    const bagTypePrintStyle = (bagType: string | null | undefined): string => {
+      const norm = (bagType || "").toLowerCase();
+      if (norm === "wafer") return "background:rgba(59,130,246,0.10);color:#2563eb;";
+      if (norm === "seed") return "background:rgba(16,185,129,0.10);color:#059669;";
+      if (norm === "ration") return "background:rgba(249,115,22,0.10);color:#ea580c;";
+      return "";
+    };
+
+    const monthShortNames = t("monthsShort").split(",");
+    const yearLabel = yearFilter && yearFilter !== "all" ? yearFilter : t("all");
+
+    const filterParts: string[] = [];
+    filterParts.push(`${t("year")}: ${yearLabel}`);
+    if (selectedMonths.length) filterParts.push(`${t("monthsLabel")}: ${selectedMonths.map((m) => monthShortNames[m - 1]).join(", ")}`);
+    if (selectedDays.length) filterParts.push(`${t("daysLabel")}: ${selectedDays.join(", ")}`);
+    if (farmerFilter) filterParts.push(`${t("farmerName")}: ${farmerFilter}`);
+    const effectiveVillage = villageFilter || selectedFarmerVillage;
+    if (effectiveVillage) filterParts.push(`${t("village")}: ${effectiveVillage}`);
+    if (buyerFilter) filterParts.push(`${t("buyerName")}: ${buyerFilter}`);
+    if (typeFilter && typeFilter !== "all") filterParts.push(`${t("bagType")}: ${formatBagType(typeFilter)}`);
+    if (paymentFilter && paymentFilter !== "all") filterParts.push(`${t("paymentStatus")}: ${t(paymentFilter)}`);
+
+    const bagsExitedTotal = exitsSummary?.totalBagsExited || 0;
+
+    const summaryCardsHtml = `
+      <div class="cards">
+        <div class="card"><div class="lbl">${escape(t("totalBagsSold"))}</div><div class="val">${summary.totalBags.toLocaleString()}</div></div>
+        <div class="card"><div class="lbl">${escape(t("amountPaid"))}</div><div class="val cash">${escape(fmtINR(summary.amountPaid))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("amountDue"))}</div><div class="val due">${escape(fmtINR(summary.amountDue))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("sold"))}/${escape(t("exit"))}</div><div class="val">${summary.totalBags}/${bagsExitedTotal}</div></div>
+        <div class="card"><div class="lbl">${escape(t("coldStorageCharges"))}</div><div class="val acct">${escape(fmtINR(summary.totalColdStorageCharges))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("receivableAdjustments"))}</div><div class="val">${escape(fmtINR(summary.totalReceivableAdj))}</div></div>
+      </div>
+    `;
+
+    const renderBuyerCell = (sale: SalesHistoryWithLastPayment): string => {
+      const baseBuyer = Number(sale.isSelfSale) === 1 ? t("self") : (sale.buyerName || "-");
+      const transferName = sale.transferToBuyerName?.trim();
+      if (transferName && Number(sale.isTransferReversed) !== 1) {
+        return `<span style="text-decoration:line-through;color:#71717a;">${escape(baseBuyer)}</span> &rarr; <span style="color:#7c3aed;font-weight:600;">${escape(transferName)}</span>`;
+      }
+      if (transferName && Number(sale.isTransferReversed) === 1) {
+        return `${escape(baseBuyer)} <span style="text-decoration:line-through;color:#a1a1aa;font-size:10px;">${escape(transferName)}</span>`;
+      }
+      return escape(baseBuyer);
+    };
+
+    const rowsHtml = filteredSalesHistory
+      .map((sale) => {
+        const remainingAfter =
+          sale.remainingSizeAtSale != null ? sale.remainingSizeAtSale - sale.quantitySold : null;
+        return `
+        <tr>
+          <td class="nowrap">${escape(format(new Date(sale.soldAt), "dd MMM yyyy"))}</td>
+          <td class="wrap">${escape(sale.farmerName)}</td>
+          <td class="nowrap">${escape(sale.village)}</td>
+          <td class="nowrap">${escape(sale.lotNo)}</td>
+          <td class="nowrap">${escape(sale.marka || "—")}</td>
+          <td class="nowrap">${escape(sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—")}</td>
+          <td class="nowrap r">${escape(sale.originalLotSize)}</td>
+          <td class="nowrap r">${remainingAfter != null ? escape(remainingAfter) : "—"}</td>
+          <td class="nowrap">${sale.bagType ? `<span class="bag-badge" style="${bagTypePrintStyle(sale.bagType)}">${escape(formatBagType(sale.bagType))}</span>` : "—"}</td>
+          <td class="nowrap r">${escape(sale.quantitySold)}</td>
+          <td class="nowrap r">${escape(fmtINR(calculateTotalColdCharges(sale)))}</td>
+          <td class="wrap">${renderBuyerCell(sale)}</td>
+          <td class="nowrap r">${sale.pricePerKg ? escape(fmtINR(sale.pricePerKg)) : "—"}</td>
+          <td class="nowrap">${escape(t(sale.paymentStatus))}</td>
+        </tr>
+      `;
+      })
+      .join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escape(t("salesHistory"))}</title>
+<style>
+  @page{size:A4 landscape;margin:8mm;}
+  *{box-sizing:border-box;}
+  body{font-family:Arial,Helvetica,"Liberation Sans","DejaVu Sans",sans-serif;margin:16px;color:#111;}
+  h1{margin:0 0 4px 0;font-size:18px;}
+  .meta{font-size:11px;color:#555;margin-bottom:12px;}
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px;}
+  .card{border:1px solid #d4d4d8;border-radius:6px;padding:8px 10px;min-height:44px;}
+  .lbl{font-size:11px;line-height:1.25;color:#555;word-break:break-word;overflow-wrap:anywhere;}
+  .val{font-size:16px;line-height:1.3;font-weight:700;margin-top:2px;white-space:nowrap;}
+  .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.disc{color:#7c3aed;} .val.due{color:#be123c;}
+  table{width:100%;border-collapse:collapse;font-size:11px;}
+  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;}
+  th{background:#f4f4f5;font-weight:700;}
+  td.r,th.r{text-align:right;}
+  td.cash{color:#047857;} td.due{color:#be123c;}
+  .nowrap{white-space:nowrap;}
+  .wrap{word-break:break-word;overflow-wrap:anywhere;}
+  .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(6,1fr);}}
+</style></head><body>
+  <h1>${escape(t("salesHistory"))}</h1>
+  <div class="meta">${filterParts.map((p) => escape(p)).join(" &nbsp;|&nbsp; ")}</div>
+  ${summaryCardsHtml}
+  <table>
+    <thead><tr>
+      <th class="nowrap">${escape(t("saleDate"))}</th>
+      <th class="wrap">${escape(t("farmerName"))}</th>
+      <th class="nowrap">${escape(t("village"))}</th>
+      <th class="nowrap">${escape(t("lotNo"))}</th>
+      <th class="nowrap">${escape(t("marka"))}</th>
+      <th class="nowrap">${escape(t("coldBillNo"))}</th>
+      <th class="nowrap r">${escape(t("originalBags"))}</th>
+      <th class="nowrap r">${escape(t("remainingBagsAfterSale"))}</th>
+      <th class="nowrap">${escape(t("bagType"))}</th>
+      <th class="nowrap r">${escape(t("quantitySold"))}</th>
+      <th class="nowrap r">${escape(t("totalColdStorageCharges"))}</th>
+      <th class="wrap">${escape(t("buyerName"))}</th>
+      <th class="nowrap r">${escape(t("pricePerKg"))}</th>
+      <th class="nowrap">${escape(t("paymentStatus"))}</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <script>window.onload=function(){window.print();}<\/script>
+</body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast({
+        title: t("error"),
+        description: "Pop-up blocked. Please allow pop-ups for this site to print.",
+        variant: "destructive",
+      });
+      return;
+    }
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
@@ -349,19 +505,32 @@ export default function SalesHistoryPage() {
               <Filter className="h-5 w-5" />
               {t("filters")}
             </CardTitle>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleExportSales}
-              disabled={isExporting}
-              data-testid="button-export-sales"
-            >
-              {isExporting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleSalesPrint}
+                disabled={filteredSalesHistory.length === 0}
+                data-testid="button-print-sales"
+                aria-label={t("printPdf")}
+                title={t("printPdf")}
+              >
+                <Printer className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleExportSales}
+                disabled={isExporting}
+                data-testid="button-export-sales"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
