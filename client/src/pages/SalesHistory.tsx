@@ -406,35 +406,56 @@ export default function SalesHistoryPage() {
   .lbl{font-size:11px;line-height:1.25;color:#555;word-break:break-word;overflow-wrap:anywhere;}
   .val{font-size:16px;line-height:1.3;font-weight:700;margin-top:2px;white-space:nowrap;}
   .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.disc{color:#7c3aed;} .val.due{color:#be123c;}
-  table{width:100%;border-collapse:collapse;font-size:11px;}
-  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;}
-  th{background:#f4f4f5;font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
+  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;vertical-align:top;}
+  th{background:#f4f4f5;font-weight:700;white-space:normal;word-break:break-word;overflow-wrap:anywhere;line-height:1.2;}
   td.r,th.r{text-align:right;}
   td.cash{color:#047857;} td.due{color:#be123c;}
   .nowrap{white-space:nowrap;}
-  .wrap{word-break:break-word;overflow-wrap:anywhere;}
+  .wrap{word-break:break-word;overflow-wrap:anywhere;white-space:normal;}
   .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  col.c-date{width:6.5%;} col.c-farmer{width:14%;} col.c-village{width:8%;}
+  col.c-lot{width:4.5%;} col.c-marka{width:5%;} col.c-cbill{width:5%;}
+  col.c-obags{width:5%;} col.c-rbags{width:5%;} col.c-btype{width:6%;}
+  col.c-qty{width:5%;} col.c-charges{width:8%;} col.c-buyer{width:14%;}
+  col.c-price{width:6%;} col.c-status{width:8%;}
   @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(6,1fr);}}
 </style></head><body>
   <h1>${escape(t("salesHistory"))}</h1>
   <div class="meta">${filterParts.map((p) => escape(p)).join(" &nbsp;|&nbsp; ")}</div>
   ${summaryCardsHtml}
   <table>
+    <colgroup>
+      <col class="c-date"/>
+      <col class="c-farmer"/>
+      <col class="c-village"/>
+      <col class="c-lot"/>
+      <col class="c-marka"/>
+      <col class="c-cbill"/>
+      <col class="c-obags"/>
+      <col class="c-rbags"/>
+      <col class="c-btype"/>
+      <col class="c-qty"/>
+      <col class="c-charges"/>
+      <col class="c-buyer"/>
+      <col class="c-price"/>
+      <col class="c-status"/>
+    </colgroup>
     <thead><tr>
-      <th class="nowrap">${escape(t("saleDate"))}</th>
-      <th class="wrap">${escape(t("farmerName"))}</th>
-      <th class="nowrap">${escape(t("village"))}</th>
-      <th class="nowrap">${escape(t("lotNo"))}</th>
-      <th class="nowrap">${escape(t("marka"))}</th>
-      <th class="nowrap">${escape(t("coldBillNo"))}</th>
-      <th class="nowrap r">${escape(t("originalBags"))}</th>
-      <th class="nowrap r">${escape(t("remainingBagsAfterSale"))}</th>
-      <th class="nowrap">${escape(t("bagType"))}</th>
-      <th class="nowrap r">${escape(t("quantitySold"))}</th>
-      <th class="nowrap r">${escape(t("totalColdStorageCharges"))}</th>
-      <th class="wrap">${escape(t("buyerName"))}</th>
-      <th class="nowrap r">${escape(t("pricePerKg"))}</th>
-      <th class="nowrap">${escape(t("paymentStatus"))}</th>
+      <th>${escape(t("saleDate"))}</th>
+      <th>${escape(t("farmerName"))}</th>
+      <th>${escape(t("village"))}</th>
+      <th>${escape(t("lotNo"))}</th>
+      <th>${escape(t("marka"))}</th>
+      <th>${escape(t("coldBillNo"))}</th>
+      <th class="r">${escape(t("originalBags"))}</th>
+      <th class="r">${escape(t("remainingBagsAfterSale"))}</th>
+      <th>${escape(t("bagType"))}</th>
+      <th class="r">${escape(t("quantitySold"))}</th>
+      <th class="r">${escape(t("totalColdStorageCharges"))}</th>
+      <th>${escape(t("buyerName"))}</th>
+      <th class="r">${escape(t("pricePerKg"))}</th>
+      <th>${escape(t("paymentStatus"))}</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
