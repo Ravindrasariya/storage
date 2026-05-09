@@ -185,6 +185,7 @@ export default function StockRegister() {
     marka: string;
     rstNo: string;
     vehicle: string;
+    type: string;
     farmerName: string;
     village: string;
     tehsil: string;
@@ -1497,6 +1498,7 @@ export default function StockRegister() {
       marka: lot.marka || "",
       rstNo: lot.rstNo || "",
       vehicle: lot.vehicle || "",
+      type: lot.type || "",
       farmerName: lot.farmerName,
       village: lot.village || "",
       tehsil: lot.tehsil || "",
@@ -2602,6 +2604,30 @@ export default function StockRegister() {
                   <p className="font-medium text-sm">{selectedLot?.vehicle || "—"}</p>
                 )}
               </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("type") || "Variety"}</Label>
+                {editForm && canEdit ? (
+                  <Select
+                    value={editForm.type}
+                    onValueChange={(value) => setEditForm({ ...editForm, type: value })}
+                  >
+                    <SelectTrigger className="h-8 w-24 text-sm" data-testid="select-edit-potato-variety">
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Jyoti">Jyoti</SelectItem>
+                      <SelectItem value="Pukhraj">Pukhraj</SelectItem>
+                      <SelectItem value="LR">LR</SelectItem>
+                      <SelectItem value="Torus">Torus</SelectItem>
+                      <SelectItem value="CS1">CS1</SelectItem>
+                      <SelectItem value="CS3">CS3</SelectItem>
+                      <SelectItem value="Others">Others</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="font-medium text-sm">{selectedLot?.type || "—"}</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2810,6 +2836,7 @@ export default function StockRegister() {
                         marka: updatedLot.marka || "",
                         rstNo: updatedLot.rstNo || "",
                         vehicle: updatedLot.vehicle || "",
+                        type: updatedLot.type || "",
                         farmerName: updatedLot.farmerName,
                         village: updatedLot.village || "",
                         tehsil: updatedLot.tehsil || "",

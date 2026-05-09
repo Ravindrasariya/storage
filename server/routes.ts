@@ -1069,6 +1069,8 @@ export async function registerRoutes(
     // RST No and Vehicle
     rstNo: z.string().optional(),
     vehicle: z.string().optional(),
+    // Potato variety (editable)
+    type: z.string().min(1).optional(),
     // Farmer details (editable)
     farmerName: z.string().min(1).optional(),
     village: z.string().optional(),
