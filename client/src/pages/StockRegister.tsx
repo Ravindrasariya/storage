@@ -273,30 +273,53 @@ export default function StockRegister() {
     return lot.size * (cRate + hRate);
   }, [coldStorage, farmerLookupMap]);
 
-  // Infinite scroll state
-  const PAGE_SIZE = 50;
+  // Infinite scroll state — paginated by FARMER GROUPS (not raw lots) so
+  // every farmer card is loaded complete on first paint. Without group-based
+  // pagination, a farmer with 100+ lots (e.g., SRI RAM TREDARS spanning
+  // lots 6 → 132+) would have their card split across pages and re-render
+  // partially as the user scrolled.
+  const GROUP_PAGE_SIZE = 20;
   const [displayedLots, setDisplayedLots] = useState<Lot[]>([]);
   const [totalLotCount, setTotalLotCount] = useState<number>(0);
+  const [totalGroupCount, setTotalGroupCount] = useState<number>(0);
+  const [loadedGroupCount, setLoadedGroupCount] = useState<number>(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isLoadingMoreRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Epoch guard — incremented every time the base filter (chamber/floor)
+  // changes. Any in-flight load-more whose epoch no longer matches the
+  // current epoch is discarded so it cannot append a stale slice (which
+  // would otherwise advance loadedGroupCount past the wrong total and
+  // skip farmer cards in the new filter set).
+  const filterEpochRef = useRef(0);
 
   const lotsFilterParams = useMemo(() => {
     const params = new URLSearchParams();
     params.set("sort", "lotNo");
+    params.set("groupBy", "farmer");
     if (chamberFilter !== "all") params.set("chamber", chamberFilter);
     if (floorFilter !== "all") params.set("floor", floorFilter);
     return params.toString();
   }, [chamberFilter, floorFilter]);
 
-  // Fetch initial lots sorted by lot number for display before any search.
-  // `completeLastFarmer=true` makes the server extend the page so the farmer
-  // at the boundary is fully included — prevents the grouped view from ever
-  // showing a partial farmer group while more pages are still pending.
-  const { data: initialLotsData, isLoading: isLoadingInitial } = useQuery<{ lots: Lot[], totalCount: number }>({
-    queryKey: ["/api/lots", { sort: "lotNo", limit: PAGE_SIZE, offset: 0, chamber: chamberFilter, floor: floorFilter, completeLastFarmer: true }],
+  // Reset paging state immediately when the base filter changes so a
+  // stale "loadMoreLots" cannot fire with the previous filter's
+  // loadedGroupCount before the new initial query lands.
+  useEffect(() => {
+    filterEpochRef.current += 1;
+    setDisplayedLots([]);
+    setTotalLotCount(0);
+    setTotalGroupCount(0);
+    setLoadedGroupCount(0);
+  }, [lotsFilterParams]);
+
+  // Fetch initial farmer groups sorted by min(lotNo). The server pre-groups
+  // by canonical farmer key so each returned page contains only COMPLETE
+  // farmer groups — no partial cards at the boundary.
+  const { data: initialLotsData, isLoading: isLoadingInitial } = useQuery<{ lots: Lot[], totalCount: number, totalGroups: number, returnedGroups: number, nextGroupOffset: number }>({
+    queryKey: ["/api/lots", { sort: "lotNo", groupBy: "farmer", groupLimit: GROUP_PAGE_SIZE, groupOffset: 0, chamber: chamberFilter, floor: floorFilter }],
     queryFn: async () => {
-      const response = await authFetch(`/api/lots?${lotsFilterParams}&limit=${PAGE_SIZE}&offset=0&completeLastFarmer=true`);
+      const response = await authFetch(`/api/lots?${lotsFilterParams}&groupLimit=${GROUP_PAGE_SIZE}&groupOffset=0`);
       if (!response.ok) throw new Error("Failed to fetch initial lots");
       return response.json();
     },
@@ -307,37 +330,51 @@ export default function StockRegister() {
     if (initialLotsData && !hasSearched) {
       setDisplayedLots(initialLotsData.lots);
       setTotalLotCount(initialLotsData.totalCount);
+      setTotalGroupCount(initialLotsData.totalGroups);
+      setLoadedGroupCount(initialLotsData.nextGroupOffset);
     }
   }, [initialLotsData, hasSearched]);
 
-  // Load more lots for infinite scroll
+  // Load more farmer groups for infinite scroll. Captures the filter epoch
+  // at fire time and discards the response if a chamber/floor change
+  // happened mid-flight — prevents a stale slice from being appended to
+  // the new filter set's data.
   const loadMoreLots = useCallback(async () => {
-    if (isLoadingMoreRef.current || hasSearched || displayedLots.length >= totalLotCount) return;
-    
+    if (isLoadingMoreRef.current || hasSearched || totalGroupCount === 0 || loadedGroupCount >= totalGroupCount) return;
+
+    const epochAtFire = filterEpochRef.current;
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     try {
-      const offset = displayedLots.length;
-      const response = await authFetch(`/api/lots?${lotsFilterParams}&limit=${PAGE_SIZE}&offset=${offset}&completeLastFarmer=true`);
+      const response = await authFetch(`/api/lots?${lotsFilterParams}&groupLimit=${GROUP_PAGE_SIZE}&groupOffset=${loadedGroupCount}`);
       if (!response.ok) throw new Error("Failed to fetch more lots");
-      const data: { lots: Lot[], totalCount: number } = await response.json();
+      const data: { lots: Lot[], totalCount: number, totalGroups: number, returnedGroups: number, nextGroupOffset: number } = await response.json();
+      // Drop the response if the base filter changed while we were
+      // fetching — the new initial query owns state from here on.
+      if (filterEpochRef.current !== epochAtFire) return;
       setDisplayedLots(prev => [...prev, ...data.lots]);
       setTotalLotCount(data.totalCount);
+      setTotalGroupCount(data.totalGroups);
+      setLoadedGroupCount(data.nextGroupOffset);
     } catch (error) {
       console.error("Failed to load more lots:", error);
     } finally {
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [hasSearched, displayedLots.length, totalLotCount, lotsFilterParams]);
+  }, [hasSearched, loadedGroupCount, totalGroupCount, lotsFilterParams]);
 
   // Keep loading more pages whenever the rendered content doesn't fill (or
   // scroll) the container — without this, if the loaded farmer groups don't
   // overflow the scroll container, the user can't scroll to trigger
   // `loadMoreLots` themselves and pagination would stall.
+  // Whether more farmer groups remain to fetch — single source of truth
+  // for all infinite-scroll guards and the loader UI.
+  const hasMoreGroups = !hasSearched && totalGroupCount > 0 && loadedGroupCount < totalGroupCount;
+
   useEffect(() => {
-    if (hasSearched || isLoadingMore) return;
-    if (displayedLots.length === 0 || displayedLots.length >= totalLotCount) return;
+    if (hasSearched || isLoadingMore || !hasMoreGroups) return;
+    if (displayedLots.length === 0) return;
     // Defer to next frame so DOM has laid out after the latest render.
     const timer = window.setTimeout(() => {
       const container = scrollContainerRef.current;
@@ -351,17 +388,17 @@ export default function StockRegister() {
       }
     }, 50);
     return () => window.clearTimeout(timer);
-  }, [displayedLots, totalLotCount, hasSearched, isLoadingMore, loadMoreLots]);
+  }, [displayedLots, hasMoreGroups, hasSearched, isLoadingMore, loadMoreLots]);
 
   // Scroll handler for infinite scroll — triggers load when near bottom of container
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
-    if (!container || hasSearched || isLoadingMore || displayedLots.length >= totalLotCount) return;
+    if (!container || hasSearched || isLoadingMore || !hasMoreGroups) return;
     const { scrollTop, scrollHeight, clientHeight } = container;
     if (scrollHeight - scrollTop - clientHeight < 200) {
       loadMoreLots();
     }
-  }, [hasSearched, isLoadingMore, displayedLots.length, totalLotCount, loadMoreLots]);
+  }, [hasSearched, isLoadingMore, hasMoreGroups, loadMoreLots]);
 
   // For backward compatibility - alias to keep existing code working
   const initialLots = displayedLots;
@@ -2337,7 +2374,7 @@ export default function StockRegister() {
                 />
               ))}
               {/* Infinite scroll loader */}
-              {!hasSearched && displayedLots.length < totalLotCount && (
+              {hasMoreGroups && (
                 <div className="flex items-center justify-center py-4">
                   {isLoadingMore ? (
                     <div className="flex items-center gap-2 text-muted-foreground">

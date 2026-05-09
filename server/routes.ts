@@ -449,6 +449,47 @@ export async function registerRoutes(
       
       const totalCount = lots.length;
 
+      // Group-by-farmer pagination: page size is measured in FARMER GROUPS,
+      // not lots, so each farmer card is always returned complete on first
+      // paint. Used by the unfiltered Stock Register view so a farmer with
+      // 100+ lots loads as one card instead of being split across pages.
+      // Uses the same canonical `farmerGroupKey` as the client.
+      if (req.query.groupBy === "farmer") {
+        // Bucket lots by canonical farmer key, preserving the already-applied
+        // sort order (lotNo asc) within each bucket. We track each group's
+        // min lotNo so groups can themselves be ordered by their lowest
+        // lot number — keeps the page order stable & familiar.
+        const groupMap = new Map<string, { minLotNo: number; firstIdx: number; items: typeof lots }>();
+        lots.forEach((lot, idx) => {
+          const key = farmerGroupKey(lot);
+          const lotNoNum = parseInt(lot.lotNo, 10) || Number.MAX_SAFE_INTEGER;
+          const existing = groupMap.get(key);
+          if (existing) {
+            existing.items.push(lot);
+            if (lotNoNum < existing.minLotNo) existing.minLotNo = lotNoNum;
+          } else {
+            groupMap.set(key, { minLotNo: lotNoNum, firstIdx: idx, items: [lot] });
+          }
+        });
+        const groups = Array.from(groupMap.values()).sort((a, b) => {
+          if (a.minLotNo !== b.minLotNo) return a.minLotNo - b.minLotNo;
+          return a.firstIdx - b.firstIdx;
+        });
+        const totalGroups = groups.length;
+        const groupOffset = Math.max(0, parseInt(req.query.groupOffset as string, 10) || 0);
+        const groupLimitRaw = parseInt(req.query.groupLimit as string, 10);
+        const groupLimit = !isNaN(groupLimitRaw) && groupLimitRaw > 0 ? groupLimitRaw : totalGroups;
+        const selectedGroups = groups.slice(groupOffset, groupOffset + groupLimit);
+        const pagedLots = selectedGroups.flatMap(g => g.items);
+        return res.json({
+          lots: pagedLots,
+          totalCount,
+          totalGroups,
+          returnedGroups: selectedGroups.length,
+          nextGroupOffset: groupOffset + selectedGroups.length,
+        });
+      }
+
       // Apply offset if requested (for pagination)
       const offset = parseInt(req.query.offset as string, 10);
       const startIdx = !isNaN(offset) && offset > 0 ? offset : 0;
