@@ -280,6 +280,9 @@ export default function StockRegister() {
   // partially as the user scrolled.
   const GROUP_PAGE_SIZE = 20;
   const [displayedLots, setDisplayedLots] = useState<Lot[]>([]);
+  // `totalLotCount` is no longer used to drive pagination (group counts
+  // do that). It's retained for the summary/progress UI that still wants
+  // to show "loaded X of N lots".
   const [totalLotCount, setTotalLotCount] = useState<number>(0);
   const [totalGroupCount, setTotalGroupCount] = useState<number>(0);
   const [loadedGroupCount, setLoadedGroupCount] = useState<number>(0);
@@ -2330,7 +2333,7 @@ export default function StockRegister() {
             }
           }
 
-          // No need to hide the last group: the server's `completeLastFarmer`
+          // No need to hide the last group: the server's `groupBy=farmer`
           // option guarantees that the farmer at the page boundary is fully
           // included in the loaded set, so a farmer's lots are never split
           // across the loaded/unloaded boundary while paginating.
