@@ -878,9 +878,25 @@ export function MasterNikasiDialog({
                   return (
                     <tr key={r.rowKey} data-testid={`row-mn-${idx}`}>
                       <td className="p-2 w-[110px]">
-                        <Select
-                          value={r.lotNo || undefined}
-                          onValueChange={(newLotNo) => {
+                        <ReceiptCombobox
+                          idx={idx}
+                          value={r.lotNo}
+                          options={lotNoOptions.map(n => {
+                            // A receipt# is "fully used" only when every one
+                            // of its (lotNo, marka) pairs is already chosen
+                            // in another row. We still allow re-selecting
+                            // the same Receipt# for *this* row when there
+                            // are multiple markas under it.
+                            const markasHere = markasByLotNo.get(n) || [];
+                            const allUsed = markasHere.length > 0 &&
+                              markasHere.every(m => {
+                                const k = `${n}::${m}`;
+                                return usedKeys.has(k) && !(r.lotNo === n && rowMarkaCanon === m);
+                              });
+                            return { lotNo: n, disabled: allUsed };
+                          })}
+                          disabled={!!result}
+                          onPick={(newLotNo) => {
                             const markas = markasByLotNo.get(newLotNo) || [];
                             const toSel = (m: string) => (m === "" ? NO_MARKA : m);
                             // If the chosen Receipt # has only one marka,
@@ -897,32 +913,11 @@ export function MasterNikasiDialog({
                             }
                             updateRow(r.rowKey, { lotNo: newLotNo, marka: nextMarka });
                           }}
-                          disabled={!!result}
-                        >
-                          <SelectTrigger className="h-8" data-testid={`select-mn-lot-${idx}`}>
-                            <SelectValue placeholder="—" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {lotNoOptions.map(n => {
-                              // A receipt# is "fully used" only when every one
-                              // of its (lotNo, marka) pairs is already chosen
-                              // in another row. We still allow re-selecting
-                              // the same Receipt# for *this* row when there
-                              // are multiple markas under it.
-                              const markasHere = markasByLotNo.get(n) || [];
-                              const allUsed = markasHere.length > 0 &&
-                                markasHere.every(m => {
-                                  const k = `${n}::${m}`;
-                                  return usedKeys.has(k) && !(r.lotNo === n && rowMarkaCanon === m);
-                                });
-                              return (
-                                <SelectItem key={n} value={n} disabled={allUsed}>
-                                  {n}
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
+                          onClear={() => updateRow(r.rowKey, { lotNo: "", marka: "" })}
+                          searchPlaceholder={t("searchReceipt") || "Search Receipt #"}
+                          emptyText={t("noReceiptFound") || "No matching Receipt #"}
+                          clearLabel={t("clear") || "Clear"}
+                        />
                       </td>
                       <td className="p-2 w-[130px]">
                         <Select
@@ -1184,5 +1179,111 @@ export function MasterNikasiDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface ReceiptComboboxProps {
+  idx: number;
+  value: string;
+  options: { lotNo: string; disabled: boolean }[];
+  disabled: boolean;
+  onPick: (lotNo: string) => void;
+  onClear: () => void;
+  searchPlaceholder: string;
+  emptyText: string;
+  clearLabel: string;
+}
+
+function ReceiptCombobox({
+  idx,
+  value,
+  options,
+  disabled,
+  onPick,
+  onClear,
+  searchPlaceholder,
+  emptyText,
+  clearLabel,
+}: ReceiptComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(o => o.lotNo.toLowerCase().includes(q));
+  }, [options, query]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setQuery("");
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className="h-8 w-full justify-between font-normal px-2"
+          data-testid={`select-mn-lot-${idx}`}
+        >
+          <span className="truncate">{value || "—"}</span>
+          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[200px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            value={query}
+            onValueChange={setQuery}
+            data-testid={`input-mn-lot-search-${idx}`}
+          />
+          <CommandList>
+            <CommandEmpty>{emptyText}</CommandEmpty>
+            <CommandGroup>
+              {filtered.map(o => (
+                <CommandItem
+                  key={o.lotNo}
+                  value={o.lotNo}
+                  disabled={o.disabled}
+                  onSelect={() => {
+                    if (o.disabled) return;
+                    onPick(o.lotNo);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  data-testid={`option-mn-lot-${idx}-${o.lotNo}`}
+                >
+                  <Check className={`mr-2 h-4 w-4 ${value === o.lotNo ? "opacity-100" : "opacity-0"}`} />
+                  {o.lotNo}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            {value && (
+              <CommandGroup>
+                <CommandItem
+                  value="__clear__"
+                  onSelect={() => {
+                    onClear();
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className="text-destructive"
+                  data-testid={`option-mn-lot-clear-${idx}`}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {clearLabel}
+                </CommandItem>
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
