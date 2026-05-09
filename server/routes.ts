@@ -1069,8 +1069,11 @@ export async function registerRoutes(
     // RST No and Vehicle
     rstNo: z.string().optional(),
     vehicle: z.string().optional(),
-    // Potato variety (editable)
-    type: z.string().min(1).optional(),
+    // Potato variety (editable). Allow empty string so PATCHes for legacy
+    // lots with a blank variety don't fail validation; the client strips
+    // empty/unchanged values, and the underlying column is NOT NULL so a
+    // truly-empty write would be rejected at the DB layer anyway.
+    type: z.string().optional(),
     // Farmer details (editable)
     farmerName: z.string().min(1).optional(),
     village: z.string().optional(),

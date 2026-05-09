@@ -1635,9 +1635,16 @@ export default function StockRegister() {
       }
     }
     
+    // Strip blank `type` so legacy lots without a variety can still be
+    // edited without forcing the user to pick one. The schema column is
+    // NOT NULL, so we never want to overwrite a real value with "".
+    const { type, ...rest } = editForm;
+    const updates =
+      type && type.trim().length > 0 ? { ...rest, type } : rest;
+
     updateLotMutation.mutate({
       id: selectedLot.id,
-      updates: editForm,
+      updates,
     });
   };
 
