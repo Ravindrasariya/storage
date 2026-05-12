@@ -908,14 +908,21 @@ export default function StockRegister() {
         "Due Cold Charges",
       ];
 
+      // Anchor formatting to IST so the date doesn't drift if a non-IST
+      // browser ever exports the CSV (Node side is already pinned to
+      // Asia/Kolkata; this keeps client-side parity).
+      const istDateFmt = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
       const formatEntryDate = (d: Date | string | null | undefined): string => {
         if (!d) return "";
         const dt = d instanceof Date ? d : new Date(d);
         if (isNaN(dt.getTime())) return "";
-        const dd = String(dt.getDate()).padStart(2, "0");
-        const mm = String(dt.getMonth() + 1).padStart(2, "0");
-        const yyyy = dt.getFullYear();
-        return `${dd}/${mm}/${yyyy}`;
+        // en-GB → "dd/MM/yyyy"
+        return istDateFmt.format(dt);
       };
 
       const rows = lots.map(lot => {
