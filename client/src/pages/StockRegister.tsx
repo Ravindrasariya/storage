@@ -882,6 +882,7 @@ export default function StockRegister() {
       // Build CSV content
       const headers = [
         "Receipt No",
+        "Stock Entry Date",
         "Farmer Name",
         "Contact Number",
         "Village",
@@ -893,6 +894,8 @@ export default function StockRegister() {
         "Potato Type",
         "Potato Variety",
         "Bag type",
+        "RST No",
+        "Vehicle",
         "Quality",
         "Potato Size",
         "Bags No.",
@@ -905,6 +908,16 @@ export default function StockRegister() {
         "Due Cold Charges",
       ];
 
+      const formatEntryDate = (d: Date | string | null | undefined): string => {
+        if (!d) return "";
+        const dt = d instanceof Date ? d : new Date(d);
+        if (isNaN(dt.getTime())) return "";
+        const dd = String(dt.getDate()).padStart(2, "0");
+        const mm = String(dt.getMonth() + 1).padStart(2, "0");
+        const yyyy = dt.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      };
+
       const rows = lots.map(lot => {
         const expectedColdCharge = calcExpectedCharge(lot);
         
@@ -913,6 +926,7 @@ export default function StockRegister() {
         const totalBilledCharge = paidCharge + dueCharge;
         return [
           lot.lotNo,
+          formatEntryDate(lot.entryDate),
           lot.farmerName,
           lot.contactNumber,
           lot.village,
@@ -924,6 +938,8 @@ export default function StockRegister() {
           lot.bagType,
           lot.type,
           lot.bagTypeLabel || "",
+          lot.rstNo || "",
+          lot.vehicle || "",
           lot.quality,
           lot.potatoSize,
           lot.size,
