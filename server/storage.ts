@@ -2241,6 +2241,25 @@ export class DatabaseStorage implements IStorage {
       return { success: false, message: "Sale not found", errorType: "not_found" };
     }
 
+    // Block reversal when one or more active manual single-sale closure receipts
+    // are still attached to this sale. The operator must reverse those receipts
+    // first (Cash Inward → Reverse) so the receipt-side cash-flow + ledger state
+    // unwinds cleanly. Otherwise reversing the sale would orphan the receipt
+    // and skew Cash Flow / Buyer Ledger totals.
+    const attachedManualReceipts = await db.select({ id: cashReceipts.id })
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.appliesToSaleId, saleId),
+        eq(cashReceipts.isReversed, 0),
+      ));
+    if (attachedManualReceipts.length > 0) {
+      return {
+        success: false,
+        errorType: "manual_receipt_attached",
+        message: `This sale has ${attachedManualReceipts.length} active manual payment receipt(s) attached. Reverse the receipt(s) from Cash Inward before reversing this sale.`,
+      };
+    }
+
     const lot = await this.getLot(sale.lotId);
     if (!lot) {
       return { success: false, message: "Associated lot not found", errorType: "not_found" };
@@ -2401,6 +2420,23 @@ export class DatabaseStorage implements IStorage {
     // (mirrors sharedExitBillNumber). When null/omitted, server takes
     // MAX(coldStorageBillNumber)+1 over (cold storage, year(soldAt)).
     sharedColdStorageBillNumber?: number | null;
+    // Optional inline payment captured in the MN dialog. When provided, the
+    // server allocates `amount + roundOff` top-to-bottom across the newly
+    // created sales (one cashReceipts row per touched sale, FIFO-excluded so
+    // future receipts don't re-allocate against them). RoundOff is stamped on
+    // the LAST touched receipt only. Validations:
+    //   - amount + roundOff > 0
+    //   - amount + roundOff <= Σ(rows.totalColdStorageCharge) + 0.5
+    //   - receiptType="account" requires accountId
+    // Payment lands atomically inside the same db.transaction as the sales.
+    payment?: {
+      receiptType: "cash" | "account";
+      accountId: string | null;
+      amount: number;
+      roundOff: number;
+      receivedAt: Date;
+      notes: string | null;
+    } | null;
     rows: Array<{
       lotId: string;
       // Bags physically leaving the chamber on this nikasi.
@@ -2918,6 +2954,77 @@ export class DatabaseStorage implements IStorage {
         });
       }
 
+      // ---- Optional inline payment (Task #294) ----------------------------
+      // Allocate `amount + roundOff` top-to-bottom across the freshly-created
+      // sales. One cashReceipts row per touched sale (FIFO-excluded so future
+      // receipts don't re-allocate). Round-off lands on the LAST touched
+      // receipt only. Entire allocation runs inside the same `tx`, so a
+      // mid-batch failure rolls back the whole nikasi.
+      const paymentReceipts: Array<{ receiptId: string; saleId: string; amount: number; roundOff: number }> = [];
+      if (args.payment) {
+        const p = args.payment;
+        const totalGross = roundAmount((p.amount || 0) + (p.roundOff || 0));
+        if (totalGross <= 0) {
+          throw new Error("Payment amount must be greater than zero");
+        }
+        if (p.receiptType === "account" && !p.accountId) {
+          throw new Error("Bank account is required when payment mode is account");
+        }
+        const totalDue = createdSales.reduce((sum, s) => sum + (s.totalColdStorageCharge || 0), 0);
+        if (totalGross > totalDue + 0.5) {
+          throw new Error(`Payment amount (₹${totalGross}) exceeds total due (₹${roundAmount(totalDue)})`);
+        }
+
+        // Top-to-bottom allocation against each sale's freshly-billed due.
+        const allocations: number[] = new Array(createdSales.length).fill(0);
+        let remaining = totalGross;
+        for (let i = 0; i < createdSales.length; i++) {
+          if (remaining <= 0) break;
+          const due = roundAmount(createdSales[i].totalColdStorageCharge || 0);
+          const alloc = Math.min(remaining, due);
+          if (alloc > 0) {
+            allocations[i] = roundAmount(alloc);
+            remaining = roundAmount(remaining - alloc);
+          }
+        }
+        // Round-off stamp goes on the LAST touched receipt only.
+        let lastTouchedIdx = -1;
+        for (let i = allocations.length - 1; i >= 0; i--) {
+          if (allocations[i] > 0) { lastTouchedIdx = i; break; }
+        }
+
+        for (let i = 0; i < createdSales.length; i++) {
+          const alloc = allocations[i];
+          if (alloc <= 0) continue;
+          const isLast = i === lastTouchedIdx;
+          const receiptRoundOff = isLast ? roundAmount(p.roundOff || 0) : 0;
+          // Re-read the sale row inside the tx so dueAmount reflects the
+          // just-inserted INSERT (defensive against any later schema where
+          // the sale may already carry partial payment data on creation).
+          const [freshSale] = await tx.select().from(salesHistory)
+            .where(eq(salesHistory.id, createdSales[i].saleId))
+            .limit(1);
+          if (!freshSale) throw new Error(`Sale ${createdSales[i].saleId} not found in tx`);
+          const { receipt } = await this._applyManualPaymentTx(tx, {
+            coldStorageId: args.coldStorageId,
+            sale: freshSale,
+            receiptType: p.receiptType,
+            accountType: null,
+            accountId: p.accountId,
+            grossAmount: alloc,
+            roundOff: receiptRoundOff,
+            receivedAt: p.receivedAt,
+            notes: p.notes,
+          });
+          paymentReceipts.push({
+            receiptId: receipt.id,
+            saleId: createdSales[i].saleId,
+            amount: alloc,
+            roundOff: receiptRoundOff,
+          });
+        }
+      }
+
       return {
         sharedExitBillNumber,
         sharedColdStorageBillNumber,
@@ -2939,6 +3046,10 @@ export class DatabaseStorage implements IStorage {
               buyerName: buyerRecord.buyerName,
             }
           : null,
+        // Receipts created for the inline payment (empty array when no
+        // payment was attached). Order matches createdSales — useful for
+        // the UI to surface "₹X received against N lots".
+        paymentReceipts,
       };
     });
   }
@@ -4294,33 +4405,74 @@ export class DatabaseStorage implements IStorage {
     if (!sale) throw new Error("Sale not found");
 
     const gross = roundAmount(data.amount); // amount already includes roundOff (route layer composes it)
+    const { receipt } = await this._applyManualPaymentTx(db, {
+      coldStorageId: data.coldStorageId,
+      sale,
+      receiptType: data.receiptType,
+      accountType: data.accountType,
+      accountId: data.accountId,
+      grossAmount: gross,
+      roundOff: data.roundOff || 0,
+      receivedAt: data.receivedAt,
+      notes: data.notes,
+    });
+    return { receipt, salesUpdated: 1 };
+  }
+
+  // Tx-aware core of a manual single-sale closure payment. Accepts either the
+  // global `db` (legacy createManualSalePayment path) or a drizzle transaction
+  // (Master Nikasi inline payment path) so the whole exit+payment can land
+  // atomically when called from inside `db.transaction(...)`.
+  //
+  // Contract:
+  //   - Caller MUST pass a freshly-loaded sale row (we trust paidAmount/dueAmount).
+  //   - grossAmount = amount + roundOff already summed by the route layer.
+  //   - `roundOff` is metadata stamped on the receipt row for cash-flow display
+  //     only; it does NOT change the amount applied to the sale.
+  //   - Writes exactly one cashReceipts row + one cashReceiptApplications row,
+  //     stamps fifoExclusion=1, and recomputes lot totals via the same exec.
+  private async _applyManualPaymentTx(
+    exec: any,
+    args: {
+      coldStorageId: string;
+      sale: SalesHistory;
+      receiptType: string;
+      accountType: string | null;
+      accountId: string | null;
+      grossAmount: number;
+      roundOff: number;
+      receivedAt: Date;
+      notes: string | null;
+    },
+  ): Promise<{ receipt: CashReceipt }> {
+    const { sale, coldStorageId, grossAmount, receivedAt } = args;
     const billedAmount = sale.coldStorageCharge || 0;
     const currentDue = roundAmount(sale.dueAmount || 0);
 
     if (currentDue <= 0) throw new Error("This sale has no outstanding due");
-    if (gross <= 0) throw new Error("Payment amount must be greater than zero");
-    if (gross > currentDue) throw new Error(`Payment amount (₹${gross}) exceeds current due (₹${currentDue})`);
+    if (grossAmount <= 0) throw new Error("Payment amount must be greater than zero");
+    if (grossAmount > currentDue + 0.5) throw new Error(`Payment amount (₹${grossAmount}) exceeds current due (₹${currentDue})`);
 
     // Enforce the same lifecycle guard the UI shows — block when FIFO has already
-    // partially paid into this sale (flag=0 AND due < billed). Direct API callers must
-    // reverse those FIFO receipts first. Allowed when flag=1 (already manually closed).
+    // partially paid into this sale (flag=0 AND due < billed). Direct API callers
+    // must reverse those FIFO receipts first. Allowed when flag=1 (already manually closed).
     const flag = sale.fifoExclusion || 0;
     if (flag === 0 && currentDue < billedAmount - 0.5) {
       throw new Error("FIFO has already paid into this sale — reverse those receipts before recording a manual payment");
     }
 
     // Apply payment to this single sale only — no FIFO hop
-    const newPaidAmount = roundAmount((sale.paidAmount || 0) + gross);
-    const newDueAmount = roundAmount(currentDue - gross);
-    const paymentMode = data.receiptType as "cash" | "account";
-    const cashDelta = paymentMode === "cash" ? gross : 0;
-    const accountDelta = paymentMode === "account" ? gross : 0;
-    // Mirror existing FIFO semantics from createCashReceiptWithFIFO: status flips to "paid"
-    // once remaining due is < ₹1 (petty-balance threshold), but we PRESERVE the actual
-    // rounded due so reversal stays symmetric (avoids losing a fractional residual).
+    const newPaidAmount = roundAmount((sale.paidAmount || 0) + grossAmount);
+    const newDueAmount = roundAmount(currentDue - grossAmount);
+    const paymentMode = args.receiptType as "cash" | "account";
+    const cashDelta = paymentMode === "cash" ? grossAmount : 0;
+    const accountDelta = paymentMode === "account" ? grossAmount : 0;
+    // Mirror existing FIFO semantics from createCashReceiptWithFIFO: status flips
+    // to "paid" once remaining due is < ₹1 (petty-balance threshold), but we PRESERVE
+    // the actual rounded due so reversal stays symmetric (no fractional residual).
     const newStatus = newDueAmount < 1 ? "paid" : "partial";
 
-    await db.update(salesHistory)
+    await exec.update(salesHistory)
       .set({
         paidAmount: newPaidAmount,
         dueAmount: newDueAmount,
@@ -4328,15 +4480,14 @@ export class DatabaseStorage implements IStorage {
         paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
         paymentStatus: newStatus,
         paymentMode: paymentMode,
-        paidAt: newStatus === "paid" ? data.receivedAt : sale.paidAt,
-        // Stamp the sale as FIFO-excluded so future receipts don't allocate to it
+        paidAt: newStatus === "paid" ? receivedAt : sale.paidAt,
         fifoExclusion: 1,
       })
-      .where(eq(salesHistory.id, data.saleId));
+      .where(eq(salesHistory.id, sale.id));
 
-    // Recompute lot totals so Stock Register row reflects the new state
+    // Recompute lot totals so Stock Register row reflects the new state.
     if (sale.lotId) {
-      await this.recalculateLotTotals(sale.lotId);
+      await this._recalculateLotTotalsOn(exec, sale.lotId);
     }
 
     // Determine display fields & ledger references for the receipt row
@@ -4356,7 +4507,9 @@ export class DatabaseStorage implements IStorage {
         farmerLedgerId = sale.farmerLedgerId;
         farmerId = sale.farmerId || null;
       } else {
-        const farmerEntry = await this.ensureFarmerLedgerEntry(data.coldStorageId, {
+        // `ensureFarmerLedgerEntry` uses the global `db` directly; that's fine —
+        // ledger entries are independent of the sale row being written here.
+        const farmerEntry = await this.ensureFarmerLedgerEntry(coldStorageId, {
           name: sale.farmerName,
           contactNumber: sale.contactNumber,
           village: sale.village,
@@ -4372,29 +4525,32 @@ export class DatabaseStorage implements IStorage {
       buyerId = sale.buyerId || null;
       if (buyerDisplayName) {
         try {
-          dueBalanceAfter = await this.getBuyerDueBalance(data.coldStorageId, buyerDisplayName);
+          // Read via global `db`; in the tx path this won't see the just-applied
+          // payment to this sale (mid-tx), so the snapshot value is best-effort —
+          // same semantics as other dueBalanceAfter snapshots elsewhere.
+          dueBalanceAfter = await this.getBuyerDueBalance(coldStorageId, buyerDisplayName);
         } catch {
           dueBalanceAfter = null;
         }
       }
     }
 
-    const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
+    const transactionId = await generateSequentialId('cash_flow', coldStorageId);
 
-    const [receipt] = await db.insert(cashReceipts)
+    const [receipt] = await exec.insert(cashReceipts)
       .values({
         id: randomUUID(),
-        coldStorageId: data.coldStorageId,
+        coldStorageId,
         payerType,
         buyerName: buyerDisplayName || null,
-        receiptType: data.receiptType,
-        accountType: data.accountType,
-        accountId: data.accountId,
-        amount: gross,
-        roundOff: data.roundOff || 0,
-        receivedAt: data.receivedAt,
-        notes: data.notes,
-        appliedAmount: gross,
+        receiptType: args.receiptType,
+        accountType: args.accountType,
+        accountId: args.accountId,
+        amount: grossAmount,
+        roundOff: args.roundOff || 0,
+        receivedAt,
+        notes: args.notes,
+        appliedAmount: grossAmount,
         unappliedAmount: 0,
         transactionId,
         dueBalanceAfter,
@@ -4402,23 +4558,53 @@ export class DatabaseStorage implements IStorage {
         farmerId,
         buyerLedgerId,
         buyerId,
-        appliesToSaleId: data.saleId,
+        appliesToSaleId: sale.id,
       })
       .returning();
 
     // Persist the application row for this manual single-sale payment.
-    await this.recordReceiptApplication(
-      data.coldStorageId,
-      receipt.id,
-      data.saleId,
-      gross,
-      data.receivedAt,
-    );
+    const amt = roundAmount(grossAmount);
+    if (amt > 0) {
+      await exec.insert(cashReceiptApplications).values({
+        id: randomUUID(),
+        coldStorageId,
+        cashReceiptId: receipt.id,
+        salesHistoryId: sale.id,
+        amountApplied: amt,
+        appliedAt: receivedAt,
+      });
+    }
 
-    // Suppress unused var lint — billedAmount kept for clarity / future use
-    void billedAmount;
+    return { receipt };
+  }
 
-    return { receipt, salesUpdated: 1 };
+  // Tx-aware variant of `recalculateLotTotals`. Use this when the surrounding
+  // logic runs inside `db.transaction(...)` so the lot totals reflect the
+  // uncommitted sales_history rows in the same tx.
+  private async _recalculateLotTotalsOn(exec: any, lotId: string): Promise<void> {
+    const lotSales = await exec.select().from(salesHistory).where(eq(salesHistory.lotId, lotId));
+    let totalPaidCharge = 0;
+    let totalDueCharge = 0;
+    for (const sale of lotSales) {
+      const charges = sale.coldStorageCharge || 0;
+      if (sale.paymentStatus === "paid") {
+        totalPaidCharge += charges;
+      } else if (sale.paymentStatus === "due") {
+        totalDueCharge += charges;
+      } else if (sale.paymentStatus === "partial") {
+        totalPaidCharge += sale.paidAmount || 0;
+        totalDueCharge += sale.dueAmount || 0;
+      }
+    }
+    let newPaymentStatus: string | null = null;
+    if (totalPaidCharge > 0 && totalDueCharge <= 0) {
+      newPaymentStatus = "paid";
+    } else if (totalDueCharge > 0) {
+      newPaymentStatus = "due";
+    }
+    await exec.update(lots)
+      .set({ totalPaidCharge, totalDueCharge, paymentStatus: newPaymentStatus })
+      .where(eq(lots.id, lotId));
   }
 
   async getCashReceipts(coldStorageId: string): Promise<CashReceipt[]> {
@@ -4486,11 +4672,15 @@ export class DatabaseStorage implements IStorage {
   // Called at the start of recomputeBuyerPayments so the subsequent FIFO
   // replay can re-create the rows from scratch.
   private async clearApplicationsForBuyer(coldStorageId: string, buyerName: string): Promise<void> {
+    // Exclude manual single-sale closure receipts — those are owned by their
+    // target sale (applies_to_sale_id) and must not be cleared/re-FIFO'd by
+    // the buyer-wide recompute path.
     const receiptIds = await db.select({ id: cashReceipts.id })
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
         sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerName}))`,
+        isNull(cashReceipts.appliesToSaleId),
       ));
     if (receiptIds.length === 0) return;
     await db.delete(cashReceiptApplications)
@@ -4506,11 +4696,15 @@ export class DatabaseStorage implements IStorage {
     village: string,
   ): Promise<void> {
     const buyerDisplayName = `${farmerName.trim()} (${village.trim()})`;
+    // Exclude manual single-sale closure receipts — those are owned by their
+    // target sale (applies_to_sale_id) and must not be cleared/re-FIFO'd by
+    // the farmer-wide recompute path.
     const receiptIds = await db.select({ id: cashReceipts.id })
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
         eq(cashReceipts.payerType, "farmer"),
+        isNull(cashReceipts.appliesToSaleId),
         sql`(
           (${cashReceipts.farmerLedgerId} IS NOT NULL AND ${cashReceipts.farmerLedgerId} = ${farmerLedgerId})
           OR (${cashReceipts.farmerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName})))
@@ -5285,12 +5479,15 @@ export class DatabaseStorage implements IStorage {
     // Step 3: Get farmer receipts for this farmer, ordered chronologically
     const buyerDisplayNameForMatch = `${farmerName.trim()} (${village.trim()})`;
 
+    // Exclude manual single-sale closure receipts (applies_to_sale_id IS NOT NULL)
+    // — they are already applied to one specific self-sale and must not be FIFO-replayed.
     const activeReceipts = await db.select()
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
         eq(cashReceipts.payerType, "farmer"),
         eq(cashReceipts.isReversed, 0),
+        isNull(cashReceipts.appliesToSaleId),
         sql`(
           (${cashReceipts.farmerLedgerId} IS NOT NULL AND ${cashReceipts.farmerLedgerId} = ${resolvedLedgerId})
           OR (${cashReceipts.farmerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayNameForMatch})))
@@ -5625,13 +5822,17 @@ export class DatabaseStorage implements IStorage {
     // Those non-sale receipts are managed by their own dedicated
     // recompute functions (`recomputeMerchantAdvancePayments`,
     // `recomputeFarmerLoanPayments`, etc.) and must not be touched here.
+    // Also exclude manual single-sale closure receipts (applies_to_sale_id IS NOT NULL)
+    // — they are already applied to one specific sale and must not be FIFO-replayed
+    // across the buyer's full sale pool (would double-count and zero out unrelated sales).
     const activeReceipts = await db.select()
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
         sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerName}))`,
         eq(cashReceipts.payerType, "cold_merchant"),
-        eq(cashReceipts.isReversed, 0)
+        eq(cashReceipts.isReversed, 0),
+        isNull(cashReceipts.appliesToSaleId),
       ))
       .orderBy(cashReceipts.receivedAt);
 
@@ -7601,12 +7802,15 @@ export class DatabaseStorage implements IStorage {
     // Match by farmerLedgerId first, then fallback to buyerName pattern
     const buyerDisplayName = `${farmerName.trim()} (${village.trim()})`;
     
+    // Exclude manual single-sale closure receipts (applies_to_sale_id IS NOT NULL)
+    // — they are already applied to one specific self-sale and must not be FIFO-replayed.
     const activeReceipts = await db.select()
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
         eq(cashReceipts.payerType, "farmer"),
         eq(cashReceipts.isReversed, 0),
+        isNull(cashReceipts.appliesToSaleId),
         sql`(
           (${cashReceipts.farmerLedgerId} IS NOT NULL AND ${cashReceipts.farmerLedgerId} = ${farmerLedgerId})
           OR (${cashReceipts.farmerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName})))

@@ -1802,6 +1802,19 @@ export async function registerRoutes(
       message: "soldBags must be >= exitBags",
       path: ["soldBags"],
     })).min(1),
+    // Optional inline payment captured in the MN dialog. The server allocates
+    // `amount + roundOff` top-to-bottom across the newly created sales (one
+    // cashReceipts row per touched sale). Round-off lands on the LAST touched
+    // receipt only. Payment lands atomically inside the same db.transaction
+    // as the sales, so a mid-batch failure rolls the whole thing back.
+    payment: z.object({
+      receiptType: z.enum(["cash", "account"]),
+      accountId: z.string().uuid().nullable().optional(),
+      amount: z.number().min(0),
+      roundOff: z.number().min(0).default(0),
+      receivedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid received date format (expected YYYY-MM-DD)"),
+      notes: z.string().nullable().optional(),
+    }).optional(),
   });
 
   app.post("/api/farmers/master-nikasi", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -1831,6 +1844,38 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Exit date is not a real calendar date", field: "exitDate" });
       }
 
+      // Parse optional payment.receivedAt the same IST-anchored way as exitDate
+      // so the cashReceipts.receivedAt lands on the operator-picked calendar
+      // day regardless of DB session timezone.
+      let parsedPayment: Parameters<typeof storage.createMasterNikasi>[0]["payment"] = null;
+      if (body.payment) {
+        const p = body.payment;
+        const receivedAt = new Date(`${p.receivedAt}T12:00:00+05:30`);
+        if (isNaN(receivedAt.getTime())) {
+          return res.status(400).json({ error: "Invalid received date", field: "payment.receivedAt" });
+        }
+        const recIst = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(receivedAt);
+        if (recIst !== p.receivedAt) {
+          return res.status(400).json({ error: "Received date is not a real calendar date", field: "payment.receivedAt" });
+        }
+        if (p.receiptType === "account" && !p.accountId) {
+          return res.status(400).json({ error: "Bank account is required when payment mode is account", field: "payment.accountId" });
+        }
+        if ((p.amount + (p.roundOff || 0)) <= 0) {
+          return res.status(400).json({ error: "Payment amount must be greater than zero", field: "payment.amount" });
+        }
+        parsedPayment = {
+          receiptType: p.receiptType,
+          accountId: p.accountId ?? null,
+          amount: p.amount,
+          roundOff: p.roundOff || 0,
+          receivedAt,
+          notes: p.notes ?? null,
+        };
+      }
+
       const result = await storage.createMasterNikasi({
         coldStorageId,
         farmerLedgerId: body.farmerLedgerId,
@@ -1838,6 +1883,7 @@ export async function registerRoutes(
         exitDate,
         sharedExitBillNumber: body.sharedExitBillNumber ?? null,
         sharedColdStorageBillNumber: body.sharedColdStorageBillNumber ?? null,
+        payment: parsedPayment,
         rows: body.rows.map(r => ({
           lotId: r.lotId,
           exitBags: r.exitBags,
@@ -2653,7 +2699,7 @@ export async function registerRoutes(
       const result = await storage.reverseSale(req.params.id);
       if (!result.success) {
         const statusCode = result.errorType === "not_found" ? 404 : 400;
-        return res.status(statusCode).json({ error: result.message });
+        return res.status(statusCode).json({ error: result.message, errorType: result.errorType });
       }
 
       // Trigger appropriate FIFO recomputation

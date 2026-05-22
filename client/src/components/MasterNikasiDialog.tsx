@@ -10,9 +10,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
-import { PackageMinus, Printer, Plus, Trash2, Loader2, Check, ChevronsUpDown } from "lucide-react";
+import { PackageMinus, Printer, Plus, Trash2, Loader2, Check, ChevronsUpDown, IndianRupee, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
-import type { ColdStorage, BuyerLedgerEntry } from "@shared/schema";
+import type { ColdStorage, BuyerLedgerEntry, BankAccount } from "@shared/schema";
 import type { LotWithCharges } from "@/components/FarmerLotGroup";
 import { NikasiPrintable, printNikasiReceipt } from "@/components/NikasiPrintable";
 
@@ -107,6 +107,14 @@ interface MasterNikasiResult {
     buyerId: string | null;
     buyerName: string;
   } | null;
+  // Receipts created for the inline payment (Task #294). Empty array
+  // when no payment was attached.
+  paymentReceipts?: Array<{
+    receiptId: string;
+    saleId: string;
+    amount: number;
+    roundOff: number;
+  }>;
 }
 
 const newRow = (lotNo = "", marka = ""): RowState => ({
@@ -224,6 +232,25 @@ export function MasterNikasiDialog({
   // matching field is detected via substring on the message.
   const [billNumberError, setBillNumberError] = useState<string | null>(null);
 
+  // ---- Task #294: Inline payment ---------------------------------------
+  // When set, the MN submit payload includes a `payment` block. The server
+  // allocates `amount + roundOff` top-to-bottom across the freshly-created
+  // sales (one cashReceipts row per touched sale, FIFO-excluded). Round-off
+  // lands on the LAST touched receipt only. Payment lands atomically inside
+  // the same db.transaction as the sales.
+  const [attachedPayment, setAttachedPayment] = useState<{
+    receiptType: "cash" | "account";
+    accountId: string | null;
+    amount: number;
+    roundOff: number;
+    receivedAt: string;
+    notes: string;
+  } | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  // Server-side payment errors (field paths like "payment.amount") render
+  // by re-opening the sub-dialog with the message highlighted.
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
   // Reset state whenever dialog opens. The shared exit bill # is still
   // pre-filled from the cold-storage running counter (out of scope for
   // #230). The first row's cold-storage bill # starts empty and is
@@ -247,6 +274,9 @@ export function MasterNikasiDialog({
       setBuyerComboboxOpen(false);
       setBuyerSearchQuery("");
       setBuyerError(null);
+      setAttachedPayment(null);
+      setPaymentDialogOpen(false);
+      setPaymentError(null);
     }
   }, [open, lots, coldStorage?.nextExitBillNumber]);
 
@@ -514,6 +544,38 @@ export function MasterNikasiDialog({
 
       const buyerLedgerIdToSend = targetBuyerSel && targetBuyerSel !== SELF_BUYER ? targetBuyerSel : null;
 
+      // Inline payment (Task #294). Client-side cap check: gross must not
+      // exceed grandTotal (the freshly-billed cold-storage due for this
+      // batch). The server re-validates with a ±0.5 tolerance.
+      let paymentToSend: {
+        receiptType: "cash" | "account";
+        accountId: string | null;
+        amount: number;
+        roundOff: number;
+        receivedAt: string;
+        notes: string | null;
+      } | undefined;
+      if (attachedPayment) {
+        const gross = (attachedPayment.amount || 0) + (attachedPayment.roundOff || 0);
+        if (gross <= 0) {
+          throw new Error("Payment amount must be greater than zero");
+        }
+        if (gross > grandTotal + 0.5) {
+          throw new Error(`Payment (₹${gross.toFixed(2)}) exceeds total cold-storage due (₹${grandTotal.toFixed(2)})`);
+        }
+        if (attachedPayment.receiptType === "account" && !attachedPayment.accountId) {
+          throw new Error("Bank account is required when payment mode is account");
+        }
+        paymentToSend = {
+          receiptType: attachedPayment.receiptType,
+          accountId: attachedPayment.receiptType === "account" ? attachedPayment.accountId : null,
+          amount: attachedPayment.amount,
+          roundOff: attachedPayment.roundOff,
+          receivedAt: attachedPayment.receivedAt,
+          notes: attachedPayment.notes.trim() || null,
+        };
+      }
+
       const res = await apiRequest("POST", "/api/farmers/master-nikasi", {
         farmerLedgerId,
         buyerLedgerId: buyerLedgerIdToSend,
@@ -521,11 +583,15 @@ export function MasterNikasiDialog({
         sharedExitBillNumber: sharedExitBill,
         sharedColdStorageBillNumber: sharedCsBill,
         rows: cleaned,
+        ...(paymentToSend ? { payment: paymentToSend } : {}),
       });
       return (await res.json()) as MasterNikasiResult;
     },
     onSuccess: (data) => {
       setResult(data);
+      // invalidateSaleSideEffects already invalidates cash-receipts,
+      // cash-flow, buyer-ledger, farmer-ledger, bank-accounts — covering
+      // the inline-payment side effects too.
       invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/farmers"] });
       // Refresh the cold-storage counter so subsequent dialogs see the
@@ -533,7 +599,10 @@ export function MasterNikasiDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
       onSaleSuccess?.();
       const buyerSuffix = data.buyer ? ` · ${data.buyer.buyerName}` : "";
-      toast({ title: t("masterNikasi"), description: `${t("exitBillNumber")} ${data.sharedExitBillNumber}${buyerSuffix}` });
+      const paySuffix = (data.paymentReceipts && data.paymentReceipts.length > 0)
+        ? ` · ${t("paymentRecorded")}`
+        : "";
+      toast({ title: t("masterNikasi"), description: `${t("exitBillNumber")} ${data.sharedExitBillNumber}${buyerSuffix}${paySuffix}` });
       // Auto-print after a short delay so DOM renders the print block.
       setTimeout(() => {
         handlePrint();
@@ -551,6 +620,12 @@ export function MasterNikasiDialog({
         setBillNumberError(msg);
       } else if (body?.field === "buyerLedgerId" || /buyer.*not found|buyer.*archived/i.test(msg)) {
         setBuyerError(msg);
+      } else if (
+        body?.field?.startsWith("payment.") ||
+        /payment amount|bank account is required|exceeds total due|exceeds current due|FIFO has already paid/i.test(msg)
+      ) {
+        setPaymentError(msg);
+        setPaymentDialogOpen(true);
       }
       toast({ title: t("error") || "Error", description: msg, variant: "destructive" });
     },
@@ -1149,33 +1224,320 @@ export function MasterNikasiDialog({
           </div>
         )}
 
-        <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            data-testid="button-mn-close"
-          >
-            {result ? (t("close") || "Close") : (t("cancel") || "Cancel")}
-          </Button>
-          {result ? (
-            <Button onClick={handlePrint} data-testid="button-mn-reprint">
-              <Printer className="h-4 w-4 mr-1" />
-              {t("printNikasiBill")}
-            </Button>
-          ) : (
+        <DialogFooter className="gap-2 sm:justify-between">
+          {!result && (
             <Button
-              onClick={() => submitMutation.mutate()}
-              disabled={!canSubmit}
-              data-testid="button-mn-submit"
+              type="button"
+              variant={attachedPayment ? "default" : "outline"}
+              onClick={() => { setPaymentError(null); setPaymentDialogOpen(true); }}
+              disabled={grandTotal <= 0 || submitMutation.isPending}
+              className={attachedPayment ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+              data-testid="button-mn-open-payment"
             >
-              {submitMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              {attachedPayment ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-1" />
+                  {t("paymentAttached")} ₹{fmt(((attachedPayment.amount || 0) + (attachedPayment.roundOff || 0)))}
+                </>
               ) : (
-                <Printer className="h-4 w-4 mr-1" />
+                <>
+                  <IndianRupee className="h-4 w-4 mr-1" />
+                  {t("addPayment")}
+                </>
               )}
-              {t("submitMasterNikasi")}
             </Button>
           )}
+          <div className="flex gap-2 ml-auto">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              data-testid="button-mn-close"
+            >
+              {result ? (t("close") || "Close") : (t("cancel") || "Cancel")}
+            </Button>
+            {result ? (
+              <Button onClick={handlePrint} data-testid="button-mn-reprint">
+                <Printer className="h-4 w-4 mr-1" />
+                {t("printNikasiBill")}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => submitMutation.mutate()}
+                disabled={!canSubmit}
+                data-testid="button-mn-submit"
+              >
+                {submitMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Printer className="h-4 w-4 mr-1" />
+                )}
+                {t("submitMasterNikasi")}
+                {attachedPayment && (
+                  <span className="ml-1 font-normal" data-testid="text-mn-submit-pay-suffix">
+                    {" + "}{t("pay")} ₹{fmt((attachedPayment.amount || 0) + (attachedPayment.roundOff || 0))}
+                  </span>
+                )}
+              </Button>
+            )}
+          </div>
+        </DialogFooter>
+
+        {/* Inline payment sub-dialog (Task #294). Mirrors ManualPaymentDialog's
+            field set: Cash/Account toggle, account picker, Amount, Round-off,
+            Received-on, Notes. On Apply, stages the snapshot in `attachedPayment`;
+            the actual receipt(s) are written on MN submit, inside the same db tx. */}
+        <PaymentSubDialog
+          open={paymentDialogOpen}
+          onOpenChange={(o) => { setPaymentDialogOpen(o); if (!o) setPaymentError(null); }}
+          totalDue={grandTotal}
+          initial={attachedPayment}
+          externalError={paymentError}
+          onApply={(snap) => {
+            setAttachedPayment(snap);
+            setPaymentError(null);
+            setPaymentDialogOpen(false);
+          }}
+          onClear={() => {
+            setAttachedPayment(null);
+            setPaymentError(null);
+            setPaymentDialogOpen(false);
+          }}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface PaymentSubDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  totalDue: number;
+  initial: {
+    receiptType: "cash" | "account";
+    accountId: string | null;
+    amount: number;
+    roundOff: number;
+    receivedAt: string;
+    notes: string;
+  } | null;
+  externalError: string | null;
+  onApply: (snapshot: {
+    receiptType: "cash" | "account";
+    accountId: string | null;
+    amount: number;
+    roundOff: number;
+    receivedAt: string;
+    notes: string;
+  }) => void;
+  onClear: () => void;
+}
+
+function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError, onApply, onClear }: PaymentSubDialogProps) {
+  const { t } = useI18n();
+  const todayIst = (): string =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+  const [receiptType, setReceiptType] = useState<"cash" | "account">("cash");
+  const [accountId, setAccountId] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [roundOff, setRoundOff] = useState<string>("");
+  const [receivedAt, setReceivedAt] = useState<string>(todayIst);
+  const [notes, setNotes] = useState<string>("");
+
+  const currentYear = new Date().getFullYear();
+  const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
+    queryKey: ["/api/bank-accounts", currentYear],
+    enabled: open,
+  });
+
+  // Reset to either the staged snapshot or sensible defaults each open.
+  useEffect(() => {
+    if (!open) return;
+    if (initial) {
+      setReceiptType(initial.receiptType);
+      setAccountId(initial.accountId || "");
+      setAmount(initial.amount > 0 ? String(initial.amount) : "");
+      setRoundOff(initial.roundOff > 0 ? String(initial.roundOff) : "");
+      setReceivedAt(initial.receivedAt);
+      setNotes(initial.notes);
+    } else {
+      setReceiptType("cash");
+      setAccountId("");
+      // Pre-fill amount with the total due so the operator can immediately
+      // hit Apply for a full payment. They can edit it down for partials.
+      setAmount(totalDue > 0 ? String(Math.round(totalDue * 100) / 100) : "");
+      setRoundOff("");
+      setReceivedAt(todayIst());
+      setNotes("");
+    }
+  }, [open, initial, totalDue]);
+
+  const amountNum = parseFloat(amount) || 0;
+  const roundOffNum = parseFloat(roundOff) || 0;
+  const gross = amountNum + roundOffNum;
+  const exceedsDue = gross > totalDue + 0.5;
+  const grossInvalid = gross <= 0;
+  const accountMissing = receiptType === "account" && gross > 0 && !accountId;
+  const dateInvalid = !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt);
+
+  const canApply = !grossInvalid && !exceedsDue && !accountMissing && !dateInvalid;
+
+  const handleApply = () => {
+    if (!canApply) return;
+    onApply({
+      receiptType,
+      accountId: receiptType === "account" ? accountId : null,
+      amount: amountNum,
+      roundOff: roundOffNum,
+      receivedAt,
+      notes,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="dialog-mn-payment">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <IndianRupee className="h-4 w-4" />
+            {t("recordPaymentForNikasi")}
+          </DialogTitle>
+          <DialogDescription>{t("paymentSubDialogDesc")}</DialogDescription>
+        </DialogHeader>
+
+        {/* Due summary */}
+        <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">{t("totalColdStorageDue")}</span>
+            <span className="font-semibold" data-testid="text-mn-payment-total-due">
+              ₹{totalDue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("paymentMode")}</Label>
+            <Select value={receiptType} onValueChange={(v) => setReceiptType(v as "cash" | "account")}>
+              <SelectTrigger className="h-9" data-testid="select-mn-payment-mode"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">{t("cash")}</SelectItem>
+                <SelectItem value="account">{t("accountBank")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {receiptType === "account" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("bankAccount")}</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger className="h-9" data-testid="select-mn-payment-account">
+                  <SelectValue placeholder={t("selectAnAccount")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.accountName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {accountMissing && (
+                <div className="text-xs text-red-600 dark:text-red-400" data-testid="text-mn-payment-error-account">
+                  {t("bankAccountRequired")}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("amount")} (₹)</Label>
+              <Input
+                type="number" step="0.01" min="0" inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+                data-testid="input-mn-payment-amount"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("roundOff")} (₹)</Label>
+              <Input
+                type="number" step="0.01" min="0" inputMode="decimal"
+                value={roundOff}
+                onChange={(e) => setRoundOff(e.target.value)}
+                placeholder="0"
+                data-testid="input-mn-payment-roundoff"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-muted-foreground">{t("gross")}</span>
+            <span
+              className={`font-semibold ${exceedsDue ? "text-red-600 dark:text-red-400" : ""}`}
+              data-testid="text-mn-payment-gross"
+            >
+              ₹{gross.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          {exceedsDue && (
+            <div className="text-xs text-red-600 dark:text-red-400" data-testid="text-mn-payment-error-exceeds">
+              {t("cannotExceedTotalDue")} (₹{totalDue.toLocaleString("en-IN", { maximumFractionDigits: 2 })})
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("receivedOn")}</Label>
+            <Input
+              type="date"
+              value={receivedAt}
+              onChange={(e) => setReceivedAt(e.target.value)}
+              data-testid="input-mn-payment-date"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("notesOptional")}</Label>
+            <Input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={t("remarksPlaceholder")}
+              data-testid="input-mn-payment-notes"
+            />
+          </div>
+
+          {externalError && (
+            <div className="text-xs text-red-600 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-2" data-testid="text-mn-payment-error-server">
+              {externalError}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          {initial ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-red-600 hover:text-red-700"
+              onClick={onClear}
+              data-testid="button-mn-payment-clear"
+            >
+              {t("clearPayment")}
+            </Button>
+          ) : <span />}
+          <div className="flex gap-2 ml-auto">
+            <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-mn-payment-cancel">
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={handleApply}
+              disabled={!canApply}
+              className="bg-green-600 hover:bg-green-700 text-white"
+              data-testid="button-mn-payment-apply"
+            >
+              {t("applyPayment")}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
