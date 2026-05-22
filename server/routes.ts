@@ -1935,6 +1935,16 @@ export async function registerRoutes(
       if (/buyer.*not found|buyer.*archived|buyer.*does not belong/i.test(message)) {
         return res.status(400).json({ error: message, field: "buyerLedgerId" });
       }
+      // Storage-thrown payment errors (raised from inside createMasterNikasi's
+      // inline-payment block or its `_applyManualPaymentTx` call) need stable
+      // payment.* field mapping so the dialog re-opens the sub-dialog and the
+      // banner highlights the offending field.
+      if (/bank account is required/i.test(message)) {
+        return res.status(400).json({ error: message, field: "payment.accountId" });
+      }
+      if (/payment amount|exceeds total cold-storage due|exceeds current due|sale has no outstanding due|FIFO has already paid/i.test(message)) {
+        return res.status(400).json({ error: message, field: "payment.amount" });
+      }
       res.status(400).json({ error: message });
     }
   });

@@ -2969,21 +2969,26 @@ export class DatabaseStorage implements IStorage {
       const paymentReceipts: Array<{ receiptId: string; saleId: string; amount: number; roundOff: number }> = [];
       if (args.payment) {
         const p = args.payment;
-        const totalGross = roundAmount((p.amount || 0) + (p.roundOff || 0));
-        if (totalGross <= 0) {
-          throw new Error("Payment amount must be greater than zero");
+        const amountOnly = roundAmount(p.amount || 0);
+        const roundOffOnly = roundAmount(p.roundOff || 0);
+        if (amountOnly <= 0) {
+          throw new Error("payment amount must be greater than zero");
         }
         if (p.receiptType === "account" && !p.accountId) {
-          throw new Error("Bank account is required when payment mode is account");
+          throw new Error("bank account is required when payment mode is account");
         }
         const totalDue = createdSales.reduce((sum, s) => sum + (s.totalColdStorageCharge || 0), 0);
-        if (totalGross > totalDue + 0.5) {
-          throw new Error(`Payment amount (₹${totalGross}) exceeds total due (₹${roundAmount(totalDue)})`);
+        // Per spec: validate / allocate against `amount` only. `roundOff` is
+        // metadata stamped on the LAST touched receipt and does NOT reduce sale
+        // dues (it's a rounding tip captured in cash flow on the receipt row).
+        if (amountOnly > roundAmount(totalDue) + 0.5) {
+          throw new Error(`payment amount (₹${amountOnly}) exceeds total cold-storage due (₹${roundAmount(totalDue)})`);
         }
 
-        // Top-to-bottom allocation against each sale's freshly-billed due.
+        // Top-to-bottom allocation against each sale's freshly-billed due,
+        // distributing `amountOnly` only.
         const allocations: number[] = new Array(createdSales.length).fill(0);
-        let remaining = totalGross;
+        let remaining = amountOnly;
         for (let i = 0; i < createdSales.length; i++) {
           if (remaining <= 0) break;
           const due = roundAmount(createdSales[i].totalColdStorageCharge || 0);
@@ -4404,25 +4409,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createManualSalePayment(data: { coldStorageId: string; saleId: string; receiptType: string; accountType: string | null; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
-    // Fetch the target sale
-    const [sale] = await db.select().from(salesHistory)
-      .where(and(eq(salesHistory.id, data.saleId), eq(salesHistory.coldStorageId, data.coldStorageId)))
-      .limit(1);
-    if (!sale) throw new Error("Sale not found");
+    // Wrap the whole single-sale closure in a tx so receipt + sale update +
+    // lot recompute roll back together on failure. Mirrors the MN inline-payment
+    // path which already runs inside its outer tx (Task #294 Step 1).
+    return await db.transaction(async (tx) => {
+      const [sale] = await tx.select().from(salesHistory)
+        .where(and(eq(salesHistory.id, data.saleId), eq(salesHistory.coldStorageId, data.coldStorageId)))
+        .limit(1);
+      if (!sale) throw new Error("Sale not found");
 
-    const gross = roundAmount(data.amount); // amount already includes roundOff (route layer composes it)
-    const { receipt } = await this._applyManualPaymentTx(db, {
-      coldStorageId: data.coldStorageId,
-      sale,
-      receiptType: data.receiptType,
-      accountType: data.accountType,
-      accountId: data.accountId,
-      grossAmount: gross,
-      roundOff: data.roundOff || 0,
-      receivedAt: data.receivedAt,
-      notes: data.notes,
+      const gross = roundAmount(data.amount); // amount already includes roundOff (route layer composes it)
+      const { receipt } = await this._applyManualPaymentTx(tx, {
+        coldStorageId: data.coldStorageId,
+        sale,
+        receiptType: data.receiptType,
+        accountType: data.accountType,
+        accountId: data.accountId,
+        grossAmount: gross,
+        roundOff: data.roundOff || 0,
+        receivedAt: data.receivedAt,
+        notes: data.notes,
+      });
+      return { receipt, salesUpdated: 1 };
     });
-    return { receipt, salesUpdated: 1 };
   }
 
   // Tx-aware core of a manual single-sale closure payment. Accepts either the

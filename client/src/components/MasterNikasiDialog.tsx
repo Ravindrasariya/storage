@@ -1259,10 +1259,10 @@ export function MasterNikasiDialog({
           {!result && (
             <Button
               type="button"
-              variant={attachedPayment ? "default" : "outline"}
-              onClick={() => { setPaymentError(null); setPaymentDialogOpen(true); }}
+              variant={paymentError ? "destructive" : attachedPayment ? "default" : "outline"}
+              onClick={() => { setPaymentDialogOpen(true); }}
               disabled={validRowCount === 0 || grandTotal <= 0 || submitMutation.isPending}
-              className={attachedPayment ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+              className={paymentError ? "bg-red-600 hover:bg-red-700 text-white" : attachedPayment ? "bg-green-600 hover:bg-green-700 text-white" : ""}
               data-testid="button-mn-open-payment"
             >
               {attachedPayment ? (
@@ -1406,7 +1406,10 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
       setAmount(totalDue > 0 ? String(Math.round(totalDue * 100) / 100) : "");
       setRoundOff("");
       setReceivedAt(todayIst());
-      setNotes("");
+      // Default to a contextual note so cash-flow rows are self-describing
+      // without forcing the operator to type anything. They can edit or
+      // clear it freely.
+      setNotes("Paid during Master Nikasi");
     }
   }, [open, initial, totalDue]);
 
@@ -1538,7 +1541,7 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
             <Label className="text-xs">{t("notesOptional")}</Label>
             <Textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => { onClearError?.(); setNotes(e.target.value); }}
               placeholder={t("remarksPlaceholder")}
               rows={2}
               data-testid="input-mn-payment-notes"
