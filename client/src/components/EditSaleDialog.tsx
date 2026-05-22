@@ -488,7 +488,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
     onError: (error: unknown) => {
       setShowReverseConfirm(false);
-      const body = (error && typeof error === "object") ? (error as { error?: string; errorType?: string; message?: string }) : {};
+      // apiRequest throws an Error whose `.body` holds the JSON payload
+      // {error, errorType, message}. Read errorType from that body.
+      const errObj = error as Error & { body?: { error?: string; errorType?: string; message?: string } };
+      const body = errObj?.body || {};
       const errorCode = body.error || (error instanceof Error ? error.message : "");
       if (errorCode === "LATER_SALE_EXISTS") {
         setShowLaterSaleExistsError(true);
