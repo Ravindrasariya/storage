@@ -1863,7 +1863,9 @@ export async function registerRoutes(
         if (p.receiptType === "account" && !p.accountId) {
           return res.status(400).json({ error: "Bank account is required when payment mode is account", field: "payment.accountId" });
         }
-        if ((p.amount + (p.roundOff || 0)) <= 0) {
+        // Per task contract: validate by `amount` only (round-off is metadata
+        // stamped on last touched receipt; it does NOT reduce sale dues).
+        if ((p.amount || 0) <= 0) {
           return res.status(400).json({ error: "Payment amount must be greater than zero", field: "payment.amount" });
         }
         // Enforce that the selected bank account belongs to this cold storage

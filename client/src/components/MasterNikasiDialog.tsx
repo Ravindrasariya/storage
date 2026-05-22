@@ -557,12 +557,14 @@ export function MasterNikasiDialog({
         notes: string | null;
       } | undefined;
       if (attachedPayment) {
-        const gross = (attachedPayment.amount || 0) + (attachedPayment.roundOff || 0);
-        if (gross <= 0) {
+        // Per task contract: validate by `amount` only. `roundOff` is metadata
+        // stamped on the LAST touched receipt; it does NOT reduce sale dues.
+        const amt = attachedPayment.amount || 0;
+        if (amt <= 0) {
           throw new Error("Payment amount must be greater than zero");
         }
-        if (gross > grandTotal + 0.5) {
-          throw new Error(`Payment (₹${gross.toFixed(2)}) exceeds total cold-storage due (₹${grandTotal.toFixed(2)})`);
+        if (amt > grandTotal + 0.5) {
+          throw new Error(`Payment amount (₹${amt.toFixed(2)}) exceeds total cold-storage due (₹${grandTotal.toFixed(2)})`);
         }
         if (attachedPayment.receiptType === "account" && !attachedPayment.accountId) {
           throw new Error("Bank account is required when payment mode is account");
@@ -598,6 +600,12 @@ export function MasterNikasiDialog({
       // Refresh the cold-storage counter so subsequent dialogs see the
       // bumped nextExitBillNumber / nextColdStorageBillNumber values.
       queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
+      // Explicit invalidations for the inline-payment side effects (already
+      // covered by invalidateSaleSideEffects, but stated explicitly per
+      // Task #294 acceptance criteria to defend against future refactors).
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-flow"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
       onSaleSuccess?.();
       const buyerSuffix = data.buyer ? ` · ${data.buyer.buyerName}` : "";
       const paySuffix = (data.paymentReceipts && data.paymentReceipts.length > 0)
@@ -1230,24 +1238,40 @@ export function MasterNikasiDialog({
             operator sees exactly which rows will be paid in full / part /
             untouched before submit. */}
         {!result && attachedPayment && (() => {
-          const gross = (attachedPayment.amount || 0) + (attachedPayment.roundOff || 0);
-          let remaining = gross;
+          // Allocate `amount` only (round-off is metadata on last touched row,
+          // not allocatable due). Find last touched row to annotate its
+          // displayed round-off badge.
+          const amt = attachedPayment.amount || 0;
+          const rOff = attachedPayment.roundOff || 0;
+          let remaining = amt;
           const allocs = rowTotals.map((r) => {
             const due = r.total;
             const a = Math.min(remaining, due);
             remaining = Math.max(0, remaining - a);
             return { due, alloc: a };
           });
+          let lastTouched = -1;
+          for (let i = allocs.length - 1; i >= 0; i--) {
+            if (allocs[i].alloc > 0) { lastTouched = i; break; }
+          }
           return (
             <div className="rounded-md border bg-muted/30 p-2 mb-2 text-xs space-y-1" data-testid="text-mn-payment-preview">
-              <div className="font-semibold">{t("paymentAttached")} ₹{fmt(gross)} — {t("recordPaymentForNikasi")}</div>
+              <div className="font-semibold">
+                {t("paymentAttached")} ₹{fmt(amt)}
+                {rOff !== 0 ? <span className="ml-1 text-muted-foreground">(+ ₹{fmt(rOff)} {t("roundOff")})</span> : null}
+                {" "}— {t("recordPaymentForNikasi")}
+              </div>
               {allocs.map((a, i) => {
                 const r = rows[i];
                 const status = a.alloc <= 0 ? "(—)" : a.alloc + 0.005 >= a.due ? `(${t("paid")})` : `(${t("partial") || "partial"})`;
+                const isLast = i === lastTouched && rOff !== 0;
                 return (
                   <div key={r.rowKey} className="flex justify-between" data-testid={`text-mn-payment-preview-row-${i}`}>
                     <span className="text-muted-foreground">Row {i + 1} ({r.lotNo || "—"}): ₹{fmt(a.due)}</span>
-                    <span className="font-mono">₹{fmt(a.alloc)} {status}</span>
+                    <span className="font-mono">
+                      ₹{fmt(a.alloc)} {status}
+                      {isLast ? <span className="ml-1 text-[10px] text-muted-foreground">+₹{fmt(rOff)} r/o</span> : null}
+                    </span>
                   </div>
                 );
               })}
@@ -1416,12 +1440,14 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
   const amountNum = parseFloat(amount) || 0;
   const roundOffNum = parseFloat(roundOff) || 0;
   const gross = amountNum + roundOffNum;
-  const exceedsDue = gross > totalDue + 0.5;
-  const grossInvalid = gross <= 0;
-  const accountMissing = receiptType === "account" && gross > 0 && !accountId;
+  // Validate by `amount` only; round-off is metadata stamped on last touched
+  // receipt and does NOT reduce sale dues (task contract).
+  const exceedsDue = amountNum > totalDue + 0.5;
+  const amountInvalid = amountNum <= 0;
+  const accountMissing = receiptType === "account" && amountNum > 0 && !accountId;
   const dateInvalid = !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt);
 
-  const canApply = !grossInvalid && !exceedsDue && !accountMissing && !dateInvalid;
+  const canApply = !amountInvalid && !exceedsDue && !accountMissing && !dateInvalid;
 
   const handleApply = () => {
     if (!canApply) return;
