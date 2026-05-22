@@ -13,7 +13,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
-import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank, Check, ChevronsUpDown, Search, Package } from "lucide-react";
+import { Banknote, CreditCard, Calendar, Save, ArrowDownLeft, ArrowUpRight, Wallet, Building2, Filter, X, RotateCcw, ArrowLeftRight, Settings, Plus, Trash2, Download, Pencil, PiggyBank, Check, ChevronsUpDown, Search, Package, Printer } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { DEPRECIATION_RATES } from "@shared/schema";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -1883,7 +1885,20 @@ export default function CashManagement() {
     }
   };
 
-  const handleExportCashFlowCSV = (transactions: TransactionItem[]) => {
+  // Shared reversal check — drops reversed/voided rows from downloads so
+  // exported ledgers contain only valid, active transactions.
+  const isItemReversed = (item: TransactionItem): boolean => {
+    if (item.type === "buyerTransfer") {
+      return Number((item.data as SalesHistory).isTransferReversed) === 1;
+    }
+    if (item.type === "discount") {
+      return Number((item.data as Discount).isReversed) === 1;
+    }
+    return Number((item.data as CashReceipt | Expense | CashTransfer).isReversed) === 1;
+  };
+
+  const handleExportCashFlowCSV = (transactionsInput: TransactionItem[]) => {
+    const transactions = transactionsInput.filter(item => !isItemReversed(item));
     if (transactions.length === 0) {
       toast({
         title: t("noTransactions"),
@@ -2054,6 +2069,138 @@ export default function CashManagement() {
     toast({
       title: t("downloadSuccess") || "Download successful",
       description: `${transactions.length} ${t("entries")} exported`,
+    });
+  };
+
+  // Print a clean cash ledger PDF — only actual money in/out (inflow + outflow),
+  // never transfers (internal cash or buyer-to-buyer) and never discounts.
+  // Reversed entries are dropped via the same shared helper used by the CSV.
+  const handlePrintCashFlowPDF = (transactionsInput: TransactionItem[]) => {
+    const cashRows = transactionsInput
+      .filter(item => !isItemReversed(item))
+      .filter(item => item.type === "inflow" || item.type === "outflow");
+
+    if (cashRows.length === 0) {
+      toast({
+        title: t("noTransactions"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const scopeParts: string[] = [];
+    if (filterYear) scopeParts.push(`Year: ${filterYear}`);
+    if (filterMonths.length > 0) scopeParts.push(`Months: ${filterMonths.map(m => MONTH_NAMES[m] || String(m + 1)).join(", ")}`);
+    if (filterDays.length > 0) scopeParts.push(`Days: ${filterDays.join(", ")}`);
+    const scopeLine = scopeParts.length > 0 ? scopeParts.join(" | ") : "All transactions";
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = 210;
+    const margin = 12;
+
+    const fmtAmt = (n: number) => n > 0 ? n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '-';
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text(coldStorage?.name || '', pageWidth / 2, 16, { align: 'center' });
+
+    let nextY = 21;
+    if (coldStorage?.address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(coldStorage.address, pageWidth / 2, nextY, { align: 'center' });
+      nextY += 6;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('Cash Flow History', margin, nextY + 2);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(scopeLine, margin, nextY + 7);
+    doc.text(`Generated: ${format(new Date(), 'dd/MM/yyyy')}`, pageWidth - margin, nextY + 7, { align: 'right' });
+    const tableStartY = nextY + 13;
+
+    let totalDr = 0;
+    let totalCr = 0;
+    const tableBody: string[][] = cashRows.map(item => {
+      const dateStr = format(new Date(item.timestamp), 'dd/MM/yyyy');
+      if (item.type === "inflow") {
+        const r = item.data as CashReceipt;
+        const party = r.buyerName || getPayerTypeLabel(r.payerType) || '';
+        const mode = r.receiptType === "cash"
+          ? "Cash"
+          : `Account: ${getAccountLabel(r.accountId || r.accountType)}`;
+        const amt = Number(r.amount) || 0;
+        totalCr += amt;
+        return [dateStr, party, mode, '-', fmtAmt(amt)];
+      } else {
+        const e = item.data as Expense;
+        const party = e.receiverName
+          ? `${getExpenseTypeLabel(e.expenseType)} - ${e.receiverName}`
+          : getExpenseTypeLabel(e.expenseType);
+        const mode = e.paymentMode === "cash"
+          ? "Cash"
+          : `Account: ${getAccountLabel(e.accountId || e.accountType)}`;
+        const amt = Number(e.amount) || 0;
+        totalDr += amt;
+        return [dateStr, party, mode, fmtAmt(amt), '-'];
+      }
+    });
+
+    tableBody.push([
+      '',
+      'Total',
+      '',
+      totalDr > 0 ? fmtAmt(totalDr) : '-',
+      totalCr > 0 ? fmtAmt(totalCr) : '-',
+    ]);
+
+    const GREEN: [number, number, number] = [46, 125, 50];
+    const LIGHT_GREEN: [number, number, number] = [232, 245, 233];
+    const LIGHT_GREY: [number, number, number] = [248, 248, 248];
+    const lastIdx = tableBody.length - 1;
+
+    autoTable(doc, {
+      head: [['Date', 'Party', 'Mode', 'Dr (Outflow)', 'Cr (Inflow)']],
+      body: tableBody,
+      startY: tableStartY,
+      margin: { left: margin, right: margin },
+      styles: { font: 'helvetica', fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: GREEN, textColor: 255, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 72 },
+        2: { cellWidth: 50 },
+        3: { halign: 'right', cellWidth: 30 },
+        4: { halign: 'right', cellWidth: 30 },
+      },
+      didParseCell: (hookData) => {
+        if (hookData.section !== 'body') return;
+        const i = hookData.row.index;
+        if (i === lastIdx) {
+          hookData.cell.styles.fillColor = LIGHT_GREEN;
+          hookData.cell.styles.fontStyle = 'bold';
+        } else if (i % 2 === 1) {
+          hookData.cell.styles.fillColor = LIGHT_GREY;
+        }
+      },
+      didDrawPage: () => {
+        const pageHeight = doc.internal.pageSize.height;
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(150);
+        doc.text(`Generated by ${coldStorage?.name || ''}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+        doc.setTextColor(0);
+      },
+    });
+
+    doc.save(`cash_flow_history_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+
+    toast({
+      title: t("downloadSuccess") || "Download successful",
+      description: `${cashRows.length} ${t("entries")} exported`,
     });
   };
 
@@ -4819,15 +4966,26 @@ export default function CashManagement() {
         <Card className="flex flex-col overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-lg">{t("cashFlowHistory")}</CardTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => handleExportCashFlowCSV(allTransactions)}
-              title={t("downloadCSV") || "Download CSV"}
-              data-testid="button-download-cash-flow-csv"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleExportCashFlowCSV(allTransactions)}
+                title={t("downloadCSV") || "Download CSV"}
+                data-testid="button-download-cash-flow-csv"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handlePrintCashFlowPDF(allTransactions)}
+                title={t("print") || "Print"}
+                data-testid="button-print-cash-flow-pdf"
+              >
+                <Printer className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-0 overflow-hidden">
             {isLoading ? (
