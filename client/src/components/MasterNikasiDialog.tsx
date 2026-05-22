@@ -4,6 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1224,13 +1225,43 @@ export function MasterNikasiDialog({
           </div>
         )}
 
+        {/* Allocation preview — only shown when a payment is staged. Mirrors the
+            server's top-to-bottom allocation against rowTotals.total so the
+            operator sees exactly which rows will be paid in full / part /
+            untouched before submit. */}
+        {!result && attachedPayment && (() => {
+          const gross = (attachedPayment.amount || 0) + (attachedPayment.roundOff || 0);
+          let remaining = gross;
+          const allocs = rowTotals.map((r) => {
+            const due = r.total;
+            const a = Math.min(remaining, due);
+            remaining = Math.max(0, remaining - a);
+            return { due, alloc: a };
+          });
+          return (
+            <div className="rounded-md border bg-muted/30 p-2 mb-2 text-xs space-y-1" data-testid="text-mn-payment-preview">
+              <div className="font-semibold">{t("paymentAttached")} ₹{fmt(gross)} — {t("recordPaymentForNikasi")}</div>
+              {allocs.map((a, i) => {
+                const r = rows[i];
+                const status = a.alloc <= 0 ? "(—)" : a.alloc + 0.005 >= a.due ? `(${t("paid")})` : `(${t("partial") || "partial"})`;
+                return (
+                  <div key={r.rowKey} className="flex justify-between" data-testid={`text-mn-payment-preview-row-${i}`}>
+                    <span className="text-muted-foreground">Row {i + 1} ({r.lotNo || "—"}): ₹{fmt(a.due)}</span>
+                    <span className="font-mono">₹{fmt(a.alloc)} {status}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         <DialogFooter className="gap-2 sm:justify-between">
           {!result && (
             <Button
               type="button"
               variant={attachedPayment ? "default" : "outline"}
               onClick={() => { setPaymentError(null); setPaymentDialogOpen(true); }}
-              disabled={grandTotal <= 0 || submitMutation.isPending}
+              disabled={validRowCount === 0 || grandTotal <= 0 || submitMutation.isPending}
               className={attachedPayment ? "bg-green-600 hover:bg-green-700 text-white" : ""}
               data-testid="button-mn-open-payment"
             >
@@ -1292,6 +1323,7 @@ export function MasterNikasiDialog({
           totalDue={grandTotal}
           initial={attachedPayment}
           externalError={paymentError}
+          onClearError={() => setPaymentError(null)}
           onApply={(snap) => {
             setAttachedPayment(snap);
             setPaymentError(null);
@@ -1332,7 +1364,7 @@ interface PaymentSubDialogProps {
   onClear: () => void;
 }
 
-function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError, onApply, onClear }: PaymentSubDialogProps) {
+function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError, onClearError, onApply, onClear }: PaymentSubDialogProps & { onClearError?: () => void }) {
   const { t } = useI18n();
   const todayIst = (): string =>
     new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -1344,9 +1376,15 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
   const [receivedAt, setReceivedAt] = useState<string>(todayIst);
   const [notes, setNotes] = useState<string>("");
 
-  const currentYear = new Date().getFullYear();
+  // Year-keyed bank account list — driven by the operator-picked Received-on
+  // date (NOT the current year), so backdated receipts show that year's
+  // accounts. Falls back to current calendar year if the date is unparseable.
+  const receivedYear = (() => {
+    const m = receivedAt?.match(/^(\d{4})-/);
+    return m ? parseInt(m[1], 10) : new Date().getFullYear();
+  })();
   const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
-    queryKey: ["/api/bank-accounts", currentYear],
+    queryKey: ["/api/bank-accounts", receivedYear],
     enabled: open,
   });
 
@@ -1418,7 +1456,7 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label className="text-xs">{t("paymentMode")}</Label>
-            <Select value={receiptType} onValueChange={(v) => setReceiptType(v as "cash" | "account")}>
+            <Select value={receiptType} onValueChange={(v) => { onClearError?.(); setReceiptType(v as "cash" | "account"); }}>
               <SelectTrigger className="h-9" data-testid="select-mn-payment-mode"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="cash">{t("cash")}</SelectItem>
@@ -1430,7 +1468,7 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
           {receiptType === "account" && (
             <div className="space-y-1.5">
               <Label className="text-xs">{t("bankAccount")}</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
+              <Select value={accountId} onValueChange={(v) => { onClearError?.(); setAccountId(v); }}>
                 <SelectTrigger className="h-9" data-testid="select-mn-payment-account">
                   <SelectValue placeholder={t("selectAnAccount")} />
                 </SelectTrigger>
@@ -1454,7 +1492,7 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
               <Input
                 type="number" step="0.01" min="0" inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => { onClearError?.(); setAmount(e.target.value); }}
                 placeholder="0"
                 data-testid="input-mn-payment-amount"
               />
@@ -1464,7 +1502,7 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
               <Input
                 type="number" step="0.01" min="0" inputMode="decimal"
                 value={roundOff}
-                onChange={(e) => setRoundOff(e.target.value)}
+                onChange={(e) => { onClearError?.(); setRoundOff(e.target.value); }}
                 placeholder="0"
                 data-testid="input-mn-payment-roundoff"
               />
@@ -1491,17 +1529,18 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
             <Input
               type="date"
               value={receivedAt}
-              onChange={(e) => setReceivedAt(e.target.value)}
+              onChange={(e) => { onClearError?.(); setReceivedAt(e.target.value); }}
               data-testid="input-mn-payment-date"
             />
           </div>
 
           <div className="space-y-1.5">
             <Label className="text-xs">{t("notesOptional")}</Label>
-            <Input
+            <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={t("remarksPlaceholder")}
+              rows={2}
               data-testid="input-mn-payment-notes"
             />
           </div>

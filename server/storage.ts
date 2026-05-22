@@ -2246,17 +2246,23 @@ export class DatabaseStorage implements IStorage {
     // first (Cash Inward → Reverse) so the receipt-side cash-flow + ledger state
     // unwinds cleanly. Otherwise reversing the sale would orphan the receipt
     // and skew Cash Flow / Buyer Ledger totals.
-    const attachedManualReceipts = await db.select({ id: cashReceipts.id })
+    const attachedManualReceipts = await db.select({
+        id: cashReceipts.id,
+        transactionId: cashReceipts.transactionId,
+      })
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.appliesToSaleId, saleId),
         eq(cashReceipts.isReversed, 0),
       ));
     if (attachedManualReceipts.length > 0) {
+      const txnList = attachedManualReceipts
+        .map((r) => r.transactionId || r.id.slice(0, 8))
+        .join(", ");
       return {
         success: false,
         errorType: "manual_receipt_attached",
-        message: `This sale has ${attachedManualReceipts.length} active manual payment receipt(s) attached. Reverse the receipt(s) from Cash Inward before reversing this sale.`,
+        message: `This sale has ${attachedManualReceipts.length} active manual payment receipt(s) attached (${txnList}). Reverse them from Cash Flow History (Cash Inward) first, then retry the sale reversal.`,
       };
     }
 

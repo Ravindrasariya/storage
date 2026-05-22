@@ -1866,6 +1866,20 @@ export async function registerRoutes(
         if ((p.amount + (p.roundOff || 0)) <= 0) {
           return res.status(400).json({ error: "Payment amount must be greater than zero", field: "payment.amount" });
         }
+        // Enforce that the selected bank account belongs to this cold storage
+        // AND exists in the receivedAt year. Year-keyed bank account list is
+        // a hard backend contract; the year picker on the client must match.
+        if (p.receiptType === "account" && p.accountId) {
+          const recYear = receivedAt.getFullYear();
+          const accounts = await storage.getBankAccounts(coldStorageId, recYear);
+          const match = accounts.find((a) => a.id === p.accountId);
+          if (!match) {
+            return res.status(400).json({
+              error: `Selected bank account does not exist for ${recYear} in this cold storage`,
+              field: "payment.accountId",
+            });
+          }
+        }
         parsedPayment = {
           receiptType: p.receiptType,
           accountId: p.accountId ?? null,
