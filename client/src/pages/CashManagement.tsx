@@ -2171,10 +2171,10 @@ export default function CashManagement() {
       headStyles: { fillColor: GREEN, textColor: 255, fontStyle: 'bold' },
       columnStyles: {
         0: { cellWidth: 22 },
-        1: { cellWidth: 72 },
-        2: { cellWidth: 50 },
-        3: { halign: 'right', cellWidth: 30 },
-        4: { halign: 'right', cellWidth: 30 },
+        1: { cellWidth: 70 },
+        2: { cellWidth: 30 },
+        3: { halign: 'right', cellWidth: 32 },
+        4: { halign: 'right', cellWidth: 32 },
       },
       didParseCell: (hookData) => {
         if (hookData.section !== 'body') return;
