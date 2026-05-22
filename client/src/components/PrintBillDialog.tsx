@@ -1427,8 +1427,9 @@ function ManualPaymentDialog({ sale, open, onOpenChange, onSuccess }: ManualPaym
   const [receivedAt, setReceivedAt] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [notes, setNotes] = useState<string>("");
 
+  const currentYear = new Date().getFullYear();
   const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
-    queryKey: ["/api/bank-accounts"],
+    queryKey: ["/api/bank-accounts", currentYear],
     enabled: open,
   });
 
