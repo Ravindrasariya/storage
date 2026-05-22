@@ -440,6 +440,10 @@ const translations: Translations = {
   reversing: { en: "Reversing...", hi: "वापस कर रहा है..." },
   saleReversed: { en: "Sale reversed successfully. Lot moved back to inventory.", hi: "बिक्री सफलतापूर्वक वापस कर दी गई। लॉट वापस इन्वेंट्री में चला गया।" },
   failedToReverseSale: { en: "Failed to reverse sale", hi: "बिक्री वापस करने में विफल" },
+  reverseManualPaymentFirst: {
+    en: "Please reverse the manual payment first to reverse this sale.",
+    hi: "इस बिक्री को वापस करने के लिए पहले मैन्युअल भुगतान को वापस करें।",
+  },
   laterSaleExistsTitle: { en: "Cannot Reverse Sale", hi: "बिक्री वापस नहीं कर सकते" },
   laterSaleExistsMessage: { en: "There is a sale record which was made post this and billed in this sale record. Please reverse that first in order to reverse this particular sale entry.", hi: "इस बिक्री के बाद एक और बिक्री रिकॉर्ड है जो इस बिक्री रिकॉर्ड में बिल किया गया था। कृपया इस विशेष बिक्री प्रविष्टि को वापस करने के लिए पहले उसे वापस करें।" },
 

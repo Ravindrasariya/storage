@@ -1430,10 +1430,7 @@ function PaymentSubDialog({ open, onOpenChange, totalDue, initial, externalError
       setAmount(totalDue > 0 ? String(Math.round(totalDue * 100) / 100) : "");
       setRoundOff("");
       setReceivedAt(todayIst());
-      // Default to a contextual note so cash-flow rows are self-describing
-      // without forcing the operator to type anything. They can edit or
-      // clear it freely.
-      setNotes("Paid during Master Nikasi");
+      setNotes("");
     }
   }, [open, initial, totalDue]);
 

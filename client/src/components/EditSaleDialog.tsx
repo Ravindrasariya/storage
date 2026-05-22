@@ -488,9 +488,16 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
     onError: (error: unknown) => {
       setShowReverseConfirm(false);
-      const errorMessage = error instanceof Error ? error.message : "";
-      if (errorMessage === "LATER_SALE_EXISTS") {
+      const body = (error && typeof error === "object") ? (error as { error?: string; errorType?: string; message?: string }) : {};
+      const errorCode = body.error || (error instanceof Error ? error.message : "");
+      if (errorCode === "LATER_SALE_EXISTS") {
         setShowLaterSaleExistsError(true);
+      } else if (body.errorType === "manual_receipt_attached") {
+        toast({
+          title: t("error"),
+          description: t("reverseManualPaymentFirst"),
+          variant: "destructive",
+        });
       } else {
         toast({ title: t("error"), description: t("failedToReverseSale"), variant: "destructive" });
       }
