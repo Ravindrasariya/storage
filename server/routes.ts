@@ -2352,11 +2352,31 @@ export async function registerRoutes(
   app.get("/api/sales-history/exits-summary", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year } = req.query;
-      const yearFilter = year ? parseInt(year as string) : undefined;
-      const totalBagsExited = await storage.getTotalBagsExited(coldStorageId, yearFilter);
+      const { year, months, days, bagType, farmerName, village, contactNumber, paymentStatus, buyerName } = req.query;
+
+      const parseIntCsv = (raw: unknown): number[] | undefined => {
+        if (raw === undefined || raw === null || raw === "") return undefined;
+        const parts = String(raw).split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n));
+        return parts.length > 0 ? parts : undefined;
+      };
+
+      const filters: Parameters<typeof storage.getTotalBagsExited>[1] = {};
+      if (year) filters.year = parseInt(year as string);
+      const monthsArr = parseIntCsv(months);
+      if (monthsArr) filters.months = monthsArr;
+      const daysArr = parseIntCsv(days);
+      if (daysArr) filters.days = daysArr;
+      if (bagType && bagType !== "all") filters.bagType = bagType as string;
+      if (farmerName) filters.farmerName = farmerName as string;
+      if (village) filters.village = village as string;
+      if (contactNumber) filters.contactNumber = contactNumber as string;
+      if (paymentStatus === "paid" || paymentStatus === "due") filters.paymentStatus = paymentStatus;
+      if (buyerName) filters.buyerName = buyerName as string;
+
+      const totalBagsExited = await storage.getTotalBagsExited(coldStorageId, filters);
       res.json({ totalBagsExited });
     } catch (error) {
+      console.error("exits-summary error:", error);
       res.status(500).json({ error: "Failed to fetch exits summary" });
     }
   });

@@ -266,10 +266,33 @@ export default function SalesHistoryPage() {
   // Use paidAmount from sale, calculate due as remainder to ensure consistency
   // Fetch exits summary for the year filter
   const { data: exitsSummary } = useQuery<{ totalBagsExited: number }>({
-    queryKey: ["/api/sales-history/exits-summary", yearFilter],
+    queryKey: [
+      "/api/sales-history/exits-summary",
+      yearFilter,
+      selectedMonths.join(","),
+      selectedDays.join(","),
+      typeFilter,
+      farmerFilter,
+      selectedFarmerVillage,
+      selectedFarmerMobile,
+      villageFilter,
+      paymentFilter,
+      buyerFilter,
+    ],
     queryFn: async () => {
-      const params = yearFilter && yearFilter !== "all" ? `?year=${yearFilter}` : "";
-      const response = await authFetch(`/api/sales-history/exits-summary${params}`);
+      const params = new URLSearchParams();
+      if (yearFilter && yearFilter !== "all") params.append("year", yearFilter);
+      if (selectedMonths.length) params.append("months", selectedMonths.join(","));
+      if (selectedDays.length) params.append("days", selectedDays.join(","));
+      if (typeFilter && typeFilter !== "all") params.append("bagType", typeFilter);
+      if (farmerFilter) params.append("farmerName", farmerFilter);
+      const effectiveVillage = villageFilter || selectedFarmerVillage;
+      if (effectiveVillage) params.append("village", effectiveVillage);
+      if (selectedFarmerMobile) params.append("contactNumber", selectedFarmerMobile);
+      if (paymentFilter) params.append("paymentStatus", paymentFilter);
+      if (buyerFilter) params.append("buyerName", buyerFilter);
+      const qs = params.toString();
+      const response = await authFetch(`/api/sales-history/exits-summary${qs ? `?${qs}` : ""}`);
       if (!response.ok) throw new Error("Failed to fetch exits summary");
       return response.json();
     },

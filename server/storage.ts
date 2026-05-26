@@ -280,7 +280,17 @@ export interface IStorage {
     contactNumber: string;
     farmerLedgerId: string | null;
   }>>;
-  getTotalBagsExited(coldStorageId: string, year?: number): Promise<number>;
+  getTotalBagsExited(coldStorageId: string, filters?: {
+    year?: number;
+    months?: number[];
+    days?: number[];
+    bagType?: string;
+    farmerName?: string;
+    village?: string;
+    contactNumber?: string;
+    paymentStatus?: "paid" | "due";
+    buyerName?: string;
+  }): Promise<number>;
   getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string; village?: string; bagType?: string }): Promise<ExitRegisterResponse>;
   getExitRegisterYears(coldStorageId: string): Promise<number[]>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
@@ -3969,25 +3979,67 @@ export class DatabaseStorage implements IStorage {
     return (rows.rows as Array<{ year: number }>).map(r => Number(r.year)).filter(n => Number.isFinite(n));
   }
 
-  async getTotalBagsExited(coldStorageId: string, year?: number): Promise<number> {
-    // Get all exit history for this cold storage
-    const exits = await db.select()
-      .from(exitHistory)
-      .where(and(
-        eq(exitHistory.coldStorageId, coldStorageId),
-        eq(exitHistory.isReversed, 0)
-      ));
-    
-    // Filter by year if provided
-    let filteredExits = exits;
-    if (year) {
-      filteredExits = exits.filter(exit => {
-        const exitYear = new Date(exit.exitDate).getFullYear();
-        return exitYear === year;
-      });
+  async getTotalBagsExited(coldStorageId: string, filters?: {
+    year?: number;
+    months?: number[];
+    days?: number[];
+    bagType?: string;
+    farmerName?: string;
+    village?: string;
+    contactNumber?: string;
+    paymentStatus?: "paid" | "due";
+    buyerName?: string;
+  }): Promise<number> {
+    // Count non-reversed exits whose parent sale matches the same filter set
+    // used by getSalesHistory, so the Sold/Exit summary card's denominator
+    // narrows in lockstep with the numerator under every filter combination
+    // (year, months, days, type, farmer, village, contact, buyer, payment).
+    const conditions = [
+      eq(exitHistory.coldStorageId, coldStorageId),
+      eq(exitHistory.isReversed, 0),
+    ];
+
+    if (filters?.year) {
+      conditions.push(eq(salesHistory.saleYear, filters.year));
     }
-    
-    return filteredExits.reduce((sum, exit) => sum + exit.bagsExited, 0);
+    if (filters?.months && filters.months.length > 0) {
+      conditions.push(sql`EXTRACT(MONTH FROM ${salesHistory.soldAt})::int IN (${sql.join(filters.months.map(m => sql`${m}`), sql`, `)})`);
+    }
+    if (filters?.days && filters.days.length > 0) {
+      conditions.push(sql`EXTRACT(DAY FROM ${salesHistory.soldAt})::int IN (${sql.join(filters.days.map(d => sql`${d}`), sql`, `)})`);
+    }
+    if (filters?.bagType) {
+      conditions.push(sql`lower(${salesHistory.bagType}) = ${filters.bagType.toLowerCase()}`);
+    }
+    if (filters?.farmerName) {
+      const normalizedName = filters.farmerName.trim().toLowerCase();
+      conditions.push(sql`lower(trim(${salesHistory.farmerName})) LIKE ${`%${normalizedName}%`}`);
+    }
+    if (filters?.village) {
+      const normalizedVillage = filters.village.trim().toLowerCase();
+      conditions.push(sql`lower(trim(${salesHistory.village})) = ${normalizedVillage}`);
+    }
+    if (filters?.contactNumber) {
+      const normalizedContact = filters.contactNumber.trim();
+      conditions.push(sql`trim(${salesHistory.contactNumber}) LIKE ${`%${normalizedContact}%`}`);
+    }
+    if (filters?.paymentStatus) {
+      conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
+    }
+    if (filters?.buyerName) {
+      conditions.push(
+        sql`CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END ILIKE ${`%${filters.buyerName}%`}`
+      );
+    }
+
+    const [row] = await db.select({
+      total: sql<number>`COALESCE(SUM(${exitHistory.bagsExited}), 0)::int`,
+    })
+      .from(exitHistory)
+      .innerJoin(salesHistory, eq(exitHistory.salesHistoryId, salesHistory.id))
+      .where(and(...conditions));
+
+    return Number(row?.total ?? 0);
   }
 
   async reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }> {
