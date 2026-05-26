@@ -1,0 +1,1 @@
+- [tsx dev server route changes](tsx-dev-route-changes.md) — `npm run dev` runs `tsx server/index.ts` without --watch; new Express routes don't activate until the workflow is restarted, even though file-save triggers Vite client HMR.
