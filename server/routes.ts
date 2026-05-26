@@ -1352,7 +1352,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt: soldAtInput } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt: soldAtInput } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -1632,6 +1632,10 @@ export async function registerRoutes(
         kataCharges: kataCharges || 0,
         extraHammali: extraHammali || 0,
         gradingCharges: gradingCharges || 0,
+        // Task #300 — persist per-bag grading only when the operator typed
+        // a number. Anything else (undefined / null / "" / non-finite) stays
+        // NULL so legacy-shape behavior is preserved.
+        gradingPerBag: typeof gradingPerBag === "number" && Number.isFinite(gradingPerBag) ? gradingPerBag : null,
         netWeight: netWeight || null,
         buyerName: buyerName || null,
         pricePerKg: pricePerKg || null,
@@ -1798,6 +1802,10 @@ export async function registerRoutes(
       kataCharges: z.number().min(0).default(0),
       extraHammaliPerBag: z.number().min(0).default(0),
       gradingCharges: z.number().min(0).default(0),
+      // Task #300 — optional per-bag grading rate persisted only when the
+      // operator typed it. Audit/data-entry only; gradingCharges (total)
+      // remains the source of truth for billing.
+      gradingPerBag: z.number().min(0).nullable().optional(),
     }).refine(r => (r.soldBags ?? r.exitBags) >= r.exitBags, {
       message: "soldBags must be >= exitBags",
       path: ["soldBags"],
@@ -1909,6 +1917,9 @@ export async function registerRoutes(
           kataCharges: r.kataCharges,
           extraHammaliPerBag: r.extraHammaliPerBag,
           gradingCharges: r.gradingCharges,
+          // Task #300 — pass per-bag rate through to storage (writes NULL
+          // when undefined so legacy rows shape is preserved).
+          gradingPerBag: r.gradingPerBag ?? null,
         })),
       });
 
@@ -2468,6 +2479,9 @@ export async function registerRoutes(
     kataCharges: z.number().optional(),
     extraHammali: z.number().optional(),
     gradingCharges: z.number().optional(),
+    // Task #300 — operator-entered per-bag grading rate. Nullable so the
+    // Edit dialog can clear it back to blank. Audit/data-entry helper only.
+    gradingPerBag: z.number().nullable().optional(),
     coldStorageCharge: z.number().optional(),
     chargeBasis: z.enum(["actual", "totalRemaining"]).optional(),
     extraDueToMerchant: z.number().optional(),
@@ -2615,7 +2629,7 @@ export async function registerRoutes(
       // the dedicated owner-change audit row below covers Self ↔ Buyer
       // reassignments with proper human labels.
       if (currentSale) {
-        const fieldsToTrack = ['pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'coldStorageCharge', 'extraDueToMerchant', 'extraDueHammaliMerchant', 'extraDueGradingMerchant', 'extraDueOtherMerchant'] as const;
+        const fieldsToTrack = ['pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'gradingPerBag', 'coldStorageCharge', 'extraDueToMerchant', 'extraDueHammaliMerchant', 'extraDueGradingMerchant', 'extraDueOtherMerchant'] as const;
         for (const field of fieldsToTrack) {
           if (validatedData[field as keyof typeof validatedData] !== undefined || field === 'coldStorageCharge') {
             const oldValue = currentSale[field as keyof typeof currentSale];
@@ -5799,8 +5813,8 @@ export async function registerRoutes(
 
       // "Potato Type" = wafer/seed/Ration classification, "Bag Type" = custom label (bagTypeLabel)
       const headers = language === "hi"
-        ? ["बिक्री तिथि", "प्रवेश तिथि", "रसीद नं.", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "निकासी बिल नं.", "निकासी तिथियाँ", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "ट्रांसफर टू खरीदार", "चैम्बर", "फ्लोर", "पोजीशन", "आलू प्रकार", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कुल बिल शुल्क", "कोल्ड स्टोरेज शुल्क", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "आधार कोल्ड शुल्क", "कुल हम्माली", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "व्यापारी को हम्माली", "व्यापारी को ग्रेडिंग", "व्यापारी को अन्य", "व्यापारी अतिरिक्त बकाया", "समायोजित कुल", "समायोजित पूर्व वर्ष बकाया", "समायोजित अग्रिम", "समायोजित भाड़ा", "समायोजित स्वयं बकाया", "नेट वजन (Kg)", "दर/Kg"]
-        : ["Sale Date", "Entry Date", "Receipt #", "CS Bill #", "Sales Bill #", "Exit Bill #s", "Exit Dates", "Farmer Name", "Mobile", "Village", "Buyer Name", "Transfer To Buyer", "Chamber", "Floor", "Position", "Potato Type", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Total Billed Charges", "Cold Storage Charges", "Kata Charges", "Extra Hammali", "Grading Charges", "Base Cold Charges", "Total Hammali", "Payment Status", "Paid Amount", "Due Amount", "Hammali To Merchant", "Grading To Merchant", "Other To Merchant", "Total Extra Due To Merchant", "Adj Total", "Adj PY Receivables", "Adj Advance", "Adj Freight", "Adj Self Due", "Net Weight (Kg)", "Rate/Kg"];
+        ? ["बिक्री तिथि", "प्रवेश तिथि", "रसीद नं.", "कोल्ड स्टोरेज बिल", "बिक्री बिल", "निकासी बिल नं.", "निकासी तिथियाँ", "किसान का नाम", "मोबाइल", "गाँव", "खरीदार का नाम", "ट्रांसफर टू खरीदार", "चैम्बर", "फ्लोर", "पोजीशन", "आलू प्रकार", "बैग का प्रकार", "मूल बोरे", "बेचे गए बोरे", "कोल्ड चार्ज/बोरी", "हम्माली/बोरी", "कुल दर/बोरी", "कुल बिल शुल्क", "कोल्ड स्टोरेज शुल्क", "काटा चार्ज", "अतिरिक्त हम्माली", "ग्रेडिंग चार्ज", "ग्रेडिंग/बैग", "आधार कोल्ड शुल्क", "कुल हम्माली", "भुगतान स्थिति", "भुगतान राशि", "बकाया राशि", "व्यापारी को हम्माली", "व्यापारी को ग्रेडिंग", "व्यापारी को अन्य", "व्यापारी अतिरिक्त बकाया", "समायोजित कुल", "समायोजित पूर्व वर्ष बकाया", "समायोजित अग्रिम", "समायोजित भाड़ा", "समायोजित स्वयं बकाया", "नेट वजन (Kg)", "दर/Kg"]
+        : ["Sale Date", "Entry Date", "Receipt #", "CS Bill #", "Sales Bill #", "Exit Bill #s", "Exit Dates", "Farmer Name", "Mobile", "Village", "Buyer Name", "Transfer To Buyer", "Chamber", "Floor", "Position", "Potato Type", "Bag Type", "Original Bags", "Bags Sold", "Cold Charge/Bag", "Hammali/Bag", "Total Rate/Bag", "Total Billed Charges", "Cold Storage Charges", "Kata Charges", "Extra Hammali", "Grading Charges", "Grading/Bag", "Base Cold Charges", "Total Hammali", "Payment Status", "Paid Amount", "Due Amount", "Hammali To Merchant", "Grading To Merchant", "Other To Merchant", "Total Extra Due To Merchant", "Adj Total", "Adj PY Receivables", "Adj Advance", "Adj Freight", "Adj Self Due", "Net Weight (Kg)", "Rate/Kg"];
 
       const csvRows = [headers.map(escapeCSV).join(",")];
       
@@ -5855,6 +5869,9 @@ export async function registerRoutes(
           sale.kataCharges || 0,
           sale.extraHammali || 0,
           sale.gradingCharges || 0,
+          // Task #300 — operator-typed per-bag grading rate; blank for legacy
+          // rows where it was never recorded (column is nullable, no back-fill).
+          sale.gradingPerBag ?? "",
           baseChargesTotal,
           totalHammali.toFixed(2),
           sale.paymentStatus,

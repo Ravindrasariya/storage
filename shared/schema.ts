@@ -160,6 +160,13 @@ export const salesHistory = pgTable("sales_history", {
   kataCharges: real("kata_charges").default(0), // Kata (weighing) charges
   extraHammali: real("extra_hammali").default(0), // Extra hammali per bag * quantity (for bilty)
   gradingCharges: real("grading_charges").default(0), // Grading charges (for bilty)
+  // Task #300 — Optional per-bag grading rate the operator typed at create/edit time.
+  // Nullable, no default, no back-fill: legacy rows stay NULL. `gradingCharges` (total)
+  // remains the single source of truth for all charge math, bills, FIFO, P&L —
+  // `gradingPerBag` is an audit/data-entry helper persisted only when the
+  // operator explicitly enters it. The two are intentionally allowed to disagree
+  // (operator can override the total after typing a per-bag rate).
+  gradingPerBag: real("grading_per_bag"),
   netWeight: real("net_weight"), // Optional net weight of the lot in kg
   buyerName: text("buyer_name"),
   pricePerKg: real("price_per_kg"), // Selling price per kg

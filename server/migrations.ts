@@ -25,6 +25,20 @@ interface Migration {
 
 const MIGRATIONS: Migration[] = [
   {
+    name: "2026-05-26_add_sales_history_grading_per_bag",
+    up: async () => {
+      // Task #300 — additive nullable column. No default, no back-fill:
+      // legacy rows stay NULL ("Grading/Bag" displayed blank in Edit dialog
+      // and CSV). drizzle's db:push also handles this, but the explicit
+      // migration runs first so environments that skip post-merge.sh
+      // still get the column.
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ADD COLUMN IF NOT EXISTS grading_per_bag REAL
+      `);
+    },
+  },
+  {
     name: "2026-02-27_reclassify_advances_to_advance_class",
     up: async () => {
       await db.execute(sql`

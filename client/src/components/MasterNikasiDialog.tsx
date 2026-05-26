@@ -66,6 +66,10 @@ interface RowState {
   kataCharges: string;
   extraHammaliPerBag: string;
   gradingCharges: string;
+  // Task #300 — operator-typed per-bag grading rate. Persisted only when
+  // typed; typing here cascades to gradingCharges (perBag × soldBags)
+  // so the total cell auto-fills. Operator can still override the total.
+  gradingPerBag: string;
 }
 
 interface MasterNikasiResult {
@@ -128,6 +132,7 @@ const newRow = (lotNo = "", marka = ""): RowState => ({
   kataCharges: "",
   extraHammaliPerBag: "",
   gradingCharges: "",
+  gradingPerBag: "",
 });
 
 function fmt(n: number): string {
@@ -473,6 +478,9 @@ export function MasterNikasiDialog({
         kataCharges: number;
         extraHammaliPerBag: number;
         gradingCharges: number;
+        // Task #300 — undefined when the operator left it blank so the
+        // column stays NULL (matches legacy row shape).
+        gradingPerBag?: number;
       }> = [];
       const seenKey = new Set<string>();
       for (const r of rows) {
@@ -520,6 +528,12 @@ export function MasterNikasiDialog({
           kataCharges: Number(r.kataCharges) || 0,
           extraHammaliPerBag: Number(r.extraHammaliPerBag) || 0,
           gradingCharges: Number(r.gradingCharges) || 0,
+          gradingPerBag: (() => {
+            const trimmed = r.gradingPerBag.trim();
+            if (trimmed === "") return undefined;
+            const v = Number(trimmed);
+            return Number.isFinite(v) ? v : undefined;
+          })(),
         });
       }
       if (cleaned.length === 0) throw new Error("Add at least one valid row.");
@@ -918,6 +932,7 @@ export function MasterNikasiDialog({
                   <th className="p-2 text-right">{t("baseColdCharge")}</th>
                   <th className="p-2 text-right">{t("kataChargesShort")}</th>
                   <th className="p-2 text-right">{t("extraHammaliPerBagShort") || `${t("extraHammaliShort")}/Bag`}</th>
+                  <th className="p-2 text-right">{t("gradingPerBagShort")}</th>
                   <th className="p-2 text-right">{t("gradingChargesShort")}</th>
                   <th className="p-2 text-right">{t("totalChargesShort")}</th>
                   <th className="p-2 w-10"></th>
@@ -1145,6 +1160,33 @@ export function MasterNikasiDialog({
                         <Input
                           type="number"
                           min={0}
+                          value={r.gradingPerBag}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            // Task #300 — cascade per-bag → total once,
+                            // using the row's CURRENT sold bags. Operator
+                            // can still override the total cell after.
+                            // Blank input does NOT clear the total.
+                            const perBag = parseFloat(raw);
+                            const soldBags = totals.soldBags;
+                            if (Number.isFinite(perBag) && soldBags > 0) {
+                              updateRow(r.rowKey, {
+                                gradingPerBag: raw,
+                                gradingCharges: String(perBag * soldBags),
+                              });
+                            } else {
+                              updateRow(r.rowKey, { gradingPerBag: raw });
+                            }
+                          }}
+                          disabled={!!result || !r.lotNo || !r.marka}
+                          className="h-8 w-16 text-right"
+                          data-testid={`input-mn-grading-per-bag-${idx}`}
+                        />
+                      </td>
+                      <td className="p-2">
+                        <Input
+                          type="number"
+                          min={0}
                           value={r.gradingCharges}
                           onChange={(e) => updateRow(r.rowKey, { gradingCharges: e.target.value })}
                           disabled={!!result || !r.lotNo || !r.marka}
@@ -1174,8 +1216,8 @@ export function MasterNikasiDialog({
                   <td className="p-2" colSpan={3}>{t("total") || "Total"}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-bags">{totalExitBags}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-sold">{totalSoldBags}</td>
-                  {/* colSpan covers [chargeBasis, base, kata, extra, grading] */}
-                  <td className="p-2" colSpan={5}></td>
+                  {/* colSpan covers [chargeBasis, base, kata, extra, gradingPerBag, grading] */}
+                  <td className="p-2" colSpan={6}></td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-grand-total">{fmt(grandTotal)}</td>
                   <td></td>
                 </tr>

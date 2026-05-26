@@ -57,6 +57,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editKataCharges, setEditKataCharges] = useState("");
   const [editExtraHammali, setEditExtraHammali] = useState("");
   const [editGradingCharges, setEditGradingCharges] = useState("");
+  // Task #300 — operator-entered per-bag grading rate. Blank for legacy
+  // rows (column is nullable, no back-fill). Typing here auto-fills
+  // editGradingCharges = perBag × quantitySold ONCE so the operator can
+  // still override the total afterward. Audit/data-entry only.
+  const [editGradingPerBag, setEditGradingPerBag] = useState("");
   // Sub-fields for Extra Due to Merchant (sum = extraDueToMerchant)
   const [editExtraDueHammaliMerchant, setEditExtraDueHammaliMerchant] = useState("");
   const [editExtraDueGradingMerchant, setEditExtraDueGradingMerchant] = useState("");
@@ -204,6 +209,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       kataCharges: t("kataCharges"),
       extraHammali: t("extraHammaliPerBag"),
       gradingCharges: t("totalGradingCharges"),
+      gradingPerBag: t("gradingPerBag"),
       coldStorageCharge: t("totalColdStorageCharges"),
       coldStorageBillNumber: t("csBillNumber"),
       soldAt: t("saleDate"),
@@ -221,7 +227,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     }
     if (field === "paidAmount" || field === "dueAmount" || field === "pricePerKg" || field === "netWeight" ||
         field === "coldCharge" || field === "hammali" || field === "kataCharges" || 
-        field === "extraHammali" || field === "gradingCharges" || field === "coldStorageCharge") {
+        field === "extraHammali" || field === "gradingCharges" || field === "gradingPerBag" || field === "coldStorageCharge") {
       return `₹${formatCurrency(parseFloat(value))}`;
     }
     if (field === "soldAt") {
@@ -253,6 +259,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
         : 0;
       setEditExtraHammali(perBagExtraHammali.toString());
       setEditGradingCharges(sale.gradingCharges?.toString() || "0");
+      // Task #300 — never derive: legacy rows where gradingPerBag was never
+      // recorded stay blank in the input, exactly as the user requested.
+      setEditGradingPerBag(sale.gradingPerBag != null ? String(sale.gradingPerBag) : "");
       // Load sub-fields for extraDueToMerchant (legacy records will have 0s)
       setEditExtraDueHammaliMerchant(sale.extraDueHammaliMerchant?.toString() || "0");
       setEditExtraDueGradingMerchant(sale.extraDueGradingMerchant?.toString() || "0");
@@ -689,6 +698,25 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     const newGradingCharges = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
     if (newGradingCharges !== (sale.gradingCharges || 0)) {
       updates.gradingCharges = newGradingCharges;
+    }
+
+    // Task #300 — send gradingPerBag only when it changed. Blank input
+    // sends null (clears the column); a typed number sends the number.
+    // We compare against the row's stored value (null for legacy rows).
+    const oldGradingPerBag = sale.gradingPerBag ?? null;
+    const trimmedGpb = editGradingPerBag.trim();
+    let newGradingPerBag: number | null;
+    if (trimmedGpb === "") {
+      newGradingPerBag = null;
+    } else {
+      const parsed = parseFloat(trimmedGpb);
+      newGradingPerBag = Number.isFinite(parsed) ? parsed : oldGradingPerBag;
+    }
+    const oldGpbNum = oldGradingPerBag == null ? null : Number(oldGradingPerBag);
+    const changed = (oldGpbNum === null) !== (newGradingPerBag === null)
+      || (oldGpbNum !== null && newGradingPerBag !== null && Math.abs(oldGpbNum - newGradingPerBag) > 0.0001);
+    if (changed) {
+      updates.gradingPerBag = newGradingPerBag;
     }
 
     // Compute extraDueToMerchant as sum of sub-fields
@@ -1204,7 +1232,57 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1 col-span-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("gradingPerBag")}</Label>
+                      <div className="flex items-center gap-1">
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editGradingPerBag}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setEditGradingPerBag(raw);
+                            // Task #300 — typing a per-bag rate auto-fills
+                            // the total (perBag × quantitySold) ONCE so the
+                            // operator can still override the total after.
+                            // Blank clears total back to 0 only when the
+                            // operator explicitly clears the per-bag input.
+                            const perBag = parseFloat(raw);
+                            const qty = sale.quantitySold || 0;
+                            if (Number.isFinite(perBag) && qty > 0) {
+                              setEditGradingCharges(String(perBag * qty));
+                            }
+                          }}
+                          className="h-8"
+                          data-testid="input-edit-grading-per-bag"
+                        />
+                      </div>
+                      {(() => {
+                        // Override hint — only when both have values and the
+                        // total doesn't equal perBag × quantitySold (i.e.
+                        // operator has overridden the auto-fill). Helps spot
+                        // a deliberate override at a glance.
+                        const perBag = parseFloat(editGradingPerBag);
+                        const total = parseFloat(editGradingCharges);
+                        const qty = sale.quantitySold || 0;
+                        if (
+                          editGradingPerBag.trim() !== "" &&
+                          Number.isFinite(perBag) &&
+                          Number.isFinite(total) &&
+                          qty > 0 &&
+                          Math.abs(total - perBag * qty) > 0.01
+                        ) {
+                          return (
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400" data-testid="text-edit-grading-override-hint">
+                              {t("gradingOverrideHint")}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                    <div className="space-y-1">
                       <Label className="text-xs">{t("totalGradingCharges")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />

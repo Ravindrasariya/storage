@@ -2098,6 +2098,8 @@ export class DatabaseStorage implements IStorage {
     kataCharges?: number;
     extraHammali?: number;
     gradingCharges?: number;
+    // Task #300 — operator-entered per-bag grading rate; null clears, undefined leaves untouched.
+    gradingPerBag?: number | null;
     coldStorageCharge?: number;
     baseHammaliAmount?: number;
     chargeBasis?: "actual" | "totalRemaining";
@@ -2184,6 +2186,11 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.gradingCharges !== undefined) {
       updateData.gradingCharges = updates.gradingCharges;
+    }
+    // Task #300 — null clears the column back to NULL (so an operator can
+    // wipe a previously entered per-bag rate); undefined leaves it untouched.
+    if (updates.gradingPerBag !== undefined) {
+      updateData.gradingPerBag = updates.gradingPerBag;
     }
     if (updates.extraDueToMerchant !== undefined) {
       updateData.extraDueToMerchant = updates.extraDueToMerchant;
@@ -2474,6 +2481,8 @@ export class DatabaseStorage implements IStorage {
       kataCharges: number;
       extraHammaliPerBag: number;
       gradingCharges: number;
+      // Task #300 — operator-typed per-bag grading rate (audit only).
+      gradingPerBag?: number | null;
     }>;
   }): Promise<{
     sharedExitBillNumber: number;
@@ -2884,6 +2893,9 @@ export class DatabaseStorage implements IStorage {
           kataCharges: kata,
           extraHammali: extraTotal,
           gradingCharges: grading,
+          // Task #300 — only persist when the operator typed a finite number;
+          // otherwise leave NULL (legacy-row shape).
+          gradingPerBag: typeof row.gradingPerBag === "number" && Number.isFinite(row.gradingPerBag) ? row.gradingPerBag : null,
           netWeight: null,
           buyerName: buyerRecord?.buyerName ?? null,
           pricePerKg: null,

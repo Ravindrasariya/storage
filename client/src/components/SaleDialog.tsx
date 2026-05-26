@@ -46,6 +46,11 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   const [kataCharges, setKataCharges] = useState<string>("");
   const [deliveryType, setDeliveryType] = useState<"gate" | "bilty">("gate");
   const [extraHammaliPerBag, setExtraHammaliPerBag] = useState<string>("");
+  // Task #300 — operator-entered per-bag grading rate. Audit/data-entry only;
+  // typing here auto-fills totalGradingCharges (perBag × current sold qty)
+  // ONCE so the operator can still override the total afterward. The total
+  // remains the single source of truth for billing.
+  const [gradingPerBag, setGradingPerBag] = useState<string>("");
   const [totalGradingCharges, setTotalGradingCharges] = useState<string>("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
   const [netWeight, setNetWeight] = useState<string>("");
@@ -142,6 +147,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       setKataCharges("");
       setDeliveryType("gate");
       setExtraHammaliPerBag("");
+      setGradingPerBag("");
       setTotalGradingCharges("");
       setNetWeight("");
       setIsSelfBuyer(false);
@@ -169,6 +175,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       setKataCharges("");
       setDeliveryType("gate");
       setExtraHammaliPerBag("");
+      setGradingPerBag("");
       setTotalGradingCharges("");
       setNetWeight("");
       setIsSelfBuyer(false);
@@ -218,8 +225,8 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   }, [open, lot?.id, lot?.baseColdChargesBilled, coldStorageBillEdited, nextCsBillData?.nextBillNumber, nextCsBillFetching]);
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; gradingPerBag?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt });
     },
     onSuccess: () => {
       invalidateSaleSideEffects(queryClient);
@@ -407,6 +414,13 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       kataCharges: kata > 0 ? kata : undefined,
       extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
       gradingCharges: grading > 0 ? grading : undefined,
+      // Task #300 — persist the per-bag rate ONLY when the operator
+      // actually typed a finite number. Omit otherwise so the column
+      // stays NULL (matches the legacy-row shape).
+      gradingPerBag: (() => {
+        const v = parseFloat(gradingPerBag);
+        return gradingPerBag !== "" && Number.isFinite(v) ? v : undefined;
+      })(),
       netWeight: parsedNetWeight,
       customColdCharge,
       customHammali,
@@ -808,16 +822,43 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
                     data-testid="input-partial-extra-hammali"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>{t("totalGradingCharges")}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={totalGradingCharges}
-                    onChange={(e) => setTotalGradingCharges(e.target.value)}
-                    placeholder="0"
-                    data-testid="input-partial-grading-charges"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>{t("gradingPerBag")}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={gradingPerBag}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setGradingPerBag(raw);
+                        // Task #300 — auto-fill total from per-bag rate ×
+                        // current sold qty so the operator gets the math
+                        // for free; they can still override the total
+                        // afterwards. Blank input clears the cascade.
+                        const perBag = parseFloat(raw);
+                        const qty = partialQuantity || 0;
+                        if (Number.isFinite(perBag) && qty > 0) {
+                          setTotalGradingCharges(String(perBag * qty));
+                        } else if (raw === "") {
+                          setTotalGradingCharges("");
+                        }
+                      }}
+                      placeholder="0"
+                      data-testid="input-partial-grading-per-bag"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("totalGradingCharges")}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={totalGradingCharges}
+                      onChange={(e) => setTotalGradingCharges(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-partial-grading-charges"
+                    />
+                  </div>
                 </div>
               </div>
             )}

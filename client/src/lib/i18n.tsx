@@ -389,6 +389,14 @@ const translations: Translations = {
   biltyCut: { en: "Bilty Cut", hi: "बिल्टी कट" },
   gateCut: { en: "Gate Cut", hi: "गेट कट" },
   extraHammaliPerBag: { en: "Extra Hammali/bag", hi: "अतिरिक्त हमाली/बैग" },
+  // Task #300 — Grading/Bag input shown alongside Total Grading in
+  // New Sale (Bilty), Edit Sale, and Master Nikasi. Audit/data-entry
+  // only — Total Grading remains the source of truth for billing.
+  gradingPerBag: { en: "Grading/Bag", hi: "ग्रेडिंग/बैग" },
+  gradingOverrideHint: {
+    en: "Total overridden (≠ per-bag × bags)",
+    hi: "कुल को बदला गया (≠ प्रति बोरी × बोरियाँ)",
+  },
   rateBreakdown: { en: "Rate Breakdown", hi: "दर विवरण" },
   perBag: { en: "/bag", hi: "/बैग" },
   variety: { en: "Variety", hi: "किस्म" },
@@ -466,6 +474,7 @@ const translations: Translations = {
   extraHammaliPerBagShort: { en: "Extra Hammali / Bag", hi: "अतिरिक्त हम्माली / बोरी" },
   soldBags: { en: "Sold Bags", hi: "बेची बोरी" },
   gradingChargesShort: { en: "Grading", hi: "ग्रेडिंग" },
+  gradingPerBagShort: { en: "Grading / Bag", hi: "ग्रेडिंग / बोरी" },
   totalChargesShort: { en: "Cold Storage Charges", hi: "कुल शीत शुल्क" },
   removeRow: { en: "Remove", hi: "हटाएं" },
   submitMasterNikasi: { en: "Submit & Print", hi: "जमा करें और प्रिंट करें" },
