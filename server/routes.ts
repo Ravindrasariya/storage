@@ -2463,6 +2463,22 @@ export async function registerRoutes(
     isSelfSale: z.union([z.literal(0), z.literal(1)]).optional(),
   });
 
+  // Fetch a single sale by id (with lastPaymentAt/payments enrichment).
+  // Used by the Buyer/Farmer Ledger print-icon flow (Task #297) to
+  // hydrate a SalesHistoryWithLastPayment for PrintBillDialog from a
+  // ledger row's refId, without pulling the full sales-history list.
+  app.get("/api/sales-history/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const all = await storage.getSalesHistory(coldStorageId, {});
+      const sale = all.find(s => s.id === req.params.id);
+      if (!sale) return res.status(404).json({ error: "Sale not found" });
+      res.json(sale);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sale" });
+    }
+  });
+
   app.patch("/api/sales-history/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

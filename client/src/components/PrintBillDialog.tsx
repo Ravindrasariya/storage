@@ -61,9 +61,15 @@ interface PrintBillDialogProps {
   sale: SalesHistoryWithLastPayment;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // Task #297 — when set, the dialog skips the bill-type picker on
+  // open and directly triggers the "Print Cold Storage Deduction Bill"
+  // flow. Used by Buyer/Farmer Ledger row print icons. No manual-
+  // payment sub-dialog, no sales-bill picker. Existing call sites that
+  // don't pass this prop keep the current picker behaviour intact.
+  autoBillType?: "deduction";
 }
 
-export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogProps) {
+export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: PrintBillDialogProps) {
   const { t } = useI18n();
   const [billType, setBillType] = useState<"deduction" | "sales" | null>(null);
   const [billNumber, setBillNumber] = useState<number | null>(null);
@@ -273,6 +279,27 @@ export function PrintBillDialog({ sale, open, onOpenChange }: PrintBillDialogPro
       setIsSharing(false);
     }
   }, [open]);
+
+  // Task #297 — auto-deduction-print entry mode. When the dialog is
+  // opened by a Buyer/Farmer Ledger print icon with autoBillType set,
+  // skip the picker and trigger the deduction print flow directly.
+  // Guarded on `billType == null` so this only fires on the initial
+  // open transition (handleBillTypeSelect sets billType, and the close
+  // effect above clears it again on dismissal).
+  const autoTriggerRef = useRef(false);
+  useEffect(() => {
+    if (open && autoBillType === "deduction" && !billType && !autoTriggerRef.current) {
+      autoTriggerRef.current = true;
+      void handleBillTypeSelect("deduction", "print");
+    }
+    if (!open) {
+      autoTriggerRef.current = false;
+    }
+    // handleBillTypeSelect is defined in the component body and stable
+    // enough for this guarded one-shot trigger; including it would
+    // require a useCallback refactor outside the scope of Task #297.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoBillType, billType]);
 
   // Belt-and-braces: clear the print timer on unmount as well, in case
   // the parent unmounts the dialog without first toggling `open`.

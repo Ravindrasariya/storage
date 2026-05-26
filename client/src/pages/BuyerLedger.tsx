@@ -22,6 +22,9 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { BuyerLedgerEntry, BuyerLedgerEditHistoryEntry } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
+import { LedgerPrintBillButton } from "@/components/LedgerPrintBillButton";
+
+const SALE_ROW_TYPES = new Set(["sale", "transfer_in", "transfer_out"]);
 
 interface BuyerWithDues extends BuyerLedgerEntry {
   pyReceivables: number;
@@ -310,6 +313,7 @@ function BuyerDetailedLedger({
             <table className="w-full text-xs">
               <thead className="bg-muted/50 sticky top-0 z-10">
                 <tr className="border-b">
+                  <th className="p-1.5 text-center w-8"></th>
                   <th className="p-1.5 text-center w-10">{t("srNo")}</th>
                   <th className="p-1.5 text-left w-20">{t("date")}</th>
                   <th className="p-1.5 text-left">{t("particular")}</th>
@@ -320,6 +324,7 @@ function BuyerDetailedLedger({
               </thead>
               <tbody>
                 <tr className="border-b bg-blue-50/50 dark:bg-blue-950/30 font-semibold">
+                  <td className="p-1.5"></td>
                   <td className="p-1.5 text-center">-</td>
                   <td className="p-1.5">{formatDate(`${selectedFY}-04-01`)}</td>
                   <td className="p-1.5">{t("openingBalance")}</td>
@@ -329,6 +334,14 @@ function BuyerDetailedLedger({
                 </tr>
                 {rows.map((row) => (
                   <tr key={`${row.type}-${row.sr}`} className="border-b hover:bg-muted/20" data-testid={`row-txn-${buyerId}-${row.sr}`}>
+                    <td className="p-1.5 text-center">
+                      {SALE_ROW_TYPES.has(row.type) && row.refId ? (
+                        <LedgerPrintBillButton
+                          saleId={row.refId}
+                          testId={`button-print-cs-bill-buyer-${buyerId}-${row.sr}`}
+                        />
+                      ) : null}
+                    </td>
                     <td className="p-1.5 text-center text-muted-foreground">{row.sr}</td>
                     <td className="p-1.5">{formatDate(row.date)}</td>
                     <td className="p-1.5">{row.particular}</td>
@@ -338,6 +351,7 @@ function BuyerDetailedLedger({
                   </tr>
                 ))}
                 <tr className="bg-amber-50/50 dark:bg-amber-950/30 font-bold">
+                  <td className="p-1.5"></td>
                   <td className="p-1.5 text-center">-</td>
                   <td className="p-1.5">{formatDate(`${selectedFY + 1}-03-31`)}</td>
                   <td className="p-1.5">{t("closingBalance")}</td>
@@ -361,7 +375,15 @@ function BuyerDetailedLedger({
             {rows.map((row) => (
               <div key={`${row.type}-${row.sr}`} className="rounded border p-2" data-testid={`card-txn-${buyerId}-${row.sr}`}>
                 <div className="flex justify-between items-start gap-2">
-                  <span className="text-xs text-muted-foreground">#{row.sr}</span>
+                  <div className="flex items-center gap-1">
+                    {SALE_ROW_TYPES.has(row.type) && row.refId ? (
+                      <LedgerPrintBillButton
+                        saleId={row.refId}
+                        testId={`button-print-cs-bill-buyer-mobile-${buyerId}-${row.sr}`}
+                      />
+                    ) : null}
+                    <span className="text-xs text-muted-foreground">#{row.sr}</span>
+                  </div>
                   <span className="text-xs text-muted-foreground">{formatDate(row.date)}</span>
                 </div>
                 <div className="text-xs mt-1 font-medium">{row.particular}</div>

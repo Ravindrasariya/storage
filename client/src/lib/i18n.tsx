@@ -143,6 +143,8 @@ const translations: Translations = {
   close: { en: "Close", hi: "बंद करें" },
   selectBillType: { en: "Select the type of bill to print", hi: "प्रिंट करने के लिए बिल का प्रकार चुनें" },
   coldStorageDeductionBill: { en: "Cold Storage Deduction Bill", hi: "कोल्ड स्टोरेज कटौती बिल" },
+  printColdStorageDeductionBill: { en: "Print Cold Storage Deduction Bill", hi: "कोल्ड स्टोरेज कटौती बिल प्रिंट करें" },
+  printBillFetchFailed: { en: "Could not load sale for printing", hi: "प्रिंट करने के लिए बिक्री लोड नहीं हो सकी" },
   chargesBreakdown: { en: "Shows all charges breakdown", hi: "सभी शुल्कों का विवरण दिखाता है" },
   salesBill: { en: "Sales Bill", hi: "बिक्री बिल" },
   incomeAndDeductions: { en: "Shows income and deductions", hi: "आय और कटौती दिखाता है" },
