@@ -130,6 +130,15 @@ function FarmerDetailedLedger({
     return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
   }, [t, formatCurrency, formatDateDDMMYYYY]);
 
+  const appliedSaleSuffix = useCallback((m: Record<string, string>) => {
+    if (!m.appliedLotNo) return '';
+    const parts: string[] = [`${t("lotHash")}${m.appliedLotNo}`];
+    if (m.appliedMarka)      parts.push(`${t("marka")}: ${m.appliedMarka}`);
+    if (m.appliedColdBillNo) parts.push(`${t("coldBillNo")}: ${m.appliedColdBillNo}`);
+    if (m.appliedBuyerName)  parts.push(m.appliedBuyerName);
+    return ` - ${parts.join(', ')}`;
+  }, [t]);
+
   const getParticular = useCallback((txn: FarmerTransaction): string => {
     const m = txn.meta || {};
     switch (txn.type) {
@@ -146,8 +155,8 @@ function FarmerDetailedLedger({
       }
       case 'farmer_loan': return `${t("farmerLoan")} - ${t("principal")} ${formatCurrency(Number(m.principal || m.amount || 0))}${Number(m.rateOfInterest || 0) > 0 ? ` @ ${m.rateOfInterest}%` : ''}`;
       case 'farmer_loan_interest': return `${t("farmerLoanInterest")}${m.eventType === 'annual_compounding' ? ` (${t("compounded")})` : ''}${loanSuffix(m)}`;
-      case 'farmer_loan_payment': return `${t("farmerLoanPayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})${loanSuffix(m)}`;
-      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
+      case 'farmer_loan_payment': return `${t("farmerLoanPayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})${loanSuffix(m)}${appliedSaleSuffix(m)}`;
+      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})${appliedSaleSuffix(m)}`;
       case 'discount': return `${t("discountEntry")} - ${m.transactionId}`;
       case 'sale_adj': {
         const parts = [`${t("saleAdjustment")} - ${t("lotHash")}${m.lotNo}`];
@@ -158,7 +167,7 @@ function FarmerDetailedLedger({
       }
       default: return txn.type;
     }
-  }, [t, loanSuffix]);
+  }, [t, loanSuffix, appliedSaleSuffix, formatCurrency]);
 
   const rows = useMemo(() => {
     if (!data) return [];

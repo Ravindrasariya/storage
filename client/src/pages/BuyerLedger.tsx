@@ -121,6 +121,15 @@ function BuyerDetailedLedger({
     return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
   }, [t, formatDateDDMMYYYY]);
 
+  const appliedSaleSuffix = useCallback((m: Record<string, string>) => {
+    if (!m.appliedLotNo) return '';
+    const parts: string[] = [`${t("lotHash")}${m.appliedLotNo}`];
+    if (m.appliedMarka)      parts.push(`${t("marka")}: ${m.appliedMarka}`);
+    if (m.appliedColdBillNo) parts.push(`${t("coldBillNo")}: ${m.appliedColdBillNo}`);
+    if (m.appliedFarmerName) parts.push(m.appliedFarmerName);
+    return ` - ${parts.join(', ')}`;
+  }, [t]);
+
   const getParticular = useCallback((txn: BuyerTransaction): string => {
     const m = txn.meta || {};
     switch (txn.type) {
@@ -134,10 +143,13 @@ function BuyerDetailedLedger({
         parts.push(`${m.bags} ${t("bagsLabel")}`);
         return parts.join(', ');
       }
-      case 'payment': return `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
+      case 'payment': {
+        const base = `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
+        return `${base}${appliedSaleSuffix(m)}`;
+      }
       case 'cm_advance_payment': {
         const base = `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
-        return `${base}${interestSuffix(m)}`;
+        return `${base}${interestSuffix(m)}${appliedSaleSuffix(m)}`;
       }
       case 'transfer_in': return `${t("transferFrom")} ${m.fromBuyer} - ${m.transactionId}`;
       case 'transfer_out': return `${t("transferTo")} ${m.toBuyer} - ${m.transactionId}`;
@@ -146,7 +158,7 @@ function BuyerDetailedLedger({
       case 'discount': return `${t("discountEntry")} - ${m.transactionId}, ${m.farmerName}`;
       default: return txn.type;
     }
-  }, [t, interestSuffix]);
+  }, [t, interestSuffix, appliedSaleSuffix, formatCurrency]);
 
   const rows = useMemo(() => {
     if (!data) return [];

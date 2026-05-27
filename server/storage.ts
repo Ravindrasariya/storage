@@ -11638,6 +11638,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    const saleByIdForReceipts = new Map(allSales.map(s => [s.id, s]));
     const fyReceipts = buyerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
     for (const r of fyReceipts) {
       const isCmAdvance = r.payerType === 'cold_merchant_advance';
@@ -11646,6 +11647,15 @@ export class DatabaseStorage implements IStorage {
       if (isCmAdvance) {
         const advMeta = advancePaymentMetaMap.get(r.id);
         if (advMeta) Object.assign(receiptMeta, advMeta);
+      }
+      if (r.appliesToSaleId) {
+        const appliedSale = saleByIdForReceipts.get(r.appliesToSaleId);
+        if (appliedSale) {
+          receiptMeta.appliedLotNo = String(appliedSale.lotNo);
+          if (appliedSale.marka && appliedSale.marka.trim()) receiptMeta.appliedMarka = appliedSale.marka;
+          if (appliedSale.coldStorageBillNumber != null) receiptMeta.appliedColdBillNo = String(appliedSale.coldStorageBillNumber);
+          if (appliedSale.farmerName && appliedSale.farmerName.trim()) receiptMeta.appliedFarmerName = appliedSale.farmerName;
+        }
       }
       transactions.push({
         type: isCmAdvance ? 'cm_advance_payment' : 'payment',
@@ -12150,13 +12160,27 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
+    const selfSaleByIdForReceipts = new Map(allSelfSales.map(s => [s.id, s]));
     const fyReceipts = farmerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
     for (const r of fyReceipts) {
       const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
+      const receiptMeta: Record<string, string> = { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName };
+      if (r.appliesToSaleId) {
+        const appliedSale = selfSaleByIdForReceipts.get(r.appliesToSaleId);
+        if (appliedSale) {
+          receiptMeta.appliedLotNo = String(appliedSale.lotNo);
+          if (appliedSale.marka && appliedSale.marka.trim()) receiptMeta.appliedMarka = appliedSale.marka;
+          if (appliedSale.coldStorageBillNumber != null) receiptMeta.appliedColdBillNo = String(appliedSale.coldStorageBillNumber);
+          const saleBuyer = (appliedSale.buyerName || '').trim();
+          if (saleBuyer && saleBuyer.toLowerCase() !== farmerSelfBuyerName.toLowerCase()) {
+            receiptMeta.appliedBuyerName = saleBuyer;
+          }
+        }
+      }
       transactions.push({
         type: 'payment',
         date: toISTDateString(r.receivedAt),
-        meta: { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName },
+        meta: receiptMeta,
         debit: 0,
         credit: roundAmount(r.amount),
         refId: r.id,
