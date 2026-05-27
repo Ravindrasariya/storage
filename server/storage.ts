@@ -11528,23 +11528,39 @@ export class DatabaseStorage implements IStorage {
 
     const fySales = buyerSales.filter(s => s.soldAt >= fyStart && s.soldAt <= fyEnd);
     for (const s of fySales) {
-      const amt = saleDebitAmount(s);
+      const combined = roundAmount((s.coldStorageCharge || 0) + (s.extraDueToMerchantOriginal || 0));
+      const coldCharge = roundAmount(s.coldStorageCharge || 0);
+      const rawExtras = s.extraDueToMerchantOriginal || 0;
+      const extrasCharge = rawExtras > 0 ? roundAmount(combined - coldCharge) : 0;
+      const saleMeta = {
+        lotNo: String(s.lotNo),
+        farmerName: s.farmerName,
+        bags: String(s.quantitySold),
+        marka: s.marka || '',
+        coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
+      };
       transactions.push({
         type: 'sale',
         date: toISTDateString(s.soldAt),
-        meta: {
-          lotNo: String(s.lotNo),
-          farmerName: s.farmerName,
-          bags: String(s.quantitySold),
-          marka: s.marka || '',
-          coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
-        },
-        debit: roundAmount(amt),
+        meta: saleMeta,
+        debit: coldCharge,
         credit: 0,
         refId: s.id,
         sortDate: s.soldAt,
         sortOrder: 3,
       });
+      if (rawExtras > 0) {
+        transactions.push({
+          type: 'buyer_extras',
+          date: toISTDateString(s.soldAt),
+          meta: { ...saleMeta },
+          debit: extrasCharge,
+          credit: 0,
+          refId: s.id,
+          sortDate: s.soldAt,
+          sortOrder: 3,
+        });
+      }
     }
 
     const advancePaymentMetaMap = new Map<string, Record<string, string>>();

@@ -24,7 +24,7 @@ import type { BuyerLedgerEntry, BuyerLedgerEditHistoryEntry } from "@shared/sche
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { LedgerPrintBillButton } from "@/components/LedgerPrintBillButton";
 
-const SALE_ROW_TYPES = new Set(["sale", "transfer_in", "transfer_out"]);
+const SALE_ROW_TYPES = new Set(["sale", "buyer_extras", "transfer_in", "transfer_out"]);
 
 interface BuyerWithDues extends BuyerLedgerEntry {
   pyReceivables: number;
@@ -137,6 +137,14 @@ function BuyerDetailedLedger({
       case 'py_receivable_interest': return `${t("interestOnReceivable")}${interestSuffix(m)}`;
       case 'sale': {
         const parts = [`${t("saleCharges")} - ${t("lotHash")}${m.lotNo}`];
+        if (m.marka)      parts.push(`${t("marka")}: ${m.marka}`);
+        if (m.coldBillNo) parts.push(`${t("coldBillNo")}: ${m.coldBillNo}`);
+        parts.push(m.farmerName);
+        parts.push(`${m.bags} ${t("bagsLabel")}`);
+        return parts.join(', ');
+      }
+      case 'buyer_extras': {
+        const parts = [`${t("buyerExtras")} - ${t("lotHash")}${m.lotNo}`];
         if (m.marka)      parts.push(`${t("marka")}: ${m.marka}`);
         if (m.coldBillNo) parts.push(`${t("coldBillNo")}: ${m.coldBillNo}`);
         parts.push(m.farmerName);
