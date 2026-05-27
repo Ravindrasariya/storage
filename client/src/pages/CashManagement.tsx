@@ -2134,7 +2134,7 @@ export default function CashManagement() {
           : `Account: ${getAccountLabel(r.accountId || r.accountType)}`;
         const amt = Number(r.amount) || 0;
         totalCr += amt;
-        return [dateStr, party, mode, '-', fmtAmt(amt)];
+        return [dateStr, party, mode, '-', fmtAmt(amt), r.notes || ''];
       } else {
         const e = item.data as Expense;
         const party = e.receiverName
@@ -2145,7 +2145,7 @@ export default function CashManagement() {
           : `Account: ${getAccountLabel(e.accountId || e.accountType)}`;
         const amt = Number(e.amount) || 0;
         totalDr += amt;
-        return [dateStr, party, mode, fmtAmt(amt), '-'];
+        return [dateStr, party, mode, fmtAmt(amt), '-', e.remarks || ''];
       }
     });
 
@@ -2155,6 +2155,7 @@ export default function CashManagement() {
       '',
       totalDr > 0 ? fmtAmt(totalDr) : '-',
       totalCr > 0 ? fmtAmt(totalCr) : '-',
+      '',
     ]);
 
     const GREEN: [number, number, number] = [46, 125, 50];
@@ -2163,18 +2164,19 @@ export default function CashManagement() {
     const lastIdx = tableBody.length - 1;
 
     autoTable(doc, {
-      head: [['Date', 'Party', 'Mode', 'Dr (Outflow)', 'Cr (Inflow)']],
+      head: [['Date', 'Party', 'Mode', 'Dr (Outflow)', 'Cr (Inflow)', 'Remarks']],
       body: tableBody,
       startY: tableStartY,
       margin: { left: margin, right: margin },
-      styles: { font: 'helvetica', fontSize: 8, cellPadding: 2 },
+      styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
       headStyles: { fillColor: GREEN, textColor: 255, fontStyle: 'bold' },
       columnStyles: {
-        0: { cellWidth: 22 },
-        1: { cellWidth: 70 },
-        2: { cellWidth: 30 },
-        3: { halign: 'right', cellWidth: 32 },
-        4: { halign: 'right', cellWidth: 32 },
+        0: { cellWidth: 20 },
+        1: { cellWidth: 42, overflow: 'linebreak' },
+        2: { cellWidth: 26 },
+        3: { halign: 'right', cellWidth: 22 },
+        4: { halign: 'right', cellWidth: 22 },
+        5: { cellWidth: 54, overflow: 'linebreak' },
       },
       didParseCell: (hookData) => {
         if (hookData.section !== 'body') return;
