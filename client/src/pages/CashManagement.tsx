@@ -49,6 +49,7 @@ interface PersistedFormState {
   buyerName: string;
   customBuyerName: string;
   salesGoodsBuyerName: string;
+  othersName: string;
   receiptType: string;
   accountId: string;
   inwardAmount: string;
@@ -166,14 +167,15 @@ export default function CashManagement() {
   
   const [activeTab, setActiveTab] = useState<"inward" | "expense" | "self">(persistedState?.activeTab || "inward");
   
-  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata">(() => {
+  const [payerType, setPayerType] = useState<"cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata" | "others">(() => {
     const persisted = persistedState?.payerType;
-    if (persisted === "cold_merchant" || persisted === "farmer" || persisted === "cold_merchant_advance" || persisted === "farmer_loan" || persisted === "kata") return persisted;
+    if (persisted === "cold_merchant" || persisted === "farmer" || persisted === "cold_merchant_advance" || persisted === "farmer_loan" || persisted === "kata" || persisted === "others") return persisted;
     return "cold_merchant";
   });
   const [buyerName, setBuyerName] = useState(persistedState?.buyerName || "");
   const [customBuyerName, setCustomBuyerName] = useState(persistedState?.customBuyerName || "");
   const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState(persistedState?.salesGoodsBuyerName || "");
+  const [othersName, setOthersName] = useState(persistedState?.othersName || "");
   const [selectedFarmerReceivableId, setSelectedFarmerReceivableId] = useState("");
   const [farmerComboboxOpen, setFarmerComboboxOpen] = useState(false);
   const [farmerSearchQuery, setFarmerSearchQuery] = useState("");
@@ -334,6 +336,7 @@ export default function CashManagement() {
       buyerName,
       customBuyerName,
       salesGoodsBuyerName,
+      othersName,
       receiptType,
       accountId,
       inwardAmount,
@@ -362,7 +365,7 @@ export default function CashManagement() {
     };
     sessionStorage.setItem(getStateKey(coldStorageId), JSON.stringify(stateToSave));
   }, [
-    coldStorageId, activeTab, payerType, buyerName, customBuyerName, salesGoodsBuyerName, receiptType, accountId,
+    coldStorageId, activeTab, payerType, buyerName, customBuyerName, salesGoodsBuyerName, othersName, receiptType, accountId,
     inwardAmount, inwardRoundOff, receivedDate, inwardRemarks, expenseType, expenseReceiverName, expensePaymentMode,
     expenseAccountId, expenseAmount, expenseDate, expenseRemarks, transferFromAccount, transferToAccount,
     transferAmount, transferDate, transferRemarks, transferTypeMode, buyerTransferFrom, buyerTransferTo,
@@ -383,10 +386,11 @@ export default function CashManagement() {
       if (loaded) {
         // Apply loaded state to all form fields
         if (loaded.activeTab) setActiveTab(loaded.activeTab);
-        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer" || loaded.payerType === "cold_merchant_advance" || loaded.payerType === "farmer_loan" || loaded.payerType === "kata") setPayerType(loaded.payerType as "cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata");
+        if (loaded.payerType === "cold_merchant" || loaded.payerType === "farmer" || loaded.payerType === "cold_merchant_advance" || loaded.payerType === "farmer_loan" || loaded.payerType === "kata" || loaded.payerType === "others") setPayerType(loaded.payerType as "cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata" | "others");
         if (loaded.buyerName) setBuyerName(loaded.buyerName);
         if (loaded.customBuyerName) setCustomBuyerName(loaded.customBuyerName);
         if (loaded.salesGoodsBuyerName) setSalesGoodsBuyerName(loaded.salesGoodsBuyerName);
+        if (loaded.othersName) setOthersName(loaded.othersName);
         if (loaded.receiptType) setReceiptType(loaded.receiptType as "cash" | "account");
         if (loaded.accountId) setAccountId(loaded.accountId);
         if (loaded.inwardAmount) setInwardAmount(loaded.inwardAmount);
@@ -773,6 +777,7 @@ export default function CashManagement() {
       setBuyerName("");
       setCustomBuyerName("");
       setSalesGoodsBuyerName("");
+      setOthersName("");
       setSelectedFarmerReceivableId("");
       setReceiptType("cash");
       setAccountId("");
@@ -1545,6 +1550,8 @@ export default function CashManagement() {
     
     if (payerType === "cold_merchant") {
       finalBuyerName = buyerName === "__other__" ? customBuyerName.trim() : buyerName;
+    } else if (payerType === "others") {
+      finalBuyerName = othersName.trim();
     } else if (payerType === "farmer") {
       farmerReceivableId = selectedFarmerReceivableId;
       const selectedFarmer = farmerLedgerDues.find(f => f.id === farmerReceivableId);
@@ -1558,6 +1565,10 @@ export default function CashManagement() {
       return;
     }
     if (payerType === "cold_merchant" && !finalBuyerName) {
+      toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+    if (payerType === "others" && !finalBuyerName) {
       toast({ title: t("error"), description: "Please fill all required fields", variant: "destructive" });
       return;
     }
@@ -3105,6 +3116,7 @@ export default function CashManagement() {
                     <SelectItem value="cold_merchant">{t("coldMerchant")}</SelectItem>
                     <SelectItem value="farmer">{t("farmer")}</SelectItem>
                     <SelectItem value="kata">{t("kata")}</SelectItem>
+                    <SelectItem value="others">{t("others")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3421,10 +3433,11 @@ export default function CashManagement() {
                 <div className="space-y-2">
                   <Label>{t("payerType")} *</Label>
                   <Select value={payerType} onValueChange={(v) => {
-                    setPayerType(v as "cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata");
+                    setPayerType(v as "cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata" | "others");
                     setBuyerName("");
                     setCustomBuyerName("");
                     setSalesGoodsBuyerName("");
+                    setOthersName("");
                     setAdvanceBuyerLedgerId("");
                     setAdvanceBuyerId("");
                     setAdvanceBuyerName("");
@@ -3442,9 +3455,22 @@ export default function CashManagement() {
                       <SelectItem value="farmer">{t("farmer")}</SelectItem>
                       <SelectItem value="farmer_loan">{t("farmerLoanPayment")}</SelectItem>
                       <SelectItem value="kata">{t("kata")}</SelectItem>
+                      <SelectItem value="others" data-testid="select-payer-type-others">{t("others")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {payerType === "others" && (
+                  <div className="space-y-2">
+                    <Label>{t("name")} *</Label>
+                    <Input
+                      value={othersName}
+                      onChange={(e) => setOthersName(e.target.value)}
+                      placeholder={t("name")}
+                      data-testid="input-others-name"
+                    />
+                  </div>
+                )}
 
                 {payerType === "farmer" && (
                   <div className="space-y-2">
@@ -3928,6 +3954,7 @@ export default function CashManagement() {
                     payMerchantAdvanceMutation.isPending ||
                     payFarmerLoanMutation.isPending ||
                     (payerType === "cold_merchant" && (!buyerName || (buyerName === "__other__" && !customBuyerName.trim()))) ||
+                    (payerType === "others" && !othersName.trim()) ||
                     (payerType === "cold_merchant_advance" && (!advanceBuyerLedgerId || selectedAdvanceIds.length === 0)) ||
                     (payerType === "farmer_loan" && (!loanFarmerLedgerId || selectedLoanIds.length === 0)) ||
                     (payerType === "farmer" && !selectedFarmerReceivableId)
