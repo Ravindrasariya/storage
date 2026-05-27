@@ -6575,6 +6575,11 @@ export async function registerRoutes(
         totalMerchantExtras: sql<number>`COALESCE(SUM(${salesHistory.extraDueToMerchantOriginal}), 0)`,
         totalAdjSelfDue: sql<number>`COALESCE(SUM(COALESCE(${salesHistory.adjSelfDue}, 0)), 0)`,
         displayAdjReceivables: sql<number>`COALESCE(SUM(COALESCE(${salesHistory.adjPyReceivables}, 0) + COALESCE(${salesHistory.adjAdvance}, 0) + COALESCE(${salesHistory.adjFreight}, 0)), 0)`,
+        // Task #310 — billed pass-through totals, accrued as P&L expenses at sale-time.
+        // baseHammaliAmount is null on legacy rows; reconstruct from per-bag hammali × quantity_sold.
+        totalBilledHammali: sql<number>`COALESCE(SUM(COALESCE(${salesHistory.baseHammaliAmount}, COALESCE(${salesHistory.hammali}, 0) * ${salesHistory.quantitySold})), 0)`,
+        totalBilledExtraHammali: sql<number>`COALESCE(SUM(COALESCE(${salesHistory.extraHammali}, 0)), 0)`,
+        totalBilledGrading: sql<number>`COALESCE(SUM(COALESCE(${salesHistory.gradingCharges}, 0)), 0)`,
       }).from(salesHistory).where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         gte(salesHistory.soldAt, fyStart),
@@ -6585,6 +6590,11 @@ export async function registerRoutes(
       const displayReceivableAdjustments = Number(salesInFY[0]?.displayAdjReceivables) || 0;
       const coldStorageIncome = rawColdStorageCharges - totalAdjSelfDue;
       const merchantExtrasIncome = Number(salesInFY[0]?.totalMerchantExtras) || 0;
+      // Task #310 — billed pass-through expense accruals
+      const billedHammaliExpense = Number(salesInFY[0]?.totalBilledHammali) || 0;
+      const billedExtraHammaliExpense = Number(salesInFY[0]?.totalBilledExtraHammali) || 0;
+      const billedGradingExpense = Number(salesInFY[0]?.totalBilledGrading) || 0;
+      const billedMerchantExtrasExpense = merchantExtrasIncome;
 
       const otherReceiptsInFY = await db.select({
         total: sql<number>`COALESCE(SUM(${cashReceiptsTable.amount}), 0)`,
@@ -6608,10 +6618,34 @@ export async function registerRoutes(
         lte(expensesTable.paidAt, fyEnd),
         eq(expensesTable.isReversed, 0),
         sql`"expense_class" = 'revenue'`,
+        // Task #310 — hammali and grading payouts are now accrued at sale-time as
+        // billed pass-through expense lines; suppress the cash-basis revenue rows
+        // here to avoid double-counting. They remain visible in Cash Flow.
+        sql`"expense_type" NOT IN ('hammali', 'grading_charges')`,
       )).groupBy(expensesTable.expenseType);
 
       const expenseByType: Record<string, number> = {};
       let totalRevenueExpenses = 0;
+
+      // Task #310 — emit billed pass-through accruals first so they render above the
+      // cash-basis revenue rows on the P&L (and CSV) before Depreciation/Interest.
+      if (billedHammaliExpense > 0) {
+        expenseByType["hammali_billed"] = billedHammaliExpense;
+        totalRevenueExpenses += billedHammaliExpense;
+      }
+      if (billedExtraHammaliExpense > 0) {
+        expenseByType["extra_hammali_billed"] = billedExtraHammaliExpense;
+        totalRevenueExpenses += billedExtraHammaliExpense;
+      }
+      if (billedGradingExpense > 0) {
+        expenseByType["grading_billed"] = billedGradingExpense;
+        totalRevenueExpenses += billedGradingExpense;
+      }
+      if (billedMerchantExtrasExpense > 0) {
+        expenseByType["merchant_extras_billed"] = billedMerchantExtrasExpense;
+        totalRevenueExpenses += billedMerchantExtrasExpense;
+      }
+
       for (const e of revenueExpenses) {
         expenseByType[e.expenseType] = Number(e.total) || 0;
         totalRevenueExpenses += Number(e.total) || 0;
