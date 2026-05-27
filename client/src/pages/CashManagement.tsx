@@ -2196,11 +2196,11 @@ export default function CashManagement() {
       headStyles: { fillColor: GREEN, textColor: 255, fontStyle: 'bold' },
       columnStyles: {
         0: { cellWidth: 20 },
-        1: { cellWidth: 42, overflow: 'linebreak' },
+        1: { cellWidth: 55.5, overflow: 'linebreak' },
         2: { cellWidth: 26 },
         3: { halign: 'right', cellWidth: 22 },
         4: { halign: 'right', cellWidth: 22 },
-        5: { cellWidth: 54, overflow: 'linebreak' },
+        5: { cellWidth: 40.5, overflow: 'linebreak' },
       },
       didParseCell: (hookData) => {
         if (hookData.section !== 'body') return;
