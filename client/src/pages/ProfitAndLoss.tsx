@@ -42,10 +42,10 @@ const EXPENSE_TYPE_LABELS: Record<string, { en: string; hi: string }> = {
   interest_on_loan: { en: "Interest on Loan/Credit Line", hi: "ऋण/क्रेडिट लाइन पर ब्याज" },
   electricity_charges: { en: "Electricity/Power Charges", hi: "बिजली शुल्क" },
   chemical_spray_charges: { en: "Chemical Spray Charges", hi: "रासायनिक स्प्रे शुल्क" },
-  hammali_billed: { en: "Hammali (billed at sale)", hi: "हम्माली (बिक्री पर बिल)" },
-  extra_hammali_billed: { en: "Extra Hammali (billed at sale)", hi: "अतिरिक्त हम्माली (बिक्री पर बिल)" },
-  grading_billed: { en: "Grading (billed at sale)", hi: "ग्रेडिंग (बिक्री पर बिल)" },
-  merchant_extras_billed: { en: "Merchant Extras (billed at sale)", hi: "व्यापारी अतिरिक्त (बिक्री पर बिल)" },
+  hammali_billed: { en: "Hammali", hi: "हम्माली" },
+  extra_hammali_billed: { en: "Extra Hammali", hi: "अतिरिक्त हम्माली" },
+  grading_billed: { en: "Grading", hi: "ग्रेडिंग" },
+  merchant_extras_billed: { en: "Merchant Extras", hi: "व्यापारी अतिरिक्त" },
 };
 
 export default function ProfitAndLoss() {
