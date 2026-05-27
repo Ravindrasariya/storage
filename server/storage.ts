@@ -12142,12 +12142,25 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    const loanSelfSaleByIdForReceipts = new Map(allSelfSales.map(s => [s.id, s]));
     const fyFarmerLoanRcpts = farmerLoanRcpts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
     for (const r of fyFarmerLoanRcpts) {
       const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
       const loanMeta = loanPaymentMetaMap.get(r.id);
       const payMeta: Record<string, string> = { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName };
       if (loanMeta) Object.assign(payMeta, loanMeta);
+      if (r.appliesToSaleId) {
+        const appliedSale = loanSelfSaleByIdForReceipts.get(r.appliesToSaleId);
+        if (appliedSale) {
+          payMeta.appliedLotNo = String(appliedSale.lotNo);
+          if (appliedSale.marka && appliedSale.marka.trim()) payMeta.appliedMarka = appliedSale.marka;
+          if (appliedSale.coldStorageBillNumber != null) payMeta.appliedColdBillNo = String(appliedSale.coldStorageBillNumber);
+          const saleBuyer = (appliedSale.buyerName || '').trim();
+          if (saleBuyer && saleBuyer.toLowerCase() !== farmerSelfBuyerName.toLowerCase()) {
+            payMeta.appliedBuyerName = saleBuyer;
+          }
+        }
+      }
       transactions.push({
         type: 'farmer_loan_payment',
         date: toISTDateString(r.receivedAt),
