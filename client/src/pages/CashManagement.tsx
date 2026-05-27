@@ -104,6 +104,7 @@ function clearPersistedState(coldStorageId: string): void {
 interface BuyerWithDue {
   buyerName: string;
   totalDue: number;
+  extrasDue: number;
 }
 
 interface PYMerchantAdvanceRow {
@@ -172,6 +173,10 @@ export default function CashManagement() {
     if (persisted === "cold_merchant" || persisted === "farmer" || persisted === "cold_merchant_advance" || persisted === "farmer_loan" || persisted === "kata" || persisted === "others") return persisted;
     return "cold_merchant";
   });
+  // Task #309 — sub-flow under cold_merchant: "cold_charges" (default) drains
+  // opening receivables + sale dues; "merchant_extras" drains only the buyer's
+  // extraDueToMerchant pool, with no spillover between the two due types.
+  const [dueType, setDueType] = useState<"cold_charges" | "merchant_extras">("cold_charges");
   const [buyerName, setBuyerName] = useState(persistedState?.buyerName || "");
   const [customBuyerName, setCustomBuyerName] = useState(persistedState?.customBuyerName || "");
   const [salesGoodsBuyerName, setSalesGoodsBuyerName] = useState(persistedState?.salesGoodsBuyerName || "");
@@ -763,7 +768,7 @@ export default function CashManagement() {
   });
 
   const createReceiptMutation = useMutation({
-    mutationFn: async (data: { payerType: string; buyerName?: string; farmerReceivableId?: string; farmerLedgerId?: string | null; farmerDetails?: { farmerName: string; contactNumber: string; village: string }; receiptType: string; accountId?: string; amount: number; roundOff?: number; receivedAt: string; notes?: string }) => {
+    mutationFn: async (data: { payerType: string; dueType?: "cold_charges" | "merchant_extras"; buyerName?: string; farmerReceivableId?: string; farmerLedgerId?: string | null; farmerDetails?: { farmerName: string; contactNumber: string; village: string }; receiptType: string; accountId?: string; amount: number; roundOff?: number; receivedAt: string; notes?: string }) => {
       const response = await apiRequest("POST", "/api/cash-receipts", data);
       return response.json();
     },
@@ -774,6 +779,7 @@ export default function CashManagement() {
         variant: "success",
       });
       setPayerType("cold_merchant");
+      setDueType("cold_charges");
       setBuyerName("");
       setCustomBuyerName("");
       setSalesGoodsBuyerName("");
@@ -1602,6 +1608,8 @@ export default function CashManagement() {
     
     createReceiptMutation.mutate({
       payerType,
+      // Task #309 — only meaningful for cold_merchant; backend ignores otherwise.
+      dueType: payerType === "cold_merchant" ? dueType : undefined,
       buyerName: finalBuyerName,
       farmerReceivableId,
       farmerLedgerId: selectedFarmer?.farmerLedgerId || null,
@@ -1857,9 +1865,14 @@ export default function CashManagement() {
     return accountIdOrType;
   };
 
-  const selectedBuyerDue = buyersWithDues.find(b => 
+  const selectedBuyerRow = buyersWithDues.find(b =>
     b.buyerName.trim().toLowerCase() === buyerName.trim().toLowerCase()
-  )?.totalDue || 0;
+  );
+  // Task #309 — when paying Merchant Extras, validate against extrasDue only;
+  // otherwise validate against the buyer's net cold-side due (= totalDue minus extras).
+  const selectedBuyerExtras = selectedBuyerRow?.extrasDue || 0;
+  const selectedBuyerColdDue = Math.max(0, (selectedBuyerRow?.totalDue || 0) - selectedBuyerExtras);
+  const selectedBuyerDue = dueType === "merchant_extras" ? selectedBuyerExtras : selectedBuyerColdDue;
 
   const getExpenseTypeLabel = (type: string) => {
     switch (type) {
@@ -3434,6 +3447,7 @@ export default function CashManagement() {
                   <Label>{t("payerType")} *</Label>
                   <Select value={payerType} onValueChange={(v) => {
                     setPayerType(v as "cold_merchant" | "farmer" | "cold_merchant_advance" | "farmer_loan" | "kata" | "others");
+                    setDueType("cold_charges");
                     setBuyerName("");
                     setCustomBuyerName("");
                     setSalesGoodsBuyerName("");
@@ -3800,6 +3814,30 @@ export default function CashManagement() {
 
                 {payerType === "cold_merchant" && (
                   <div className="space-y-2">
+                    {/* Task #309 — Cold Storage Charges vs Merchant Extras toggle */}
+                    <Label>{t("dueType") || "Due Type"}</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={dueType === "cold_charges" ? "default" : "outline"}
+                        onClick={() => { setDueType("cold_charges"); setBuyerName(""); setCustomBuyerName(""); }}
+                        data-testid="button-due-type-cold-charges"
+                        className="flex-1"
+                      >
+                        {t("coldStorageCharges") || "Cold Storage Charges"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={dueType === "merchant_extras" ? "default" : "outline"}
+                        onClick={() => { setDueType("merchant_extras"); setBuyerName(""); setCustomBuyerName(""); }}
+                        data-testid="button-due-type-merchant-extras"
+                        className="flex-1"
+                      >
+                        {t("merchantExtras") || "Merchant Extras"}
+                      </Button>
+                    </div>
                     <Label>{t("buyerName")} *</Label>
                     {loadingBuyers ? (
                       <div className="text-sm text-muted-foreground">{t("loading")}</div>
@@ -3835,10 +3873,18 @@ export default function CashManagement() {
                               <CommandGroup>
                                 {buyersWithDues
                                   .filter(buyer => {
+                                    // Task #309 — Merchant Extras mode shows only buyers with
+                                    // extras outstanding; Cold Charges mode shows the rest as before.
+                                    if (dueType === "merchant_extras" && (buyer.extrasDue || 0) <= 0) return false;
+                                    if (dueType === "cold_charges" && ((buyer.totalDue || 0) - (buyer.extrasDue || 0)) <= 0) return false;
                                     if (!buyerSearchQuery) return true;
                                     return buyer.buyerName.toLowerCase().includes(buyerSearchQuery.toLowerCase());
                                   })
-                                  .map((buyer) => (
+                                  .map((buyer) => {
+                                    const shownDue = dueType === "merchant_extras"
+                                      ? (buyer.extrasDue || 0)
+                                      : Math.max(0, (buyer.totalDue || 0) - (buyer.extrasDue || 0));
+                                    return (
                                     <CommandItem
                                       key={buyer.buyerName}
                                       value={buyer.buyerName}
@@ -3855,11 +3901,12 @@ export default function CashManagement() {
                                       <span className="flex items-center justify-between gap-4 w-full">
                                         <span>{buyer.buyerName}</span>
                                         <Badge variant="outline" className="text-xs">
-                                          ₹{formatCurrency(buyer.totalDue)}
+                                          ₹{formatCurrency(shownDue)}
                                         </Badge>
                                       </span>
                                     </CommandItem>
-                                  ))}
+                                    );
+                                  })}
                                 <CommandItem
                                   value="__other__"
                                   onSelect={() => {

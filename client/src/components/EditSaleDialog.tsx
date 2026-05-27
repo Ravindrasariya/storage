@@ -510,6 +510,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
           description: t("reverseManualPaymentFirst"),
           variant: "destructive",
         });
+      } else if (body.errorType === "merchant_extras_receipt_attached") {
+        toast({
+          title: t("error"),
+          description: body.message || "Reverse the buyer's Merchant Extras receipts first, then retry.",
+          variant: "destructive",
+        });
       } else {
         toast({ title: t("error"), description: t("failedToReverseSale"), variant: "destructive" });
       }

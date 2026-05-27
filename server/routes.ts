@@ -3787,6 +3787,9 @@ export async function registerRoutes(
 
   const createCashReceiptSchema = z.object({
     payerType: z.enum(["cold_merchant", "sales_goods", "kata", "others", "farmer"]),
+    // Task #309 — sub-category for cold_merchant only. Ignored for other payer
+    // types; defaults to cold_charges. merchant_extras drains only extraDueToMerchant.
+    dueType: z.enum(["cold_charges", "merchant_extras"]).optional(),
     buyerName: z.string().optional(),
     farmerReceivableId: z.string().optional(),
     receiptType: z.enum(["cash", "account"]),
@@ -3846,6 +3849,11 @@ export async function registerRoutes(
       const result = await storage.createCashReceiptWithFIFO({
         coldStorageId: coldStorageId,
         payerType: validatedData.payerType,
+        // Task #309 — dueType only meaningful for cold_merchant; force the
+        // default for every other payer type so the column is never null.
+        dueType: validatedData.payerType === "cold_merchant"
+          ? (validatedData.dueType || "cold_charges")
+          : "cold_charges",
         buyerName: validatedData.payerType === "kata" ? null : (validatedData.buyerName || null),
         receiptType: validatedData.receiptType,
         accountType: validatedData.accountType || null,

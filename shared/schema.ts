@@ -314,6 +314,12 @@ export const cashReceipts = pgTable("cash_receipts", {
   transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (e.g., CF202601220)
   coldStorageId: varchar("cold_storage_id").notNull(),
   payerType: text("payer_type").notNull().default("cold_merchant"), // 'cold_merchant', 'sales_goods', 'kata', 'others'
+  // Sub-category for cold_merchant receipts: 'cold_charges' (default — applied to
+  // opening receivables + cold storage dues only) or 'merchant_extras' (applied
+  // only to salesHistory.extraDueToMerchant FIFO, never spills into cold dues).
+  // Task #309 — first production use; no backfill for legacy rows (all existing
+  // receipts are treated as cold_charges via the default).
+  dueType: text("due_type").notNull().default("cold_charges"),
   buyerName: text("buyer_name"), // Required for cold_merchant, sales_goods, others; null for kata
   receiptType: text("receipt_type").notNull(), // 'cash' or 'account'
   accountType: text("account_type"), // DEPRECATED: Use accountId instead. Legacy values: 'limit' or 'current'

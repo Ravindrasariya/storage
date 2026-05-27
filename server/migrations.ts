@@ -25,6 +25,18 @@ interface Migration {
 
 const MIGRATIONS: Migration[] = [
   {
+    name: "2026-05-27_add_cash_receipts_due_type",
+    up: async () => {
+      // Task #309 — additive NOT NULL column with default 'cold_charges'.
+      // All legacy receipts are treated as cold_charges (no backfill needed
+      // because the default fills both new and existing rows).
+      await db.execute(sql`
+        ALTER TABLE cash_receipts
+        ADD COLUMN IF NOT EXISTS due_type TEXT NOT NULL DEFAULT 'cold_charges'
+      `);
+    },
+  },
+  {
     name: "2026-05-26_add_sales_history_grading_per_bag",
     up: async () => {
       // Task #300 — additive nullable column. No default, no back-fill:

@@ -153,7 +153,8 @@ function BuyerDetailedLedger({
       }
       case 'payment': {
         const base = `${t("paymentReceived")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;
-        return `${base}${appliedSaleSuffix(m)}`;
+        const extrasTag = m.dueType === 'merchant_extras' ? ` [${t("merchantExtras") || "Merchant Extras"}]` : '';
+        return `${base}${extrasTag}${appliedSaleSuffix(m)}`;
       }
       case 'cm_advance_payment': {
         const base = `${t("advancePayment")} - ${m.transactionId} (${m.mode === 'cash' ? t("cash") : m.accountName || t("account")})`;

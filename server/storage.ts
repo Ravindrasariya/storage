@@ -329,7 +329,7 @@ export interface IStorage {
   }>>>;
   getLotIdsWithIncompleteExits(coldStorageId: string): Promise<Set<string>>;
   // Cash Receipts
-  getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]>;
+  getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number; extrasDue: number }[]>;
   getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
   createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerLedgerId: string | null; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
   getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
@@ -2283,6 +2283,34 @@ export class DatabaseStorage implements IStorage {
       };
     }
 
+    // Task #309 — Merchant Extras receipts are scoped to the buyer's full extras
+    // pool (FIFO), so we can't safely auto-reverse only the portion that landed
+    // on this sale. Block sale reversal when ANY active merchant_extras receipt
+    // exists for the original buyer, and ask the operator to reverse those
+    // receipts first from Cash Flow History.
+    const attachedExtrasReceipts = await db.select({
+        id: cashReceipts.id,
+        transactionId: cashReceipts.transactionId,
+      })
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, sale.coldStorageId),
+        eq(cashReceipts.payerType, "cold_merchant"),
+        eq(cashReceipts.dueType, "merchant_extras"),
+        eq(cashReceipts.isReversed, 0),
+        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${sale.buyerName}))`,
+      ));
+    if (attachedExtrasReceipts.length > 0 && (sale.extraDueToMerchantOriginal || 0) > 0) {
+      const txnList = attachedExtrasReceipts
+        .map((r) => r.transactionId || r.id.slice(0, 8))
+        .join(", ");
+      return {
+        success: false,
+        errorType: "merchant_extras_receipt_attached",
+        message: `This buyer has ${attachedExtrasReceipts.length} active Merchant Extras payment receipt(s) (${txnList}) that may have settled the extras on this sale. Reverse those receipts from Cash Flow History first, then retry the sale reversal.`,
+      };
+    }
+
     const lot = await this.getLot(sale.lotId);
     if (!lot) {
       return { success: false, message: "Associated lot not found", errorType: "not_found" };
@@ -4085,18 +4113,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Cash Receipts methods
-  async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number }[]> {
+  async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number; extrasDue: number }[]> {
     // Use Buyer Ledger's netDue for consistent dues across the application
     // netDue = pyReceivables + salesDue + dueTransferIn - dueTransferOut
-    // Only include buyers with positive net due (actual dues to collect)
+    // Task #309 — also surface buyerExtras separately so the Cash Inward dialog
+    // can offer a Merchant Extras receipt flow against extras-only dues.
+    // Include buyers with EITHER cold-side dues OR extras outstanding.
     const ledgerData = await this.getBuyerLedger(coldStorageId, false);
     
     return ledgerData.buyers
       .map(buyer => ({
         buyerName: buyer.buyerName,
-        totalDue: buyer.netDue - (buyer.advanceDue || 0)
+        totalDue: buyer.netDue - (buyer.advanceDue || 0),
+        extrasDue: buyer.buyerExtras || 0,
       }))
-      .filter(buyer => buyer.totalDue > 0)
+      .filter(buyer => buyer.totalDue > 0 || buyer.extrasDue > 0)
       .sort((a, b) => a.buyerName.toLowerCase().localeCompare(b.buyerName.toLowerCase()));
   }
 
@@ -4800,13 +4831,19 @@ export class DatabaseStorage implements IStorage {
     let salesUpdated = 0;
     const paymentMode = data.receiptType as "cash" | "account";
     const currentYear = new Date().getFullYear();
+    // Task #309 — Merchant Extras receipts skip the cold-charges + opening
+    // receivable passes entirely and drain ONLY extraDueToMerchant FIFO.
+    // Cold-charges receipts (default) skip the extras pass entirely so surplus
+    // never silently spills across due types.
+    const dueType = (data as { dueType?: string }).dueType || "cold_charges";
+    const isMerchantExtras = dueType === "merchant_extras";
     // Track per-sale paidAmount contributions so we can write
     // cash_receipt_applications rows after the receipt id is created.
     const pendingApplications: { saleId: string; amount: number }[] = [];
 
     // PASS 0: Apply to opening receivables first (FIFO by createdAt)
     // These are prior year balances that should be settled before current year charges
-    if (remainingAmount > 0) {
+    if (remainingAmount > 0 && !isMerchantExtras) {
       const buyerReceivables = await db.select()
         .from(openingReceivables)
         .where(and(
@@ -4849,7 +4886,7 @@ export class DatabaseStorage implements IStorage {
     // PASS 1: Apply to cold storage dues (FIFO by soldAt)
     // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
     // BUT if transfer is reversed (isTransferReversed = 1), use original buyerName
-    const sales = await db.select()
+    const sales = isMerchantExtras ? [] : await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
@@ -4918,9 +4955,10 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // PASS 2: Apply remaining surplus to extraDueToMerchant (by ORIGINAL buyerName only)
-    // This is separate from cold storage dues and tracks buyer-specific surcharges
-    if (remainingAmount > 0) {
+    // PASS 2: Apply to extraDueToMerchant (by ORIGINAL buyerName only)
+    // Task #309 — only runs for merchant_extras receipts. Cold-charges receipts
+    // no longer spill surplus into extras: each due type drains its own FIFO.
+    if (remainingAmount > 0 && isMerchantExtras) {
       // Get sales with extraDueToMerchant > 0 for the ORIGINAL buyerName (not CurrentDueBuyerName)
       const salesWithExtraDue = await db.select()
         .from(salesHistory)
@@ -5904,7 +5942,9 @@ export class DatabaseStorage implements IStorage {
     // Also exclude manual single-sale closure receipts (applies_to_sale_id IS NOT NULL)
     // — they are already applied to one specific sale and must not be FIFO-replayed
     // across the buyer's full sale pool (would double-count and zero out unrelated sales).
-    const activeReceipts = await db.select()
+    // Task #309 — partition receipts by dueType. cold_charges receipts replay
+    // through the cold-side FIFO; merchant_extras receipts drain extras only.
+    const allActiveReceipts = await db.select()
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
@@ -5914,6 +5954,8 @@ export class DatabaseStorage implements IStorage {
         isNull(cashReceipts.appliesToSaleId),
       ))
       .orderBy(cashReceipts.receivedAt);
+    const activeReceipts = allActiveReceipts.filter(r => (r.dueType || "cold_charges") === "cold_charges");
+    const merchantExtrasReceipts = allActiveReceipts.filter(r => r.dueType === "merchant_extras");
 
     let salesUpdated = 0;
     let receiptsUpdated = 0;
@@ -5979,6 +6021,13 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Task #309 — replay merchant_extras receipts on the (already-reset) extras
+    // side. Independent FIFO timeline; never spills into cold dues.
+    for (const receipt of merchantExtrasReceipts) {
+      await this.applyReceiptFIFO(receipt, coldStorageId, buyerName, currentYear);
+      receiptsUpdated++;
+    }
+
     // Update lot totals for all affected lots
     const affectedLotIds = Array.from(new Set(buyerSales.map(s => s.lotId)));
     for (const lotId of affectedLotIds) {
@@ -5998,9 +6047,13 @@ export class DatabaseStorage implements IStorage {
     let remainingAmount = receipt.amount;
     let appliedAmount = 0;
     const paymentMode = receipt.receiptType as "cash" | "account";
+    // Task #309 — Merchant Extras receipts only touch extras (PASS 2);
+    // cold-charges receipts only touch opening receivables + cold dues
+    // (PASS 0 + PASS 1). No cross-spill between the two due types.
+    const isMerchantExtras = receipt.dueType === "merchant_extras";
 
     // PASS 0: Apply to opening receivables first (FIFO by createdAt)
-    if (remainingAmount > 0) {
+    if (remainingAmount > 0 && !isMerchantExtras) {
       const buyerReceivables = await db.select()
         .from(openingReceivables)
         .where(and(
@@ -6042,7 +6095,7 @@ export class DatabaseStorage implements IStorage {
 
     // PASS 1: Apply to cold storage dues (FIFO by soldAt)
     // Use CurrentDueBuyerName logic: BUT if transfer is reversed (isTransferReversed = 1), use original buyerName
-    if (remainingAmount > 0) {
+    if (remainingAmount > 0 && !isMerchantExtras) {
       const sales = await db.select()
         .from(salesHistory)
         .where(and(
@@ -6106,8 +6159,10 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // PASS 2: Apply remaining surplus to extraDueToMerchant (by ORIGINAL buyerName only)
-    if (remainingAmount > 0) {
+    // PASS 2: Apply to extraDueToMerchant (by ORIGINAL buyerName only).
+    // Task #309 — only runs for merchant_extras receipts; cold-charges receipts
+    // never spill into extras during FIFO replay.
+    if (remainingAmount > 0 && isMerchantExtras) {
       const salesWithExtraDue = await db.select()
         .from(salesHistory)
         .where(and(
@@ -11673,6 +11728,9 @@ export class DatabaseStorage implements IStorage {
           if (appliedSale.farmerName && appliedSale.farmerName.trim()) receiptMeta.appliedFarmerName = appliedSale.farmerName;
         }
       }
+      // Task #309 — surface dueType so the detailed ledger can tag
+      // Merchant Extras receipts distinctly from regular cold-charge payments.
+      if (r.dueType) receiptMeta.dueType = r.dueType;
       transactions.push({
         type: isCmAdvance ? 'cm_advance_payment' : 'payment',
         date: toISTDateString(r.receivedAt),

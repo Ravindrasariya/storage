@@ -205,6 +205,8 @@ const translations: Translations = {
   sortByRemainingBags: { en: "Remaining Bags (High to Low)", hi: "शेष बोरी (अधिक से कम)" },
   coldChargesDue: { en: "Cold Charges Due", hi: "कोल्ड स्टोरेज शुल्क बाकी" },
   coldChargesPaid: { en: "Cold Charges Paid", hi: "कोल्ड स्टोरेज शुल्क भुगतान" },
+  dueType: { en: "Due Type", hi: "बकाया प्रकार" },
+  merchantExtras: { en: "Merchant Extras", hi: "व्यापारी अतिरिक्त" },
   expectedColdCharges: { en: "Expected Billed Charges", hi: "अपेक्षित बिल शुल्क" },
   baseColdChargesBilled: { en: "Base Cold Charges Billed", hi: "आधार कोल्ड शुल्क बिल हो गया" },
   baseColdChargesBilledHint: { en: "Base charges were billed in a previous sale. Only extras can be edited.", hi: "आधार शुल्क पिछली बिक्री में बिल हो चुके हैं। केवल अतिरिक्त शुल्क संपादित किए जा सकते हैं।" },
