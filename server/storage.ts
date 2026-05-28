@@ -1765,6 +1765,7 @@ export class DatabaseStorage implements IStorage {
         ? data.extraDueToMerchantOriginal
         : (data.extraDueToMerchant ?? 0);
 
+    const createdSale = await (async (): Promise<SalesHistory> => {
     const userCsBill = opts?.userColdStorageBillNumber ?? null;
     // Year derives from the sale's effective date (soldAt). Callers may
     // pass an explicit soldAt (e.g. operator back-dating a sale on the
@@ -1828,6 +1829,26 @@ export class DatabaseStorage implements IStorage {
 
       return sale;
     });
+    })();
+
+    // Task #312 — sale creation is one of the six extras-affecting events.
+    // If the new sale carries any extras baseline AND the seller is a real
+    // buyer (buyerLedgerId is set — self-sales never produce merchant
+    // extras), replay the extras-side FIFO so any already-existing
+    // unapplied merchant_extras receipts for this buyer ledger can now
+    // FIFO-drain onto the newly inserted sale. Without this hook, a
+    // freshly created extras-bearing sale stays at its full extras baseline
+    // until some unrelated extras event fires the replay (or the heal
+    // migration runs again). Runs AFTER the insert tx commits so the new
+    // row is visible to the replay query.
+    const insertedExtras =
+      (createdSale.extraDueToMerchantOriginal && createdSale.extraDueToMerchantOriginal > 0) ||
+      (createdSale.extraDueToMerchant && createdSale.extraDueToMerchant > 0);
+    if (createdSale.buyerLedgerId && createdSale.coldStorageId && insertedExtras) {
+      await this.recomputeBuyerExtras(createdSale.buyerLedgerId, createdSale.coldStorageId);
+    }
+
+    return createdSale;
   }
 
   async getSalesHistory(coldStorageId: string, filters?: {
@@ -12832,6 +12853,18 @@ export class DatabaseStorage implements IStorage {
             isNull(openingReceivables.buyerLedgerId),
             sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${oldNameLower}`
           ));
+
+        // Task #312 — buyer rename is one of the six extras-affecting events.
+        // Although the ledger-keyed FIFO does not depend on the buyer_name
+        // text, the legacy buyer_name columns are propagated above so that
+        // pre-rename rows now carry the new buyer_name. Re-replay extras for
+        // this ledger to keep the trigger matrix uniform across all six
+        // events and to converge any legacy rows whose buyer_ledger_id was
+        // just rewritten by the isNull-buyer_ledger_id fallback updates
+        // above (those updates only touch buyer_name, but a future
+        // adjacent change could extend them to ledger ID; this hook keeps
+        // the extras side honest either way).
+        await this.recomputeBuyerExtras(id, currentBuyer.coldStorageId);
       }
     }
     
