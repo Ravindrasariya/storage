@@ -4147,13 +4147,18 @@ export default function CashManagement() {
                                         const truncatedMax = Math.floor(buyer.totalDue * 10) / 10;
                                         if (existingIdx >= 0) {
                                           newAllocations[existingIdx] = { 
+                                            ...newAllocations[existingIdx],
                                             buyerName: buyer.buyerName, 
+                                            buyerLedgerId: buyer.buyerLedgerId ?? null,
+                                            isFarmerSelf: buyer.isFarmerSelf === true,
                                             amount: e.target.value,
                                             maxAmount: truncatedMax
                                           };
                                         } else {
                                           newAllocations.push({ 
                                             buyerName: buyer.buyerName, 
+                                            buyerLedgerId: buyer.buyerLedgerId ?? null,
+                                            isFarmerSelf: buyer.isFarmerSelf === true,
                                             amount: e.target.value,
                                             maxAmount: truncatedMax
                                           });
@@ -4204,13 +4209,18 @@ export default function CashManagement() {
                                         const truncatedMax = Math.floor(buyer.totalDue * 10) / 10;
                                         if (existingIdx >= 0) {
                                           newAllocations[existingIdx] = { 
+                                            ...newAllocations[existingIdx],
                                             buyerName: buyer.buyerName, 
+                                            buyerLedgerId: buyer.buyerLedgerId ?? null,
+                                            isFarmerSelf: buyer.isFarmerSelf === true,
                                             amount: e.target.value,
                                             maxAmount: truncatedMax
                                           };
                                         } else {
                                           newAllocations.push({ 
                                             buyerName: buyer.buyerName, 
+                                            buyerLedgerId: buyer.buyerLedgerId ?? null,
+                                            isFarmerSelf: buyer.isFarmerSelf === true,
                                             amount: e.target.value,
                                             maxAmount: truncatedMax
                                           });

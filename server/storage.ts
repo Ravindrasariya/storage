@@ -7789,8 +7789,19 @@ export class DatabaseStorage implements IStorage {
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
     const discountId = randomUUID();
     
-    // Parse buyer allocations
-    const allocations: { buyerName: string; amount: number }[] = JSON.parse(data.buyerAllocations);
+    // Parse buyer allocations.
+    // Task #313 — every NEW non-self allocation MUST carry `buyerLedgerId`
+    // (enforced by the discount route's Zod refine). The optional shape
+    // here keeps pre-#313 rows (where the column does not exist) parseable
+    // so reverseDiscount / replay paths still work; the FIFO branch below
+    // falls back to the name predicate when buyerLedgerId is missing.
+    type DiscountBuyerAllocation = {
+      buyerName: string;
+      amount: number;
+      buyerLedgerId?: string | null;
+      isFarmerSelf?: boolean;
+    };
+    const allocations: DiscountBuyerAllocation[] = JSON.parse(data.buyerAllocations);
     
     let totalSalesUpdated = 0;
     
