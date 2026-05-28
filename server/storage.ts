@@ -3027,12 +3027,21 @@ export class DatabaseStorage implements IStorage {
         if (p.receiptType === "account" && !p.accountId) {
           throw new Error("bank account is required when payment mode is account");
         }
-        const totalDue = createdSales.reduce((sum, s) => sum + (s.totalColdStorageCharge || 0), 0);
+        const totalDue = roundAmount(createdSales.reduce((sum, s) => sum + (s.totalColdStorageCharge || 0), 0));
         // Per spec: validate / allocate against `amount` only. `roundOff` is
         // metadata stamped on the LAST touched receipt and does NOT reduce sale
         // dues (it's a rounding tip captured in cash flow on the receipt row).
-        if (amountOnly > roundAmount(totalDue) + 0.5) {
-          throw new Error(`payment amount (₹${amountOnly}) exceeds total cold-storage due (₹${roundAmount(totalDue)})`);
+        // Use a tiny rounding-only epsilon (0.005) — NOT 0.5 — so any real
+        // overpayment is rejected at the route layer instead of being silently
+        // dropped during allocation below.
+        if (amountOnly > totalDue + 0.005) {
+          throw new Error(`payment amount (₹${amountOnly}) exceeds total cold-storage due (₹${totalDue})`);
+        }
+        // Defensive: a non-zero amount against a zero-due batch (every row
+        // billed ₹0) has no rows to consume it. Reject up-front instead of
+        // silently creating zero receipts.
+        if (totalDue <= 0) {
+          throw new Error(`payment amount (₹${amountOnly}) exceeds total cold-storage due (₹0)`);
         }
 
         // Top-to-bottom allocation against each sale's freshly-billed due,
@@ -3048,10 +3057,21 @@ export class DatabaseStorage implements IStorage {
             remaining = roundAmount(remaining - alloc);
           }
         }
+        // Post-allocation invariant: with the tightened pre-check above,
+        // `remaining` must drain to 0 (modulo paise rounding). Anything
+        // larger means we'd silently lose money — fail loud instead.
+        if (remaining > 0.005) {
+          throw new Error(`payment amount (₹${amountOnly}) exceeds total cold-storage due (₹${totalDue})`);
+        }
         // Round-off stamp goes on the LAST touched receipt only.
         let lastTouchedIdx = -1;
         for (let i = allocations.length - 1; i >= 0; i--) {
           if (allocations[i] > 0) { lastTouchedIdx = i; break; }
+        }
+        // Defensive: `amountOnly > 0` + `totalDue > 0` + drained-remaining
+        // should always yield at least one touched row. Guard anyway.
+        if (lastTouchedIdx === -1) {
+          throw new Error(`payment amount (₹${amountOnly}) could not be allocated to any row`);
         }
 
         for (let i = 0; i < createdSales.length; i++) {
