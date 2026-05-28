@@ -6386,7 +6386,10 @@ export class DatabaseStorage implements IStorage {
    *  - Replays every non-reversed merchant_extras receipt for the same
    *    ledger ID in `receivedAt` ASC order, exactly like the cold-charges
    *    replay does for its own receipts.
-   *  - Skips sales with `fifoExclusion = 1` (manual single-sale closures).
+   *  - Does NOT honour `fifoExclusion` on sales — that flag is a
+   *    cold-charges pool marker (set only by `_applyManualPaymentTx` against
+   *    `due_amount`) and has nothing to do with extras. Honouring it here
+   *    was the Jatisha ₹8,160 under-drain bug.
    *  - Excludes receipts with `applies_to_sale_id IS NOT NULL` (manual
    *    single-sale closures own their target sale's payment state).
    *  - Touches no opening receivables, no cold-charges sales fields, and
@@ -6400,13 +6403,18 @@ export class DatabaseStorage implements IStorage {
     // Step 1: Reset extraDueToMerchant back to its original baseline for every
     // extras-bearing sale belonging to this buyer ledger. Keyed on ledger ID
     // ONLY — the symptom's root cause was the previous name-equality query.
+    // Note: `fifo_exclusion` is a cold-CHARGES pool flag (set by
+    // `_applyManualPaymentTx` when an operator closes a single sale manually).
+    // Extras live in their own column (`extra_due_to_merchant`) and have a
+    // single payment path (Cash Inward → Merchant Extras). They never
+    // participate in cold-charges FIFO, so this drain must NOT honour that
+    // flag — doing so was the Jatisha ₹8,160 under-drain bug.
     const salesByLedger = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         eq(salesHistory.buyerLedgerId, buyerLedgerId),
         sql`(${salesHistory.extraDueToMerchantOriginal} > 0 OR ${salesHistory.extraDueToMerchant} > 0)`,
-        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
       ));
 
     let salesReset = 0;
@@ -6463,13 +6471,14 @@ export class DatabaseStorage implements IStorage {
     let remainingAmount = receipt.amount;
     let appliedAmount = 0;
 
+    // `fifo_exclusion` is a cold-charges pool flag — see comment in
+    // `recomputeBuyerExtras`. The extras drain must not honour it.
     const salesWithExtraDue = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         eq(salesHistory.buyerLedgerId, buyerLedgerId),
         sql`${salesHistory.extraDueToMerchant} > 0`,
-        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`,
       ))
       .orderBy(salesHistory.soldAt);
 

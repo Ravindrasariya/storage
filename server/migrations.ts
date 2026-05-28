@@ -1322,6 +1322,178 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // Task #317 — one-time heal for buyers whose Merchant Extras receipts
+    // under-drained because the previous `recomputeBuyerExtras` (both reset
+    // and per-receipt drain) excluded sales with `fifo_exclusion = 1`.
+    // `fifo_exclusion` is a cold-charges pool flag (set only by
+    // `_applyManualPaymentTx`); it has nothing to do with extras, which live
+    // in their own column and have a single payment path. After the code fix
+    // drops that predicate, this heal re-runs `recomputeBuyerExtras` for every
+    // affected buyer so previously-parked receipts drain to completion.
+    //
+    // Worklist: every (cold_storage_id, buyer_ledger_id) that has at least
+    // one sale with `fifo_exclusion = 1` AND non-zero extras (either current
+    // or original). Buyers outside this worklist were not subject to the bug
+    // — a recompute on them is a no-op, so we skip them for speed.
+    //
+    // Dry-run: set `HEAL_DRY_RUN=1`. Logs the planned work per buyer and
+    // THROWS to abort the transaction — neither the snapshot table nor the
+    // migrations registry record the run. Re-run with the env var unset to
+    // actually apply.
+    name: "2026-05-29_heal_extras_drain_fifo_exclusion",
+    up: async () => {
+      const dryRun = process.env.HEAL_DRY_RUN === "1";
+      const snapshotTable = "extras_drain_heal_snapshot_2026_05_29";
+
+      if (!dryRun) {
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS ${sql.identifier(snapshotTable)} (
+            row_kind TEXT NOT NULL,
+            row_id VARCHAR NOT NULL,
+            cold_storage_id VARCHAR NOT NULL,
+            buyer_ledger_id VARCHAR,
+            extra_due_to_merchant DOUBLE PRECISION,
+            extra_due_to_merchant_original DOUBLE PRECISION,
+            applied_amount DOUBLE PRECISION,
+            unapplied_amount DOUBLE PRECISION,
+            snapshot_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (row_kind, row_id)
+          )
+        `);
+      }
+
+      const worklist = (await db.execute(sql`
+        SELECT DISTINCT cold_storage_id, buyer_ledger_id
+        FROM sales_history
+        WHERE buyer_ledger_id IS NOT NULL
+          AND COALESCE(fifo_exclusion, 0) = 1
+          AND (
+            COALESCE(extra_due_to_merchant, 0) > 0
+            OR COALESCE(extra_due_to_merchant_original, 0) > 0
+          )
+        ORDER BY cold_storage_id, buyer_ledger_id
+      `)).rows as Array<{ cold_storage_id: string; buyer_ledger_id: string }>;
+
+      console.log(
+        `[migration 2026-05-29_heal_extras_drain_fifo_exclusion]` +
+          ` ${worklist.length} (cold_storage_id, buyer_ledger_id) pair(s) to ` +
+          (dryRun ? "ANALYSE (HEAL_DRY_RUN=1)" : "heal")
+      );
+
+      const failures: Array<{ csid: string; blid: string; error: string }> = [];
+
+      for (const { cold_storage_id: csid, buyer_ledger_id: blid } of worklist) {
+        if (!dryRun) {
+          try {
+            await db.transaction(async (tx) => {
+              await tx.execute(sql`
+                INSERT INTO ${sql.identifier(snapshotTable)}
+                  (row_kind, row_id, cold_storage_id, buyer_ledger_id,
+                   extra_due_to_merchant, extra_due_to_merchant_original,
+                   applied_amount, unapplied_amount)
+                SELECT 'sale',
+                       sh.id,
+                       sh.cold_storage_id,
+                       sh.buyer_ledger_id,
+                       sh.extra_due_to_merchant,
+                       sh.extra_due_to_merchant_original,
+                       NULL, NULL
+                FROM sales_history sh
+                WHERE sh.cold_storage_id = ${csid}
+                  AND sh.buyer_ledger_id = ${blid}
+                  AND (
+                    COALESCE(sh.extra_due_to_merchant, 0) > 0
+                    OR COALESCE(sh.extra_due_to_merchant_original, 0) > 0
+                  )
+                ON CONFLICT (row_kind, row_id) DO NOTHING
+              `);
+              await tx.execute(sql`
+                INSERT INTO ${sql.identifier(snapshotTable)}
+                  (row_kind, row_id, cold_storage_id, buyer_ledger_id,
+                   extra_due_to_merchant, extra_due_to_merchant_original,
+                   applied_amount, unapplied_amount)
+                SELECT 'receipt',
+                       cr.id,
+                       cr.cold_storage_id,
+                       cr.buyer_ledger_id,
+                       NULL, NULL,
+                       cr.applied_amount,
+                       cr.unapplied_amount
+                FROM cash_receipts cr
+                WHERE cr.cold_storage_id = ${csid}
+                  AND cr.buyer_ledger_id = ${blid}
+                  AND cr.payer_type = 'cold_merchant'
+                  AND cr.due_type = 'merchant_extras'
+                  AND cr.is_reversed = 0
+                  AND cr.applies_to_sale_id IS NULL
+                ON CONFLICT (row_kind, row_id) DO NOTHING
+              `);
+            });
+
+            const result = await storage.recomputeBuyerExtras(blid, csid);
+            console.log(
+              `  cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ` +
+                `salesReset=${result.salesReset} receiptsReplayed=${result.receiptsReplayed}`
+            );
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            failures.push({ csid, blid, error: msg });
+            console.error(
+              `  [FAIL] cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ${msg}`
+            );
+          }
+        } else {
+          const saleCount = (await db.execute(sql`
+            SELECT COUNT(*)::int AS n
+            FROM sales_history
+            WHERE cold_storage_id = ${csid}
+              AND buyer_ledger_id = ${blid}
+              AND COALESCE(fifo_exclusion, 0) = 1
+              AND (
+                COALESCE(extra_due_to_merchant, 0) > 0
+                OR COALESCE(extra_due_to_merchant_original, 0) > 0
+              )
+          `)).rows[0] as { n: number };
+          const receiptStats = (await db.execute(sql`
+            SELECT COUNT(*)::int AS n,
+                   COALESCE(SUM(unapplied_amount), 0)::float8 AS total_unapplied
+            FROM cash_receipts
+            WHERE cold_storage_id = ${csid}
+              AND buyer_ledger_id = ${blid}
+              AND payer_type = 'cold_merchant'
+              AND due_type = 'merchant_extras'
+              AND is_reversed = 0
+              AND applies_to_sale_id IS NULL
+          `)).rows[0] as { n: number; total_unapplied: number };
+          console.log(
+            `  [dry-run] cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ` +
+              `${saleCount.n} fifo-excluded extras sale(s), ${receiptStats.n} extras receipt(s)` +
+              ` with ₹${Number(receiptStats.total_unapplied).toFixed(2)} currently unapplied`
+          );
+        }
+      }
+
+      if (dryRun) {
+        throw new Error(
+          "HEAL_DRY_RUN=1 — Extras drain heal aborted without writing. " +
+            "Unset HEAL_DRY_RUN (or set to 0) and restart to apply for real."
+        );
+      }
+
+      if (failures.length > 0) {
+        const summary = failures
+          .map((f) => `cs=${f.csid.slice(0, 8)} ledger=${f.blid.slice(0, 8)}: ${f.error}`)
+          .join("; ");
+        throw new Error(
+          `[migration 2026-05-29_heal_extras_drain_fifo_exclusion] ` +
+            `${failures.length} buyer(s) failed; migration NOT marked applied. ` +
+            `Successful buyers were committed (heal is idempotent — safe to retry). ` +
+            `Failures: ${summary}`
+        );
+      }
+    },
+  },
 ];
 
 function migrationLog(message: string): void {
