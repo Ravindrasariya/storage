@@ -2680,7 +2680,11 @@ export async function registerRoutes(
             await storage.recomputeFarmerPayments(coldStorageId, currentSale.farmerLedgerId || null, oldDisplay);
           }
         } else if (currentSale.buyerName) {
-          await storage.recomputeBuyerPayments(currentSale.buyerName, coldStorageId);
+          // Task #313 — recompute by ledger ID. Use the ID stamped on the sale
+          // when available; otherwise ensure a ledger entry by name.
+          const blid = currentSale.buyerLedgerId
+            ?? (await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName: currentSale.buyerName })).id;
+          await storage.recomputeBuyerPayments(coldStorageId, blid);
         }
         if (updated.isSelfSale === 1) {
           if (updated.farmerName && updated.village) {
@@ -2688,7 +2692,9 @@ export async function registerRoutes(
             await storage.recomputeFarmerPayments(coldStorageId, updated.farmerLedgerId || null, newDisplay);
           }
         } else if (updated.buyerName) {
-          await storage.recomputeBuyerPayments(updated.buyerName, coldStorageId);
+          const blid = updated.buyerLedgerId
+            ?? (await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName: updated.buyerName })).id;
+          await storage.recomputeBuyerPayments(coldStorageId, blid);
         }
         // Task #312 — owner reassignment can rewrite buyer_ledger_id on this
         // sale (e.g. Self → Buyer X, or Buyer X → Buyer Y). The extras-side
@@ -2718,14 +2724,25 @@ export async function registerRoutes(
           const buyerDisplayName = `${updated.farmerName} (${updated.village})`;
           await storage.recomputeFarmerPayments(coldStorageId, updated.farmerLedgerId || null, buyerDisplayName);
         } else {
-          // Get CurrentDueBuyerName: transferToBuyerName if not blank, else buyerName
-          const currentDueBuyerName = (updated.transferToBuyerName && updated.transferToBuyerName.trim() !== '') 
-            ? updated.transferToBuyerName 
+          // Task #313 — pick the active-due ledger ID (transfer-aware) so the
+          // recompute runs on the same buyer the cold-side FIFO would target:
+          //   - if transfer was reversed → original buyer ledger
+          //   - else → transferToBuyerLedgerId when present, else buyerLedgerId
+          // Fall back to ensuring a ledger entry by the corresponding name
+          // when the active-due ledger ID column is NULL (legacy rows).
+          const transferActive = updated.transferToBuyerName && updated.transferToBuyerName.trim() !== '' && updated.isTransferReversed !== 1;
+          const activeDueLedgerId = updated.isTransferReversed === 1
+            ? updated.buyerLedgerId
+            : (updated.transferToBuyerLedgerId ?? updated.buyerLedgerId);
+          const activeDueBuyerName = transferActive
+            ? updated.transferToBuyerName
             : updated.buyerName;
-          
-          if (currentDueBuyerName) {
-            // Trigger FIFO recalculation for this buyer (signature: buyerName, coldStorageId)
-            await storage.recomputeBuyerPayments(currentDueBuyerName, coldStorageId);
+
+          if (activeDueLedgerId) {
+            await storage.recomputeBuyerPayments(coldStorageId, activeDueLedgerId);
+          } else if (activeDueBuyerName) {
+            const entry = await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName: activeDueBuyerName });
+            await storage.recomputeBuyerPayments(coldStorageId, entry.id);
           }
         }
       }
@@ -2796,8 +2813,17 @@ export async function registerRoutes(
         const buyerDisplayName = `${farmerName} (${village})`;
         await storage.recomputeFarmerPayments(result.coldStorageId, sale.farmerLedgerId || null, buyerDisplayName);
       } else if (result.buyerName && result.coldStorageId) {
-        // For regular sales, trigger buyer FIFO recomputation
-        await storage.recomputeBuyerPayments(result.buyerName, result.coldStorageId);
+        // For regular sales, trigger buyer FIFO recomputation.
+        // Task #313 — keyed on ACTIVE-DUE ledger (transferToBuyerLedgerId when
+        // the transfer is active, else buyerLedgerId). For transferred sales
+        // the cold dues belong to the transfer target; recomputing the
+        // original buyer ledger would drain the wrong queue.
+        const transferActive = !!sale.transferToBuyerName && (sale.isTransferReversed || 0) === 0;
+        const activeName = transferActive ? sale.transferToBuyerName! : result.buyerName;
+        const activeLedgerId =
+          (transferActive ? sale.transferToBuyerLedgerId : sale.buyerLedgerId)
+          ?? (await storage.ensureBuyerLedgerEntry(result.coldStorageId, { buyerName: activeName })).id;
+        await storage.recomputeBuyerPayments(result.coldStorageId, activeLedgerId);
       }
       
       // If reversed sale had adj amount, trigger farmer FIFO recomputation to restore dues
@@ -3695,11 +3721,19 @@ export async function registerRoutes(
       // Generate a CF transaction ID for this buyer-to-buyer transfer (unique per cold store)
       const transferTransactionId = await generateSequentialId('cash_flow', coldStorageId);
       
+      // Task #313 — resolve destination buyer ledger so we can stamp
+      // transfer_to_buyer_ledger_id alongside transfer_to_buyer_name. Cold-side
+      // FIFO now keys on ledger ID (with name fallback only for null-ledger rows).
+      const toBuyerLedgerEntry = await storage.ensureBuyerLedgerEntry(coldStorageId, {
+        buyerName: validatedData.toBuyerName,
+      });
+
       // Update the original sale: record transfer destination (liability transfer only, payment status unchanged)
       // Note: Transfer moves liability from one buyer to another, NOT an actual payment
       await storage.updateSalesHistoryForTransfer(validatedData.saleId, {
         clearanceType: 'transfer',
         transferToBuyerName: validatedData.toBuyerName,
+        transferToBuyerLedgerId: toBuyerLedgerEntry.id,
         transferGroupId: transferGroupId,
         transferDate: new Date(),
         transferRemarks: validatedData.remarks || null,
@@ -4311,7 +4345,11 @@ export async function registerRoutes(
     }
   });
 
-  // Create discount validation schema - now accepts farmerId
+  // Create discount validation schema - now accepts farmerId.
+  // Task #313 — allocations MAY carry buyerLedgerId so cold-side FIFO can
+  // drain by ledger ID. When omitted (existing clients only send buyerName),
+  // storage resolves the ledger via name fallback / ensureBuyerLedgerEntry,
+  // matching the "ledger primary, name fallback" design used end-to-end.
   const createDiscountSchema = z.object({
     farmerId: z.string().min(1),
     totalAmount: z.number().positive(),
@@ -4320,6 +4358,7 @@ export async function registerRoutes(
     buyerAllocations: z.array(z.object({
       buyerName: z.string().min(1),
       amount: z.number().positive(),
+      buyerLedgerId: z.string().min(1).nullable().optional(),
     })).min(1),
   });
 
@@ -4575,11 +4614,10 @@ export async function registerRoutes(
           buyerLedgerId: buyerEntry.id,
           buyerId: buyerEntry.buyerId,
         });
-        
-        // Trigger FIFO recomputation
-        // This ensures new receivables are integrated into the 3-pass FIFO allocation
-        await storage.recomputeBuyerPayments(buyerName, coldStorageId);
-        
+
+        // Task #313 — trigger FIFO recomputation keyed on the ledger ID we just resolved.
+        await storage.recomputeBuyerPayments(coldStorageId, buyerEntry.id);
+
         res.json(receivable);
         return;
       }
@@ -4626,9 +4664,12 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Receivable not found" });
       }
 
-      // Trigger downstream recalculations
+      // Trigger downstream recalculations.
+      // Task #313 — recompute keyed on ledger ID; fall back to ensuring a ledger entry by name.
       if (updated.payerType === "cold_merchant" && updated.buyerName) {
-        await storage.recomputeBuyerPayments(updated.buyerName, coldStorageId);
+        const blid = updated.buyerLedgerId
+          ?? (await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName: updated.buyerName })).id;
+        await storage.recomputeBuyerPayments(coldStorageId, blid);
       }
       if (updated.payerType === "farmer" && updated.farmerLedgerId) {
         await storage.recomputeFarmerPayments(
@@ -4654,9 +4695,12 @@ export async function registerRoutes(
       // Delete and get the receivable info for FIFO recomputation
       const deletedReceivable = await storage.deleteOpeningReceivable(id);
 
-      // Trigger FIFO recomputation if this was a cold_merchant receivable with buyer name
+      // Trigger FIFO recomputation if this was a cold_merchant receivable with buyer name.
+      // Task #313 — recompute keyed on ledger ID; fall back to ensuring a ledger entry by name.
       if (deletedReceivable && deletedReceivable.payerType === "cold_merchant" && deletedReceivable.buyerName) {
-        await storage.recomputeBuyerPayments(deletedReceivable.buyerName, coldStorageId);
+        const blid = deletedReceivable.buyerLedgerId
+          ?? (await storage.ensureBuyerLedgerEntry(coldStorageId, { buyerName: deletedReceivable.buyerName })).id;
+        await storage.recomputeBuyerPayments(coldStorageId, blid);
       }
 
       res.json({ success: true });

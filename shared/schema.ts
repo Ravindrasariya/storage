@@ -202,6 +202,11 @@ export const salesHistory = pgTable("sales_history", {
   clearanceType: text("clearance_type"), // 'cash', 'transfer' - how the payment was cleared
   transferredAmount: real("transferred_amount").default(0), // Amount transferred from previous buyers (liability, not cash)
   transferToBuyerName: text("transfer_to_buyer_name"), // When dues are transferred to another buyer
+  // Task #313 — companion ledger ID for transferToBuyerName. Stamped at every
+  // transfer write site (b2b transfer creation, owner change, transfer edit).
+  // Nullable: legacy rows + transfer targets that fail name-resolution against
+  // buyer_ledger keep NULL and fall back to the name comparison in predicates.
+  transferToBuyerLedgerId: varchar("transfer_to_buyer_ledger_id"),
   transferGroupId: text("transfer_group_id"), // Links transfer-out and transfer-in entries for audit trail
   transferDate: timestamp("transfer_date", { withTimezone: true }), // When the transfer occurred
   transferRemarks: text("transfer_remarks"), // Notes about the transfer
@@ -485,8 +490,11 @@ export const discounts = pgTable("discounts", {
   totalAmount: real("total_amount").notNull(), // Total discount amount
   discountDate: timestamp("discount_date", { withTimezone: true }).notNull(),
   remarks: text("remarks"),
-  // Buyer allocations stored as JSON array: [{buyerName, amount}]
-  buyerAllocations: text("buyer_allocations").notNull(), // JSON string of allocations
+  // Buyer allocations stored as JSON array of DiscountBuyerAllocation.
+  // Task #313 — every allocation now carries buyerLedgerId; the cold-charges
+  // drain keys on ledger ID and the legacy name-fallback only applies to
+  // sales/cash_receipts/opening_receivables rows with null buyer_ledger_id.
+  buyerAllocations: text("buyer_allocations").notNull(), // JSON string of DiscountBuyerAllocation[]
   dueBalanceAfter: real("due_balance_after"), // Remaining farmer dues after this discount
   // Farmer ledger reference
   farmerLedgerId: varchar("farmer_ledger_id"),
@@ -933,6 +941,18 @@ export type InsertOpeningPayable = z.infer<typeof insertOpeningPayableSchema>;
 export type DailyIdCounter = typeof dailyIdCounters.$inferSelect;
 export type Discount = typeof discounts.$inferSelect;
 export type InsertDiscount = z.infer<typeof insertDiscountSchema>;
+
+// Task #313 — typed shape for the JSON stored in discounts.buyerAllocations.
+// buyerLedgerId is REQUIRED on all new writes (the cold-charges drain keys on
+// ledger ID); legacy rows in the wild (if any) may omit it, so the parse
+// guards must accept the wider shape and the runtime must reject writes
+// without it. There is no production discount data at the time of Task #313,
+// so no back-fill is required.
+export type DiscountBuyerAllocation = {
+  buyerName: string;
+  buyerLedgerId: string;
+  amount: number;
+};
 export type BankAccount = typeof bankAccounts.$inferSelect;
 export type InsertBankAccount = z.infer<typeof insertBankAccountSchema>;
 export type FarmerAdvanceFreight = typeof farmerAdvanceFreight.$inferSelect;

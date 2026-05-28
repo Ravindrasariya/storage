@@ -238,6 +238,7 @@ export interface IStorage {
   getSalesYears(coldStorageId: string): Promise<number[]>;
   reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }>;
   updateSalesHistoryForTransfer(saleId: string, updates: {
+    transferToBuyerLedgerId?: string | null;
     clearanceType: string;
     transferToBuyerName: string;
     transferGroupId: string;
@@ -347,7 +348,10 @@ export interface IStorage {
   reverseCashReceipt(receiptId: string): Promise<{ success: boolean; message?: string }>;
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
   // FIFO Recomputation
-  recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
+  // Task #313 — cold-side recompute is keyed on buyer_ledger_id (canonical), not buyer_name.
+  // Pass the ledger UUID; implementation resolves the canonical buyer_name internally for
+  // the null-ledger legacy-row fallback predicate.
+  recomputeBuyerPayments(coldStorageId: string, buyerLedgerId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
   // Task #312 — Merchant Extras FIFO, keyed on buyer_ledger_id (not buyer_name).
   recomputeBuyerExtras(buyerLedgerId: string, coldStorageId: string): Promise<{ salesReset: number; receiptsReplayed: number }>;
   recomputeFarmerPayments(coldStorageId: string, farmerLedgerId: string | null, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }>;
@@ -1998,6 +2002,7 @@ export class DatabaseStorage implements IStorage {
   async updateSalesHistoryForTransfer(saleId: string, updates: {
     clearanceType: string;
     transferToBuyerName: string;
+    transferToBuyerLedgerId?: string | null;
     transferGroupId: string;
     transferDate: Date;
     transferRemarks: string | null;
@@ -2011,6 +2016,9 @@ export class DatabaseStorage implements IStorage {
     const updateData: any = {
       clearanceType: updates.clearanceType,
       transferToBuyerName: updates.transferToBuyerName,
+      // Task #313 — stamp the destination buyer's ledger UUID alongside the
+      // display name so cold-side FIFO can key on buyer_ledger_id.
+      transferToBuyerLedgerId: updates.transferToBuyerLedgerId ?? null,
       transferGroupId: updates.transferGroupId,
       transferDate: updates.transferDate,
       transferRemarks: updates.transferRemarks,
@@ -2085,6 +2093,9 @@ export class DatabaseStorage implements IStorage {
     const fromBuyer = sale.buyerName || "";
     const toBuyer = sale.transferToBuyerName;
     const coldStorageId = sale.coldStorageId;
+    // Task #313 — capture ledger IDs BEFORE reversal so we recompute by ledger.
+    const fromBuyerLedgerId = sale.buyerLedgerId;
+    const toBuyerLedgerId = sale.transferToBuyerLedgerId;
     
     // Mark transfer as reversed (keep fields for history display, just mark as reversed)
     await db.update(salesHistory)
@@ -2094,12 +2105,22 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(salesHistory.id, saleId));
     
-    // Recompute FIFO for both buyers (from original buyer and to transferred buyer)
-    if (fromBuyer && coldStorageId) {
-      await this.recomputeBuyerPayments(fromBuyer, coldStorageId);
-    }
-    if (toBuyer && coldStorageId) {
-      await this.recomputeBuyerPayments(toBuyer, coldStorageId);
+    // Recompute FIFO for both buyers (from original buyer and to transferred buyer).
+    // Task #313 — keyed on buyer_ledger_id. If either side is missing a ledger ID
+    // (legacy null-ledger row), resolve it via ensureBuyerLedgerEntry from the name.
+    if (coldStorageId) {
+      if (fromBuyerLedgerId) {
+        await this.recomputeBuyerPayments(coldStorageId, fromBuyerLedgerId);
+      } else if (fromBuyer) {
+        const entry = await this.ensureBuyerLedgerEntry(coldStorageId, { buyerName: fromBuyer });
+        await this.recomputeBuyerPayments(coldStorageId, entry.id);
+      }
+      if (toBuyerLedgerId) {
+        await this.recomputeBuyerPayments(coldStorageId, toBuyerLedgerId);
+      } else if (toBuyer) {
+        const entry = await this.ensureBuyerLedgerEntry(coldStorageId, { buyerName: toBuyer });
+        await this.recomputeBuyerPayments(coldStorageId, entry.id);
+      }
     }
 
     // Task #312 — extras are keyed on `buyerLedgerId`, so the cold-side
@@ -2337,6 +2358,9 @@ export class DatabaseStorage implements IStorage {
     // on this sale. Block sale reversal when ANY active merchant_extras receipt
     // exists for the original buyer, and ask the operator to reverse those
     // receipts first from Cash Flow History.
+    // Task #313 — key on buyer_ledger_id when present (extras always stay with
+    // the original buyer ledger; transfer never moves extras). Name fallback
+    // is retained only for legacy null-ledger sales/receipts.
     const attachedExtrasReceipts = await db.select({
         id: cashReceipts.id,
         transactionId: cashReceipts.transactionId,
@@ -2347,7 +2371,10 @@ export class DatabaseStorage implements IStorage {
         eq(cashReceipts.payerType, "cold_merchant"),
         eq(cashReceipts.dueType, "merchant_extras"),
         eq(cashReceipts.isReversed, 0),
-        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${sale.buyerName}))`,
+        sql`(
+          (${cashReceipts.buyerLedgerId} IS NOT NULL AND ${sale.buyerLedgerId ?? null}::text IS NOT NULL AND ${cashReceipts.buyerLedgerId} = ${sale.buyerLedgerId ?? null})
+          OR ((${cashReceipts.buyerLedgerId} IS NULL OR ${sale.buyerLedgerId ?? null}::text IS NULL) AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${sale.buyerName})))
+        )`,
       ));
     if (attachedExtrasReceipts.length > 0 && (sale.extraDueToMerchantOriginal || 0) > 0) {
       const txnList = attachedExtrasReceipts
@@ -4690,12 +4717,20 @@ export class DatabaseStorage implements IStorage {
       buyerDisplayName = (useTransferred ? sale.transferToBuyerName! : (sale.buyerName || "")) || "";
       buyerLedgerId = sale.buyerLedgerId || null;
       buyerId = sale.buyerId || null;
+      // Task #313 — getBuyerDueBalance is now ledger-keyed. Resolve a
+      // ledger ID from the sale if missing (legacy null-ledger sale) by
+      // ensuring an entry from the display name.
       if (buyerDisplayName) {
         try {
+          if (!buyerLedgerId) {
+            const entry = await this.ensureBuyerLedgerEntry(coldStorageId, { buyerName: buyerDisplayName });
+            buyerLedgerId = entry.id;
+            buyerId = entry.buyerId;
+          }
           // Read via global `db`; in the tx path this won't see the just-applied
           // payment to this sale (mid-tx), so the snapshot value is best-effort —
           // same semantics as other dueBalanceAfter snapshots elsewhere.
-          dueBalanceAfter = await this.getBuyerDueBalance(coldStorageId, buyerDisplayName);
+          dueBalanceAfter = await this.getBuyerDueBalance(coldStorageId, buyerLedgerId, buyerDisplayName);
         } catch {
           dueBalanceAfter = null;
         }
@@ -4838,15 +4873,21 @@ export class DatabaseStorage implements IStorage {
   // Clear applications for any receipt belonging to a buyer in a given cs.
   // Called at the start of recomputeBuyerPayments so the subsequent FIFO
   // replay can re-create the rows from scratch.
-  private async clearApplicationsForBuyer(coldStorageId: string, buyerName: string): Promise<void> {
-    // Exclude manual single-sale closure receipts — those are owned by their
-    // target sale (applies_to_sale_id) and must not be cleared/re-FIFO'd by
-    // the buyer-wide recompute path.
+  // Task #313 — keyed on buyer_ledger_id (canonical), with a name-fallback
+  // ONLY for legacy null-ledger receipts. canonicalBuyerName must be the
+  // buyer_ledger.buyer_name for blid; recompute resolves it once and passes
+  // it through. Excludes manual single-sale closure receipts — those are
+  // owned by their target sale (applies_to_sale_id) and must not be
+  // cleared/re-FIFO'd by the buyer-wide recompute path.
+  private async clearApplicationsForBuyer(coldStorageId: string, buyerLedgerId: string, canonicalBuyerName: string): Promise<void> {
     const receiptIds = await db.select({ id: cashReceipts.id })
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerName}))`,
+        sql`(
+          (${cashReceipts.buyerLedgerId} IS NOT NULL AND ${cashReceipts.buyerLedgerId} = ${buyerLedgerId})
+          OR (${cashReceipts.buyerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${canonicalBuyerName})))
+        )`,
         isNull(cashReceipts.appliesToSaleId),
       ));
     if (receiptIds.length === 0) return;
@@ -4898,6 +4939,19 @@ export class DatabaseStorage implements IStorage {
     // cash_receipt_applications rows after the receipt id is created.
     const pendingApplications: { saleId: string; amount: number }[] = [];
 
+    // Task #313 — resolve buyer ledger UPFRONT (before PASS 0) so PASS 0,
+    // PASS 1, and getBuyerDueBalance can all key on buyer_ledger_id with a
+    // name-fallback for legacy null-ledger rows. Previously this resolution
+    // lived AFTER the passes, which forced PASS 0/1 + the snapshot helper
+    // to fall back to pure name matching.
+    let buyerLedgerId: string | null = null;
+    let buyerId: string | null = null;
+    if (data.payerType === "cold_merchant" && data.buyerName) {
+      const buyerEntry = await this.ensureBuyerLedgerEntry(data.coldStorageId, { buyerName: data.buyerName.trim() });
+      buyerLedgerId = buyerEntry.id;
+      buyerId = buyerEntry.buyerId;
+    }
+
     // PASS 0: Apply to opening receivables first (FIFO by createdAt)
     // These are prior year balances that should be settled before current year charges
     if (remainingAmount > 0 && !isMerchantExtras) {
@@ -4907,7 +4961,11 @@ export class DatabaseStorage implements IStorage {
           eq(openingReceivables.coldStorageId, data.coldStorageId),
           eq(openingReceivables.year, currentYear),
           eq(openingReceivables.payerType, "cold_merchant"),
-          sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
+          // Task #313 — ledger-first predicate with legacy name fallback.
+          sql`(
+            (${openingReceivables.buyerLedgerId} IS NOT NULL AND ${openingReceivables.buyerLedgerId} = ${buyerLedgerId})
+            OR (${openingReceivables.buyerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${data.buyerName})))
+          )`,
           sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - ${openingReceivables.paidAmount}) > 0`
         ))
         .orderBy(openingReceivables.createdAt); // FIFO - oldest first
@@ -4941,13 +4999,25 @@ export class DatabaseStorage implements IStorage {
     }
 
     // PASS 1: Apply to cold storage dues (FIFO by soldAt)
-    // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
-    // BUT if transfer is reversed (isTransferReversed = 1), use original buyerName
+    // Task #313 — keyed on the "active-due" ledger ID:
+    //   - if transfer was reversed → original buyer_ledger_id
+    //   - else → transfer_to_buyer_ledger_id when present, else buyer_ledger_id
+    // Falls back to the legacy name-based CurrentDueBuyerName predicate ONLY
+    // when the active-due ledger ID column is NULL (legacy pre-Task #312 rows).
     const sales = isMerchantExtras ? [] : await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, data.coldStorageId),
-        sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${data.buyerName}))`,
+        sql`(
+          (
+            (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) IS NOT NULL
+            AND (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) = ${buyerLedgerId}
+          )
+          OR (
+            (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) IS NULL
+            AND LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${data.buyerName}))
+          )
+        )`,
         sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
         sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
       ))
@@ -5025,19 +5095,11 @@ export class DatabaseStorage implements IStorage {
     // Generate transaction ID (CF + YYYYMMDD + natural number) - unique per cold store
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
 
-    // Calculate remaining dues for this buyer after transaction (for cold_merchant type)
+    // Calculate remaining dues for this buyer after transaction (for cold_merchant type).
+    // Task #313 — buyerLedgerId was already resolved above (before PASS 0); pass it through.
     let dueBalanceAfter: number | null = null;
-    if (data.payerType === "cold_merchant" && data.buyerName) {
-      dueBalanceAfter = await this.getBuyerDueBalance(data.coldStorageId, data.buyerName);
-    }
-    
-    // Get buyer ledger IDs for cold_merchant payer type
-    let buyerLedgerId: string | null = null;
-    let buyerId: string | null = null;
-    if (data.payerType === "cold_merchant" && data.buyerName) {
-      const buyerEntry = await this.ensureBuyerLedgerEntry(data.coldStorageId, { buyerName: data.buyerName.trim() });
-      buyerLedgerId = buyerEntry.id;
-      buyerId = buyerEntry.buyerId;
+    if (data.payerType === "cold_merchant" && data.buyerName && buyerLedgerId) {
+      dueBalanceAfter = await this.getBuyerDueBalance(data.coldStorageId, buyerLedgerId, data.buyerName);
     }
 
     // Create the receipt record
@@ -5091,9 +5153,9 @@ export class DatabaseStorage implements IStorage {
       // (post-replay) and patch the stored snapshot so audits / receipt
       // PDFs see the correct figure.
       let postReplayDueBalance: number | null = null;
-      if (data.payerType === "cold_merchant" && data.buyerName) {
+      if (data.payerType === "cold_merchant" && data.buyerName && buyerLedgerId) {
         try {
-          postReplayDueBalance = await this.getBuyerDueBalance(data.coldStorageId, data.buyerName);
+          postReplayDueBalance = await this.getBuyerDueBalance(data.coldStorageId, buyerLedgerId, data.buyerName);
         } catch {
           postReplayDueBalance = null;
         }
@@ -5112,16 +5174,18 @@ export class DatabaseStorage implements IStorage {
     return { receipt: returnedReceipt, salesUpdated };
   }
 
-  // Helper function to get total remaining dues for a specific buyer
-  private async getBuyerDueBalance(coldStorageId: string, buyerName: string): Promise<number> {
-    const normalizedBuyer = buyerName.trim().toLowerCase();
+  // Helper function to get total remaining dues for a specific buyer.
+  // Task #313 — keyed on buyer_ledger_id (canonical) with a legacy name
+  // fallback for null-ledger rows. canonicalBuyerName must be the
+  // buyer_ledger.buyer_name corresponding to buyerLedgerId.
+  private async getBuyerDueBalance(coldStorageId: string, buyerLedgerId: string, canonicalBuyerName: string): Promise<number> {
+    const normalizedBuyer = canonicalBuyerName.trim().toLowerCase();
     let totalDue = 0;
     const currentYear = new Date().getFullYear();
 
-    // 1. Get cold storage dues from salesHistory (using CurrentDueBuyerName logic)
-    // BUT if transfer is reversed (is_transfer_reversed = 1), use original buyer_name
+    // 1. Get cold storage dues from salesHistory (active-due ledger ID with legacy name fallback).
     const salesResult = await db.execute(sql`
-      SELECT 
+      SELECT
         COALESCE(cold_storage_charge, 0) as cold_storage_charge,
         COALESCE(paid_amount, 0) as paid_amount,
         COALESCE(extra_due_to_merchant, 0) as extra_due_to_merchant,
@@ -5130,9 +5194,18 @@ export class DatabaseStorage implements IStorage {
       FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
       AND payment_status IN ('due', 'partial')
-      AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = ${normalizedBuyer}
+      AND (
+        (
+          (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) IS NOT NULL
+          AND (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) = ${buyerLedgerId}
+        )
+        OR (
+          (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) IS NULL
+          AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = ${normalizedBuyer}
+        )
+      )
     `);
-    
+
     for (const row of salesResult.rows as any[]) {
       const charges = row.cold_storage_charge || 0;
       const paid = row.paid_amount || 0;
@@ -5142,27 +5215,35 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // 2. Get extraDueToMerchant from salesHistory (by ORIGINAL buyerName only)
+    // 2. Get extraDueToMerchant from salesHistory. Extras stay with the
+    // ORIGINAL buyer ledger (transfer never moves extras), so key on
+    // buyer_ledger_id directly with name fallback for null-ledger rows.
     const extraDueResult = await db.execute(sql`
       SELECT COALESCE(extra_due_to_merchant, 0) as extra_due_to_merchant
       FROM sales_history
       WHERE cold_storage_id = ${coldStorageId}
       AND extra_due_to_merchant > 0
-      AND LOWER(TRIM(buyer_name)) = ${normalizedBuyer}
+      AND (
+        (buyer_ledger_id IS NOT NULL AND buyer_ledger_id = ${buyerLedgerId})
+        OR (buyer_ledger_id IS NULL AND LOWER(TRIM(buyer_name)) = ${normalizedBuyer})
+      )
     `);
-    
+
     for (const row of extraDueResult.rows as any[]) {
       totalDue += row.extra_due_to_merchant || 0;
     }
 
-    // 3. Get opening receivables for this buyer (current year, cold_merchant type)
+    // 3. Get opening receivables for this buyer (current year, cold_merchant type).
     const receivables = await db.select()
       .from(openingReceivables)
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
         eq(openingReceivables.year, currentYear),
         eq(openingReceivables.payerType, "cold_merchant"),
-        sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${normalizedBuyer}`
+        sql`(
+          (${openingReceivables.buyerLedgerId} IS NOT NULL AND ${openingReceivables.buyerLedgerId} = ${buyerLedgerId})
+          OR (${openingReceivables.buyerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.buyerName})) = ${normalizedBuyer})
+        )`
       ));
 
     for (const receivable of receivables) {
@@ -5491,9 +5572,16 @@ export class DatabaseStorage implements IStorage {
         await this.recomputeFarmerPayments(receipt.coldStorageId, receipt.farmerLedgerId || null, receipt.buyerName);
       }
     } else if (receipt.buyerName && receipt.coldStorageId) {
-      // Use unified recomputeBuyerPayments to properly handle both receipts AND discounts
-      // This replaces the old custom FIFO replay that only considered receipts
-      await this.recomputeBuyerPayments(receipt.buyerName, receipt.coldStorageId);
+      // Use unified recomputeBuyerPayments to properly handle both receipts AND discounts.
+      // Task #313 — keyed on buyerLedgerId. Use the ID stamped on the receipt
+      // when present; fall back to ensuring a ledger entry from the receipt's
+      // buyer_name (legacy pre-#313 receipts).
+      let blid = receipt.buyerLedgerId ?? null;
+      if (!blid) {
+        const entry = await this.ensureBuyerLedgerEntry(receipt.coldStorageId, { buyerName: receipt.buyerName });
+        blid = entry.id;
+      }
+      await this.recomputeBuyerPayments(receipt.coldStorageId, blid);
     }
 
     // Task #312 — merchant_extras receipts are owned by `recomputeBuyerExtras`
@@ -5911,20 +5999,44 @@ export class DatabaseStorage implements IStorage {
     return { success: true, message: "Expense reversed" };
   }
 
-  async recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }> {
+  async recomputeBuyerPayments(coldStorageId: string, buyerLedgerId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }> {
+    // Task #313 — cold-side recompute is keyed on buyer_ledger_id (canonical).
+    // Resolve canonical buyer_name ONCE here so every downstream helper (clear,
+    // reset, replay) shares the same legacy name-fallback string. If the
+    // ledger row is gone (archived/deleted), short-circuit — nothing to recompute.
+    if (!buyerLedgerId || !coldStorageId) {
+      return { salesUpdated: 0, receiptsUpdated: 0 };
+    }
+    const [ledgerRow] = await db.select({ buyerName: buyerLedger.buyerName })
+      .from(buyerLedger)
+      .where(eq(buyerLedger.id, buyerLedgerId))
+      .limit(1);
+    if (!ledgerRow) {
+      return { salesUpdated: 0, receiptsUpdated: 0 };
+    }
+    const buyerName = ledgerRow.buyerName;
+
     // Wipe stale application rows for this buyer's receipts; the FIFO replay
     // below will repopulate them with the correct (receipt → sale) mappings.
-    await this.clearApplicationsForBuyer(coldStorageId, buyerName);
+    await this.clearApplicationsForBuyer(coldStorageId, buyerLedgerId, buyerName);
 
-    // Step 1: Reset all sales for this buyer to "due" status with 0 paidAmount
-    // Calculate proper dueAmount using all surcharges
-    // Use CurrentDueBuyerName logic: match transferToBuyerName first, else buyerName
-    // BUT if transfer is reversed (isTransferReversed = 1), use original buyerName
+    // Step 1: Reset all sales for this buyer to "due" status with 0 paidAmount.
+    // Task #313 — keyed on the active-due ledger ID (transfer-aware) with a
+    // legacy name fallback for null-ledger rows.
     const buyerSales = await db.select()
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))`,
+        sql`(
+          (
+            (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) IS NOT NULL
+            AND (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) = ${buyerLedgerId}
+          )
+          OR (
+            (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) IS NULL
+            AND LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))
+          )
+        )`,
         sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
       ))
       .orderBy(salesHistory.soldAt);
@@ -5956,15 +6068,19 @@ export class DatabaseStorage implements IStorage {
     // independent recompute paths eliminates the name-vs-ledger asymmetry
     // behind the Jatisha under-drain symptom.
 
-    // Reset opening receivables paidAmount to 0 for this buyer (current year, cold_merchant type)
-    // Also restore previousEffectiveDate/previousLatestPrincipal if saved
+    // Reset opening receivables paidAmount to 0 for this buyer (current year, cold_merchant type).
+    // Task #313 — ledger-first predicate with legacy name fallback.
+    // Also restore previousEffectiveDate/previousLatestPrincipal if saved.
     const currentYear = new Date().getFullYear();
     const receivables = await db.select().from(openingReceivables)
       .where(and(
         eq(openingReceivables.coldStorageId, coldStorageId),
         eq(openingReceivables.year, currentYear),
         eq(openingReceivables.payerType, "cold_merchant"),
-        sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName}))`
+        sql`(
+          (${openingReceivables.buyerLedgerId} IS NOT NULL AND ${openingReceivables.buyerLedgerId} = ${buyerLedgerId})
+          OR (${openingReceivables.buyerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName})))
+        )`
       ));
     for (const recv of receivables) {
       const resetFields: Record<string, unknown> = { paidAmount: 0, previousEffectiveDate: null, previousLatestPrincipal: null };
@@ -5999,11 +6115,15 @@ export class DatabaseStorage implements IStorage {
     // Task #312 — only the cold-charges receipts replay through this path.
     // merchant_extras receipts are handled exclusively by
     // `recomputeBuyerExtras` (called from extras-affecting events).
+    // Task #313 — ledger-first predicate with legacy name fallback.
     const activeReceipts = await db.select()
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerName}))`,
+        sql`(
+          (${cashReceipts.buyerLedgerId} IS NOT NULL AND ${cashReceipts.buyerLedgerId} = ${buyerLedgerId})
+          OR (${cashReceipts.buyerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerName})))
+        )`,
         eq(cashReceipts.payerType, "cold_merchant"),
         eq(cashReceipts.isReversed, 0),
         isNull(cashReceipts.appliesToSaleId),
@@ -6024,12 +6144,19 @@ export class DatabaseStorage implements IStorage {
         eq(discounts.isReversed, 0)
       ));
     
-    // Filter discounts to only those with allocations matching this buyer
-    const relevantDiscounts: { discount: typeof activeDiscounts[0]; allocation: { buyerName: string; amount: number } }[] = [];
+    // Filter discounts to only those with allocations matching this buyer.
+    // Task #313 — match by buyerLedgerId when present on the allocation
+    // (every new discount tightens the JSON shape to require it), with a
+    // legacy name-equality fallback for any pre-#313 allocation that lacks
+    // the field.
+    const relevantDiscounts: { discount: typeof activeDiscounts[0]; allocation: { buyerName: string; amount: number; buyerLedgerId?: string | null } }[] = [];
+    const normalizedBuyer = buyerName.trim().toLowerCase();
     for (const discount of activeDiscounts) {
-      const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
+      const allocations: { buyerName: string; amount: number; buyerLedgerId?: string | null }[] = JSON.parse(discount.buyerAllocations);
       for (const allocation of allocations) {
-        if (allocation.buyerName.trim().toLowerCase() === buyerName.trim().toLowerCase()) {
+        const matchesByLedger = allocation.buyerLedgerId != null && allocation.buyerLedgerId === buyerLedgerId;
+        const matchesByName = allocation.buyerLedgerId == null && allocation.buyerName.trim().toLowerCase() === normalizedBuyer;
+        if (matchesByLedger || matchesByName) {
           relevantDiscounts.push({ discount, allocation });
         }
       }
@@ -6065,7 +6192,8 @@ export class DatabaseStorage implements IStorage {
     for (const txn of transactions) {
       if (txn.type === 'receipt') {
         const receipt = txn.data;
-        await this.applyReceiptFIFO(receipt, coldStorageId, buyerName, currentYear);
+        // Task #313 — applyReceiptFIFO is keyed on (buyerLedgerId, canonical buyerName).
+        await this.applyReceiptFIFO(receipt, coldStorageId, buyerLedgerId, buyerName, currentYear);
         receiptsUpdated++;
         salesUpdated++;
       } else {
@@ -6086,10 +6214,14 @@ export class DatabaseStorage implements IStorage {
     return { salesUpdated, receiptsUpdated };
   }
 
-  // Helper: Apply a single receipt using FIFO logic
+  // Helper: Apply a single receipt using FIFO logic.
+  // Task #313 — keyed on (buyerLedgerId, canonical buyerName). Both passes
+  // use the same ledger-first predicate with a name fallback for legacy
+  // null-ledger rows.
   private async applyReceiptFIFO(
     receipt: CashReceipt,
     coldStorageId: string,
+    buyerLedgerId: string,
     buyerName: string,
     currentYear: number
   ): Promise<void> {
@@ -6101,7 +6233,8 @@ export class DatabaseStorage implements IStorage {
     // (PASS 0 + PASS 1). No cross-spill between the two due types.
     const isMerchantExtras = receipt.dueType === "merchant_extras";
 
-    // PASS 0: Apply to opening receivables first (FIFO by createdAt)
+    // PASS 0: Apply to opening receivables first (FIFO by createdAt).
+    // Task #313 — ledger-first predicate with legacy name fallback.
     if (remainingAmount > 0 && !isMerchantExtras) {
       const buyerReceivables = await db.select()
         .from(openingReceivables)
@@ -6109,7 +6242,10 @@ export class DatabaseStorage implements IStorage {
           eq(openingReceivables.coldStorageId, coldStorageId),
           eq(openingReceivables.year, currentYear),
           eq(openingReceivables.payerType, "cold_merchant"),
-          sql`LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName}))`,
+          sql`(
+            (${openingReceivables.buyerLedgerId} IS NOT NULL AND ${openingReceivables.buyerLedgerId} = ${buyerLedgerId})
+            OR (${openingReceivables.buyerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName})))
+          )`,
           sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - ${openingReceivables.paidAmount}) > 0`
         ))
         .orderBy(openingReceivables.createdAt);
@@ -6142,14 +6278,24 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // PASS 1: Apply to cold storage dues (FIFO by soldAt)
-    // Use CurrentDueBuyerName logic: BUT if transfer is reversed (isTransferReversed = 1), use original buyerName
+    // PASS 1: Apply to cold storage dues (FIFO by soldAt).
+    // Task #313 — keyed on the active-due ledger ID (transfer-aware) with a
+    // legacy name fallback for null-ledger rows.
     if (remainingAmount > 0 && !isMerchantExtras) {
       const sales = await db.select()
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, coldStorageId),
-          sql`LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))`,
+          sql`(
+            (
+              (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) IS NOT NULL
+              AND (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) = ${buyerLedgerId}
+            )
+            OR (
+              (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) IS NULL
+              AND LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))
+            )
+          )`,
           sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
           sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
         ))
@@ -6356,16 +6502,20 @@ export class DatabaseStorage implements IStorage {
       .where(eq(cashReceipts.id, receipt.id));
   }
 
-  // Helper: Apply a single discount allocation
+  // Helper: Apply a single discount allocation.
+  // Task #313 — when allocation.buyerLedgerId is present (every #313+ discount
+  // tightens the JSON shape to require it), match the active-due ledger ID on
+  // sales_history first; fall back to the legacy name-equality predicate ONLY
+  // when the active-due ledger column is NULL (legacy pre-#313 sales) or
+  // when the allocation itself lacks a ledger ID (legacy pre-#313 discount).
   private async applyDiscountAllocation(
     discount: Discount,
-    allocation: { buyerName: string; amount: number },
+    allocation: { buyerName: string; amount: number; buyerLedgerId?: string | null },
     coldStorageId: string
   ): Promise<void> {
     let remainingAmount = allocation.amount;
-    
-    // Get sales for this farmer from this buyer, ordered by oldest first (FIFO)
-    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
+    const allocBuyerLedgerId = allocation.buyerLedgerId ?? null;
+
     const salesResult = await db.execute(sql`
       SELECT id, due_amount
       FROM sales_history
@@ -6373,7 +6523,17 @@ export class DatabaseStorage implements IStorage {
         AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${discount.farmerName}))
         AND LOWER(TRIM(village)) = LOWER(TRIM(${discount.village}))
         AND TRIM(contact_number) = TRIM(${discount.contactNumber})
-        AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${allocation.buyerName}))
+        AND (
+          (
+            ${allocBuyerLedgerId}::text IS NOT NULL
+            AND (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) IS NOT NULL
+            AND (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) = ${allocBuyerLedgerId}
+          )
+          OR (
+            (${allocBuyerLedgerId}::text IS NULL OR (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) IS NULL)
+            AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${allocation.buyerName}))
+          )
+        )
         AND due_amount > 0
         AND COALESCE(fifo_exclusion, 0) = 0
       ORDER BY sold_at ASC
@@ -7771,8 +7931,12 @@ export class DatabaseStorage implements IStorage {
           }
         }
       } else {
-        // Regular buyer allocation: apply to sales from this buyer
-        // Use CurrentDueBuyerName logic: BUT if transfer is reversed (is_transfer_reversed = 1), use original buyer_name
+        // Regular buyer allocation: apply to sales from this buyer.
+        // Task #313 — ledger-first predicate on the active-due ledger ID with
+        // a legacy name fallback. Every new discount tightens the JSON shape
+        // to require allocation.buyerLedgerId; pre-#313 allocations without
+        // it fall through to the name branch automatically.
+        const allocBuyerLedgerId = (allocation as { buyerLedgerId?: string | null }).buyerLedgerId ?? null;
         const salesResult = await db.execute(sql`
           SELECT id, due_amount
           FROM sales_history
@@ -7780,7 +7944,17 @@ export class DatabaseStorage implements IStorage {
             AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${data.farmerName}))
             AND LOWER(TRIM(village)) = LOWER(TRIM(${data.village}))
             AND TRIM(contact_number) = TRIM(${data.contactNumber})
-            AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${buyerName}))
+            AND (
+              (
+                ${allocBuyerLedgerId}::text IS NOT NULL
+                AND (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) IS NOT NULL
+                AND (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) = ${allocBuyerLedgerId}
+              )
+              OR (
+                (${allocBuyerLedgerId}::text IS NULL OR (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) IS NULL)
+                AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${buyerName}))
+              )
+            )
             AND due_amount > 0
             AND COALESCE(fifo_exclusion, 0) = 0
           ORDER BY sold_at ASC
@@ -7911,28 +8085,30 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(discounts.id, discountId));
     
-    // Parse buyer allocations to get list of affected buyers
-    const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
-    
-    // Collect unique buyer names (normalized for case-insensitivity)
-    const affectedBuyers = new Set<string>();
-    // Also track farmers with self-sale allocations for separate recomputation
+    // Parse buyer allocations to get list of affected buyers.
+    // Task #313 — every new discount tightens the JSON shape to require
+    // buyerLedgerId; pre-#313 allocations without it fall back to
+    // ensureBuyerLedgerEntry on the display name.
+    const allocations: { buyerName: string; amount: number; buyerLedgerId?: string | null }[] = JSON.parse(discount.buyerAllocations);
+
+    // Collect unique affected buyer LEDGER IDs (deduped). Self-sale
+    // allocations are routed to recomputeFarmerPaymentsWithDiscounts below
+    // and so are excluded from this set.
+    const affectedBuyerLedgerIds = new Set<string>();
+    // Also track farmers with self-sale allocations for separate recomputation.
     const affectedFarmers: { name: string; phone: string; village: string }[] = [];
-    
+
     for (const allocation of allocations) {
       const buyerName = allocation.buyerName.trim();
-      affectedBuyers.add(buyerName);
-      
+
       // Check if this is a self-sale pattern: "FarmerName - Phone - Village"
-      // Self-sale pattern has exactly 2 " - " separators, phone can be any digits
+      // (exactly 2 " - " separators, phone is any digits).
       const selfSaleMatch = buyerName.match(/^(.+?)\s*-\s*(\d+)\s*-\s*(.+)$/);
       if (selfSaleMatch) {
-        // Normalize internal whitespace (multiple spaces to single space)
         const farmerName = selfSaleMatch[1].trim().replace(/\s+/g, ' ');
         const phone = selfSaleMatch[2].trim();
         const village = selfSaleMatch[3].trim().replace(/\s+/g, ' ');
-        // Check if we already have this farmer in the list
-        const exists = affectedFarmers.some(f => 
+        const exists = affectedFarmers.some(f =>
           f.name.toLowerCase() === farmerName.toLowerCase() &&
           f.phone === phone &&
           f.village.toLowerCase() === village.toLowerCase()
@@ -7940,13 +8116,25 @@ export class DatabaseStorage implements IStorage {
         if (!exists) {
           affectedFarmers.push({ name: farmerName, phone, village });
         }
+        continue;
       }
+
+      // Regular buyer allocation — collect a ledger ID. Prefer the one
+      // stamped on the allocation; fall back to ensuring a ledger entry
+      // from the display name (legacy pre-#313 discounts).
+      let blid = allocation.buyerLedgerId ?? null;
+      if (!blid) {
+        const entry = await this.ensureBuyerLedgerEntry(discount.coldStorageId, { buyerName });
+        blid = entry.id;
+      }
+      affectedBuyerLedgerIds.add(blid);
     }
-    
-    // Trigger FIFO recomputation for each affected buyer
-    // This properly replays both receipts AND remaining discounts in chronological order
-    for (const buyerName of Array.from(affectedBuyers)) {
-      await this.recomputeBuyerPayments(buyerName, discount.coldStorageId);
+
+    // Trigger FIFO recomputation for each affected buyer ledger.
+    // This properly replays both receipts AND remaining discounts in
+    // chronological order, keyed on buyer_ledger_id (Task #313).
+    for (const blid of Array.from(affectedBuyerLedgerIds)) {
+      await this.recomputeBuyerPayments(discount.coldStorageId, blid);
     }
     
     // For self-sale allocations, also recompute farmer dues (receivables + self-sales with discounts)

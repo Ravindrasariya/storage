@@ -1006,6 +1006,278 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // Task #313 — Cold-charges drain by buyer_ledger_id.
+    //
+    // Companion heal to the 2026-05-28 merchant_extras heal. Where the prior
+    // pass moved the EXTRAS-side FIFO from buyer_name matching onto
+    // buyer_ledger_id, this pass does the same for the COLD-CHARGES side:
+    // opening_receivables → sales_history (cold_storage_charge) → cash_receipts
+    // (cold_charges + null due_type) → discounts (buyerAllocations JSON).
+    //
+    // Before the recompute can drain by ledger, two prep steps:
+    //   (a) Backfill `sales_history.transfer_to_buyer_ledger_id` from
+    //       `buyer_ledger` by looking up the row whose name matches
+    //       `transfer_to_buyer_name` within the same cold_storage_id.
+    //       Only rows with non-empty transfer_to_buyer_name AND null
+    //       transfer_to_buyer_ledger_id are touched.
+    //   (b) Per-buyer-ledger recompute via `recomputeBuyerPayments(csid, blid)`.
+    //       The new ledger-first predicate (with legacy name fallback for
+    //       null-ledger rows) is identical across reset, replay, and
+    //       discount-allocation matching.
+    //
+    // Worklist is every (cold_storage_id, buyer_ledger_id) that has at
+    // least one non-reversed cold_charges receipt, one cold_merchant
+    // opening receivable, or one sale whose ORIGINAL or TRANSFER-TO ledger
+    // ID is the buyer. Null-ledger legacy rows are NOT in the worklist —
+    // they will be picked up next time a user-driven recompute fires for a
+    // matching ledger (via the name-fallback branch).
+    //
+    // Dry-run: set `HEAL_DRY_RUN=1` in the environment. The migration logs
+    // the planned changes per (cold_storage_id, buyer_ledger_id) and then
+    // THROWS to abort the transaction — neither the snapshot table nor the
+    // migrations registry record the run. Re-run with the env var unset
+    // (or set to 0) to actually apply.
+    name: "2026-05-29_heal_cold_charges_drain_by_ledger_id",
+    up: async () => {
+      const dryRun = process.env.HEAL_DRY_RUN === "1";
+
+      const snapshotTable = "cold_charges_heal_snapshot_2026_05_29";
+
+      if (!dryRun) {
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS ${sql.identifier(snapshotTable)} (
+            row_kind TEXT NOT NULL,
+            row_id VARCHAR NOT NULL,
+            cold_storage_id VARCHAR NOT NULL,
+            buyer_ledger_id VARCHAR,
+            transfer_to_buyer_ledger_id VARCHAR,
+            cold_storage_charge DOUBLE PRECISION,
+            paid_amount DOUBLE PRECISION,
+            payment_status TEXT,
+            opening_receivable_paid DOUBLE PRECISION,
+            applied_amount DOUBLE PRECISION,
+            unapplied_amount DOUBLE PRECISION,
+            snapshot_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (row_kind, row_id)
+          )
+        `);
+      }
+
+      // (a) Backfill `transfer_to_buyer_ledger_id` from buyer_ledger by name.
+      //     Scoped per cold_storage_id and only on rows where the column is
+      //     currently NULL but the name column is non-empty. Skipped under
+      //     dry-run (strictly read-only).
+      let backfilled = 0;
+      if (!dryRun) {
+        const backfillResult = await db.execute(sql`
+          UPDATE sales_history sh
+          SET transfer_to_buyer_ledger_id = bl.id
+          FROM buyer_ledger bl
+          WHERE sh.cold_storage_id = bl.cold_storage_id
+            AND sh.transfer_to_buyer_ledger_id IS NULL
+            AND sh.transfer_to_buyer_name IS NOT NULL
+            AND TRIM(sh.transfer_to_buyer_name) <> ''
+            AND LOWER(TRIM(sh.transfer_to_buyer_name)) = LOWER(TRIM(bl.buyer_name))
+        `);
+        backfilled = (backfillResult as { rowCount?: number }).rowCount ?? 0;
+        console.log(
+          `[migration 2026-05-29_heal_cold_charges_drain_by_ledger_id]` +
+            ` backfilled transfer_to_buyer_ledger_id on ${backfilled} sale(s)`
+        );
+      } else {
+        const planned = (await db.execute(sql`
+          SELECT COUNT(*)::int AS n
+          FROM sales_history sh
+          JOIN buyer_ledger bl
+            ON bl.cold_storage_id = sh.cold_storage_id
+           AND LOWER(TRIM(sh.transfer_to_buyer_name)) = LOWER(TRIM(bl.buyer_name))
+          WHERE sh.transfer_to_buyer_ledger_id IS NULL
+            AND sh.transfer_to_buyer_name IS NOT NULL
+            AND TRIM(sh.transfer_to_buyer_name) <> ''
+        `)).rows[0] as { n: number };
+        console.log(
+          `[migration 2026-05-29_heal_cold_charges_drain_by_ledger_id]` +
+            ` [dry-run] would backfill transfer_to_buyer_ledger_id on ${planned.n} sale(s)`
+        );
+      }
+
+      // (b) Build the worklist: every (cold_storage_id, buyer_ledger_id)
+      //     that touches the cold-charges side.
+      const worklist = (await db.execute(sql`
+        SELECT DISTINCT cold_storage_id, buyer_ledger_id
+        FROM (
+          SELECT cold_storage_id, buyer_ledger_id
+          FROM cash_receipts
+          WHERE payer_type = 'cold_merchant'
+            AND COALESCE(due_type, 'cold_charges') = 'cold_charges'
+            AND is_reversed = 0
+            AND applies_to_sale_id IS NULL
+            AND buyer_ledger_id IS NOT NULL
+          UNION ALL
+          SELECT cold_storage_id, buyer_ledger_id
+          FROM opening_receivables
+          WHERE payer_type = 'cold_merchant'
+            AND buyer_ledger_id IS NOT NULL
+          UNION ALL
+          SELECT cold_storage_id, buyer_ledger_id
+          FROM sales_history
+          WHERE buyer_ledger_id IS NOT NULL
+          UNION ALL
+          SELECT cold_storage_id, transfer_to_buyer_ledger_id AS buyer_ledger_id
+          FROM sales_history
+          WHERE transfer_to_buyer_ledger_id IS NOT NULL
+        ) u
+        WHERE buyer_ledger_id IS NOT NULL
+        ORDER BY cold_storage_id, buyer_ledger_id
+      `)).rows as Array<{ cold_storage_id: string; buyer_ledger_id: string }>;
+
+      console.log(
+        `[migration 2026-05-29_heal_cold_charges_drain_by_ledger_id]` +
+          ` ${worklist.length} (cold_storage_id, buyer_ledger_id) pair(s) to ` +
+          (dryRun ? "ANALYSE (HEAL_DRY_RUN=1)" : "heal")
+      );
+
+      const failures: Array<{ csid: string; blid: string; error: string }> = [];
+
+      for (const { cold_storage_id: csid, buyer_ledger_id: blid } of worklist) {
+        if (!dryRun) {
+          try {
+            // Per-buyer tx for the snapshot; `recomputeBuyerPayments` uses
+            // module-level `db` (autocommit-safe because the helper is
+            // itself idempotent — clears applications, resets, replays
+            // from scratch; a retry converges).
+            await db.transaction(async (tx) => {
+              await tx.execute(sql`
+                INSERT INTO ${sql.identifier(snapshotTable)}
+                  (row_kind, row_id, cold_storage_id, buyer_ledger_id,
+                   transfer_to_buyer_ledger_id, cold_storage_charge,
+                   paid_amount, payment_status,
+                   opening_receivable_paid, applied_amount, unapplied_amount)
+                SELECT 'sale',
+                       sh.id,
+                       sh.cold_storage_id,
+                       sh.buyer_ledger_id,
+                       sh.transfer_to_buyer_ledger_id,
+                       sh.cold_storage_charge,
+                       sh.paid_amount,
+                       sh.payment_status,
+                       NULL, NULL, NULL
+                FROM sales_history sh
+                WHERE sh.cold_storage_id = ${csid}
+                  AND (
+                    sh.buyer_ledger_id = ${blid}
+                    OR sh.transfer_to_buyer_ledger_id = ${blid}
+                  )
+                ON CONFLICT (row_kind, row_id) DO NOTHING
+              `);
+              await tx.execute(sql`
+                INSERT INTO ${sql.identifier(snapshotTable)}
+                  (row_kind, row_id, cold_storage_id, buyer_ledger_id,
+                   transfer_to_buyer_ledger_id, cold_storage_charge,
+                   paid_amount, payment_status,
+                   opening_receivable_paid, applied_amount, unapplied_amount)
+                SELECT 'receipt',
+                       cr.id,
+                       cr.cold_storage_id,
+                       cr.buyer_ledger_id,
+                       NULL, NULL, NULL, NULL, NULL,
+                       cr.applied_amount,
+                       cr.unapplied_amount
+                FROM cash_receipts cr
+                WHERE cr.cold_storage_id = ${csid}
+                  AND cr.buyer_ledger_id = ${blid}
+                  AND cr.payer_type = 'cold_merchant'
+                  AND COALESCE(cr.due_type, 'cold_charges') = 'cold_charges'
+                  AND cr.is_reversed = 0
+                  AND cr.applies_to_sale_id IS NULL
+                ON CONFLICT (row_kind, row_id) DO NOTHING
+              `);
+              await tx.execute(sql`
+                INSERT INTO ${sql.identifier(snapshotTable)}
+                  (row_kind, row_id, cold_storage_id, buyer_ledger_id,
+                   transfer_to_buyer_ledger_id, cold_storage_charge,
+                   paid_amount, payment_status,
+                   opening_receivable_paid, applied_amount, unapplied_amount)
+                SELECT 'opening_receivable',
+                       o.id,
+                       o.cold_storage_id,
+                       o.buyer_ledger_id,
+                       NULL, NULL, NULL, NULL,
+                       o.paid_amount,
+                       NULL, NULL
+                FROM opening_receivables o
+                WHERE o.cold_storage_id = ${csid}
+                  AND o.buyer_ledger_id = ${blid}
+                  AND o.payer_type = 'cold_merchant'
+                ON CONFLICT (row_kind, row_id) DO NOTHING
+              `);
+            });
+
+            const result = await storage.recomputeBuyerPayments(csid, blid);
+            console.log(
+              `  cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ` +
+                `salesUpdated=${result.salesUpdated} receiptsUpdated=${result.receiptsUpdated}`
+            );
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            failures.push({ csid, blid, error: msg });
+            console.error(
+              `  [FAIL] cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ${msg}`
+            );
+            // Continue to next buyer.
+          }
+        } else {
+          const saleCount = (await db.execute(sql`
+            SELECT COUNT(*)::int AS n
+            FROM sales_history
+            WHERE cold_storage_id = ${csid}
+              AND (buyer_ledger_id = ${blid} OR transfer_to_buyer_ledger_id = ${blid})
+          `)).rows[0] as { n: number };
+          const receiptCount = (await db.execute(sql`
+            SELECT COUNT(*)::int AS n
+            FROM cash_receipts
+            WHERE cold_storage_id = ${csid}
+              AND buyer_ledger_id = ${blid}
+              AND payer_type = 'cold_merchant'
+              AND COALESCE(due_type, 'cold_charges') = 'cold_charges'
+              AND is_reversed = 0
+              AND applies_to_sale_id IS NULL
+          `)).rows[0] as { n: number };
+          const receivableCount = (await db.execute(sql`
+            SELECT COUNT(*)::int AS n
+            FROM opening_receivables
+            WHERE cold_storage_id = ${csid}
+              AND buyer_ledger_id = ${blid}
+              AND payer_type = 'cold_merchant'
+          `)).rows[0] as { n: number };
+          console.log(
+            `  [dry-run] cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ` +
+              `${saleCount.n} sale(s) (original+transfer), ${receiptCount.n} cold-charges receipt(s), ${receivableCount.n} opening receivable(s)`
+          );
+        }
+      }
+
+      if (dryRun) {
+        throw new Error(
+          "HEAL_DRY_RUN=1 — Cold-charges heal aborted without writing. " +
+            "Unset HEAL_DRY_RUN (or set to 0) and restart to apply for real."
+        );
+      }
+
+      if (failures.length > 0) {
+        const summary = failures
+          .map((f) => `cs=${f.csid.slice(0, 8)} ledger=${f.blid.slice(0, 8)}: ${f.error}`)
+          .join("; ");
+        throw new Error(
+          `[migration 2026-05-29_heal_cold_charges_drain_by_ledger_id] ` +
+            `${failures.length} buyer(s) failed; migration NOT marked applied. ` +
+            `Successful buyers were committed (heal is idempotent — safe to retry). ` +
+            `Failures: ${summary}`
+        );
+      }
+    },
+  },
 ];
 
 function migrationLog(message: string): void {
