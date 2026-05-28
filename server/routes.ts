@@ -4346,10 +4346,14 @@ export async function registerRoutes(
   });
 
   // Create discount validation schema - now accepts farmerId.
-  // Task #313 — allocations MAY carry buyerLedgerId so cold-side FIFO can
-  // drain by ledger ID. When omitted (existing clients only send buyerName),
-  // storage resolves the ledger via name fallback / ensureBuyerLedgerEntry,
-  // matching the "ledger primary, name fallback" design used end-to-end.
+  // Task #313 — every NON-SELF allocation MUST carry `buyerLedgerId` so the
+  // cold-side FIFO drains by ledger ID (closes the rename / merge bug class).
+  // Farmer-self allocations are exempt (they route through the farmer FIFO
+  // path keyed on farmer_ledger_id, not buyer). `isFarmerSelf` is the
+  // explicit flag; clients that don't send it can still pass a self
+  // allocation by matching the canonical "Name - Phone - Village" buyer name
+  // (storage detects this via the same farmerSelfBuyerName comparison it has
+  // used since the discount feature shipped).
   const createDiscountSchema = z.object({
     farmerId: z.string().min(1),
     totalAmount: z.number().positive(),
@@ -4359,7 +4363,11 @@ export async function registerRoutes(
       buyerName: z.string().min(1),
       amount: z.number().positive(),
       buyerLedgerId: z.string().min(1).nullable().optional(),
-    })).min(1),
+      isFarmerSelf: z.boolean().optional(),
+    }).refine(
+      (a) => a.isFarmerSelf === true || (typeof a.buyerLedgerId === "string" && a.buyerLedgerId.length > 0),
+      { message: "buyerLedgerId is required for every non-self buyer allocation", path: ["buyerLedgerId"] }
+    )).min(1),
   });
 
   // Create discount - now uses farmerId to look up farmer details

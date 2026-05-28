@@ -1052,6 +1052,7 @@ const MIGRATIONS: Migration[] = [
             cold_storage_id VARCHAR NOT NULL,
             buyer_ledger_id VARCHAR,
             transfer_to_buyer_ledger_id VARCHAR,
+            transfer_to_buyer_name TEXT,
             cold_storage_charge DOUBLE PRECISION,
             paid_amount DOUBLE PRECISION,
             payment_status TEXT,
@@ -1062,6 +1063,45 @@ const MIGRATIONS: Migration[] = [
             PRIMARY KEY (row_kind, row_id)
           )
         `);
+        // Idempotent column add for snapshots created by an earlier run.
+        await db.execute(sql`
+          ALTER TABLE ${sql.identifier(snapshotTable)}
+          ADD COLUMN IF NOT EXISTS transfer_to_buyer_name TEXT
+        `);
+      }
+
+      // Unresolved-transfer warning: rows whose transfer_to_buyer_name has
+      // no matching buyer_ledger row (so backfill below CANNOT touch them).
+      // Logged whether or not dry-run; rolls back into the worklist later
+      // only when a user manually creates the missing ledger entry.
+      const unresolved = (await db.execute(sql`
+        SELECT sh.id, sh.cold_storage_id, sh.transfer_to_buyer_name
+        FROM sales_history sh
+        WHERE sh.transfer_to_buyer_ledger_id IS NULL
+          AND sh.transfer_to_buyer_name IS NOT NULL
+          AND TRIM(sh.transfer_to_buyer_name) <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM buyer_ledger bl
+            WHERE bl.cold_storage_id = sh.cold_storage_id
+              AND LOWER(TRIM(bl.buyer_name)) = LOWER(TRIM(sh.transfer_to_buyer_name))
+          )
+      `)).rows as Array<{ id: string; cold_storage_id: string; transfer_to_buyer_name: string }>;
+      if (unresolved.length > 0) {
+        console.warn(
+          `[migration 2026-05-29_heal_cold_charges_drain_by_ledger_id]` +
+            ` WARNING: ${unresolved.length} sale(s) have transfer_to_buyer_name that` +
+            ` does NOT resolve to any buyer_ledger row — these will NOT be backfilled.` +
+            ` Manual buyer-ledger creation required to bring them into the ledger-first drain.`
+        );
+        for (const r of unresolved.slice(0, 20)) {
+          console.warn(
+            `  unresolved sale=${r.id.slice(0, 8)} cs=${r.cold_storage_id.slice(0, 8)}` +
+              ` transfer_to_buyer_name="${r.transfer_to_buyer_name}"`
+          );
+        }
+        if (unresolved.length > 20) {
+          console.warn(`  ... (+${unresolved.length - 20} more)`);
+        }
       }
 
       // (a) Backfill `transfer_to_buyer_ledger_id` from buyer_ledger by name.
@@ -1151,7 +1191,8 @@ const MIGRATIONS: Migration[] = [
               await tx.execute(sql`
                 INSERT INTO ${sql.identifier(snapshotTable)}
                   (row_kind, row_id, cold_storage_id, buyer_ledger_id,
-                   transfer_to_buyer_ledger_id, cold_storage_charge,
+                   transfer_to_buyer_ledger_id, transfer_to_buyer_name,
+                   cold_storage_charge,
                    paid_amount, payment_status,
                    opening_receivable_paid, applied_amount, unapplied_amount)
                 SELECT 'sale',
@@ -1159,6 +1200,7 @@ const MIGRATIONS: Migration[] = [
                        sh.cold_storage_id,
                        sh.buyer_ledger_id,
                        sh.transfer_to_buyer_ledger_id,
+                       sh.transfer_to_buyer_name,
                        sh.cold_storage_charge,
                        sh.paid_amount,
                        sh.payment_status,
@@ -1174,14 +1216,15 @@ const MIGRATIONS: Migration[] = [
               await tx.execute(sql`
                 INSERT INTO ${sql.identifier(snapshotTable)}
                   (row_kind, row_id, cold_storage_id, buyer_ledger_id,
-                   transfer_to_buyer_ledger_id, cold_storage_charge,
+                   transfer_to_buyer_ledger_id, transfer_to_buyer_name,
+                   cold_storage_charge,
                    paid_amount, payment_status,
                    opening_receivable_paid, applied_amount, unapplied_amount)
                 SELECT 'receipt',
                        cr.id,
                        cr.cold_storage_id,
                        cr.buyer_ledger_id,
-                       NULL, NULL, NULL, NULL, NULL,
+                       NULL, NULL, NULL, NULL, NULL, NULL,
                        cr.applied_amount,
                        cr.unapplied_amount
                 FROM cash_receipts cr
@@ -1196,14 +1239,15 @@ const MIGRATIONS: Migration[] = [
               await tx.execute(sql`
                 INSERT INTO ${sql.identifier(snapshotTable)}
                   (row_kind, row_id, cold_storage_id, buyer_ledger_id,
-                   transfer_to_buyer_ledger_id, cold_storage_charge,
+                   transfer_to_buyer_ledger_id, transfer_to_buyer_name,
+                   cold_storage_charge,
                    paid_amount, payment_status,
                    opening_receivable_paid, applied_amount, unapplied_amount)
                 SELECT 'opening_receivable',
                        o.id,
                        o.cold_storage_id,
                        o.buyer_ledger_id,
-                       NULL, NULL, NULL, NULL,
+                       NULL, NULL, NULL, NULL, NULL,
                        o.paid_amount,
                        NULL, NULL
                 FROM opening_receivables o

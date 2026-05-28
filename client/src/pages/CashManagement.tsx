@@ -236,7 +236,7 @@ export default function CashManagement() {
   const [discountAmount, setDiscountAmount] = useState("");
   const [discountDate, setDiscountDate] = useState(todayDate);
   const [discountRemarks, setDiscountRemarks] = useState("");
-  const [discountBuyerAllocations, setDiscountBuyerAllocations] = useState<{ buyerName: string; amount: string; maxAmount: number }[]>([]);
+  const [discountBuyerAllocations, setDiscountBuyerAllocations] = useState<{ buyerName: string; buyerLedgerId: string | null; isFarmerSelf: boolean; amount: string; maxAmount: number }[]>([]);
 
   const [transferFromAccount, setTransferFromAccount] = useState<string>(persistedState?.transferFromAccount || "cash");
   const [transferToAccount, setTransferToAccount] = useState<string>(persistedState?.transferToAccount || "");
@@ -635,7 +635,7 @@ export default function CashManagement() {
   };
 
   // Buyer dues for selected farmer (only buyer-liable, not self)
-  const { data: buyerDuesRaw = [] } = useQuery<{ buyerName: string; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[]>({
+  const { data: buyerDuesRaw = [] } = useQuery<{ buyerName: string; buyerLedgerId: string | null; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[]>({
     queryKey: ["/api/buyer-dues", discountFarmerId],
     queryFn: async () => {
       if (!discountFarmerId) return [];
@@ -652,7 +652,7 @@ export default function CashManagement() {
   const buyerDuesForFarmer = useMemo(() => {
     if (!selectedFarmerDetails) return [];
     
-    const result: { buyerName: string; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[] = [];
+    const result: { buyerName: string; buyerLedgerId: string | null; totalDue: number; latestSaleDate: string; isFarmerSelf?: boolean }[] = [];
     
     // Add Self entry from Farmer Ledger (pyReceivables + advanceDue + freightDue + selfDue)
     // Note: Self entries are displayed in separate section, latestSaleDate used for sorting within buyer section only
@@ -661,6 +661,7 @@ export default function CashManagement() {
       const farmerSelfBuyerName = `${selectedFarmerDetails.farmerName.trim()} - ${selectedFarmerDetails.contactNumber.trim()} - ${selectedFarmerDetails.village.trim()}`;
       result.push({
         buyerName: farmerSelfBuyerName,
+        buyerLedgerId: null,
         totalDue: selfDue,
         latestSaleDate: "1970-01-01T00:00:00.000Z", // Not used for Self section display
         isFarmerSelf: true,
@@ -694,7 +695,7 @@ export default function CashManagement() {
     
     // Auto-allocate from top to bottom until discount is exhausted
     let remaining = totalDiscount;
-    const newAllocations: { buyerName: string; amount: string; maxAmount: number }[] = [];
+    const newAllocations: { buyerName: string; buyerLedgerId: string | null; isFarmerSelf: boolean; amount: string; maxAmount: number }[] = [];
     
     // Helper to truncate to 1 decimal place
     const truncateToOneDecimal = (num: number) => Math.floor(num * 10) / 10;
@@ -704,6 +705,8 @@ export default function CashManagement() {
         // No more discount to allocate, add with 0 amount
         newAllocations.push({
           buyerName: buyer.buyerName,
+          buyerLedgerId: buyer.buyerLedgerId ?? null,
+          isFarmerSelf: buyer.isFarmerSelf === true,
           amount: "",
           maxAmount: truncateToOneDecimal(buyer.totalDue),
         });
@@ -712,6 +715,8 @@ export default function CashManagement() {
         const truncatedAllocation = truncateToOneDecimal(allocation);
         newAllocations.push({
           buyerName: buyer.buyerName,
+          buyerLedgerId: buyer.buyerLedgerId ?? null,
+          isFarmerSelf: buyer.isFarmerSelf === true,
           amount: truncatedAllocation > 0 ? truncatedAllocation.toString() : "",
           maxAmount: truncateToOneDecimal(buyer.totalDue),
         });
@@ -1001,7 +1006,7 @@ export default function CashManagement() {
 
   // Discount mutations
   const createDiscountMutation = useMutation({
-    mutationFn: async (data: { farmerId: string; totalAmount: number; discountDate: string; remarks?: string; buyerAllocations: { buyerName: string; amount: number }[] }) => {
+    mutationFn: async (data: { farmerId: string; totalAmount: number; discountDate: string; remarks?: string; buyerAllocations: { buyerName: string; buyerLedgerId: string | null; isFarmerSelf?: boolean; amount: number }[] }) => {
       const response = await apiRequest("POST", "/api/discounts", data);
       return response.json();
     },
@@ -1809,6 +1814,8 @@ export default function CashManagement() {
       remarks: discountRemarks || undefined,
       buyerAllocations: allocationsWithAmounts.map(a => ({
         buyerName: a.buyerName,
+        buyerLedgerId: a.buyerLedgerId,
+        isFarmerSelf: a.isFarmerSelf,
         amount: parseFloat(a.amount),
       })),
     });

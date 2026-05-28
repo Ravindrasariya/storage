@@ -414,7 +414,7 @@ export interface IStorage {
   // Discounts
   getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]>;
   getFarmersWithAllDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number; farmerLiableDue: number; buyerLiableDue: number }[]>;
-  getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[]>;
+  getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; buyerLedgerId: string | null; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[]>;
   createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }>;
   getDiscounts(coldStorageId: string): Promise<Discount[]>;
   reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }>;
@@ -7672,7 +7672,7 @@ export class DatabaseStorage implements IStorage {
   // Get buyer dues for a specific farmer (sorted by latest sale date)
   // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
   // Returns farmer's own dues (receivables + self-sales) as the first entry
-  async getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[]> {
+  async getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; buyerLedgerId: string | null; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[]> {
     // Format farmer's own entry name: "FarmerName - Phone - Village"
     const farmerSelfBuyerName = `${farmerName.trim()} - ${contactNumber.trim()} - ${village.trim()}`;
     
@@ -7713,34 +7713,58 @@ export class DatabaseStorage implements IStorage {
     // Total farmer's own dues
     const farmerSelfDue = receivablesDue + selfSalesDue;
     
-    // Get other buyer dues (excluding self-sales which are farmer's own)
-    // Use CurrentDueBuyerName logic: BUT if transfer is reversed (is_transfer_reversed = 1), use original buyer_name
+    // Get other buyer dues (excluding self-sales which are farmer's own).
+    // Task #313 — also returns the active-due `buyer_ledger_id` so the
+    // client can stamp it onto each discount allocation. We group by the
+    // resolved ledger ID (transferToBuyerLedgerId when transfer is active,
+    // else buyerLedgerId), falling back to a name-keyed lookup against
+    // buyer_ledger for legacy null-ledger sales.
     const result = await db.execute(sql`
-      SELECT 
-        CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END as "buyerName",
-        COALESCE(SUM(due_amount), 0)::float as "totalDue",
-        MAX(sold_at) as "latestSaleDate"
-      FROM sales_history
-      WHERE cold_storage_id = ${coldStorageId}
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${farmerName}))
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${village}))
-        AND TRIM(contact_number) = TRIM(${contactNumber})
-        AND due_amount > 0
-        AND COALESCE(is_self_sale, 0) = 0
-        AND CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END IS NOT NULL
-      GROUP BY CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END
-      HAVING SUM(due_amount) > 0
-      ORDER BY MAX(sold_at) DESC
+      WITH active AS (
+        SELECT
+          CASE WHEN sh.is_transfer_reversed = 1
+               THEN sh.buyer_name
+               ELSE COALESCE(NULLIF(sh.transfer_to_buyer_name, ''), sh.buyer_name)
+          END AS active_name,
+          CASE WHEN sh.is_transfer_reversed = 1
+               THEN sh.buyer_ledger_id
+               ELSE COALESCE(sh.transfer_to_buyer_ledger_id, sh.buyer_ledger_id)
+          END AS active_ledger_id,
+          sh.due_amount,
+          sh.sold_at
+        FROM sales_history sh
+        WHERE sh.cold_storage_id = ${coldStorageId}
+          AND LOWER(TRIM(sh.farmer_name)) = LOWER(TRIM(${farmerName}))
+          AND LOWER(TRIM(sh.village)) = LOWER(TRIM(${village}))
+          AND TRIM(sh.contact_number) = TRIM(${contactNumber})
+          AND sh.due_amount > 0
+          AND COALESCE(sh.is_self_sale, 0) = 0
+      )
+      SELECT
+        a.active_name AS "buyerName",
+        COALESCE(a.active_ledger_id, bl.id) AS "buyerLedgerId",
+        SUM(a.due_amount)::float AS "totalDue",
+        MAX(a.sold_at) AS "latestSaleDate"
+      FROM active a
+      LEFT JOIN buyer_ledger bl
+        ON bl.cold_storage_id = ${coldStorageId}
+       AND a.active_ledger_id IS NULL
+       AND LOWER(TRIM(bl.buyer_name)) = LOWER(TRIM(a.active_name))
+      WHERE a.active_name IS NOT NULL
+      GROUP BY a.active_name, COALESCE(a.active_ledger_id, bl.id)
+      HAVING SUM(a.due_amount) > 0
+      ORDER BY MAX(a.sold_at) DESC
     `);
     
-    const buyers = result.rows as { buyerName: string; totalDue: number; latestSaleDate: Date }[];
+    const buyers = result.rows as { buyerName: string; buyerLedgerId: string | null; totalDue: number; latestSaleDate: Date }[];
     
     // Build result array with farmer self entry first (if has dues)
-    const resultArray: { buyerName: string; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[] = [];
+    const resultArray: { buyerName: string; buyerLedgerId: string | null; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[] = [];
     
     if (farmerSelfDue > 0) {
       resultArray.push({
         buyerName: farmerSelfBuyerName,
+        buyerLedgerId: null,
         totalDue: farmerSelfDue,
         latestSaleDate: selfSalesLatestDate,
         isFarmerSelf: true

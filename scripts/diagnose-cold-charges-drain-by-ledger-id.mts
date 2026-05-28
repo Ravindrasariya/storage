@@ -202,6 +202,164 @@ async function diagnoseColdStorage(coldStorageId: string): Promise<void> {
   }
 }
 
+/**
+ * Task #313 — Ledger-vs-name worklist parity across the three cold-charges
+ * inputs: cash_receipts (cold_merchant + cold_charges, non-reversed,
+ * applies_to_sale_id IS NULL), opening_receivables (cold_merchant), and
+ * discount allocations (parsed from discounts.buyer_allocations JSON).
+ *
+ * For each input we build two worklists per cold storage:
+ *   - LEDGER: the set of buyer_ledger_id values the NEW (ledger-first)
+ *     drain will visit.
+ *   - NAME:   the set of LOWER(TRIM(buyer_name)) values the OLD (name-only)
+ *     drain would visit.
+ *
+ * Then we report:
+ *   - rows present in the NAME worklist but whose name can't be resolved
+ *     to any ledger ID in `buyer_ledger` (under-drain risk: legacy code
+ *     was reaching them, ledger code won't).
+ *   - rows present in the LEDGER worklist whose ledger has a name that
+ *     differs from the row's stored buyer_name (drift evidence: the same
+ *     ledger has multiple buyer_name values across the input, which is
+ *     exactly the rename / merge scenario the task closes).
+ *
+ * Pure read; safe against production.
+ */
+async function parityWorklists(coldStorageId: string): Promise<void> {
+  console.log("\n  " + "=".repeat(74));
+  console.log(`  Worklist parity (ledger vs name) for cold_storage_id=${coldStorageId}`);
+  console.log("  " + "=".repeat(74));
+
+  const inputs: Array<{
+    label: string;
+    query: ReturnType<typeof sql>;
+  }> = [
+    {
+      label: "cash_receipts (cold_merchant + cold_charges, non-reversed, top-level)",
+      query: sql`
+        SELECT buyer_ledger_id, LOWER(TRIM(buyer_name)) AS name_key, buyer_name
+        FROM cash_receipts
+        WHERE cold_storage_id = ${coldStorageId}
+          AND payer_type = 'cold_merchant'
+          AND COALESCE(due_type, 'cold_charges') = 'cold_charges'
+          AND is_reversed = 0
+          AND applies_to_sale_id IS NULL
+      `,
+    },
+    {
+      label: "opening_receivables (cold_merchant)",
+      query: sql`
+        SELECT buyer_ledger_id, LOWER(TRIM(buyer_name)) AS name_key, buyer_name
+        FROM opening_receivables
+        WHERE cold_storage_id = ${coldStorageId}
+          AND payer_type = 'cold_merchant'
+      `,
+    },
+  ];
+
+  for (const input of inputs) {
+    const rows = (await db.execute(input.query)).rows as unknown as Array<{
+      buyer_ledger_id: string | null;
+      name_key: string | null;
+      buyer_name: string | null;
+    }>;
+    const ledgerWorklist = new Set<string>();
+    const nameWorklist = new Set<string>();
+    const ledgerToNames = new Map<string, Set<string>>();
+    for (const r of rows) {
+      if (r.buyer_ledger_id) {
+        ledgerWorklist.add(r.buyer_ledger_id);
+        if (r.name_key) {
+          const set = ledgerToNames.get(r.buyer_ledger_id) ?? new Set<string>();
+          set.add(r.name_key);
+          ledgerToNames.set(r.buyer_ledger_id, set);
+        }
+      }
+      if (r.name_key) nameWorklist.add(r.name_key);
+    }
+
+    // Names with no resolvable ledger (legacy reachable, ledger unreachable).
+    const ledgerNameRows = (await db.execute(sql`
+      SELECT LOWER(TRIM(buyer_name)) AS name_key
+      FROM buyer_ledger
+      WHERE cold_storage_id = ${coldStorageId}
+    `)).rows as unknown as Array<{ name_key: string }>;
+    const knownLedgerNames = new Set(ledgerNameRows.map((r) => r.name_key));
+    const orphanNames = [...nameWorklist].filter((n) => n && !knownLedgerNames.has(n));
+
+    // Ledger IDs whose rows carry >1 distinct buyer_name (rename drift).
+    const driftLedgers = [...ledgerToNames.entries()].filter(([, s]) => s.size > 1);
+
+    console.log(`\n  - ${input.label}`);
+    console.log(`      rows=${rows.length}  ledger-keys=${ledgerWorklist.size}  name-keys=${nameWorklist.size}`);
+    if (orphanNames.length > 0) {
+      console.log(`      *** ${orphanNames.length} name(s) NOT resolvable to any buyer_ledger:`);
+      for (const n of orphanNames.slice(0, 10)) console.log(`          "${n}"`);
+      if (orphanNames.length > 10) console.log(`          ... (+${orphanNames.length - 10} more)`);
+    }
+    if (driftLedgers.length > 0) {
+      console.log(`      *** ${driftLedgers.length} ledger(s) carry >1 distinct buyer_name (rename drift):`);
+      for (const [blid, names] of driftLedgers.slice(0, 10)) {
+        console.log(`          ledger=${blid.slice(0, 8)} names=${JSON.stringify([...names])}`);
+      }
+      if (driftLedgers.length > 10) console.log(`          ... (+${driftLedgers.length - 10} more)`);
+    }
+  }
+
+  // Discount allocations — embedded JSON. Walk every non-reversed discount
+  // and inspect each allocation: does it carry buyerLedgerId? Does its
+  // buyerName resolve to a buyer_ledger row in this cold storage?
+  const discounts = (await db.execute(sql`
+    SELECT id, buyer_allocations
+    FROM discounts
+    WHERE cold_storage_id = ${coldStorageId}
+      AND COALESCE(is_reversed, 0) = 0
+  `)).rows as unknown as Array<{ id: string; buyer_allocations: string }>;
+
+  let allocCount = 0;
+  let withLedgerId = 0;
+  let withoutLedgerId = 0;
+  const unresolvableNames = new Set<string>();
+  const knownLedgerNames2 = new Set(
+    (
+      (await db.execute(sql`
+        SELECT LOWER(TRIM(buyer_name)) AS name_key
+        FROM buyer_ledger
+        WHERE cold_storage_id = ${coldStorageId}
+      `)).rows as unknown as Array<{ name_key: string }>
+    ).map((r) => r.name_key)
+  );
+
+  for (const d of discounts) {
+    let parsed: Array<{ buyerName?: string; buyerLedgerId?: string | null }> = [];
+    try {
+      parsed = JSON.parse(d.buyer_allocations) || [];
+    } catch {
+      continue;
+    }
+    for (const a of parsed) {
+      allocCount++;
+      if (typeof a.buyerLedgerId === "string" && a.buyerLedgerId.length > 0) {
+        withLedgerId++;
+      } else {
+        withoutLedgerId++;
+        const nameKey = (a.buyerName || "").trim().toLowerCase();
+        if (nameKey && !knownLedgerNames2.has(nameKey)) {
+          unresolvableNames.add(nameKey);
+        }
+      }
+    }
+  }
+
+  console.log(`\n  - discounts.buyer_allocations (non-reversed)`);
+  console.log(`      discounts=${discounts.length}  allocations=${allocCount}  withLedgerId=${withLedgerId}  withoutLedgerId=${withoutLedgerId}`);
+  if (unresolvableNames.size > 0) {
+    console.log(`      *** ${unresolvableNames.size} name-only allocation buyerName(s) NOT resolvable to any buyer_ledger:`);
+    for (const n of [...unresolvableNames].slice(0, 10)) console.log(`          "${n}"`);
+    if (unresolvableNames.size > 10) console.log(`          ... (+${unresolvableNames.size - 10} more)`);
+  }
+}
+
 async function main(): Promise<void> {
   const arg = process.argv[2];
   let coldStorageIds: string[];
@@ -219,6 +377,7 @@ async function main(): Promise<void> {
 
   for (const csid of coldStorageIds) {
     await diagnoseColdStorage(csid);
+    await parityWorklists(csid);
   }
 
   console.log("\nDone.");
