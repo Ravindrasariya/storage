@@ -2690,6 +2690,18 @@ export async function registerRoutes(
         } else if (updated.buyerName) {
           await storage.recomputeBuyerPayments(updated.buyerName, coldStorageId);
         }
+        // Task #312 — owner reassignment can rewrite buyer_ledger_id on this
+        // sale (e.g. Self → Buyer X, or Buyer X → Buyer Y). The extras-side
+        // FIFO is keyed on buyer_ledger_id, so BOTH the old and the new
+        // ledger's extras pools must be re-replayed: the old ledger to
+        // release this sale's extras pool, the new ledger to absorb it.
+        // recomputeBuyerExtras short-circuits on null ledger ID.
+        if (currentSale.buyerLedgerId) {
+          await storage.recomputeBuyerExtras(currentSale.buyerLedgerId, coldStorageId);
+        }
+        if (updated.buyerLedgerId && updated.buyerLedgerId !== currentSale.buyerLedgerId) {
+          await storage.recomputeBuyerExtras(updated.buyerLedgerId, coldStorageId);
+        }
       }
 
       // If cold storage charges changed, trigger FIFO recalculation.

@@ -348,6 +348,8 @@ export interface IStorage {
   reverseExpense(expenseId: string): Promise<{ success: boolean; message?: string }>;
   // FIFO Recomputation
   recomputeBuyerPayments(buyerName: string, coldStorageId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
+  // Task #312 — Merchant Extras FIFO, keyed on buyer_ledger_id (not buyer_name).
+  recomputeBuyerExtras(buyerLedgerId: string, coldStorageId: string): Promise<{ salesReset: number; receiptsReplayed: number }>;
   recomputeFarmerPayments(coldStorageId: string, farmerLedgerId: string | null, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }>;
   recomputeFarmerPaymentsWithDiscounts(coldStorageId: string, farmerLedgerId: string | null, farmerName: string, contactNumber: string, village: string): Promise<{ receivablesUpdated: number; selfSalesUpdated: number }>;
   // Admin
@@ -2078,7 +2080,18 @@ export class DatabaseStorage implements IStorage {
     if (toBuyer && coldStorageId) {
       await this.recomputeBuyerPayments(toBuyer, coldStorageId);
     }
-    
+
+    // Task #312 — extras are keyed on `buyerLedgerId`, so the cold-side
+    // recompute by buyerName above does NOT touch extras. The reversed
+    // transfer can change which ledger owns this sale's extras pool, so
+    // re-replay extras for the original (from) buyer ledger here. The
+    // "to" buyer's extras pool is unaffected because extras always stay
+    // with the ORIGINAL buyer ledger (`buyerLedgerId` is never rewritten
+    // by a transfer — only `transferToBuyerName` is set).
+    if (sale.buyerLedgerId && coldStorageId) {
+      await this.recomputeBuyerExtras(sale.buyerLedgerId, coldStorageId);
+    }
+
     return { success: true, message: "Buyer-to-buyer transfer reversed successfully", fromBuyer, toBuyer, coldStorageId };
   }
 
@@ -2236,6 +2249,21 @@ export class DatabaseStorage implements IStorage {
       .set(updateData)
       .where(eq(salesHistory.id, saleId))
       .returning();
+
+    // Task #312 — sale edits that touch extras (extraDueToMerchant or any of
+    // its sub-fields) are extras-affecting events: the baseline shifts, so
+    // the extras-side FIFO must be re-replayed end-to-end to recompute the
+    // remaining extras due across all of this buyer's extras-bearing sales.
+    // Cold-side FIFO is still triggered by routes.ts after this returns.
+    const extrasFieldChanged =
+      updates.extraDueToMerchant !== undefined ||
+      updates.extraDueHammaliMerchant !== undefined ||
+      updates.extraDueGradingMerchant !== undefined ||
+      updates.extraDueOtherMerchant !== undefined;
+    const targetLedgerId = updated?.buyerLedgerId ?? sale.buyerLedgerId;
+    if (extrasFieldChanged && targetLedgerId && (updated?.coldStorageId || sale.coldStorageId)) {
+      await this.recomputeBuyerExtras(targetLedgerId, updated?.coldStorageId || sale.coldStorageId);
+    }
 
     // Note: FIFO recomputation is triggered in routes.ts after update
     return updated;
@@ -2407,6 +2435,14 @@ export class DatabaseStorage implements IStorage {
     const effectiveBuyerName = (sale.transferToBuyerName && sale.transferToBuyerName.trim()) 
       ? sale.transferToBuyerName.trim() 
       : (sale.buyerName || "");
+
+    // Task #312 — sale reversal removes the sale from the extras pool, so
+    // the buyer's extras-side FIFO must be re-replayed to redistribute any
+    // existing merchant_extras receipts across the remaining extras-bearing
+    // sales. Cold-side recompute is still triggered by the route caller.
+    if (sale.buyerLedgerId && sale.coldStorageId) {
+      await this.recomputeBuyerExtras(sale.buyerLedgerId, sale.coldStorageId);
+    }
 
     return { 
       success: true, 
@@ -5420,6 +5456,19 @@ export class DatabaseStorage implements IStorage {
       await this.recomputeBuyerPayments(receipt.buyerName, receipt.coldStorageId);
     }
 
+    // Task #312 — merchant_extras receipts are owned by `recomputeBuyerExtras`
+    // (which `recomputeBuyerPayments` no longer touches). When the reversed
+    // receipt was a merchant_extras receipt, re-replay the extras FIFO for
+    // this buyer ledger so the remaining extras receipts redistribute across
+    // the buyer's still-outstanding extras-bearing sales.
+    if (
+      receipt.dueType === "merchant_extras" &&
+      receipt.buyerLedgerId &&
+      receipt.coldStorageId
+    ) {
+      await this.recomputeBuyerExtras(receipt.buyerLedgerId, receipt.coldStorageId);
+    }
+
     return { success: true, message: "Receipt reversed and payments recalculated" };
   }
 
@@ -5859,32 +5908,13 @@ export class DatabaseStorage implements IStorage {
         .where(eq(salesHistory.id, sale.id));
     }
 
-    // Also reset extraDueToMerchant to original values (for sales where original buyerName matches)
-    // This is separate from cold storage dues - only reset for sales where ORIGINAL buyer matches
-    // Handles both extraDueToMerchantOriginal and legacy records (use extraDueToMerchant as fallback)
-    const salesByOriginalBuyer = await db.select()
-      .from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
-        sql`(${salesHistory.extraDueToMerchantOriginal} > 0 OR ${salesHistory.extraDueToMerchant} > 0)`,
-        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
-      ));
-    
-    for (const sale of salesByOriginalBuyer) {
-      // Use extraDueToMerchantOriginal if set, otherwise use current extraDueToMerchant as the baseline
-      const originalValue = (sale.extraDueToMerchantOriginal && sale.extraDueToMerchantOriginal > 0) 
-        ? sale.extraDueToMerchantOriginal 
-        : (sale.extraDueToMerchant || 0);
-      
-      // If we're using extraDueToMerchant as fallback, also set extraDueToMerchantOriginal for future recomputes
-      await db.update(salesHistory)
-        .set({
-          extraDueToMerchant: originalValue,
-          extraDueToMerchantOriginal: originalValue,
-        })
-        .where(eq(salesHistory.id, sale.id));
-    }
+    // Task #312 — Merchant Extras reset/replay no longer lives here. Extras are
+    // owned by `recomputeBuyerExtras`, which is keyed on `buyerLedgerId`
+    // (not exact `buyerName` text), and is triggered from every extras-
+    // affecting event (sale create/edit/reverse, merchant_extras receipt
+    // create/reverse, buyer rename/merge). Splitting the two due types into
+    // independent recompute paths eliminates the name-vs-ledger asymmetry
+    // behind the Jatisha under-drain symptom.
 
     // Reset opening receivables paidAmount to 0 for this buyer (current year, cold_merchant type)
     // Also restore previousEffectiveDate/previousLatestPrincipal if saved
@@ -5926,9 +5956,10 @@ export class DatabaseStorage implements IStorage {
     // Also exclude manual single-sale closure receipts (applies_to_sale_id IS NOT NULL)
     // — they are already applied to one specific sale and must not be FIFO-replayed
     // across the buyer's full sale pool (would double-count and zero out unrelated sales).
-    // Task #309 — partition receipts by dueType. cold_charges receipts replay
-    // through the cold-side FIFO; merchant_extras receipts drain extras only.
-    const allActiveReceipts = await db.select()
+    // Task #312 — only the cold-charges receipts replay through this path.
+    // merchant_extras receipts are handled exclusively by
+    // `recomputeBuyerExtras` (called from extras-affecting events).
+    const activeReceipts = await db.select()
       .from(cashReceipts)
       .where(and(
         eq(cashReceipts.coldStorageId, coldStorageId),
@@ -5936,10 +5967,9 @@ export class DatabaseStorage implements IStorage {
         eq(cashReceipts.payerType, "cold_merchant"),
         eq(cashReceipts.isReversed, 0),
         isNull(cashReceipts.appliesToSaleId),
+        sql`COALESCE(${cashReceipts.dueType}, 'cold_charges') = 'cold_charges'`,
       ))
       .orderBy(cashReceipts.receivedAt);
-    const activeReceipts = allActiveReceipts.filter(r => (r.dueType || "cold_charges") === "cold_charges");
-    const merchantExtrasReceipts = allActiveReceipts.filter(r => r.dueType === "merchant_extras");
 
     let salesUpdated = 0;
     let receiptsUpdated = 0;
@@ -6005,12 +6035,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Task #309 — replay merchant_extras receipts on the (already-reset) extras
-    // side. Independent FIFO timeline; never spills into cold dues.
-    for (const receipt of merchantExtrasReceipts) {
-      await this.applyReceiptFIFO(receipt, coldStorageId, buyerName, currentYear);
-      receiptsUpdated++;
-    }
+    // Task #312 — merchant_extras replay removed. See `recomputeBuyerExtras`.
 
     // Update lot totals for all affected lots
     const affectedLotIds = Array.from(new Set(buyerSales.map(s => s.lotId)));
@@ -6143,46 +6168,146 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // PASS 2: Apply to extraDueToMerchant (by ORIGINAL buyerName only).
-    // Task #309 — only runs for merchant_extras receipts; cold-charges receipts
-    // never spill into extras during FIFO replay.
-    if (remainingAmount > 0 && isMerchantExtras) {
-      const salesWithExtraDue = await db.select()
-        .from(salesHistory)
-        .where(and(
-          eq(salesHistory.coldStorageId, coldStorageId),
-          sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${buyerName}))`,
-          sql`${salesHistory.extraDueToMerchant} > 0`,
-          sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
-        ))
-        .orderBy(salesHistory.soldAt);
+    // Task #312 — PASS 2 (extras drain) moved into `recomputeBuyerExtras`'s
+    // private replay helper. `applyReceiptFIFO` is now cold-charges-only.
+    // The activeReceipts filter in `recomputeBuyerPayments` excludes
+    // merchant_extras receipts, so `isMerchantExtras` is effectively always
+    // `false` here — the guards above on PASS 0 / PASS 1 are retained
+    // defensively in case a future caller passes a non-cold receipt.
 
-      for (const sale of salesWithExtraDue) {
-        if (remainingAmount <= 0) break;
+    // Update the receipt's applied/unapplied amounts
+    await db.update(cashReceipts)
+      .set({
+        appliedAmount: appliedAmount,
+        unappliedAmount: remainingAmount,
+      })
+      .where(eq(cashReceipts.id, receipt.id));
+  }
 
-        const extraDue = sale.extraDueToMerchant || 0;
-        if (extraDue <= 0) continue;
+  /**
+   * Task #312 — Reset and replay Merchant Extras FIFO for a single buyer,
+   * keyed on `buyerLedgerId` (NOT on `buyerName` text). This closes the
+   * name-vs-ledger asymmetry that caused the Jatisha under-drain symptom:
+   * a ₹8,720 merchant_extras receipt was only draining ₹560 because the
+   * extras reset/replay queries matched sales by exact `LOWER(TRIM(buyer_name))`,
+   * which silently excluded any extras-bearing sale whose `buyer_name` text
+   * had drifted (rename, capitalisation, trailing space) from the receipt's
+   * `buyer_name`. Routing both reset and replay through `buyer_ledger_id`
+   * removes that text-equality dependency entirely.
+   *
+   * Invariants:
+   *  - Operates ONLY on rows where `buyer_ledger_id = $1` (no name match).
+   *  - Replays every non-reversed merchant_extras receipt for the same
+   *    ledger ID in `receivedAt` ASC order, exactly like the cold-charges
+   *    replay does for its own receipts.
+   *  - Skips sales with `fifoExclusion = 1` (manual single-sale closures).
+   *  - Excludes receipts with `applies_to_sale_id IS NOT NULL` (manual
+   *    single-sale closures own their target sale's payment state).
+   *  - Touches no opening receivables, no cold-charges sales fields, and
+   *    no lot totals — extras-only.
+   */
+  async recomputeBuyerExtras(buyerLedgerId: string, coldStorageId: string): Promise<{ salesReset: number; receiptsReplayed: number }> {
+    if (!buyerLedgerId || !coldStorageId) {
+      return { salesReset: 0, receiptsReplayed: 0 };
+    }
 
-        if (remainingAmount >= extraDue) {
-          await db.update(salesHistory)
-            .set({ extraDueToMerchant: 0 })
-            .where(eq(salesHistory.id, sale.id));
-          
-          remainingAmount = roundAmount(remainingAmount - extraDue);
-          appliedAmount = roundAmount(appliedAmount + extraDue);
-        } else {
-          const newExtraDue = roundAmount(extraDue - remainingAmount);
-          await db.update(salesHistory)
-            .set({ extraDueToMerchant: newExtraDue })
-            .where(eq(salesHistory.id, sale.id));
-          
-          appliedAmount = roundAmount(appliedAmount + remainingAmount);
-          remainingAmount = 0;
-        }
+    // Step 1: Reset extraDueToMerchant back to its original baseline for every
+    // extras-bearing sale belonging to this buyer ledger. Keyed on ledger ID
+    // ONLY — the symptom's root cause was the previous name-equality query.
+    const salesByLedger = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.buyerLedgerId, buyerLedgerId),
+        sql`(${salesHistory.extraDueToMerchantOriginal} > 0 OR ${salesHistory.extraDueToMerchant} > 0)`,
+        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
+      ));
+
+    let salesReset = 0;
+    for (const sale of salesByLedger) {
+      const originalValue = (sale.extraDueToMerchantOriginal && sale.extraDueToMerchantOriginal > 0)
+        ? sale.extraDueToMerchantOriginal
+        : (sale.extraDueToMerchant || 0);
+      await db.update(salesHistory)
+        .set({
+          extraDueToMerchant: originalValue,
+          extraDueToMerchantOriginal: originalValue,
+        })
+        .where(eq(salesHistory.id, sale.id));
+      salesReset++;
+    }
+
+    // Step 2: Walk every non-reversed merchant_extras receipt for this ledger
+    // in chronological (receivedAt ASC) order and drain extras FIFO. The
+    // ledger ID is the single source of truth — we no longer trust the
+    // receipt's `buyer_name` text to identify the target sales pool.
+    const extrasReceipts = await db.select()
+      .from(cashReceipts)
+      .where(and(
+        eq(cashReceipts.coldStorageId, coldStorageId),
+        eq(cashReceipts.buyerLedgerId, buyerLedgerId),
+        eq(cashReceipts.payerType, "cold_merchant"),
+        eq(cashReceipts.dueType, "merchant_extras"),
+        eq(cashReceipts.isReversed, 0),
+        isNull(cashReceipts.appliesToSaleId),
+      ))
+      .orderBy(cashReceipts.receivedAt);
+
+    let receiptsReplayed = 0;
+    for (const receipt of extrasReceipts) {
+      await this._applyMerchantExtrasReceiptByLedger(receipt, coldStorageId, buyerLedgerId);
+      receiptsReplayed++;
+    }
+
+    return { salesReset, receiptsReplayed };
+  }
+
+  /**
+   * Private helper used only by `recomputeBuyerExtras`. Drains a single
+   * merchant_extras receipt against extras-bearing sales for the given
+   * buyer ledger, in `soldAt` ASC FIFO order. Writes the receipt's
+   * `appliedAmount` / `unappliedAmount` at the end (mirroring the cold-side
+   * `applyReceiptFIFO` contract).
+   */
+  private async _applyMerchantExtrasReceiptByLedger(
+    receipt: CashReceipt,
+    coldStorageId: string,
+    buyerLedgerId: string,
+  ): Promise<void> {
+    let remainingAmount = receipt.amount;
+    let appliedAmount = 0;
+
+    const salesWithExtraDue = await db.select()
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.buyerLedgerId, buyerLedgerId),
+        sql`${salesHistory.extraDueToMerchant} > 0`,
+        sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`,
+      ))
+      .orderBy(salesHistory.soldAt);
+
+    for (const sale of salesWithExtraDue) {
+      if (remainingAmount <= 0) break;
+      const extraDue = sale.extraDueToMerchant || 0;
+      if (extraDue <= 0) continue;
+
+      if (remainingAmount >= extraDue) {
+        await db.update(salesHistory)
+          .set({ extraDueToMerchant: 0 })
+          .where(eq(salesHistory.id, sale.id));
+        remainingAmount = roundAmount(remainingAmount - extraDue);
+        appliedAmount = roundAmount(appliedAmount + extraDue);
+      } else {
+        const newExtraDue = roundAmount(extraDue - remainingAmount);
+        await db.update(salesHistory)
+          .set({ extraDueToMerchant: newExtraDue })
+          .where(eq(salesHistory.id, sale.id));
+        appliedAmount = roundAmount(appliedAmount + remainingAmount);
+        remainingAmount = 0;
       }
     }
 
-    // Update the receipt's applied/unapplied amounts
     await db.update(cashReceipts)
       .set({
         appliedAmount: appliedAmount,
@@ -12607,7 +12732,18 @@ export class DatabaseStorage implements IStorage {
         mergedTotalDues: String(mergeCheck.totalDues),
         modifiedBy,
       });
-      
+
+      // Task #312 — the merge above rewrote both sales_history.buyer_ledger_id
+      // AND cash_receipts.buyer_ledger_id from source → target. The cold-side
+      // recompute is name-keyed and is handled by the route layer, but the
+      // extras-side FIFO is ledger-keyed and would otherwise see the
+      // pre-merge partition. Replay the TARGET ledger's extras now so newly
+      // adopted receipts redistribute across the combined sales pool. The
+      // source ledger has no remaining extras rows after the rewrite, so
+      // no replay is needed there (and the source is archived in the next
+      // block).
+      await this.recomputeBuyerExtras(targetBuyer.id, currentBuyer.coldStorageId);
+
       return { buyer: targetBuyer, merged: true, mergedFromId: currentBuyer.buyerId };
     }
     
