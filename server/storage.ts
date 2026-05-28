@@ -4955,49 +4955,15 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // PASS 2: Apply to extraDueToMerchant (by ORIGINAL buyerName only)
-    // Task #309 — only runs for merchant_extras receipts. Cold-charges receipts
-    // no longer spill surplus into extras: each due type drains its own FIFO.
-    if (remainingAmount > 0 && isMerchantExtras) {
-      // Get sales with extraDueToMerchant > 0 for the ORIGINAL buyerName (not CurrentDueBuyerName)
-      const salesWithExtraDue = await db.select()
-        .from(salesHistory)
-        .where(and(
-          eq(salesHistory.coldStorageId, data.coldStorageId),
-          sql`LOWER(TRIM(${salesHistory.buyerName})) = LOWER(TRIM(${data.buyerName}))`,
-          sql`${salesHistory.extraDueToMerchant} > 0`,
-          sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
-        ))
-        .orderBy(salesHistory.soldAt); // FIFO - oldest first
-
-      for (const sale of salesWithExtraDue) {
-        if (remainingAmount <= 0) break;
-
-        const extraDue = sale.extraDueToMerchant || 0;
-        if (extraDue <= 0) continue;
-
-        if (remainingAmount >= extraDue) {
-          // Can fully pay this extra due
-          await db.update(salesHistory)
-            .set({ extraDueToMerchant: 0 })
-            .where(eq(salesHistory.id, sale.id));
-          
-          remainingAmount = roundAmount(remainingAmount - extraDue);
-          appliedAmount = roundAmount(appliedAmount + extraDue);
-          salesUpdated++;
-        } else {
-          // Can only partially pay this extra due
-          const newExtraDue = roundAmount(extraDue - remainingAmount);
-          await db.update(salesHistory)
-            .set({ extraDueToMerchant: newExtraDue })
-            .where(eq(salesHistory.id, sale.id));
-          
-          appliedAmount = roundAmount(appliedAmount + remainingAmount);
-          remainingAmount = 0;
-          salesUpdated++;
-        }
-      }
-    }
+    // Task #312 — Merchant Extras drain is no longer inlined here. After the
+    // receipt row is inserted below, we delegate to `recomputeBuyerExtras`
+    // (keyed on `buyerLedgerId`), which resets every extras-bearing sale for
+    // the buyer and replays every non-reversed merchant_extras receipt in
+    // chronological order. That single code path fixes the name-vs-ledger
+    // asymmetry that caused Jatisha's under-drain: drains by ledger ID, not
+    // by exact `buyerName` text. `appliedAmount` / `unappliedAmount` on this
+    // freshly-inserted receipt are written by the replay loop inside the
+    // helper, so we re-read the row after the helper returns.
 
     // Generate transaction ID (CF + YYYYMMDD + natural number) - unique per cold store
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
@@ -5049,7 +5015,25 @@ export class DatabaseStorage implements IStorage {
       await this.recalculateLotTotals(lotId);
     }
 
-    return { receipt, salesUpdated };
+    // Task #312 — Merchant Extras drain. For merchant_extras receipts, delegate
+    // to recomputeBuyerExtras (ledger-ID keyed) which resets every extras-
+    // bearing sale for this buyer and replays every non-reversed
+    // merchant_extras receipt (including the one just inserted above) in
+    // chronological order. This single code path closes the name-vs-ledger
+    // asymmetry behind Jatisha's under-drain. We then re-read the receipt
+    // row so the returned object carries the helper's updated
+    // appliedAmount / unappliedAmount instead of the placeholder zeros above.
+    let returnedReceipt: CashReceipt = receipt;
+    if (isMerchantExtras && buyerLedgerId) {
+      await this.recomputeBuyerExtras(buyerLedgerId, data.coldStorageId);
+      const [refreshed] = await db.select()
+        .from(cashReceipts)
+        .where(eq(cashReceipts.id, receipt.id))
+        .limit(1);
+      if (refreshed) returnedReceipt = refreshed;
+    }
+
+    return { receipt: returnedReceipt, salesUpdated };
   }
 
   // Helper function to get total remaining dues for a specific buyer
