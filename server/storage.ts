@@ -5083,6 +5083,25 @@ export class DatabaseStorage implements IStorage {
     let returnedReceipt: CashReceipt = receipt;
     if (isMerchantExtras && buyerLedgerId) {
       await this.recomputeBuyerExtras(buyerLedgerId, data.coldStorageId);
+
+      // Task #312 — `dueBalanceAfter` was snapshotted BEFORE the extras
+      // replay above (the row is already inserted by then). For
+      // merchant_extras receipts that snapshot is pre-replay and so
+      // overstates the residual due. Recompute the buyer's balance now
+      // (post-replay) and patch the stored snapshot so audits / receipt
+      // PDFs see the correct figure.
+      let postReplayDueBalance: number | null = null;
+      if (data.payerType === "cold_merchant" && data.buyerName) {
+        try {
+          postReplayDueBalance = await this.getBuyerDueBalance(data.coldStorageId, data.buyerName);
+        } catch {
+          postReplayDueBalance = null;
+        }
+        await db.update(cashReceipts)
+          .set({ dueBalanceAfter: postReplayDueBalance })
+          .where(eq(cashReceipts.id, receipt.id));
+      }
+
       const [refreshed] = await db.select()
         .from(cashReceipts)
         .where(eq(cashReceipts.id, receipt.id))

@@ -824,22 +824,26 @@ const MIGRATIONS: Migration[] = [
 
       const snapshotTable = "merchant_extras_heal_snapshot_2026_05_28";
 
-      // Always (re)create the snapshot table so dry-runs and re-runs both
-      // produce a paper trail when they actually write.
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS ${sql.identifier(snapshotTable)} (
-          row_kind TEXT NOT NULL,
-          row_id VARCHAR NOT NULL,
-          cold_storage_id VARCHAR NOT NULL,
-          buyer_ledger_id VARCHAR,
-          extra_due_to_merchant DOUBLE PRECISION,
-          extra_due_to_merchant_original DOUBLE PRECISION,
-          applied_amount DOUBLE PRECISION,
-          unapplied_amount DOUBLE PRECISION,
-          snapshot_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          PRIMARY KEY (row_kind, row_id)
-        )
-      `);
+      // Dry-run must be strictly read-only — no DDL, no DML. Gate the
+      // snapshot-table creation behind `!dryRun` so HEAL_DRY_RUN=1 leaves
+      // the database byte-for-byte unchanged (even the empty snapshot
+      // table is a write).
+      if (!dryRun) {
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS ${sql.identifier(snapshotTable)} (
+            row_kind TEXT NOT NULL,
+            row_id VARCHAR NOT NULL,
+            cold_storage_id VARCHAR NOT NULL,
+            buyer_ledger_id VARCHAR,
+            extra_due_to_merchant DOUBLE PRECISION,
+            extra_due_to_merchant_original DOUBLE PRECISION,
+            applied_amount DOUBLE PRECISION,
+            unapplied_amount DOUBLE PRECISION,
+            snapshot_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (row_kind, row_id)
+          )
+        `);
+      }
 
       // Build the worklist: every (cold_storage_id, buyer_ledger_id) that
       // has at least one non-reversed merchant_extras receipt OR at least
@@ -873,59 +877,86 @@ const MIGRATIONS: Migration[] = [
           (dryRun ? "ANALYSE (HEAL_DRY_RUN=1)" : "heal")
       );
 
+      // Aggregate per-buyer failures so one bad ledger doesn't abort the
+      // whole rollout. We re-throw at the end if any buyer failed so the
+      // migration is NOT marked applied — the operator must investigate
+      // and re-run. Each successful buyer's writes remain committed (by
+      // design: heal is idempotent, so partial progress is safe to retry).
+      const failures: Array<{ csid: string; blid: string; error: string }> = [];
+
       for (const { cold_storage_id: csid, buyer_ledger_id: blid } of worklist) {
         // Snapshot the pre-state for THIS buyer ledger.
         if (!dryRun) {
-          await db.execute(sql`
-            INSERT INTO ${sql.identifier(snapshotTable)}
-              (row_kind, row_id, cold_storage_id, buyer_ledger_id,
-               extra_due_to_merchant, extra_due_to_merchant_original,
-               applied_amount, unapplied_amount)
-            SELECT 'sale',
-                   sh.id,
-                   sh.cold_storage_id,
-                   sh.buyer_ledger_id,
-                   sh.extra_due_to_merchant,
-                   sh.extra_due_to_merchant_original,
-                   NULL,
-                   NULL
-            FROM sales_history sh
-            WHERE sh.cold_storage_id = ${csid}
-              AND sh.buyer_ledger_id = ${blid}
-              AND (
-                COALESCE(sh.extra_due_to_merchant, 0) > 0
-                OR COALESCE(sh.extra_due_to_merchant_original, 0) > 0
-              )
-            ON CONFLICT (row_kind, row_id) DO NOTHING
-          `);
-          await db.execute(sql`
-            INSERT INTO ${sql.identifier(snapshotTable)}
-              (row_kind, row_id, cold_storage_id, buyer_ledger_id,
-               extra_due_to_merchant, extra_due_to_merchant_original,
-               applied_amount, unapplied_amount)
-            SELECT 'receipt',
-                   cr.id,
-                   cr.cold_storage_id,
-                   cr.buyer_ledger_id,
-                   NULL,
-                   NULL,
-                   cr.applied_amount,
-                   cr.unapplied_amount
-            FROM cash_receipts cr
-            WHERE cr.cold_storage_id = ${csid}
-              AND cr.buyer_ledger_id = ${blid}
-              AND cr.payer_type = 'cold_merchant'
-              AND cr.due_type = 'merchant_extras'
-              AND cr.is_reversed = 0
-              AND cr.applies_to_sale_id IS NULL
-            ON CONFLICT (row_kind, row_id) DO NOTHING
-          `);
+          try {
+            // Per-buyer transaction boundary: snapshot inserts run inside
+            // a tx so a mid-snapshot failure rolls back the partial
+            // snapshot rows for this buyer. `recomputeBuyerExtras` uses
+            // the module-level `db` (not tx) — that's autocommit-safe
+            // because the helper is itself idempotent (deletes
+            // applications, resets sales, replays from scratch); a retry
+            // converges. If snapshot succeeds but recompute throws, the
+            // snapshot rows persist as the paper trail and the failure is
+            // logged + reported at the end.
+            await db.transaction(async (tx) => {
+              await tx.execute(sql`
+                INSERT INTO ${sql.identifier(snapshotTable)}
+                  (row_kind, row_id, cold_storage_id, buyer_ledger_id,
+                   extra_due_to_merchant, extra_due_to_merchant_original,
+                   applied_amount, unapplied_amount)
+                SELECT 'sale',
+                       sh.id,
+                       sh.cold_storage_id,
+                       sh.buyer_ledger_id,
+                       sh.extra_due_to_merchant,
+                       sh.extra_due_to_merchant_original,
+                       NULL,
+                       NULL
+                FROM sales_history sh
+                WHERE sh.cold_storage_id = ${csid}
+                  AND sh.buyer_ledger_id = ${blid}
+                  AND (
+                    COALESCE(sh.extra_due_to_merchant, 0) > 0
+                    OR COALESCE(sh.extra_due_to_merchant_original, 0) > 0
+                  )
+                ON CONFLICT (row_kind, row_id) DO NOTHING
+              `);
+              await tx.execute(sql`
+                INSERT INTO ${sql.identifier(snapshotTable)}
+                  (row_kind, row_id, cold_storage_id, buyer_ledger_id,
+                   extra_due_to_merchant, extra_due_to_merchant_original,
+                   applied_amount, unapplied_amount)
+                SELECT 'receipt',
+                       cr.id,
+                       cr.cold_storage_id,
+                       cr.buyer_ledger_id,
+                       NULL,
+                       NULL,
+                       cr.applied_amount,
+                       cr.unapplied_amount
+                FROM cash_receipts cr
+                WHERE cr.cold_storage_id = ${csid}
+                  AND cr.buyer_ledger_id = ${blid}
+                  AND cr.payer_type = 'cold_merchant'
+                  AND cr.due_type = 'merchant_extras'
+                  AND cr.is_reversed = 0
+                  AND cr.applies_to_sale_id IS NULL
+                ON CONFLICT (row_kind, row_id) DO NOTHING
+              `);
+            });
 
-          const result = await storage.recomputeBuyerExtras(blid, csid);
-          console.log(
-            `  cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ` +
-              `salesReset=${result.salesReset} receiptsReplayed=${result.receiptsReplayed}`
-          );
+            const result = await storage.recomputeBuyerExtras(blid, csid);
+            console.log(
+              `  cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ` +
+                `salesReset=${result.salesReset} receiptsReplayed=${result.receiptsReplayed}`
+            );
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            failures.push({ csid, blid, error: msg });
+            console.error(
+              `  [FAIL] cs=${csid.slice(0, 8)} ledger=${blid.slice(0, 8)} → ${msg}`
+            );
+            // Continue to next buyer.
+          }
         } else {
           // Dry-run: just enumerate what we'd touch.
           const saleCount = (await db.execute(sql`
@@ -959,6 +990,18 @@ const MIGRATIONS: Migration[] = [
         throw new Error(
           "HEAL_DRY_RUN=1 — Merchant Extras heal aborted without writing. " +
             "Unset HEAL_DRY_RUN (or set to 0) and restart to apply for real."
+        );
+      }
+
+      if (failures.length > 0) {
+        const summary = failures
+          .map((f) => `cs=${f.csid.slice(0, 8)} ledger=${f.blid.slice(0, 8)}: ${f.error}`)
+          .join("; ");
+        throw new Error(
+          `[migration 2026-05-28_heal_merchant_extras_drain_by_ledger_id] ` +
+            `${failures.length} buyer(s) failed; migration NOT marked applied. ` +
+            `Successful buyers were committed (heal is idempotent — safe to retry). ` +
+            `Failures: ${summary}`
         );
       }
     },
