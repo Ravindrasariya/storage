@@ -1681,6 +1681,12 @@ export default function StockRegister() {
     });
   };
 
+  // Lot information (lot no, marka, size, RST, vehicle, variety, potato type)
+  // is only editable while the lot has no active (non-reversed) sales — i.e.
+  // all bags are still in store. remainingSize is restored on sale reversal,
+  // so a fully-reversed lot becomes editable again.
+  const lotIsUnsold = !!selectedLot && selectedLot.remainingSize === selectedLot.size;
+
   const noExitToggle = (
     <div className="flex items-center gap-1 sm:ml-auto">
       <Checkbox
@@ -2556,10 +2562,10 @@ export default function StockRegister() {
           {/* Lot Information - Lot No is editable */}
           <div className="space-y-4 border-t pt-4">
             <h4 className="font-semibold text-sm text-muted-foreground">{t("lotInformation")}</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-muted/50 rounded-lg">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 p-3 bg-muted/50 rounded-lg">
               <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("lotNo")}</Label>
-                {editForm && canEdit ? (
+                {editForm && canEdit && lotIsUnsold ? (
                   <div>
                     <Input
                       type="number"
@@ -2585,7 +2591,7 @@ export default function StockRegister() {
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("marka") || "Marka"}</Label>
-                {editForm && canEdit ? (
+                {editForm && canEdit && lotIsUnsold ? (
                   <Input
                     value={editForm.marka}
                     onChange={(e) => setEditForm({ ...editForm, marka: e.target.value })}
@@ -2599,7 +2605,7 @@ export default function StockRegister() {
               </div>
               <div className="flex items-center gap-1">
                 <p className="text-xs text-muted-foreground whitespace-nowrap">{t("originalSize")}</p>
-                {editForm && canEdit ? (
+                {editForm && canEdit && lotIsUnsold ? (
                   <Input
                     type="number"
                     min={1}
@@ -2618,7 +2624,7 @@ export default function StockRegister() {
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("rstNo") || "RST No"}</Label>
-                {editForm && canEdit ? (
+                {editForm && canEdit && lotIsUnsold ? (
                   <Input
                     value={editForm.rstNo}
                     onChange={(e) => setEditForm({ ...editForm, rstNo: e.target.value })}
@@ -2632,7 +2638,7 @@ export default function StockRegister() {
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("vehicle") || "Vehicle"}</Label>
-                {editForm && canEdit ? (
+                {editForm && canEdit && lotIsUnsold ? (
                   <Input
                     value={editForm.vehicle}
                     onChange={(e) => setEditForm({ ...editForm, vehicle: e.target.value })}
@@ -2646,7 +2652,7 @@ export default function StockRegister() {
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("type") || "Variety"}</Label>
-                {editForm && canEdit ? (
+                {editForm && canEdit && lotIsUnsold ? (
                   <Select
                     value={editForm.type}
                     onValueChange={(value) => setEditForm({ ...editForm, type: value })}
@@ -2670,7 +2676,7 @@ export default function StockRegister() {
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("potatoType")}</Label>
-                {editForm && canEdit && editForm.bagType !== "wafer" && selectedLot && selectedLot.remainingSize === selectedLot.size ? (
+                {editForm && canEdit && editForm.bagType !== "wafer" && lotIsUnsold ? (
                   <Select
                     value={editForm.bagType}
                     onValueChange={(value) => setEditForm({ ...editForm, bagType: value })}
