@@ -186,6 +186,7 @@ export default function StockRegister() {
     rstNo: string;
     vehicle: string;
     type: string;
+    bagType: string;
     farmerName: string;
     village: string;
     tehsil: string;
@@ -1522,6 +1523,7 @@ export default function StockRegister() {
       rstNo: lot.rstNo || "",
       vehicle: lot.vehicle || "",
       type: lot.type || "",
+      bagType: lot.bagType,
       farmerName: lot.farmerName,
       village: lot.village || "",
       tehsil: lot.tehsil || "",
@@ -1594,6 +1596,10 @@ export default function StockRegister() {
     onError: (error: Error) => {
       const msg = error.message === "Cannot change farmer after sales are recorded"
         ? t("cannotChangeFarmerAfterSales")
+        : error.message === "Cannot change potato type after sales are recorded"
+        ? t("cannotChangePotatoTypeAfterSales")
+        : error.message === "Wafer potato type cannot be changed"
+        ? t("cannotChangePotatoTypeWafer")
         : error.message;
       toast({
         title: t("error"),
@@ -1661,9 +1667,13 @@ export default function StockRegister() {
     // Strip blank `type` so legacy lots without a variety can still be
     // edited without forcing the user to pick one. The schema column is
     // NOT NULL, so we never want to overwrite a real value with "".
-    const { type, ...rest } = editForm;
-    const updates =
-      type && type.trim().length > 0 ? { ...rest, type } : rest;
+    // Strip `bagType` too and only send it when the potato type actually
+    // changed — this avoids echoing a (possibly legacy/non-standard)
+    // bagType back through the strict enum on every unrelated edit.
+    const { type, bagType, ...rest } = editForm;
+    const updates: Partial<typeof editForm> = { ...rest };
+    if (type && type.trim().length > 0) updates.type = type;
+    if (bagType && bagType !== selectedLot.bagType) updates.bagType = bagType;
 
     updateLotMutation.mutate({
       id: selectedLot.id,
@@ -2658,6 +2668,33 @@ export default function StockRegister() {
                   <p className="font-medium text-sm">{selectedLot?.type || "—"}</p>
                 )}
               </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("potatoType")}</Label>
+                {editForm && canEdit && editForm.bagType !== "wafer" && selectedLot && selectedLot.remainingSize === selectedLot.size ? (
+                  <Select
+                    value={editForm.bagType}
+                    onValueChange={(value) => setEditForm({ ...editForm, bagType: value })}
+                  >
+                    <SelectTrigger className="h-8 w-24 text-sm" data-testid="select-edit-potato-type">
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="seed">{t("seed")}</SelectItem>
+                      <SelectItem value="Ration">{t("ration")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="font-medium text-sm" data-testid="text-edit-potato-type">
+                    {selectedLot?.bagType === "wafer"
+                      ? t("wafer")
+                      : selectedLot?.bagType === "Ration"
+                      ? t("ration")
+                      : selectedLot?.bagType === "seed"
+                      ? t("seed")
+                      : "—"}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2867,6 +2904,7 @@ export default function StockRegister() {
                         rstNo: updatedLot.rstNo || "",
                         vehicle: updatedLot.vehicle || "",
                         type: updatedLot.type || "",
+                        bagType: updatedLot.bagType,
                         farmerName: updatedLot.farmerName,
                         village: updatedLot.village || "",
                         tehsil: updatedLot.tehsil || "",

@@ -1074,6 +1074,10 @@ export async function registerRoutes(
     // empty/unchanged values, and the underlying column is NOT NULL so a
     // truly-empty write would be rejected at the DB layer anyway.
     type: z.string().optional(),
+    // Potato type / category (editable for non-wafer lots with no active
+    // sales). Switching seed<->Ration is safe — they share lot-number
+    // sequence and seed charge rates. Wafer is blocked by the guard below.
+    bagType: z.enum(["wafer", "seed", "Ration"]).optional(),
     // Farmer details (editable)
     farmerName: z.string().min(1).optional(),
     village: z.string().optional(),
@@ -1165,6 +1169,21 @@ export async function registerRoutes(
       if (validated.farmerLedgerId && validated.farmerLedgerId !== lot.farmerLedgerId) {
         if (lot.remainingSize < lot.size) {
           return res.status(400).json({ error: "Cannot change farmer after sales are recorded" });
+        }
+      }
+
+      // Block potato-type (bagType) change for wafer lots (their own
+      // lot-number sequence) or once the lot has any active (non-reversed)
+      // sale. remainingSize is restored on sale reversal, so a fully-reversed
+      // lot passes this guard and becomes editable again. Restricting the
+      // switch to lots with no active sales keeps the denormalized bagType
+      // copy in sales_history from ever going stale.
+      if (validated.bagType && validated.bagType !== lot.bagType) {
+        if (lot.bagType === "wafer" || validated.bagType === "wafer") {
+          return res.status(400).json({ error: "Wafer potato type cannot be changed" });
+        }
+        if (lot.remainingSize < lot.size) {
+          return res.status(400).json({ error: "Cannot change potato type after sales are recorded" });
         }
       }
 
