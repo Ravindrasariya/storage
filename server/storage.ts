@@ -1186,13 +1186,14 @@ export class DatabaseStorage implements IStorage {
     }
     const chamberStats = allChambers.map((chamber) => {
       const currentFill = displayChamberFillMap.get(chamber.id) ?? 0;
+      const capacity = chamber.capacity ?? 0;
       return {
         id: chamber.id,
         name: chamber.name,
-        capacity: chamber.capacity,
+        capacity,
         currentFill,
-        fillPercentage: chamber.capacity > 0
-          ? Math.round((currentFill / chamber.capacity) * 100)
+        fillPercentage: capacity > 0
+          ? Math.round((currentFill / capacity) * 100)
           : 0,
       };
     });

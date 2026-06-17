@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
@@ -292,18 +293,20 @@ function AppContent() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <I18nProvider>
-          <AuthProvider>
-            <TooltipProvider>
-              <AppContent />
-              <Toaster />
-            </TooltipProvider>
-          </AuthProvider>
-        </I18nProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <I18nProvider>
+            <AuthProvider>
+              <TooltipProvider>
+                <AppContent />
+                <Toaster />
+              </TooltipProvider>
+            </AuthProvider>
+          </I18nProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

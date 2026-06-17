@@ -34,9 +34,11 @@ export default function Dashboard() {
   });
 
   // Generate year options: available years + current year (ensure current year is always available)
-  const yearOptions = availableYears 
-    ? Array.from(new Set([...availableYears, currentYear])).sort((a, b) => b - a)
-    : [currentYear];
+  const yearOptions = Array.from(
+    new Set([...(availableYears ?? []), currentYear]),
+  )
+    .filter((year): year is number => typeof year === "number" && Number.isFinite(year))
+    .sort((a, b) => b - a);
 
   if (isLoading) {
     return (
@@ -92,7 +94,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <StatCard
           title={t("overallCapacity")}
-          value={stats?.totalCapacity.toLocaleString() || "0"}
+          value={stats?.totalCapacity?.toLocaleString() || "0"}
           subtitle={t("bags")}
           icon={Warehouse}
           colorClass="bg-blue-50 dark:bg-blue-950/30"
