@@ -216,8 +216,9 @@ export function EditExitDialog({ exit, open, onOpenChange, parentSaleId }: EditE
               id="edit-exit-date"
               type="date"
               value={exitDateInput}
-              // Match the server's "≤ tomorrow" guard so the picker
-              // can't surface 2127-style typos in the first place.
+              // Match the server's year guards so the picker can't surface
+              // 0026- or 2127-style typos in the first place.
+              min="2015-01-01"
               max={new Intl.DateTimeFormat("en-CA", {
                 timeZone: "Asia/Kolkata",
                 year: "numeric",

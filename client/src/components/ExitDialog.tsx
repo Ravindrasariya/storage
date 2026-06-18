@@ -382,6 +382,8 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                           // wire behaviour stay in sync.
                           setExitDateEdited(next.length > 0);
                         }}
+                        min="2015-01-01"
+                        max={new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })}
                         className="h-8 w-36 text-sm bg-background"
                         data-testid="input-exit-date"
                       />

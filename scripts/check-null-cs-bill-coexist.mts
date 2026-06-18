@@ -210,8 +210,9 @@ async function getSaleBillNumber(saleId: string): Promise<number | null> {
 // Pin every test to a fixed past date so multiple runs in the same
 // calendar year don't collide through the year-scoped dup check, AND so
 // the partial-sale endpoint's "not more than 1 day in the future" guard
-// can never trip on us.
-const TEST_YEAR = 2000;
+// can never trip on us. Stays at/after 2015 so the date-year plausibility
+// guard (rejects typo'd years like 0026) accepts these test fixtures.
+const TEST_YEAR = 2016;
 const TEST_DATE = `${TEST_YEAR}-06-15`;
 
 async function main(): Promise<void> {
