@@ -936,7 +936,7 @@ export default function StockRegister() {
         const totalBilledCharge = paidCharge + dueCharge;
         return [
           lot.lotNo,
-          formatEntryDate(lot.entryDate),
+          formatEntryDate(lot.createdAt),
           lot.farmerName,
           lot.contactNumber,
           lot.village,
