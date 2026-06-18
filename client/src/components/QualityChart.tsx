@@ -17,14 +17,22 @@ interface QualityChartProps {
 export function QualityChart({ data }: QualityChartProps) {
   const { t } = useI18n();
 
-  const chartData = data.map((item) => ({
-    name: item.chamberName,
+  // Defensive: an account with imperfect data can produce a null/undefined
+  // `data` prop or null elements (e.g. a chamber with a missing name). Recharts
+  // dereferences these blindly and crashes the whole page, so filter out null
+  // items and coalesce a missing chamber name to a safe label before rendering.
+  const safeData = (Array.isArray(data) ? data : []).filter(
+    (item): item is ChamberQuality => item != null,
+  );
+
+  const chartData = safeData.map((item) => ({
+    name: item.chamberName?.trim() || "Unknown",
     [t("poor")]: item.poor,
     [t("medium")]: item.medium,
     [t("good")]: item.good,
   }));
 
-  if (data.length === 0) {
+  if (safeData.length === 0) {
     return (
       <Card className="p-4 sm:p-6">
         <h3 className="text-lg font-semibold mb-4">{t("chamberQualityAnalysis")}</h3>

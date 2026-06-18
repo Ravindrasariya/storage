@@ -59,18 +59,22 @@ export default function Analytics() {
     },
   });
 
+  // Defensive: accounts with imperfect data can yield null elements or a null
+  // `buyerName` in merchantData. Skip null entries in the reduce and guard
+  // `buyerName` before `.trim()` so the page renders instead of crashing.
+  const safeMerchantData = (merchantStats?.merchantData ?? []).filter((m) => m != null);
   const selectedMerchantData = selectedBuyer === "all"
-    ? merchantStats?.merchantData?.reduce((acc, m) => ({
+    ? safeMerchantData.reduce((acc, m) => ({
         buyerName: "All Buyers",
-        bagsPurchased: acc.bagsPurchased + m.bagsPurchased,
-        totalValue: acc.totalValue + m.totalValue,
-        totalChargePaid: acc.totalChargePaid + m.totalChargePaid,
-        totalChargeDue: acc.totalChargeDue + m.totalChargeDue,
-        cashPaid: acc.cashPaid + m.cashPaid,
-        accountPaid: acc.accountPaid + m.accountPaid,
+        bagsPurchased: acc.bagsPurchased + (m.bagsPurchased || 0),
+        totalValue: acc.totalValue + (m.totalValue || 0),
+        totalChargePaid: acc.totalChargePaid + (m.totalChargePaid || 0),
+        totalChargeDue: acc.totalChargeDue + (m.totalChargeDue || 0),
+        cashPaid: acc.cashPaid + (m.cashPaid || 0),
+        accountPaid: acc.accountPaid + (m.accountPaid || 0),
       }), { buyerName: "All Buyers", bagsPurchased: 0, totalValue: 0, totalChargePaid: 0, totalChargeDue: 0, cashPaid: 0, accountPaid: 0 })
-    : merchantStats?.merchantData?.find(m => 
-        m.buyerName.trim().toLowerCase() === selectedBuyer.trim().toLowerCase()
+    : safeMerchantData.find(m =>
+        (m.buyerName || "").trim().toLowerCase() === selectedBuyer.trim().toLowerCase()
       );
 
   if (isLoading) {
@@ -242,7 +246,7 @@ export default function Analytics() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("allBuyers")}</SelectItem>
-              {merchantStats?.buyers?.map((buyer) => (
+              {merchantStats?.buyers?.filter((buyer) => buyer && buyer.trim()).map((buyer) => (
                 <SelectItem key={buyer} value={buyer}>{buyer}</SelectItem>
               ))}
             </SelectContent>

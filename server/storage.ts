@@ -1320,18 +1320,21 @@ export class DatabaseStorage implements IStorage {
     const chamberMapRemaining = new Map<string, { chamberId: string; chamberName: string; poor: number; medium: number; good: number }>();
     const chamberMapOriginal = new Map<string, { chamberId: string; chamberName: string; poor: number; medium: number; good: number }>();
     
-    // Initialize with current chambers
+    // Initialize with current chambers. Coalesce a null/blank chamber name to a
+    // safe fallback so chamberQualityRemaining[].chamberName is never null/empty
+    // (a null name crashes the Analytics quality chart in Recharts).
     allChambers.forEach(chamber => {
+      const safeName = chamber.name?.trim() || "Unknown";
       chamberMapRemaining.set(chamber.id, {
         chamberId: chamber.id,
-        chamberName: chamber.name,
+        chamberName: safeName,
         poor: 0,
         medium: 0,
         good: 0,
       });
       chamberMapOriginal.set(chamber.id, {
         chamberId: chamber.id,
-        chamberName: chamber.name,
+        chamberName: safeName,
         poor: 0,
         medium: 0,
         good: 0,
@@ -1366,14 +1369,16 @@ export class DatabaseStorage implements IStorage {
       }
       
       // This is a historical sale (lot was deleted after season reset)
-      // Try to find chamber by name if ID doesn't exist
-      let existingOriginal = Array.from(chamberMapOriginal.values()).find(c => c.chamberName === sale.chamberName);
+      // Try to find chamber by name if ID doesn't exist. Coalesce a null/blank
+      // chamber name to a safe fallback so the chart never receives a null name.
+      const saleChamberName = sale.chamberName?.trim() || "Unknown";
+      let existingOriginal = Array.from(chamberMapOriginal.values()).find(c => c.chamberName === saleChamberName);
       if (!existingOriginal) {
         // Create entry for historical chamber
-        const historyKey = `history-${sale.chamberName}`;
+        const historyKey = `history-${saleChamberName}`;
         existingOriginal = {
           chamberId: historyKey,
-          chamberName: sale.chamberName,
+          chamberName: saleChamberName,
           poor: 0,
           medium: 0,
           good: 0,

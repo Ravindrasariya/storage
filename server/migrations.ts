@@ -26,6 +26,21 @@ interface Migration {
 
 const MIGRATIONS: Migration[] = [
   {
+    name: "2026-06-18_repair_null_chamber_names",
+    up: async () => {
+      // Task #323 — an account with imperfect data ("Maa Umia Cold Storage
+      // Tarana") had chambers with a NULL/blank name, which shipped a null
+      // chamberName into the Analytics quality chart and crashed the Recharts
+      // render. Backfill a safe placeholder name so the data shape is always
+      // valid. Idempotent: only touches rows that are still null/blank.
+      await db.execute(sql`
+        UPDATE chambers
+        SET name = 'Unknown'
+        WHERE name IS NULL OR btrim(name) = ''
+      `);
+    },
+  },
+  {
     name: "2026-05-27_add_cash_receipts_due_type",
     up: async () => {
       // Task #309 — additive NOT NULL column with default 'cold_charges'.

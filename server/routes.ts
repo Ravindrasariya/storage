@@ -421,6 +421,10 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       let lots = await storage.getAllLots(coldStorageId);
+      // Defensive: never ship null/dangling lot rows to the client. An account
+      // with imperfect data could otherwise crash the Stock Register render
+      // (FarmerLotGroup destructures each entry's fields).
+      lots = (Array.isArray(lots) ? lots : []).filter(lot => lot != null && lot.id != null);
 
       const { chamber, floor: floorParam } = req.query;
       if (chamber && typeof chamber === "string" && chamber !== "all") {

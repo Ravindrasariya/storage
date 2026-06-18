@@ -56,11 +56,16 @@ function isEmpty(value: unknown): boolean {
 
 function getChangedFields(previousData: string, newData: string): { field: string; oldValue: unknown; newValue: unknown }[] {
   try {
-    const prev = JSON.parse(previousData);
-    const next = JSON.parse(newData);
+    // Defensive: previousData/newData can be null/empty on imperfect data.
+    // JSON.parse("") throws, and a non-object parse result (null/number/string)
+    // would make Object.keys throw — guard both so the dialog never crashes.
+    const prev = previousData ? JSON.parse(previousData) : {};
+    const next = newData ? JSON.parse(newData) : {};
+    const prevObj = prev && typeof prev === "object" ? prev : {};
+    const nextObj = next && typeof next === "object" ? next : {};
     const changes: { field: string; oldValue: unknown; newValue: unknown }[] = [];
-    
-    const allKeys = Array.from(new Set([...Object.keys(prev), ...Object.keys(next)]));
+
+    const allKeys = Array.from(new Set([...Object.keys(prevObj), ...Object.keys(nextObj)]));
     for (const key of allKeys) {
       const oldVal = prev[key];
       const newVal = next[key];
@@ -78,7 +83,7 @@ function getChangedFields(previousData: string, newData: string): { field: strin
 export function EditHistoryAccordion({ history, onReverse }: EditHistoryAccordionProps) {
   const { t } = useI18n();
 
-  if (history.length === 0) {
+  if (!Array.isArray(history) || history.length === 0) {
     return (
       <div className="text-sm text-muted-foreground text-center py-4">
         No edit history available

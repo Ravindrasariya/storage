@@ -149,7 +149,7 @@ export default function StockRegister() {
     lots: LotWithCharges[],
   ) => {
     if (lots.length === 0) return;
-    const farmerLedgerId = lots.find(l => !!l.lot.farmerLedgerId)?.lot.farmerLedgerId || null;
+    const farmerLedgerId = lots.find(l => !!l?.lot?.farmerLedgerId)?.lot?.farmerLedgerId || null;
     if (!farmerLedgerId) {
       toast({ title: "Cannot start Master Nikasi", description: "Farmer ledger not linked.", variant: "destructive" });
       return;
@@ -232,7 +232,7 @@ export default function StockRegister() {
   
   const farmerLookupMap = useMemo(() => {
     if (!farmerRecords) return new Map<string, FarmerRecord>();
-    return new Map(farmerRecords.map(f => [f.farmerLedgerId, f]));
+    return new Map(farmerRecords.filter(f => f != null && f.farmerLedgerId != null).map(f => [f.farmerLedgerId, f]));
   }, [farmerRecords]);
 
   const { data: chambers } = useQuery<Chamber[]>({
@@ -418,7 +418,7 @@ export default function StockRegister() {
   // paginated displayed set). Drives the right-hand "Exited / Sold" /
   // "Exit Dates" / "Exit Bills" / "Cold Bill No" columns inside
   // FarmerLotGroup.
-  const renderedLotIds = (hasSearched ? searchResults : displayedLots).map(l => l.id);
+  const renderedLotIds = (hasSearched ? searchResults : displayedLots).filter(l => l != null && l.id != null).map(l => l.id);
   const renderedLotIdsKey = [...renderedLotIds].sort().join(",");
   const { data: salesByLot, isLoading: salesByLotLoading, isError: salesByLotError } = useQuery<Record<string, SaleSummary[]>>({
     queryKey: ["/api/lots/sales-summary", renderedLotIdsKey],

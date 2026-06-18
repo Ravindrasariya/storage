@@ -145,11 +145,17 @@ export function FarmerLotGroup({
     });
   };
 
-  const totalBags = lots.reduce((s, l) => s + (l.lot.size || 0), 0);
-  const remainingBags = lots.reduce((s, l) => s + (l.lot.remainingSize || 0), 0);
-  const totalExpected = lots.reduce((s, l) => s + (l.expectedColdCharge || 0), 0);
-  const totalPaid = lots.reduce((s, l) => s + (l.lotPaidCharge || 0), 0);
-  const totalDue = lots.reduce((s, l) => s + (l.lotDueCharge || 0), 0);
+  // Defensive: an account with imperfect data can hand us a null/dangling
+  // entry (or one missing its `lot`), so filter those out before any reduce or
+  // map. Without this, destructuring `{ lot, ... }` below throws and the whole
+  // Stock Register page crashes for that account.
+  const safeLots = (Array.isArray(lots) ? lots : []).filter((l) => l != null && l.lot != null);
+
+  const totalBags = safeLots.reduce((s, l) => s + (l.lot.size || 0), 0);
+  const remainingBags = safeLots.reduce((s, l) => s + (l.lot.remainingSize || 0), 0);
+  const totalExpected = safeLots.reduce((s, l) => s + (l.expectedColdCharge || 0), 0);
+  const totalPaid = safeLots.reduce((s, l) => s + (l.lotPaidCharge || 0), 0);
+  const totalDue = safeLots.reduce((s, l) => s + (l.lotDueCharge || 0), 0);
   const farmerKey = `${contactNumber}-${farmerName}`.replace(/\s+/g, "_");
   const addressLine = [village, tehsil, district].filter(Boolean).join(", ");
 
@@ -213,7 +219,7 @@ export function FarmerLotGroup({
             size="sm"
             variant="default"
             className="ml-auto bg-amber-600 hover:bg-amber-700 text-white"
-            onClick={() => onMasterNikasi(lots.filter(l => (l.lot.remainingSize || 0) > 0))}
+            onClick={() => onMasterNikasi(safeLots.filter(l => (l.lot.remainingSize || 0) > 0))}
             data-testid={`button-master-nikasi-${farmerKey}`}
           >
             <PackageMinus className="h-4 w-4 mr-1" />
@@ -283,7 +289,7 @@ export function FarmerLotGroup({
 
         {/* Lot rows */}
         <div className="divide-y">
-          {lots.map(({ lot, lotPaidCharge, lotDueCharge, expectedColdCharge }) => {
+          {safeLots.map(({ lot, lotPaidCharge, lotDueCharge, expectedColdCharge }) => {
             const isExpanded = expandedIds.has(lot.id);
             const paidCharge = lotPaidCharge;
             const dueCharge = lotDueCharge;
@@ -291,8 +297,10 @@ export function FarmerLotGroup({
             const chamberAbbrev = /chamber/i.test(chamberName)
               ? chamberName.replace(/chamber\s*/i, "Ch-")
               : `Ch-${chamberName}`;
-            const locationStr = `${chamberAbbrev}, FL-${lot.floor}, ${lot.position}`;
-            const sales = salesByLot?.[lot.id] || [];
+            const locationStr = `${chamberAbbrev}, FL-${lot.floor ?? "-"}, ${lot.position ?? "-"}`;
+            // Defensive: a sale grouping may contain null entries on imperfect
+            // data — drop them so per-sale rendering never dereferences null.
+            const sales = (salesByLot?.[lot.id] || []).filter((s) => s != null);
             const rowCount = Math.max(1, sales.length);
 
             // Build the right-half cells for a given sale (or empty placeholder
@@ -300,6 +308,8 @@ export function FarmerLotGroup({
             // empty placeholder rows fall back to `empty-${lot.id}`.
             const renderRightCells = (sale: SaleSummary | undefined) => {
               const tid = sale ? sale.saleId : `empty-${lot.id}`;
+              // Defensive: `exits` may be null on imperfect data; treat as [].
+              const exits = sale && Array.isArray(sale.exits) ? sale.exits : [];
               return (
                 <>
                   <span
@@ -310,20 +320,20 @@ export function FarmerLotGroup({
                   </span>
                   <span
                     className="text-center truncate text-xs tabular-nums"
-                    title={sale ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ") : ""}
+                    title={exits.map(e => fmtDateShort(e.exitDate)).join(", ")}
                     data-testid={`cell-exit-dates-${tid}`}
                   >
-                    {sale && sale.exits.length > 0
-                      ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ")
+                    {exits.length > 0
+                      ? exits.map(e => fmtDateShort(e.exitDate)).join(", ")
                       : "—"}
                   </span>
                   <span
                     className="text-center truncate font-mono tabular-nums tracking-tight"
-                    title={sale ? sale.exits.map(e => String(e.billNumber)).join(", ") : ""}
+                    title={exits.map(e => String(e.billNumber)).join(", ")}
                     data-testid={`cell-exit-bills-${tid}`}
                   >
-                    {sale && sale.exits.length > 0
-                      ? sale.exits.map(e => String(e.billNumber)).join(", ")
+                    {exits.length > 0
+                      ? exits.map(e => String(e.billNumber)).join(", ")
                       : "—"}
                   </span>
                   <span
