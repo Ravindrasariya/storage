@@ -795,6 +795,8 @@ export function MasterNikasiDialog({
                 value={exitDate}
                 onChange={(e) => setExitDate(e.target.value)}
                 disabled={!!result}
+                min="2015-01-01"
+                max={new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })}
                 className="h-8 w-40"
                 data-testid="input-mn-exit-date"
               />

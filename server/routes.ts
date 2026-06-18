@@ -732,7 +732,17 @@ export async function registerRoutes(
     })).min(1),
     bagTypeCategory: z.enum(["wafer", "rationSeed"]).optional(),
     manualLotNo: z.number().int().positive().optional(),
-    entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    entryDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      // The 4-digit regex alone accepts typo'd years like 0026, which corrupt
+      // year dropdowns across the app. Require a plausible year (>= 2015 and no
+      // further out than next calendar year).
+      .refine((v) => {
+        const year = parseInt(v.slice(0, 4), 10);
+        return Number.isFinite(year) && year >= 2015 && year <= new Date().getFullYear() + 1;
+      }, "Entry date year is out of range (must be 2015 or later)")
+      .optional(),
   });
 
   app.post("/api/lots/batch", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
@@ -1425,6 +1435,11 @@ export async function registerRoutes(
         if (parsed.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
           return res.status(400).json({ error: "Sale date cannot be in the future", field: "soldAt" });
         }
+        // Reject implausibly old years (e.g. a typo'd 0026). year(soldAt) feeds
+        // year dropdowns, so a bad year would corrupt those lists.
+        if (parsed.getFullYear() < 2015) {
+          return res.status(400).json({ error: "Sale date year is out of range (must be 2015 or later)", field: "soldAt" });
+        }
         saleDate = parsed;
       } else {
         saleDate = new Date();
@@ -1874,6 +1889,11 @@ export async function registerRoutes(
       if (istParts !== body.exitDate) {
         return res.status(400).json({ error: "Exit date is not a real calendar date", field: "exitDate" });
       }
+      // Reject implausibly old years (e.g. a typo'd 0026); year(soldAt) is
+      // derived from this exit date and feeds year dropdowns.
+      if (exitDate.getFullYear() < 2015 || exitDate.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
+        return res.status(400).json({ error: "Exit date year is out of range", field: "exitDate" });
+      }
 
       // Parse optional payment.receivedAt the same IST-anchored way as exitDate
       // so the cashReceipts.receivedAt lands on the operator-picked calendar
@@ -2298,6 +2318,10 @@ export async function registerRoutes(
         const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
         if (parsedDate.getTime() > tomorrow.getTime()) {
           return res.status(400).json({ error: "Sale date cannot be in the future", field: "newSoldAt" });
+        }
+        // Reject implausibly old years (e.g. a typo'd 0026); saleYear feeds year dropdowns.
+        if (parsedDate.getFullYear() < 2015) {
+          return res.status(400).json({ error: "Sale date year is out of range (must be 2015 or later)", field: "newSoldAt" });
         }
         resolvedSoldAt = parsedDate;
       }
@@ -2952,6 +2976,10 @@ export async function registerRoutes(
         if (parsedDate.getTime() > tomorrow.getTime()) {
           return res.status(400).json({ error: "Exit date cannot be in the future", field: "newExitDate" });
         }
+        // Reject implausibly old years (e.g. a typo'd 0026); year(soldAt) feeds year dropdowns.
+        if (parsedDate.getFullYear() < 2015) {
+          return res.status(400).json({ error: "Exit date year is out of range (must be 2015 or later)", field: "newExitDate" });
+        }
         resolvedExitDate = parsedDate;
       }
 
@@ -3043,6 +3071,10 @@ export async function registerRoutes(
         const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
         if (parsed.getTime() > tomorrow.getTime()) {
           return res.status(400).json({ error: "Exit date cannot be in the future", field: "exitDate" });
+        }
+        // Reject implausibly old years (e.g. a typo'd 0026); year(soldAt) feeds year dropdowns.
+        if (parsed.getFullYear() < 2015) {
+          return res.status(400).json({ error: "Exit date year is out of range (must be 2015 or later)", field: "exitDate" });
         }
         resolvedExitDate = parsed;
       } else {

@@ -84,10 +84,12 @@ export default function StockRegister() {
     queryKey: ["/api/analytics/years"],
   });
 
-  // Generate year options: available years + current year
-  const yearOptions = availableYears 
-    ? Array.from(new Set([...availableYears, currentYear])).sort((a, b) => b - a)
-    : [currentYear];
+  // Generate year options: available years + current year.
+  // Filter to finite numbers so a stray null/NaN year (e.g. from a corrupted
+  // lot date) can never crash the dropdown via year.toString().
+  const yearOptions = Array.from(new Set([...(availableYears ?? []), currentYear]))
+    .filter((year): year is number => typeof year === "number" && Number.isFinite(year))
+    .sort((a, b) => b - a);
 
   const [searchType, setSearchType] = useState<"phone" | "lotNoSize" | "farmerName">(
     savedState?.searchType && savedState.searchType !== "filter"

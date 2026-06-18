@@ -1742,10 +1742,16 @@ export class DatabaseStorage implements IStorage {
     const allLots = await this.getAllLots(coldStorageId);
     const salesYears = await this.getSalesYears(coldStorageId);
     
-    const yearSet = new Set<number>(salesYears);
+    // Only add finite years. A corrupted lot date (e.g. year 0026) can parse to
+    // an invalid Date whose getFullYear() is NaN; left unchecked it serializes to
+    // null in the JSON response and crashes year dropdowns on the client.
+    const yearSet = new Set<number>();
+    salesYears.forEach((y) => {
+      if (typeof y === "number" && Number.isFinite(y)) yearSet.add(y);
+    });
     allLots.forEach((lot) => {
       const entryYear = new Date(lot.createdAt).getFullYear();
-      yearSet.add(entryYear);
+      if (Number.isFinite(entryYear)) yearSet.add(entryYear);
     });
     
     return Array.from(yearSet).sort((a, b) => b - a);

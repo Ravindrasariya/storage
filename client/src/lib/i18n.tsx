@@ -330,6 +330,7 @@ const translations: Translations = {
   printPdf: { en: "Print PDF", hi: "पीडीएफ प्रिंट" },
   date: { en: "Date", hi: "तिथि" },
   entryDate: { en: "Entry Date", hi: "प्रवेश तिथि" },
+  invalidEntryDate: { en: "Please enter a valid entry date (year must be 2015 or later, not in the future).", hi: "कृपया एक मान्य प्रवेश तिथि दर्ज करें (वर्ष 2015 या उसके बाद का होना चाहिए, भविष्य का नहीं)।" },
   saleDate: { en: "Sale Date", hi: "बिक्री तिथि" },
   csBillNumber: { en: "CS Bill #", hi: "शीत भण्डार बिल #" },
   editCsBill: { en: "Edit CS Bill # / Date", hi: "शीत भण्डार बिल # / तिथि बदलें" },

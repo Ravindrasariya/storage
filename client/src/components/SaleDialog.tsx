@@ -485,6 +485,8 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
                   // actually send (an empty value omits soldAt).
                   setSaleDateEdited(next.length > 0);
                 }}
+                min="2015-01-01"
+                max={new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })}
                 className="h-7 w-36 text-sm bg-background"
                 data-testid="input-partial-sale-date"
               />

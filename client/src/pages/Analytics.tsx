@@ -123,9 +123,11 @@ export default function Analytics() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("allYears")}</SelectItem>
-              {years.map((year) => (
-                <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-              ))}
+              {years
+                .filter((year): year is number => typeof year === "number" && Number.isFinite(year))
+                .map((year) => (
+                  <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                ))}
             </SelectContent>
           </Select>
         </div>

@@ -918,6 +918,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                           setCsBillDateInput(e.target.value);
                           if (csBillDateError) setCsBillDateError(null);
                         }}
+                        min="2015-01-01"
+                        max={new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })}
                         className={`h-8 ${csBillDateError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                         aria-invalid={csBillDateError ? true : undefined}
                         data-testid="input-edit-cs-bill-date"

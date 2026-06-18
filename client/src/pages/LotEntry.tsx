@@ -124,6 +124,19 @@ function getTodayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Earliest plausible date a user can pick for a lot entry. Guards against typo'd
+// years (e.g. 0026) that corrupt year dropdowns elsewhere in the app.
+const MIN_ENTRY_DATE = "2015-01-01";
+
+// A date string is valid only if it is a well-formed YYYY-MM-DD with a year in a
+// plausible range (>= 2015 and no more than next calendar year).
+function isPlausibleDateStr(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = parseInt(value.slice(0, 4), 10);
+  if (!Number.isFinite(year)) return false;
+  return year >= 2015 && year <= new Date().getFullYear() + 1;
+}
+
 export default function LotEntry() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
@@ -587,6 +600,15 @@ export default function LotEntry() {
   const onSubmit = async (farmerData: FarmerData) => {
     if (!validateLots()) return;
 
+    if (!isPlausibleDateStr(entryDate)) {
+      toast({
+        title: t("error"),
+        description: t("invalidEntryDate"),
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const result = await createBatchLotsMutation.mutateAsync({
@@ -714,6 +736,8 @@ export default function LotEntry() {
                     value={entryDate}
                     onChange={(e) => setEntryDate(e.target.value || getTodayStr())}
                     required
+                    min={MIN_ENTRY_DATE}
+                    max={getTodayStr()}
                     className="w-40 h-8 text-sm"
                     data-testid="input-entry-date"
                   />
