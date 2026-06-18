@@ -1,2 +1,3 @@
 - [tsx dev server route changes](tsx-dev-route-changes.md) — `npm run dev` runs `tsx server/index.ts` without --watch; new Express routes don't activate until the workflow is restarted, even though file-save triggers Vite client HMR.
 - [P&L pass-through accrual rule](pnl-pass-through-accrual.md) — hammali/extra-hammali/grading/merchant-extras accrue as P&L expenses at sale-time; matching cash hammali/grading expense types are suppressed in the P&L route to avoid double-counting.
+- [Snapshot tables vs db:push](snapshot-tables-dbpush.md) — date-suffixed heal/snapshot backup tables aren't in schema; drizzle tablesFilter excludes `*_YYYY_MM_DD` so db:push won't hang trying to drop them.
