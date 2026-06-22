@@ -6364,6 +6364,24 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/liabilities/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const result = await storage.deleteLiability(req.params.id, coldStorageId);
+      if (!result.success) {
+        if (result.reason === "not_found") {
+          return res.status(404).json({ error: "Liability not found" });
+        }
+        if (result.reason === "has_payments") {
+          return res.status(409).json({ error: "Cannot delete a liability with linked non-reversed payments", reason: "has_payments" });
+        }
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete liability" });
+    }
+  });
+
   app.get("/api/liabilities/:id/payments", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const payments = await storage.getLiabilityPayments(req.params.id);

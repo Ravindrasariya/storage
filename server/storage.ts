@@ -608,6 +608,7 @@ export interface IStorage {
   createLiability(data: InsertLiability): Promise<Liability>;
   updateLiability(id: string, updates: Partial<Liability>): Promise<Liability | undefined>;
   settleLiability(id: string): Promise<Liability | undefined>;
+  deleteLiability(id: string, coldStorageId: string): Promise<{ success: boolean; reason?: "not_found" | "has_payments" }>;
   getLiabilityPayments(liabilityId: string): Promise<LiabilityPayment[]>;
   createLiabilityPayment(data: InsertLiabilityPayment): Promise<LiabilityPayment>;
   reverseLiabilityPayment(id: string): Promise<LiabilityPayment | undefined>;
@@ -13529,6 +13530,34 @@ export class DatabaseStorage implements IStorage {
       .where(eq(liabilities.id, id))
       .returning();
     return updated;
+  }
+
+  async deleteLiability(id: string, coldStorageId: string): Promise<{ success: boolean; reason?: "not_found" | "has_payments" }> {
+    const [liability] = await db.select().from(liabilities)
+      .where(and(eq(liabilities.id, id), eq(liabilities.coldStorageId, coldStorageId)));
+    if (!liability) return { success: false, reason: "not_found" };
+
+    // Block deletion if any non-reversed payment is linked to this liability —
+    // those payments affect the books and must be reversed first.
+    const [{ count: activePayments }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(liabilityPayments)
+      .where(and(
+        eq(liabilityPayments.liabilityId, id),
+        eq(liabilityPayments.coldStorageId, coldStorageId),
+        eq(liabilityPayments.isReversed, 0),
+      ));
+    if (activePayments > 0) return { success: false, reason: "has_payments" };
+
+    // Safe to delete: remove leftover (reversed) payment rows, then the liability.
+    await db.delete(liabilityPayments)
+      .where(and(
+        eq(liabilityPayments.liabilityId, id),
+        eq(liabilityPayments.coldStorageId, coldStorageId),
+      ));
+    await db.delete(liabilities)
+      .where(and(eq(liabilities.id, id), eq(liabilities.coldStorageId, coldStorageId)));
+    return { success: true };
   }
 
   async getLiabilityPayments(liabilityId: string): Promise<LiabilityPayment[]> {

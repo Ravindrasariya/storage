@@ -15,7 +15,7 @@ import { apiRequest, queryClient, authFetch } from "@/lib/queryClient";
 import { formatCurrency } from "@/components/Currency";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Landmark, Plus, Pencil, CheckCircle2, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { Landmark, Plus, Pencil, CheckCircle2, RotateCcw, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import type { Liability, LiabilityPayment } from "@shared/schema";
 
@@ -166,6 +166,7 @@ export default function LiabilityRegister() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [settleDialogOpen, setSettleDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedLiability, setSelectedLiability] = useState<Liability | null>(null);
   const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
 
@@ -232,6 +233,27 @@ export default function LiabilityRegister() {
     },
     onError: () => {
       toast({ title: t("saveFailed"), variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/liabilities/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/liabilities"] });
+      toast({ title: t("liabilityDeleted") });
+      setDeleteDialogOpen(false);
+      setSelectedLiability(null);
+    },
+    onError: (error: unknown) => {
+      const err = error as { status?: number; body?: { reason?: string } };
+      const blockedByPayments = err?.status === 409 || err?.body?.reason === "has_payments";
+      toast({
+        title: blockedByPayments ? t("cannotDeleteLiabilityWithPayments") : t("deleteFailed"),
+        variant: "destructive",
+      });
     },
   });
 
@@ -500,6 +522,7 @@ export default function LiabilityRegister() {
                 onToggleExpand={() => togglePaymentHistory(liability.id)}
                 onEdit={() => handleEdit(liability)}
                 onSettle={() => handleSettle(liability)}
+                onDelete={() => { setSelectedLiability(liability); setDeleteDialogOpen(true); }}
                 onReversePayment={(paymentId) => reversePaymentMutation.mutate(paymentId)}
               />
             ))}
@@ -561,6 +584,26 @@ export default function LiabilityRegister() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("deleteLiability")}</DialogTitle>
+            <DialogDescription>
+              {selectedLiability && `${t("confirmDeleteLiability")} "${selectedLiability.liabilityName}"?`}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-destructive" data-testid="text-delete-warning">{t("deleteLiabilityWarning")}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} data-testid="button-cancel-delete">
+              {t("cancel")}
+            </Button>
+            <Button variant="destructive" onClick={() => selectedLiability && deleteMutation.mutate(selectedLiability.id)} disabled={deleteMutation.isPending} data-testid="button-confirm-delete">
+              {deleteMutation.isPending ? t("loading") : t("deleteLiability")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -573,6 +616,7 @@ function LiabilityRow({
   onToggleExpand,
   onEdit,
   onSettle,
+  onDelete,
   onReversePayment,
 }: {
   liability: Liability;
@@ -582,6 +626,7 @@ function LiabilityRow({
   onToggleExpand: () => void;
   onEdit: () => void;
   onSettle: () => void;
+  onDelete: () => void;
   onReversePayment: (id: string) => void;
 }) {
   const isSettled = liability.isSettled === 1;
@@ -663,6 +708,12 @@ function LiabilityRow({
               {isExpanded ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
               {t("paymentHistory")}
             </Button>
+            {canEdit && (
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={onDelete} data-testid={`button-delete-${liability.id}`}>
+                <Trash2 className="w-3 h-3 mr-1" />
+                {t("deleteLiability")}
+              </Button>
+            )}
           </div>
 
           {isExpanded && (

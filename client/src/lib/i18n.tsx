@@ -987,6 +987,11 @@ const translations: Translations = {
   interestComponent: { en: "Interest", hi: "ब्याज" },
   paymentHistory: { en: "Payment History", hi: "भुगतान इतिहास" },
   noPayments: { en: "No payments recorded", hi: "कोई भुगतान दर्ज नहीं" },
+  deleteLiability: { en: "Delete", hi: "हटाएं" },
+  confirmDeleteLiability: { en: "Are you sure you want to delete", hi: "क्या आप हटाना चाहते हैं" },
+  deleteLiabilityWarning: { en: "This will permanently delete this liability. Once deleted, it cannot be recovered.", hi: "यह इस देनदारी को स्थायी रूप से हटा देगा। एक बार हटाने के बाद, इसे पुनः प्राप्त नहीं किया जा सकता।" },
+  liabilityDeleted: { en: "Liability deleted successfully", hi: "देनदारी सफलतापूर्वक हटा दी गई" },
+  cannotDeleteLiabilityWithPayments: { en: "Cannot delete: this liability has linked payments. Reverse all payments first.", hi: "हटाया नहीं जा सकता: इस देनदारी से जुड़े भुगतान हैं। पहले सभी भुगतान उलट दें।" },
 
   // Buyer Detailed Ledger
   detailedLedger: { en: "Detailed Ledger", hi: "विस्तृत खाता" },
