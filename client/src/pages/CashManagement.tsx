@@ -1897,6 +1897,7 @@ export default function CashManagement() {
       case "farmer_freight": return t("farmerFreight");
       case "farmer_loan": return t("farmerLoan");
       case "merchant_advance": return t("merchantAdvance");
+      case "other_advance": return t("otherAdvance");
       case "insurance": return t("insurance");
       case "loan_principal": return t("loanPrincipal");
       case "asset_purchase": return t("assetPurchase") || "Asset Purchase";
@@ -3314,6 +3315,7 @@ export default function CashManagement() {
                     <SelectItem value="interest_on_loan">{t("interestOnLoan")}</SelectItem>
                     <SelectItem value="loan_principal">{t("loanPrincipal")}</SelectItem>
                     <SelectItem value="merchant_advance">{t("merchantAdvance")}</SelectItem>
+                    <SelectItem value="other_advance">{t("otherAdvance")}</SelectItem>
                     <SelectItem value="salary">{t("salary")}</SelectItem>
                     <SelectItem value="tds">{t("tds")}</SelectItem>
                   </SelectContent>
@@ -4466,6 +4468,7 @@ export default function CashManagement() {
                       <SelectItem value="farmer_advance">{t("farmerAdvance")}</SelectItem>
                       <SelectItem value="farmer_freight">{t("farmerFreight")}</SelectItem>
                       <SelectItem value="farmer_loan">{t("farmerLoan")}</SelectItem>
+                      <SelectItem value="other_advance">{t("otherAdvance")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

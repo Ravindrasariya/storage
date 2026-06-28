@@ -253,6 +253,7 @@ const translations: Translations = {
   farmerFreight: { en: "Farmer - Freight", hi: "किसान - भाड़ा" },
   merchantAdvance: { en: "Cold Merchant - Advance/Loan", hi: "व्यापारी - अग्रिम/ऋण" },
   farmerLoan: { en: "Farmer - Loan", hi: "किसान - ऋण" },
+  otherAdvance: { en: "Others", hi: "अन्य" },
   selectMerchant: { en: "Select Merchant", hi: "व्यापारी चुनें" },
   searchMerchant: { en: "Search merchant...", hi: "व्यापारी खोजें..." },
   merchantName: { en: "Merchant Name", hi: "व्यापारी का नाम" },
