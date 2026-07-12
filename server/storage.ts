@@ -1154,11 +1154,18 @@ export class DatabaseStorage implements IStorage {
     const currentUtilization = allLots.reduce((sum, lot) => sum + physicalRemaining(lot), 0);
     const peakUtilization = allLots.reduce((sum, lot) => sum + lot.size, 0);
     
-    // Total unique farmers (all lots)
-    const uniqueFarmers = new Set(allLots.map((lot) => lot.contactNumber));
+    // Total unique farmers (all lots) — count distinct farmer IDs so farmers
+    // who share a phone number are counted separately (matches Farmer Ledger).
+    // Lots without a farmer ledger ID (legacy dev data only) are excluded.
+    const uniqueFarmers = new Set(
+      allLots.map((lot) => lot.farmerLedgerId).filter((id): id is string => !!id)
+    );
     // Remaining unique farmers (lots with bags physically still inside)
     const remainingFarmers = new Set(
-      allLots.filter((lot) => physicalRemaining(lot) > 0).map((lot) => lot.contactNumber)
+      allLots
+        .filter((lot) => physicalRemaining(lot) > 0)
+        .map((lot) => lot.farmerLedgerId)
+        .filter((id): id is string => !!id)
     );
     
     const totalWaferBags = allLots
