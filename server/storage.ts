@@ -352,6 +352,11 @@ export interface IStorage {
   // Pass the ledger UUID; implementation resolves the canonical buyer_name internally for
   // the null-ledger legacy-row fallback predicate.
   recomputeBuyerPayments(coldStorageId: string, buyerLedgerId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }>;
+  // Task #333 — sum of unapplied credit sitting in the cold-charges FIFO pool
+  // for a buyer (non-reversed cold_merchant / cold_charges receipts, excluding
+  // manual single-sale closures). Used to decide whether a freshly created sale
+  // should trigger a recompute so any prepaid advance auto-drains onto it.
+  getBuyerUnappliedColdChargesCredit(coldStorageId: string, buyerLedgerId: string): Promise<number>;
   // Task #312 — Merchant Extras FIFO, keyed on buyer_ledger_id (not buyer_name).
   recomputeBuyerExtras(buyerLedgerId: string, coldStorageId: string): Promise<{ salesReset: number; receiptsReplayed: number }>;
   recomputeFarmerPayments(coldStorageId: string, farmerLedgerId: string | null, buyerDisplayName: string | null): Promise<{ receivablesUpdated: number }>;
@@ -1865,6 +1870,23 @@ export class DatabaseStorage implements IStorage {
       await this.recomputeBuyerExtras(createdSale.buyerLedgerId, createdSale.coldStorageId);
     }
 
+    // Task #333 — Cold Merchant Advance auto-apply. If the seller is a real
+    // buyer (self-sales never carry cold_merchant credit) who already holds a
+    // prepaid advance sitting as unapplied cold-charges credit, replay the
+    // cold-charges FIFO so that credit drains onto the newly created sale with
+    // no manual step. Guarded on the credit existing so ordinary sales (no
+    // advance on file) skip the recompute entirely. Runs AFTER the insert tx
+    // commits so the new row is visible to the replay query.
+    if (createdSale.buyerLedgerId && createdSale.coldStorageId) {
+      const advanceCredit = await this.getBuyerUnappliedColdChargesCredit(
+        createdSale.coldStorageId,
+        createdSale.buyerLedgerId,
+      );
+      if (advanceCredit > 0) {
+        await this.recomputeBuyerPayments(createdSale.coldStorageId, createdSale.buyerLedgerId);
+      }
+    }
+
     return createdSale;
   }
 
@@ -2713,7 +2735,7 @@ export class DatabaseStorage implements IStorage {
     const userSharedCsBill = args.sharedColdStorageBillNumber ?? null;
     const exitYear = exitDate.getFullYear();
 
-    return await db.transaction(async (tx) => {
+    const masterNikasiResult = await db.transaction(async (tx) => {
       // Lock the cold-storage row up front. This serializes all bill-#
       // checks (shared exit + per-row CS) for this cold storage so two
       // concurrent batches submitting overlapping numbers cannot both
@@ -3210,6 +3232,25 @@ export class DatabaseStorage implements IStorage {
         paymentReceipts,
       };
     });
+
+    // Task #333 — Cold Merchant Advance auto-apply for the master nikasi batch.
+    // When the batch is billed to a real buyer (not a self-sale) and that buyer
+    // holds a prepaid advance sitting as unapplied cold-charges credit, replay
+    // the cold-charges FIFO ONCE so the credit drains onto the batch's newly
+    // created sales. Sales already closed by the inline payment are
+    // fifoExclusion=1 and stay untouched, so there is no double-count with the
+    // inline allocation. Runs AFTER the tx commits so the new rows are visible.
+    if (masterNikasiResult.buyer?.buyerLedgerId) {
+      const advanceCredit = await this.getBuyerUnappliedColdChargesCredit(
+        args.coldStorageId,
+        masterNikasiResult.buyer.buyerLedgerId,
+      );
+      if (advanceCredit > 0) {
+        await this.recomputeBuyerPayments(args.coldStorageId, masterNikasiResult.buyer.buyerLedgerId);
+      }
+    }
+
+    return masterNikasiResult;
   }
 
   // Exit History methods
@@ -6010,6 +6051,22 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { success: true, message: "Expense reversed" };
+  }
+
+  async getBuyerUnappliedColdChargesCredit(coldStorageId: string, buyerLedgerId: string): Promise<number> {
+    if (!coldStorageId || !buyerLedgerId) return 0;
+    const result = await db.execute(sql`
+      SELECT COALESCE(SUM(unapplied_amount), 0) AS total
+      FROM cash_receipts
+      WHERE cold_storage_id = ${coldStorageId}
+        AND buyer_ledger_id = ${buyerLedgerId}
+        AND payer_type = 'cold_merchant'
+        AND is_reversed = 0
+        AND applies_to_sale_id IS NULL
+        AND COALESCE(due_type, 'cold_charges') = 'cold_charges'
+    `);
+    const row = (result.rows as any[])[0];
+    return roundAmount(Number(row?.total) || 0);
   }
 
   async recomputeBuyerPayments(coldStorageId: string, buyerLedgerId: string): Promise<{ salesUpdated: number; receiptsUpdated: number }> {

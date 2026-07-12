@@ -351,6 +351,14 @@ export const cashReceipts = pgTable("cash_receipts", {
   // Manual single-sale closure: when set, this receipt was applied to exactly one sale (no FIFO).
   // Reversal restores due to that sale only and resets fifoExclusion if due returns to original billed amount.
   appliesToSaleId: varchar("applies_to_sale_id"),
+  // Task #333 — marks a cold_merchant / cold_charges receipt recorded as an
+  // advance PREPAYMENT against future cold storage bhada (money the merchant
+  // pays before any bill exists). It lands as unapplied credit in the normal
+  // cold-charges FIFO pool and auto-drains onto new sales. The FIFO engine
+  // ignores this flag entirely — it is a display/label marker only, and is
+  // distinct from the `cold_merchant_advance` payer type (advances the cold
+  // store GIVES and the merchant repays).
+  isAdvancePayment: integer("is_advance_payment").notNull().default(0),
 }, (table) => ({
   uniqueTxnPerColdStorage: uniqueIndex("cash_receipts_cs_txn_idx").on(table.coldStorageId, table.transactionId),
 }));

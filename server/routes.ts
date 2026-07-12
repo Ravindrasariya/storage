@@ -3891,6 +3891,10 @@ export async function registerRoutes(
     // Task #309 — sub-category for cold_merchant only. Ignored for other payer
     // types; defaults to cold_charges. merchant_extras drains only extraDueToMerchant.
     dueType: z.enum(["cold_charges", "merchant_extras"]).optional(),
+    // Task #333 — marks a cold_merchant / cold_charges receipt recorded as an
+    // advance prepayment against future cold storage bhada. Persisted as a
+    // display/label marker; the FIFO engine ignores it entirely.
+    isAdvancePayment: z.boolean().optional(),
     buyerName: z.string().optional(),
     farmerReceivableId: z.string().optional(),
     receiptType: z.enum(["cash", "account"]),
@@ -3955,6 +3959,11 @@ export async function registerRoutes(
         dueType: validatedData.payerType === "cold_merchant"
           ? (validatedData.dueType || "cold_charges")
           : "cold_charges",
+        // Task #333 — advance prepayment marker only meaningful for a
+        // cold_merchant / cold_charges receipt; forced 0 for everything else.
+        isAdvancePayment: (validatedData.isAdvancePayment
+          && validatedData.payerType === "cold_merchant"
+          && (validatedData.dueType || "cold_charges") === "cold_charges") ? 1 : 0,
         buyerName: validatedData.payerType === "kata" ? null : (validatedData.buyerName || null),
         receiptType: validatedData.receiptType,
         accountType: validatedData.accountType || null,

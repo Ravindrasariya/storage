@@ -26,6 +26,21 @@ interface Migration {
 
 const MIGRATIONS: Migration[] = [
   {
+    name: "2026-07-12_add_cash_receipts_is_advance_payment",
+    up: async () => {
+      // Task #333 — additive NOT NULL column with default 0. Marks a
+      // cold_merchant / cold_charges receipt recorded as an advance
+      // prepayment against future cold storage bhada. All legacy receipts
+      // stay 0 (the default fills both new and existing rows). db:push also
+      // handles this, but the explicit migration runs first so environments
+      // that skip post-merge.sh still get the column.
+      await db.execute(sql`
+        ALTER TABLE cash_receipts
+        ADD COLUMN IF NOT EXISTS is_advance_payment INTEGER NOT NULL DEFAULT 0
+      `);
+    },
+  },
+  {
     name: "2026-06-18_repair_null_chamber_names",
     up: async () => {
       // Task #323 — an account with imperfect data ("Maa Umia Cold Storage
