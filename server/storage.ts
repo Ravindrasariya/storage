@@ -1046,9 +1046,17 @@ export class DatabaseStorage implements IStorage {
 
   async searchLotsByFarmerName(query: string, coldStorageId: string, village?: string, contactNumber?: string): Promise<Lot[]> {
     const allLots = await db.select().from(lots).where(eq(lots.coldStorageId, coldStorageId));
-    const lowerQuery = query.toLowerCase().trim();
+    // Token-based matching that mirrors the client-side suggestion dropdown:
+    // every typed word must appear somewhere in the lot's farmer name OR
+    // village (case-insensitive, whitespace-normalized). A contiguous
+    // whole-query substring match ("Vishnu Pat") previously missed partial
+    // multi-word queries, extra spaces, and name+village combinations that
+    // the dropdown happily suggested.
+    const tokens = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
     return allLots.filter((lot) => {
-      const nameMatch = lot.farmerName.toLowerCase().trim().includes(lowerQuery);
+      const name = lot.farmerName.toLowerCase().replace(/\s+/g, " ").trim();
+      const lotVillage = lot.village.toLowerCase().replace(/\s+/g, " ").trim();
+      const nameMatch = tokens.every((token) => name.includes(token) || lotVillage.includes(token));
       if (!nameMatch) return false;
       if (village && lot.village.trim().toLowerCase() !== village.trim().toLowerCase()) return false;
       if (contactNumber && lot.contactNumber.trim() !== contactNumber.trim()) return false;
