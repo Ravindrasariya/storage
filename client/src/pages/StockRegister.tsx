@@ -711,13 +711,24 @@ export default function StockRegister() {
     }
   }, [initialLots, uniquePotatoTypes, potatoTypeFilter]);
 
+  // Generous rendering cap for suggestion dropdowns. The dropdown container
+  // is scrollable, so this is only a safety valve against rendering an
+  // extremely large list — NOT a UX truncation like the old cap of 8 that
+  // silently hid matching farmers sorting later alphabetically.
+  const SUGGESTION_CAP = 50;
+
   // Filtered suggestions for phone number search
   const getPhoneSuggestions = useMemo(() => {
     if (!farmerRecords || farmerRecords.length === 0 || !searchQuery.trim()) return [];
     const phoneVal = searchQuery.trim();
-    return farmerRecords
-      .filter(farmer => farmer.contactNumber.includes(phoneVal))
-      .slice(0, 8);
+    const matches = farmerRecords.filter(farmer => farmer.contactNumber.includes(phoneVal));
+    // Numbers that START with the typed digits rank above mid-number matches.
+    matches.sort((a, b) => {
+      const aStarts = a.contactNumber.startsWith(phoneVal) ? 0 : 1;
+      const bStarts = b.contactNumber.startsWith(phoneVal) ? 0 : 1;
+      return aStarts - bStarts;
+    });
+    return matches.slice(0, SUGGESTION_CAP);
   }, [farmerRecords, searchQuery]);
 
   // Filtered suggestions for farmer name search (matches name and/or village)
@@ -725,13 +736,22 @@ export default function StockRegister() {
     if (!farmerRecords || farmerRecords.length === 0 || !farmerNameQuery.trim()) return [];
     const tokens = farmerNameQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) return [];
-    return farmerRecords
-      .filter(farmer => {
-        const name = farmer.farmerName.toLowerCase();
-        const village = farmer.village.toLowerCase();
-        return tokens.every(token => name.includes(token) || village.includes(token));
-      })
-      .slice(0, 8);
+    const firstToken = tokens[0];
+    const matches = farmerRecords.filter(farmer => {
+      const name = farmer.farmerName.toLowerCase();
+      const village = farmer.village.toLowerCase();
+      return tokens.every(token => name.includes(token) || village.includes(token));
+    });
+    // Names that START with the typed text rank first (e.g. typing
+    // "Mangilal" shows "MANGILAL & RAM SINGH…" before "ATMARAM JAT &
+    // MANGILAL JI"). Within each rank the original alphabetical order
+    // from the server is preserved (Array.prototype.sort is stable).
+    matches.sort((a, b) => {
+      const aStarts = a.farmerName.toLowerCase().startsWith(firstToken) ? 0 : 1;
+      const bStarts = b.farmerName.toLowerCase().startsWith(firstToken) ? 0 : 1;
+      return aStarts - bStarts;
+    });
+    return matches.slice(0, SUGGESTION_CAP);
   }, [farmerRecords, farmerNameQuery]);
 
   // Select a farmer from suggestions and populate search field
