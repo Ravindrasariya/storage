@@ -1094,6 +1094,8 @@ export async function registerRoutes(
     // empty/unchanged values, and the underlying column is NOT NULL so a
     // truly-empty write would be rejected at the DB layer anyway.
     type: z.string().optional(),
+    // Potato size (editable via Stock Register edit dialog)
+    potatoSize: z.enum(["large", "medium", "small"]).optional(),
     // Potato type / category (editable for non-wafer lots with no active
     // sales). Switching seed<->Ration is safe — they share lot-number
     // sequence and seed charge rates. Wafer is blocked by the guard below.

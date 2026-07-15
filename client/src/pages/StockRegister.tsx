@@ -193,6 +193,7 @@ export default function StockRegister() {
     rstNo: string;
     vehicle: string;
     type: string;
+    potatoSize: string;
     bagType: string;
     farmerName: string;
     village: string;
@@ -1559,6 +1560,7 @@ export default function StockRegister() {
       rstNo: lot.rstNo || "",
       vehicle: lot.vehicle || "",
       type: lot.type || "",
+      potatoSize: lot.potatoSize || "large",
       bagType: lot.bagType,
       farmerName: lot.farmerName,
       village: lot.village || "",
@@ -2738,6 +2740,34 @@ export default function StockRegister() {
                 )}
               </div>
               <div className="flex items-center gap-1">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("potatoSize")}</Label>
+                {editForm && canEdit && lotIsUnsold ? (
+                  <Select
+                    value={editForm.potatoSize}
+                    onValueChange={(value) => setEditForm({ ...editForm, potatoSize: value })}
+                  >
+                    <SelectTrigger className="h-8 w-32 text-sm" data-testid="select-edit-potato-size">
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="large">{t("potatoSizeLarge")}</SelectItem>
+                      <SelectItem value="medium">{t("potatoSizeMediumGulla")}</SelectItem>
+                      <SelectItem value="small">{t("potatoSizeSmallKirri")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="font-medium text-sm" data-testid="text-edit-potato-size">
+                    {selectedLot?.potatoSize === "medium"
+                      ? t("potatoSizeMediumGulla")
+                      : selectedLot?.potatoSize === "small"
+                      ? t("potatoSizeSmallKirri")
+                      : selectedLot?.potatoSize === "large"
+                      ? t("potatoSizeLarge")
+                      : "—"}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
                 <Label className="text-xs text-muted-foreground whitespace-nowrap">{t("potatoType")}</Label>
                 {editForm && canEdit && editForm.bagType !== "wafer" && lotIsUnsold ? (
                   <Select
@@ -2973,6 +3003,7 @@ export default function StockRegister() {
                         rstNo: updatedLot.rstNo || "",
                         vehicle: updatedLot.vehicle || "",
                         type: updatedLot.type || "",
+                        potatoSize: updatedLot.potatoSize || "large",
                         bagType: updatedLot.bagType,
                         farmerName: updatedLot.farmerName,
                         village: updatedLot.village || "",
