@@ -111,6 +111,11 @@ export default function StockRegister() {
     return saved && allowed.has(saved) ? saved : "all";
   });
   const [potatoTypeFilter, setPotatoTypeFilter] = useState<string>(savedState?.potatoTypeFilter || "all");
+  const [potatoSizeFilter, setPotatoSizeFilter] = useState<string>(() => {
+    const allowed = new Set(["all", "large", "medium", "small"]);
+    const saved = savedState?.potatoSizeFilter;
+    return saved && allowed.has(saved) ? saved : "all";
+  });
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
   const [upForSaleOnly, setUpForSaleOnly] = useState<boolean>(savedState?.upForSaleOnly || false);
   const [noExitOnly, setNoExitOnly] = useState<boolean>(savedState?.noExitOnly || false);
@@ -477,6 +482,7 @@ export default function StockRegister() {
       if (noExitOnly) params.noExit = "true";
       if (qualityFilter && qualityFilter !== "all") params.quality = qualityFilter;
       if (potatoTypeFilter && potatoTypeFilter !== "all") params.potatoType = potatoTypeFilter;
+      if (potatoSizeFilter && potatoSizeFilter !== "all") params.potatoSize = potatoSizeFilter;
       if (paymentDueFilter) params.paymentDue = "true";
       if (filterEntryDate) params.entryDate = filterEntryDate;
     }
@@ -484,7 +490,7 @@ export default function StockRegister() {
   }, [
     hasSearched, searchType, searchQuery, lotNoFrom, lotNoTo, sizeQuery,
     farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile,
-    upForSaleOnly, noExitOnly, qualityFilter, potatoTypeFilter,
+    upForSaleOnly, noExitOnly, qualityFilter, potatoTypeFilter, potatoSizeFilter,
     paymentDueFilter, filterEntryDate,
     bagTypeFilter, selectedYear, chamberFilter, floorFilter,
   ]);
@@ -562,6 +568,7 @@ export default function StockRegister() {
     const hasFilterSet =
       qualityFilter !== "all" ||
       potatoTypeFilter !== "all" ||
+      potatoSizeFilter !== "all" ||
       paymentDueFilter ||
       !!filterEntryDate ||
       upForSaleOnly ||
@@ -584,7 +591,7 @@ export default function StockRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, filterEntryDate, selectedYear]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, filterEntryDate, selectedYear]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
@@ -599,6 +606,7 @@ export default function StockRegister() {
       sizeQuery,
       qualityFilter,
       potatoTypeFilter,
+      potatoSizeFilter,
       paymentDueFilter,
       upForSaleOnly,
       noExitOnly,
@@ -607,7 +615,7 @@ export default function StockRegister() {
       selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, filterEntryDate, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, filterEntryDate, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -623,6 +631,7 @@ export default function StockRegister() {
         const savedHasFilter =
           saved.qualityFilter !== "all" ||
           saved.potatoTypeFilter !== "all" ||
+          (saved.potatoSizeFilter && saved.potatoSizeFilter !== "all") ||
           saved.paymentDueFilter ||
           !!saved.filterEntryDate ||
           saved.upForSaleOnly ||
@@ -657,6 +666,7 @@ export default function StockRegister() {
       const noFilters =
         qualityFilter === "all" &&
         potatoTypeFilter === "all" &&
+        potatoSizeFilter === "all" &&
         !paymentDueFilter &&
         !filterEntryDate &&
         !upForSaleOnly &&
@@ -682,7 +692,7 @@ export default function StockRegister() {
         }
       }
     }
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, paymentDueFilter, filterEntryDate, upForSaleOnly, noExitOnly, searchType, hasSearched]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, filterEntryDate, upForSaleOnly, noExitOnly, searchType, hasSearched]);
 
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
@@ -1437,6 +1447,7 @@ export default function StockRegister() {
     const hasFilterSet =
       qualityFilter !== "all" ||
       potatoTypeFilter !== "all" ||
+      potatoSizeFilter !== "all" ||
       paymentDueFilter ||
       !!filterEntryDate ||
       upForSaleOnly ||
@@ -1495,6 +1506,9 @@ export default function StockRegister() {
       }
       if (potatoTypeFilter && potatoTypeFilter !== "all") {
         url += `&potatoType=${encodeURIComponent(potatoTypeFilter)}`;
+      }
+      if (potatoSizeFilter && potatoSizeFilter !== "all") {
+        url += `&potatoSize=${encodeURIComponent(potatoSizeFilter)}`;
       }
       if (paymentDueFilter) {
         url += `&paymentDue=true`;
@@ -2028,6 +2042,20 @@ export default function StockRegister() {
                 </Select>
               </div>
               <div className="flex items-center gap-1">
+                <Label className="text-sm">{t("potatoSize")}:</Label>
+                <Select value={potatoSizeFilter} onValueChange={setPotatoSizeFilter}>
+                  <SelectTrigger className="w-32" data-testid="select-potato-size-filter">
+                    <SelectValue placeholder={t("all")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("all")}</SelectItem>
+                    <SelectItem value="large">Large</SelectItem>
+                    <SelectItem value="medium">Medium (Gulla)</SelectItem>
+                    <SelectItem value="small">Small (Kirri)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-1">
                 <Checkbox
                   id="payment-due-filter-main"
                   checked={paymentDueFilter}
@@ -2125,6 +2153,18 @@ export default function StockRegister() {
             onClear: () => setPotatoTypeFilter("all"),
           });
         }
+        if (potatoSizeFilter !== "all") {
+          const sizeLabels: Record<string, string> = {
+            large: "Large",
+            medium: "Medium (Gulla)",
+            small: "Small (Kirri)",
+          };
+          activeChips.push({
+            key: "potatoSize",
+            label: `${t("potatoSize")}: ${sizeLabels[potatoSizeFilter] || potatoSizeFilter}`,
+            onClear: () => setPotatoSizeFilter("all"),
+          });
+        }
         if (paymentDueFilter) {
           activeChips.push({
             key: "paymentDue",
@@ -2184,6 +2224,7 @@ export default function StockRegister() {
         const clearAll = () => {
           setQualityFilter("all");
           setPotatoTypeFilter("all");
+          setPotatoSizeFilter("all");
           setPaymentDueFilter(false);
           setFilterEntryDate("");
           setUpForSaleOnly(false);

@@ -25,6 +25,7 @@ interface RegisterFilterParams {
   entryDate?: string;
   quality?: string;
   potatoType?: string;
+  potatoSize?: string;
   paymentDue?: boolean;
   upForSale?: boolean;
   noExit?: boolean;
@@ -49,6 +50,7 @@ function parseRegisterParams(q: any): RegisterFilterParams {
     entryDate: typeof q.entryDate === "string" ? q.entryDate : undefined,
     quality: typeof q.quality === "string" ? q.quality : undefined,
     potatoType: typeof q.potatoType === "string" ? q.potatoType : undefined,
+    potatoSize: typeof q.potatoSize === "string" ? q.potatoSize : undefined,
     paymentDue: q.paymentDue === "true",
     upForSale: q.upForSale === "true",
     noExit: q.noExit === "true",
@@ -64,7 +66,7 @@ async function getFilteredLotsForRegister(
 ): Promise<Lot[]> {
   const {
     type, query, lotNoFrom, lotNoTo, size, village, contactNumber,
-    year, entryDate, quality, potatoType, paymentDue, upForSale, noExit,
+    year, entryDate, quality, potatoType, potatoSize, paymentDue, upForSale, noExit,
     bagType, chamber, floor,
   } = params;
 
@@ -146,6 +148,10 @@ async function getFilteredLotsForRegister(
 
   if (potatoType && potatoType.trim()) {
     lots = lots.filter((l) => l.type === potatoType);
+  }
+
+  if (potatoSize && ["large", "medium", "small"].includes(potatoSize)) {
+    lots = lots.filter((l) => l.potatoSize === potatoSize);
   }
 
   if (paymentDue) {
