@@ -2049,9 +2049,9 @@ export default function StockRegister() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t("all")}</SelectItem>
-                    <SelectItem value="large">Large</SelectItem>
-                    <SelectItem value="medium">Medium (Gulla)</SelectItem>
-                    <SelectItem value="small">Small (Kirri)</SelectItem>
+                    <SelectItem value="large">{t("potatoSizeLarge")}</SelectItem>
+                    <SelectItem value="medium">{t("potatoSizeMediumGulla")}</SelectItem>
+                    <SelectItem value="small">{t("potatoSizeSmallKirri")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2155,9 +2155,9 @@ export default function StockRegister() {
         }
         if (potatoSizeFilter !== "all") {
           const sizeLabels: Record<string, string> = {
-            large: "Large",
-            medium: "Medium (Gulla)",
-            small: "Small (Kirri)",
+            large: t("potatoSizeLarge"),
+            medium: t("potatoSizeMediumGulla"),
+            small: t("potatoSizeSmallKirri"),
           };
           activeChips.push({
             key: "potatoSize",

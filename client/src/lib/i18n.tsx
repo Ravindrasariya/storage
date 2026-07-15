@@ -122,6 +122,9 @@ const translations: Translations = {
   selectSize: { en: "Select size", hi: "आकार चुनें" },
   large: { en: "Large", hi: "बड़ा" },
   small: { en: "Small", hi: "छोटा" },
+  potatoSizeLarge: { en: "Large", hi: "बड़ा" },
+  potatoSizeMediumGulla: { en: "Medium (Gulla)", hi: "मध्यम (गुल्ला)" },
+  potatoSizeSmallKirri: { en: "Small (Kirri)", hi: "छोटा (किर्री)" },
   
   // Stock Register
   searchBy: { en: "Search By", hi: "द्वारा खोजें" },
