@@ -33,6 +33,10 @@ args = "sale-invalidation"
 task = "workflow.run"
 args = "null-cs-bill-coexist"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "remaining-bags-filter"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -63,6 +67,17 @@ args = "tsx scripts/check-null-cs-bill-coexist.mts"
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "remaining-bags-filter"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "tsx scripts/check-remaining-bags-filter.mts"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 integrations = ["javascript_database:1.0.0"]
