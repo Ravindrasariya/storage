@@ -123,13 +123,15 @@ export default function SalesHistoryPage() {
       .slice(0, 8);
   }, [farmerRecords, farmerFilter]);
 
-  // Filtered suggestions for buyer name
+  // Filtered suggestions for buyer name — always includes "Self" when input matches
   const getBuyerSuggestions = useMemo(() => {
-    if (!buyerRecords || buyerRecords.length === 0 || !buyerFilter.trim()) return [];
+    if (!buyerFilter.trim()) return [];
     const query = buyerFilter.toLowerCase().trim();
-    return buyerRecords
+    const selfMatch = "self".includes(query) ? [{ buyerName: "Self" }] : [];
+    const regular = (buyerRecords ?? [])
       .filter(buyer => buyer.buyerName.toLowerCase().includes(query))
       .slice(0, 8);
+    return [...selfMatch, ...regular];
   }, [buyerRecords, buyerFilter]);
 
   // Village suggestions derived from farmer lookup
@@ -363,7 +365,7 @@ export default function SalesHistoryPage() {
     if (farmerFilter) filterParts.push(`${t("farmerName")}: ${farmerFilter}`);
     const effectiveVillage = villageFilter || selectedFarmerVillage;
     if (effectiveVillage) filterParts.push(`${t("village")}: ${effectiveVillage}`);
-    if (buyerFilter) filterParts.push(`${t("buyerName")}: ${buyerFilter}`);
+    if (buyerFilter) filterParts.push(`${t("buyerName")}: ${buyerFilter.toLowerCase() === "self" ? t("self") : buyerFilter}`);
     if (typeFilter && typeFilter !== "all") filterParts.push(`${t("bagType")}: ${formatBagType(typeFilter)}`);
     if (paymentFilter && paymentFilter !== "all") filterParts.push(`${t("paymentStatus")}: ${t(paymentFilter)}`);
 
@@ -708,7 +710,7 @@ export default function SalesHistoryPage() {
                         onClick={() => selectBuyerSuggestion(buyer)}
                         data-testid={`suggestion-buyer-${idx}`}
                       >
-                        {buyer.buyerName}
+                        {buyer.buyerName === "Self" ? t("self") : buyer.buyerName}
                       </button>
                     ))}
                   </div>
@@ -1475,9 +1477,11 @@ function ExitRegister() {
   }, [farmerRecords, farmerFilter]);
 
   const buyerSug = useMemo(() => {
-    if (!buyerRecords || !buyerFilter.trim()) return [];
+    if (!buyerFilter.trim()) return [];
     const q = buyerFilter.toLowerCase().trim();
-    return buyerRecords.filter(b => b.buyerName.toLowerCase().includes(q)).slice(0, 8);
+    const selfMatch = "self".includes(q) ? [{ buyerName: "Self" }] : [];
+    const regular = (buyerRecords ?? []).filter(b => b.buyerName.toLowerCase().includes(q)).slice(0, 8);
+    return [...selfMatch, ...regular];
   }, [buyerRecords, buyerFilter]);
 
   const villageSug = useMemo(() => {
@@ -1660,7 +1664,7 @@ function ExitRegister() {
     if (months.length) filterParts.push(`${t("monthsLabel")}: ${months.map((m) => monthShortNames[m - 1]).join(", ")}`);
     if (days.length) filterParts.push(`${t("daysLabel")}: ${days.join(", ")}`);
     if (farmerFilter) filterParts.push(`${t("farmerName")}: ${farmerFilter}`);
-    if (buyerFilter) filterParts.push(`${t("buyerName")}: ${buyerFilter}`);
+    if (buyerFilter) filterParts.push(`${t("buyerName")}: ${buyerFilter.toLowerCase() === "self" ? t("self") : buyerFilter}`);
 
     const escape = (s: string | number | null | undefined): string =>
       String(s ?? "")
@@ -1873,7 +1877,7 @@ function ExitRegister() {
                       onClick={() => { setBuyerFilter(b.buyerName); setShowBuyerSug(false); }}
                       data-testid={`exit-suggestion-buyer-${idx}`}
                     >
-                      {b.buyerName}
+                      {b.buyerName === "Self" ? t("self") : b.buyerName}
                     </button>
                   ))}
                 </div>

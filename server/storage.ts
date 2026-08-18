@@ -1934,11 +1934,16 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     if (filters?.buyerName) {
-      // Search by CurrentDueBuyerName: use original buyer if transfer is reversed
-      // This filters by the effective buyer - transferToBuyerName if available and not reversed, else buyerName
-      conditions.push(
-        sql`CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END ILIKE ${`%${filters.buyerName}%`}`
-      );
+      const _b = filters.buyerName.trim();
+      if (_b.toLowerCase() === "self") {
+        // Self: isSelfSale flag is set AND no active transfer to a real buyer
+        conditions.push(sql`${salesHistory.isSelfSale} = 1 AND (${salesHistory.transferToBuyerName} IS NULL OR ${salesHistory.transferToBuyerName} = '' OR ${salesHistory.isTransferReversed} = 1)`);
+      } else {
+        // Search by effective buyer: original if transfer reversed, else transfer destination or original
+        conditions.push(
+          sql`CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END ILIKE ${`%${_b}%`}`
+        );
+      }
     }
 
     // Display sort for the Sales History page (Tasks #264 + #266 + #272):
@@ -4220,9 +4225,14 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     if (filters?.buyerName) {
-      conditions.push(
-        sql`CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END ILIKE ${`%${filters.buyerName}%`}`
-      );
+      const _b = filters.buyerName.trim();
+      if (_b.toLowerCase() === "self") {
+        conditions.push(sql`${salesHistory.isSelfSale} = 1 AND (${salesHistory.transferToBuyerName} IS NULL OR ${salesHistory.transferToBuyerName} = '' OR ${salesHistory.isTransferReversed} = 1)`);
+      } else {
+        conditions.push(
+          sql`CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END ILIKE ${`%${_b}%`}`
+        );
+      }
     }
 
     const [row] = await db.select({
@@ -7249,7 +7259,14 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(salesHistory.contactNumber, filters.contactNumber));
     }
     if (filters?.buyerName) {
-      conditions.push(ilike(salesHistory.buyerName, `%${filters.buyerName}%`));
+      const _b = filters.buyerName.trim();
+      if (_b.toLowerCase() === "self") {
+        conditions.push(sql`${salesHistory.isSelfSale} = 1 AND (${salesHistory.transferToBuyerName} IS NULL OR ${salesHistory.transferToBuyerName} = '' OR ${salesHistory.isTransferReversed} = 1)`);
+      } else {
+        conditions.push(
+          sql`CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END ILIKE ${`%${_b}%`}`
+        );
+      }
     }
     if (filters?.paymentStatus) {
       if (filters.paymentStatus === "paid") {
