@@ -109,6 +109,10 @@ npm run db:push
 # catches forgotten cache invalidations introduced by new features.
 node scripts/check-sale-invalidation.mjs
 
+# Regression guard: Self buyer filter must work consistently across the
+# sales-history, exits-summary, and CSV-export paths.
+tsx scripts/check-self-buyer-filter.mts
+
 # Idempotent backfill: snapshot lots.marka into sales_history.marka for any
 # historical sale rows that were created before sales_history.marka existed.
 if [ -n "$DATABASE_URL" ]; then

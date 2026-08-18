@@ -37,6 +37,10 @@ args = "null-cs-bill-coexist"
 task = "workflow.run"
 args = "remaining-bags-filter"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "self-buyer-filter"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -75,6 +79,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "tsx scripts/check-remaining-bags-filter.mts"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "self-buyer-filter"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "tsx scripts/check-self-buyer-filter.mts"
 
 [workflows.workflow.metadata]
 outputType = "console"
