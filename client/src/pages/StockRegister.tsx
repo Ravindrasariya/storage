@@ -119,6 +119,7 @@ export default function StockRegister() {
   const [paymentDueFilter, setPaymentDueFilter] = useState(savedState?.paymentDueFilter || false);
   const [upForSaleOnly, setUpForSaleOnly] = useState<boolean>(savedState?.upForSaleOnly || false);
   const [noExitOnly, setNoExitOnly] = useState<boolean>(savedState?.noExitOnly || false);
+  const [remainingBagsOnly, setRemainingBagsOnly] = useState<boolean>(savedState?.remainingBagsOnly || false);
   const [filterEntryDate, setFilterEntryDate] = useState<string>(savedState?.filterEntryDate || "");
   const [bagTypeFilter, setBagTypeFilter] = useState<"all" | "wafer" | "ration_seed">(savedState?.bagTypeFilter || "all");
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
@@ -481,6 +482,7 @@ export default function StockRegister() {
       }
       if (upForSaleOnly) params.upForSale = "true";
       if (noExitOnly) params.noExit = "true";
+      if (remainingBagsOnly) params.remainingBags = "true";
       if (qualityFilter && qualityFilter !== "all") params.quality = qualityFilter;
       if (potatoTypeFilter && potatoTypeFilter !== "all") params.potatoType = potatoTypeFilter;
       if (potatoSizeFilter && potatoSizeFilter !== "all") params.potatoSize = potatoSizeFilter;
@@ -491,7 +493,7 @@ export default function StockRegister() {
   }, [
     hasSearched, searchType, searchQuery, lotNoFrom, lotNoTo, sizeQuery,
     farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile,
-    upForSaleOnly, noExitOnly, qualityFilter, potatoTypeFilter, potatoSizeFilter,
+    upForSaleOnly, noExitOnly, remainingBagsOnly, qualityFilter, potatoTypeFilter, potatoSizeFilter,
     paymentDueFilter, filterEntryDate,
     bagTypeFilter, selectedYear, chamberFilter, floorFilter,
   ]);
@@ -573,7 +575,8 @@ export default function StockRegister() {
       paymentDueFilter ||
       !!filterEntryDate ||
       upForSaleOnly ||
-      noExitOnly;
+      noExitOnly ||
+      remainingBagsOnly;
     const hasPrimaryInput =
       (searchType === "phone" && searchQuery.trim().length >= 3) ||
       (searchType === "farmerName" && farmerNameQuery.trim().length >= 2) ||
@@ -592,7 +595,7 @@ export default function StockRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, filterEntryDate, selectedYear]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, searchType, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, remainingBagsOnly, filterEntryDate, selectedYear]);
 
   // Save search input state to sessionStorage (not results or hasSearched - those reset on page load)
   useEffect(() => {
@@ -611,12 +614,13 @@ export default function StockRegister() {
       paymentDueFilter,
       upForSaleOnly,
       noExitOnly,
+      remainingBagsOnly,
       filterEntryDate,
       bagTypeFilter,
       selectedYear,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, filterEntryDate, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, remainingBagsOnly, filterEntryDate, bagTypeFilter, selectedYear]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
@@ -636,7 +640,8 @@ export default function StockRegister() {
           saved.paymentDueFilter ||
           !!saved.filterEntryDate ||
           saved.upForSaleOnly ||
-          saved.noExitOnly;
+          saved.noExitOnly ||
+          saved.remainingBagsOnly;
         const savedHasPrimary =
           (saved.searchType === "phone" && saved.searchQuery?.trim().length >= 3) ||
           (saved.searchType === "farmerName" && saved.farmerNameQuery?.trim().length >= 2) ||
@@ -671,7 +676,8 @@ export default function StockRegister() {
         !paymentDueFilter &&
         !filterEntryDate &&
         !upForSaleOnly &&
-        !noExitOnly;
+        !noExitOnly &&
+        !remainingBagsOnly;
       const noPrimary =
         (searchType === "phone" && !searchQuery.trim()) ||
         (searchType === "farmerName" && !farmerNameQuery.trim()) ||
@@ -693,7 +699,7 @@ export default function StockRegister() {
         }
       }
     }
-  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, filterEntryDate, upForSaleOnly, noExitOnly, searchType, hasSearched]);
+  }, [searchQuery, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, filterEntryDate, upForSaleOnly, noExitOnly, remainingBagsOnly, searchType, hasSearched]);
 
 
   const chamberMap = chambers?.reduce((acc, chamber) => {
@@ -1452,7 +1458,8 @@ export default function StockRegister() {
       paymentDueFilter ||
       !!filterEntryDate ||
       upForSaleOnly ||
-      noExitOnly;
+      noExitOnly ||
+      remainingBagsOnly;
     const hasPrimary =
       (searchType === "phone" && !!searchQuery.trim()) ||
       (searchType === "lotNoSize" && (!!lotNoFrom.trim() || !!lotNoTo.trim() || !!sizeQuery.trim())) ||
@@ -1500,6 +1507,10 @@ export default function StockRegister() {
       // Apply No-Exit filter to ALL search modes when checked
       if (noExitOnly) {
         url += `&noExit=true`;
+      }
+      // Apply Remaining Bags filter to ALL search modes when checked
+      if (remainingBagsOnly) {
+        url += `&remainingBags=true`;
       }
       
       if (qualityFilter && qualityFilter !== "all") {
@@ -1725,8 +1736,26 @@ export default function StockRegister() {
   // so a fully-reversed lot becomes editable again.
   const lotIsUnsold = !!selectedLot && selectedLot.remainingSize === selectedLot.size;
 
-  const noExitToggle = (
+  const remainingBagsToggle = (
     <div className="flex items-center gap-1 sm:ml-auto">
+      <Checkbox
+        id="checkbox-remaining-bags-only"
+        checked={remainingBagsOnly}
+        onCheckedChange={(checked) => setRemainingBagsOnly(!!checked)}
+        data-testid="checkbox-remaining-bags-only"
+      />
+      <Label
+        htmlFor="checkbox-remaining-bags-only"
+        className="text-sm whitespace-nowrap cursor-pointer flex items-center gap-1"
+      >
+        <Package className="h-3 w-3" />
+        {t("remainingBags")}
+      </Label>
+    </div>
+  );
+
+  const noExitToggle = (
+    <div className="flex items-center gap-1">
       <Checkbox
         id="checkbox-no-exit-only"
         checked={noExitOnly}
@@ -1884,6 +1913,7 @@ export default function StockRegister() {
                 )}
               </div>
               {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
+              {remainingBagsToggle}
               {noExitToggle}
               {upForSaleToggle}
             </div>
@@ -1947,6 +1977,7 @@ export default function StockRegister() {
                   </Button>
                 </div>
               )}
+              {remainingBagsToggle}
               {noExitToggle}
               {upForSaleToggle}
             </div>
@@ -2006,6 +2037,7 @@ export default function StockRegister() {
                 </Select>
               )}
               {isSearching && <div className="flex items-center"><Search className="h-4 w-4 animate-pulse text-muted-foreground" /></div>}
+              {remainingBagsToggle}
               {noExitToggle}
               {upForSaleToggle}
             </div>
@@ -2181,6 +2213,13 @@ export default function StockRegister() {
             onClear: () => setFilterEntryDate(""),
           });
         }
+        if (remainingBagsOnly) {
+          activeChips.push({
+            key: "remainingBags",
+            label: t("remainingBags"),
+            onClear: () => setRemainingBagsOnly(false),
+          });
+        }
         if (noExitOnly) {
           activeChips.push({
             key: "noExit",
@@ -2231,6 +2270,7 @@ export default function StockRegister() {
           setFilterEntryDate("");
           setUpForSaleOnly(false);
           setNoExitOnly(false);
+          setRemainingBagsOnly(false);
           setChamberFilter("all");
           setFloorFilter("all");
         };

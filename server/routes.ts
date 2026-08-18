@@ -29,6 +29,7 @@ interface RegisterFilterParams {
   paymentDue?: boolean;
   upForSale?: boolean;
   noExit?: boolean;
+  remainingBags?: boolean;
   bagType?: string;
   chamber?: string;
   floor?: string;
@@ -54,6 +55,7 @@ function parseRegisterParams(q: any): RegisterFilterParams {
     paymentDue: q.paymentDue === "true",
     upForSale: q.upForSale === "true",
     noExit: q.noExit === "true",
+    remainingBags: q.remainingBags === "true",
     bagType: typeof q.bagType === "string" ? q.bagType : undefined,
     chamber: typeof q.chamber === "string" ? q.chamber : undefined,
     floor: typeof q.floor === "string" ? q.floor : undefined,
@@ -67,7 +69,7 @@ async function getFilteredLotsForRegister(
   const {
     type, query, lotNoFrom, lotNoTo, size, village, contactNumber,
     year, entryDate, quality, potatoType, potatoSize, paymentDue, upForSale, noExit,
-    bagType, chamber, floor,
+    remainingBags, bagType, chamber, floor,
   } = params;
 
   // Initial fetch — chooses the cheapest storage method that already
@@ -156,6 +158,11 @@ async function getFilteredLotsForRegister(
 
   if (paymentDue) {
     lots = lots.filter((l) => l.totalDueCharge && l.totalDueCharge > 0);
+  }
+
+  // Lots that still have unsold bags sitting in store.
+  if (remainingBags) {
+    lots = lots.filter((l) => (l.remainingSize ?? 0) > 0);
   }
 
   // Mirror getUpForSaleLots: also exclude lots whose remaining bags
@@ -964,10 +971,11 @@ export async function registerRoutes(
       const query = (req.query.query as string) || "";
       const upForSale = req.query.upForSale === "true";
       const noExit = req.query.noExit === "true";
+      const remainingBags = req.query.remainingBags === "true";
       if (type === "phone" && !query.trim()) {
         return res.status(400).json({ error: "Missing query parameter" });
       }
-      if (type === "farmerName" && !query.trim() && !upForSale && !noExit) {
+      if (type === "farmerName" && !query.trim() && !upForSale && !noExit && !remainingBags) {
         return res.status(400).json({ error: "Missing query parameter" });
       }
 
