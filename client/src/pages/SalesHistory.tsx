@@ -321,10 +321,6 @@ export default function SalesHistoryPage() {
     return new Date(year, month - 1, day, 23, 59, 59, 999);
   }, [yearFilter, selectedMonths, selectedDays]);
 
-  const paymentCutoffLabel = paymentCutoff
-    ? `${t("amountPaidByDate")} ${format(paymentCutoff, "dd/MM/yyyy")}`
-    : t("amountPaidByDate");
-
   const summary = filteredSalesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
@@ -403,7 +399,7 @@ export default function SalesHistoryPage() {
     const summaryCardsHtml = `
       <div class="cards">
         <div class="card"><div class="lbl">${escape(t("totalBagsSold"))}</div><div class="val">${summary.totalBags.toLocaleString()}</div></div>
-        <div class="card"><div class="lbl">${escape(t("amountPaid"))}</div><div class="val cash">${escape(fmtINR(summary.amountPaid))}<div class="subval">${escape(paymentCutoffLabel)}: ${paymentCutoff ? escape(fmtINR(summary.amountPaidByCutoff)) : "—"}</div></div></div>
+        <div class="card"><div class="lbl">${escape(t("amountPaid"))}</div><div class="val cash">${escape(fmtINR(summary.amountPaid))}<div class="subval">${paymentCutoff ? escape(fmtINR(summary.amountPaidByCutoff)) : "—"}</div></div></div>
         <div class="card"><div class="lbl">${escape(t("amountDue"))}</div><div class="val due">${escape(fmtINR(summary.amountDue))}</div></div>
         <div class="card"><div class="lbl">${escape(t("sold"))}/${escape(t("exit"))}</div><div class="val">${summary.totalBags}/${bagsExitedTotal}</div></div>
         <div class="card"><div class="lbl">${escape(t("coldStorageCharges"))}</div><div class="val acct">${escape(fmtINR(summary.totalColdStorageCharges))}</div></div>
@@ -816,7 +812,7 @@ export default function SalesHistoryPage() {
                     <Currency amount={summary.amountPaid} />
                   </p>
                   <p className="text-[10px] leading-tight font-medium text-emerald-700/80 dark:text-emerald-300/80 whitespace-nowrap" data-testid="text-amount-paid-by-date">
-                    {paymentCutoffLabel}: {paymentCutoff ? <Currency amount={summary.amountPaidByCutoff} /> : "—"}
+                    {paymentCutoff ? <Currency amount={summary.amountPaidByCutoff} /> : "—"}
                   </p>
                 </div>
               </div>
