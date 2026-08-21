@@ -311,10 +311,27 @@ export default function SalesHistoryPage() {
     return list;
   }, [salesHistory, yearFilter, selectedMonths, selectedDays, typeFilter]);
 
+  const paymentCutoff = useMemo(() => {
+    if (!yearFilter || yearFilter === "all") return null;
+    const year = Number(yearFilter);
+    if (!Number.isInteger(year)) return null;
+    if (selectedDays.length > 0 && selectedMonths.length === 0) return null;
+    const month = selectedMonths.length > 0 ? Math.max(...selectedMonths) : 12;
+    const day = selectedDays.length > 0 ? Math.max(...selectedDays) : new Date(year, month, 0).getDate();
+    return new Date(year, month - 1, day, 23, 59, 59, 999);
+  }, [yearFilter, selectedMonths, selectedDays]);
+
   const summary = filteredSalesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
       acc.amountPaid += sale.paidAmount || 0;
+      if (paymentCutoff && sale.payments) {
+        acc.amountPaidByCutoff += sale.payments.reduce((total, payment) => (
+          new Date(payment.receivedAt).getTime() <= paymentCutoff.getTime()
+            ? total + (payment.amount || 0)
+            : total
+        ), 0);
+      }
       const coldStorageDue = Math.max(0, (sale.coldStorageCharge || 0) - (sale.paidAmount || 0));
       acc.amountDue += coldStorageDue + (sale.extraDueToMerchant || 0);
       acc.totalColdStorageCharges += sale.coldStorageCharge || 0;
@@ -322,10 +339,13 @@ export default function SalesHistoryPage() {
       acc.totalAdjSelfDue += sale.adjSelfDue || 0;
       return acc;
     },
-    { totalBags: 0, amountPaid: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0, totalAdjSelfDue: 0 }
+    { totalBags: 0, amountPaid: 0, amountPaidByCutoff: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0, totalAdjSelfDue: 0 }
   );
 
   summary.amountPaid = Math.max(0, summary.amountPaid - summary.totalAdjSelfDue);
+  summary.amountPaidByCutoff = paymentCutoff
+    ? Math.max(0, summary.amountPaidByCutoff - summary.totalAdjSelfDue)
+    : 0;
   summary.totalColdStorageCharges = Math.max(0, summary.totalColdStorageCharges - summary.totalAdjSelfDue);
 
   const handleSalesPrint = () => {
@@ -374,7 +394,7 @@ export default function SalesHistoryPage() {
     const summaryCardsHtml = `
       <div class="cards">
         <div class="card"><div class="lbl">${escape(t("totalBagsSold"))}</div><div class="val">${summary.totalBags.toLocaleString()}</div></div>
-        <div class="card"><div class="lbl">${escape(t("amountPaid"))}</div><div class="val cash">${escape(fmtINR(summary.amountPaid))}</div></div>
+        <div class="card"><div class="lbl">${escape(t("amountPaid"))}</div><div class="val cash">${escape(fmtINR(summary.amountPaid))}${paymentCutoff ? `<div class="subval">${escape(t("amountPaidByDate"))}: ${escape(fmtINR(summary.amountPaidByCutoff))}</div>` : ""}</div></div>
         <div class="card"><div class="lbl">${escape(t("amountDue"))}</div><div class="val due">${escape(fmtINR(summary.amountDue))}</div></div>
         <div class="card"><div class="lbl">${escape(t("sold"))}/${escape(t("exit"))}</div><div class="val">${summary.totalBags}/${bagsExitedTotal}</div></div>
         <div class="card"><div class="lbl">${escape(t("coldStorageCharges"))}</div><div class="val acct">${escape(fmtINR(summary.totalColdStorageCharges))}</div></div>
@@ -429,7 +449,8 @@ export default function SalesHistoryPage() {
   .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px;}
   .card{border:1px solid #d4d4d8;border-radius:6px;padding:8px 10px;min-height:44px;}
   .lbl{font-size:11px;line-height:1.25;color:#555;word-break:break-word;overflow-wrap:anywhere;}
-  .val{font-size:16px;line-height:1.3;font-weight:700;margin-top:2px;white-space:nowrap;}
+   .val{font-size:16px;line-height:1.3;font-weight:700;margin-top:2px;white-space:nowrap;}
+   .subval{font-size:9px;line-height:1.25;font-weight:600;margin-top:2px;white-space:normal;}
   .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.disc{color:#7c3aed;} .val.due{color:#be123c;}
   table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
   th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;vertical-align:top;}
@@ -785,6 +806,11 @@ export default function SalesHistoryPage() {
                   <p className="text-base lg:text-lg font-bold text-emerald-600 dark:text-emerald-400 truncate" data-testid="text-amount-paid">
                     <Currency amount={summary.amountPaid} />
                   </p>
+                  {paymentCutoff && (
+                    <p className="text-[10px] leading-tight font-medium text-emerald-700/80 dark:text-emerald-300/80 whitespace-nowrap" data-testid="text-amount-paid-by-date">
+                      {t("amountPaidByDate")}: <Currency amount={summary.amountPaidByCutoff} />
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>

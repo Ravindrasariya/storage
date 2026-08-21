@@ -378,6 +378,7 @@ const translations: Translations = {
   location: { en: "Location", hi: "स्थान" },
   clearFilters: { en: "Clear Filters", hi: "फ़िल्टर साफ़ करें" },
   paidOn: { en: "Paid on", hi: "भुगतान तिथि" },
+  amountPaidByDate: { en: "Received by cutoff", hi: "कटऑफ तक प्राप्त" },
   
   // Maintenance
   maintenance: { en: "Maintenance", hi: "रखरखाव" },
