@@ -321,16 +321,25 @@ export default function SalesHistoryPage() {
     return new Date(year, month - 1, day, 23, 59, 59, 999);
   }, [yearFilter, selectedMonths, selectedDays]);
 
+  const paymentCutoffLabel = paymentCutoff
+    ? `${t("amountPaidByDate")} ${format(paymentCutoff, "dd/MM/yyyy")}`
+    : t("amountPaidByDate");
+
   const summary = filteredSalesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
       acc.amountPaid += sale.paidAmount || 0;
-      if (paymentCutoff && sale.payments) {
-        acc.amountPaidByCutoff += sale.payments.reduce((total, payment) => (
-          new Date(payment.receivedAt).getTime() <= paymentCutoff.getTime()
-            ? total + (payment.amount || 0)
-            : total
-        ), 0);
+      if (paymentCutoff) {
+        if (sale.payments && sale.payments.length > 0) {
+          acc.amountPaidByCutoff += sale.payments.reduce((total, payment) => (
+            new Date(payment.receivedAt).getTime() <= paymentCutoff.getTime()
+              ? total + (payment.amount || 0)
+              : total
+          ), 0);
+        } else if (sale.paidAt && new Date(sale.paidAt).getTime() <= paymentCutoff.getTime()) {
+          // Legacy/manual fully paid rows may pre-date receipt-application tracking.
+          acc.amountPaidByCutoff += sale.paidAmount || 0;
+        }
       }
       const coldStorageDue = Math.max(0, (sale.coldStorageCharge || 0) - (sale.paidAmount || 0));
       acc.amountDue += coldStorageDue + (sale.extraDueToMerchant || 0);
@@ -394,7 +403,7 @@ export default function SalesHistoryPage() {
     const summaryCardsHtml = `
       <div class="cards">
         <div class="card"><div class="lbl">${escape(t("totalBagsSold"))}</div><div class="val">${summary.totalBags.toLocaleString()}</div></div>
-        <div class="card"><div class="lbl">${escape(t("amountPaid"))}</div><div class="val cash">${escape(fmtINR(summary.amountPaid))}${paymentCutoff ? `<div class="subval">${escape(t("amountPaidByDate"))}: ${escape(fmtINR(summary.amountPaidByCutoff))}</div>` : ""}</div></div>
+        <div class="card"><div class="lbl">${escape(t("amountPaid"))}</div><div class="val cash">${escape(fmtINR(summary.amountPaid))}<div class="subval">${escape(paymentCutoffLabel)}: ${paymentCutoff ? escape(fmtINR(summary.amountPaidByCutoff)) : "—"}</div></div></div>
         <div class="card"><div class="lbl">${escape(t("amountDue"))}</div><div class="val due">${escape(fmtINR(summary.amountDue))}</div></div>
         <div class="card"><div class="lbl">${escape(t("sold"))}/${escape(t("exit"))}</div><div class="val">${summary.totalBags}/${bagsExitedTotal}</div></div>
         <div class="card"><div class="lbl">${escape(t("coldStorageCharges"))}</div><div class="val acct">${escape(fmtINR(summary.totalColdStorageCharges))}</div></div>
@@ -806,11 +815,9 @@ export default function SalesHistoryPage() {
                   <p className="text-base lg:text-lg font-bold text-emerald-600 dark:text-emerald-400 truncate" data-testid="text-amount-paid">
                     <Currency amount={summary.amountPaid} />
                   </p>
-                  {paymentCutoff && (
-                    <p className="text-[10px] leading-tight font-medium text-emerald-700/80 dark:text-emerald-300/80 whitespace-nowrap" data-testid="text-amount-paid-by-date">
-                      {t("amountPaidByDate")}: <Currency amount={summary.amountPaidByCutoff} />
-                    </p>
-                  )}
+                  <p className="text-[10px] leading-tight font-medium text-emerald-700/80 dark:text-emerald-300/80 whitespace-nowrap" data-testid="text-amount-paid-by-date">
+                    {paymentCutoffLabel}: {paymentCutoff ? <Currency amount={summary.amountPaidByCutoff} /> : "—"}
+                  </p>
                 </div>
               </div>
             </CardContent>
