@@ -101,24 +101,27 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
   const isCompany = !!sale.farmerLedgerId && farmerLedgerData?.farmers?.find(f => f.id === sale.farmerLedgerId)?.entityType === "company";
   const partyDetailsLabel = isCompany ? "कंपनी विवरण" : "किसान विवरण";
 
-  // Fetch sibling sales sharing this Cold Storage bill # (and saleYear).
-  // When 2+ rows come back this print view aggregates totals into a
-  // single collective receipt; with 0–1 the dialog renders byte-for-byte
-  // identical to today (single-sale path).
+  // Fetch sibling sales sharing this Cold Storage bill # within the same
+  // stock entry year. When 2+ rows come back this print view aggregates
+  // totals into a single collective receipt; with 0–1 the dialog renders
+  // byte-for-byte identical to today (single-sale path).
   //
   // The query key uses `resolvedCsBillNumber` so it picks up a freshly
   // assigned bill # immediately (sale prop is still stale right after
   // POST /assign-bill-number returns). Disabled until a CS bill # is
   // known.
-  const csYear = sale.saleYear ?? new Date(sale.soldAt as unknown as string).getFullYear();
+  //
+  // Task #354 — the batch key is (bill #, ENTRY year), resolved server-side
+  // from `saleId`. Sending the sale id instead of a year means the printed
+  // receipt always aggregates exactly the rows the edit cascade would touch.
   const [resolvedCsBillNumber, setResolvedCsBillNumber] = useState<number | null>(sale.coldStorageBillNumber ?? null);
   useEffect(() => {
     setResolvedCsBillNumber(sale.coldStorageBillNumber ?? null);
   }, [sale.coldStorageBillNumber]);
   const csBillNumber = resolvedCsBillNumber;
-  const siblingsQueryKey = ["/api/sales-history/cs-bill-batch", csBillNumber, csYear] as const;
+  const siblingsQueryKey = ["/api/sales-history/cs-bill-batch", csBillNumber, sale.id] as const;
   const siblingsQueryFn = async () => {
-    const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${csBillNumber}&year=${csYear}`);
+    const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${csBillNumber}&saleId=${encodeURIComponent(sale.id)}`);
     if (!res.ok) throw new Error(`${res.status}`);
     return res.json() as Promise<SalesHistoryWithLastPayment[]>;
   };
@@ -201,9 +204,9 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
       setResolvedCsBillNumber(csBillForFetch);
       try {
         await queryClient.fetchQuery<SalesHistoryWithLastPayment[]>({
-          queryKey: ["/api/sales-history/cs-bill-batch", csBillForFetch, csYear],
+          queryKey: ["/api/sales-history/cs-bill-batch", csBillForFetch, sale.id],
           queryFn: async () => {
-            const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${csBillForFetch}&year=${csYear}`);
+            const res = await authFetch(`/api/sales-history/cs-bill-batch?billNumber=${csBillForFetch}&saleId=${encodeURIComponent(sale.id)}`);
             if (!res.ok) throw new Error(`${res.status}`);
             return res.json();
           },

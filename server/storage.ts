@@ -121,6 +121,48 @@ const ENTITY_PREFIXES: Record<EntityType, string> = {
 
 const COLD_STORAGE_SCOPED_ENTITIES: EntityType[] = ['cash_flow', 'buyer', 'farmer'];
 
+// ─────────────────────────────────────────────────────────────────────────
+// ENTRY-YEAR SCOPING (Task #354)
+//
+// Both bill series — Cold Store Bill # (sales_history.cold_storage_bill_number)
+// and Exit/Nikasi Bill # (exit_history.bill_number) — are numbered PER ENTRY
+// YEAR: the calendar year the lot physically came INTO the cold store, NOT the
+// year it was sold or exited. A lot that enters in Nov 2026 and leaves in Jan
+// 2027 keeps drawing from the 2026 series; the counter only restarts once a
+// lot's ENTRY date rolls into a new year.
+//
+// The authoritative resolution order (used by EVERY numbering, duplicate-check
+// and cascade path — never re-derive it inline):
+//   1. sales_history.entry_date — the snapshot taken when the sale was created
+//   2. lots.created_at          — the lot's physical entry instant (fallback,
+//                                 because entry_date is nullable on legacy rows)
+//
+// The year is ALWAYS computed by Postgres (`extract(year from …)`), never in
+// JS, so the value used for a scoping predicate and the value shown in an error
+// message can never disagree. The db session is pinned to Asia/Kolkata (see
+// server/db.ts), so `extract` yields the IST calendar year for these timestamptz
+// columns — the same year the operator sees on screen.
+//
+// Entry date is immutable in this app: there is no route that edits
+// lots.created_at or sales_history.entry_date. That is what makes entry year
+// safe as a grouping key — unlike sale/exit date, it cannot be moved out from
+// under an already-allocated bill number.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Either the pool (`db`) or an open transaction handle. Entry-year resolution
+// must be usable from inside a FOR UPDATE-locked transaction so the year that
+// scopes an allocation is read under the same lock that serialises it.
+type DbRunner = Pick<typeof db, "select">;
+
+// Entry year of a sales_history row. Correlates to `lots` for the fallback, so
+// it may be used in any query whose FROM includes sales_history.
+const SALE_ENTRY_YEAR_SQL = sql<number>`extract(year from COALESCE(${salesHistory.entryDate}, (SELECT ${lots.createdAt} FROM ${lots} WHERE ${lots.id} = ${salesHistory.lotId})))`;
+
+// Entry year of an exit_history row, reached through its parent sale (falling
+// back to the exit's own lot_id). Usable in any query whose FROM includes
+// exit_history.
+const EXIT_ENTRY_YEAR_SQL = sql<number>`extract(year from COALESCE((SELECT ${salesHistory.entryDate} FROM ${salesHistory} WHERE ${salesHistory.id} = ${exitHistory.salesHistoryId}), (SELECT ${lots.createdAt} FROM ${lots} WHERE ${lots.id} = ${exitHistory.lotId})))`;
+
 // Generate a sequential ID in format: PREFIX + YYYYMMDD + counter (no zero-padding)
 // Example: LT202601251, LT202601252, ... LT20260125100
 // For cold-storage-scoped entities (cash_flow, buyer, farmer), coldStorageId is required
@@ -231,9 +273,10 @@ export interface IStorage {
     paymentStatus?: "paid" | "due";
     buyerName?: string;
   }): Promise<SalesHistoryWithLastPayment[]>;
-  // Sibling sales sharing the same Cold Storage bill # in a calendar
-  // year — used by PrintBillDialog's collective-bill view.
-  getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, year: number): Promise<SalesHistoryWithLastPayment[]>;
+  // Sibling sales sharing the same Cold Storage bill # within one stock
+  // ENTRY year — used by PrintBillDialog's collective-bill view and the
+  // Edit Sale dialog's affected-rows preview.
+  getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, entryYear: number): Promise<SalesHistoryWithLastPayment[]>;
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
   reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }>;
@@ -263,7 +306,9 @@ export interface IStorage {
   createExit(data: InsertExitHistory, opts?: { userBillNumber?: number | null }): Promise<ExitHistory>;
   getExitsForSale(salesHistoryId: string): Promise<ExitHistory[]>;
   getTotalExitedBags(salesHistoryId: string): Promise<number>;
-  getExitsByBillNumber(coldStorageId: string, billNumber: number): Promise<Array<{
+  // Exit rows sharing a bill # WITHIN one stock entry year. The year is
+  // part of the key, not a filter — bill numbers restart each entry year.
+  getExitsByBillNumber(coldStorageId: string, billNumber: number, entryYear: number): Promise<Array<{
     exitId: string;
     exitDate: Date;
     billNumber: number;
@@ -298,6 +343,7 @@ export interface IStorage {
   updateExitsByBillNumber(
     coldStorageId: string,
     oldBillNumber: number,
+    entryYear: number,
     opts: { newBillNumber?: number; newExitDate?: Date },
   ): Promise<{
     updatedCount: number;
@@ -306,14 +352,14 @@ export interface IStorage {
     updatedRows: ExitHistory[];
   }>;
   // Cascade-edit the CS Bill # / soldAt for every sales_history row
-  // sharing a given (coldStorageBillNumber, year) within one cold storage,
-  // OR assign a CS Bill # for the first time on a single saleId that
-  // currently has none. Mirrors updateExitsByBillNumber's semantics so
-  // batched and single-row sales stay in lock-step.
+  // sharing a given (coldStorageBillNumber, stock entry year) within one
+  // cold storage, OR assign a CS Bill # for the first time on a single
+  // saleId that currently has none. Mirrors updateExitsByBillNumber's
+  // semantics so batched and single-row sales stay in lock-step.
   updateColdStorageBillByNumber(
     coldStorageId: string,
     oldBillNumber: number | null,
-    oldYear: number,
+    entryYear: number,
     opts: { newBillNumber?: number; newSoldAt?: Date; saleId?: string },
   ): Promise<{
     updatedCount: number;
@@ -371,8 +417,16 @@ export interface IStorage {
   // assignBillNumber's coldStorage branch but read-only and without a
   // FOR UPDATE lock — UI uses it to pre-fill the input; the server still
   // recomputes at submit time, so the hint is best-effort.
-  getNextColdStorageBillNumber(coldStorageId: string, year: number): Promise<number>;
-  findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<{ id: string; soldAt: Date } | null>;
+  // Both hints and the duplicate check are keyed to the STOCK ENTRY year
+  // (Task #354) — the year the lot came into the cold store.
+  getNextColdStorageBillNumber(coldStorageId: string, entryYear: number): Promise<number>;
+  getNextExitBillNumber(coldStorageId: string, entryYear: number): Promise<number>;
+  findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, entryYear: number): Promise<{ id: string; soldAt: Date } | null>;
+  entryYearForSale(runner: DbRunner, saleId: string): Promise<number>;
+  entryYearForLot(runner: DbRunner, lotId: string): Promise<number>;
+  entryYearForExit(runner: DbRunner, exitId: string): Promise<number>;
+  entryYearForSaleInColdStorage(coldStorageId: string, saleId: string): Promise<number | null>;
+  entryYearForExitInColdStorage(coldStorageId: string, exitId: string): Promise<number | null>;
   assignLotBillNumber(lotId: string): Promise<number>;
   // Admin - Cold Storage Management
   getAllColdStorages(): Promise<ColdStorage[]>;
@@ -1804,14 +1858,6 @@ export class DatabaseStorage implements IStorage {
 
     const createdSale = await (async (): Promise<SalesHistory> => {
     const userCsBill = opts?.userColdStorageBillNumber ?? null;
-    // Year derives from the sale's effective date (soldAt). Callers may
-    // pass an explicit soldAt (e.g. operator back-dating a sale on the
-    // Sale dialog — see Task #206); when omitted, the DB default (now())
-    // applies and we use the same timestamp here for the dup check.
-    const dataSoldAt = data.soldAt;
-    const saleDate: Date = dataSoldAt instanceof Date
-      ? dataSoldAt
-      : (dataSoldAt ? new Date(dataSoldAt) : new Date());
 
     // Atomic dup-check + insert + counter bump in one tx so a duplicate
     // bill # rolls back the entire sale write.
@@ -1824,19 +1870,44 @@ export class DatabaseStorage implements IStorage {
         // Lock cold-storage row to serialize concurrent same-number submits.
         await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${data.coldStorageId} FOR UPDATE`);
 
-        const csYear = saleDate.getFullYear();
+        // Task #354 — the CS bill series is keyed to the STOCK ENTRY year,
+        // so this locked dup check must be too. Scoping by sale year here
+        // would let bill #10 be typed twice for the same 2026-entry series
+        // simply by dating one sale in Dec 2026 and the other in Jan 2027.
+        //
+        // The year is computed in Postgres, inside this transaction and
+        // under the lock above, from exactly the same expression
+        // SALE_ENTRY_YEAR_SQL will evaluate for the row we are about to
+        // insert: COALESCE(this sale's entry_date, the lot's created_at).
+        // Deriving it in JS instead would let the predicate and the stored
+        // row disagree whenever a caller supplies an entry_date.
+        const [entryYearRow] = await tx
+          .select({
+            y: sql<number>`extract(year from COALESCE(${data.entryDate ?? null}::timestamptz, ${lots.createdAt}))`,
+          })
+          .from(lots)
+          .where(eq(lots.id, data.lotId));
+        const csEntryYear = entryYearRow?.y == null ? NaN : Number(entryYearRow.y);
+        if (!Number.isFinite(csEntryYear)) {
+          // Fail loudly rather than fall back to a guessed scope — a wrong
+          // scope silently permits a duplicate bill # in a live series.
+          throw new Error(
+            `Cannot determine stock entry year for lot ${data.lotId}; refusing to assign Cold Storage Bill # ${userCsBill}`,
+          );
+        }
+
         // eq(coldStorageBillNumber, userCsBill) excludes NULL rows by SQL
         // three-valued logic (NULL = anything → unknown, not true). This
         // is what makes Task #256's "multiple NULL-bill rows coexist"
         // requirement safe by construction: only typed positive integers
         // collide with each other; any number of bill-less sales in the
-        // same year are mutually invisible to this dup check.
+        // same entry year are mutually invisible to this dup check.
         const dup = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
           .from(salesHistory)
           .where(and(
             eq(salesHistory.coldStorageId, data.coldStorageId),
             eq(salesHistory.coldStorageBillNumber, userCsBill),
-            sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+            sql`${SALE_ENTRY_YEAR_SQL} = ${csEntryYear}`,
           ))
           .limit(1);
         if (dup.length > 0) {
@@ -2023,13 +2094,27 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, year: number): Promise<SalesHistoryWithLastPayment[]> {
-    // Sibling sales sharing (coldStorageId, coldStorageBillNumber,
-    // year(soldAt)). Reuses getSalesHistory's enrichment so every
-    // sibling row carries `payments` and `lastPaymentAt`, ready for the
-    // collective bill view to merge into a single chronological timeline.
-    const all = await this.getSalesHistory(coldStorageId, { year });
-    return all.filter(s => (s.coldStorageBillNumber ?? null) === billNumber);
+  async getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, entryYear: number): Promise<SalesHistoryWithLastPayment[]> {
+    // Sibling sales sharing (coldStorageId, coldStorageBillNumber, STOCK
+    // ENTRY year) — the same grouping key the CS-bill cascade uses, so the
+    // "affected rows" preview and the print batch can never disagree with
+    // what an edit would actually touch (Task #354).
+    //
+    // Membership is resolved in SQL (entry year is computed by Postgres
+    // from entry_date, falling back to the lot's created_at); the enriched
+    // rows then come from getSalesHistory so every sibling still carries
+    // `payments` / `lastPaymentAt` for the collective bill timeline.
+    const idRows = await db.select({ id: salesHistory.id })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.coldStorageBillNumber, billNumber),
+        sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
+      ));
+    if (idRows.length === 0) return [];
+    const ids = new Set(idRows.map(r => r.id));
+    const all = await this.getSalesHistory(coldStorageId, {});
+    return all.filter(s => ids.has(s.id));
   }
 
   async markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined> {
@@ -2753,7 +2838,6 @@ export class DatabaseStorage implements IStorage {
 
     const userSharedExitBill = args.sharedExitBillNumber ?? null;
     const userSharedCsBill = args.sharedColdStorageBillNumber ?? null;
-    const exitYear = exitDate.getFullYear();
 
     const masterNikasiResult = await db.transaction(async (tx) => {
       // Lock the cold-storage row up front. This serializes all bill-#
@@ -2762,9 +2846,36 @@ export class DatabaseStorage implements IStorage {
       // pass their dup checks before either inserts.
       await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${coldStorageId} FOR UPDATE`);
 
+      // Task #354 — a Master Nikasi batch shares ONE exit bill # and ONE CS
+      // bill # across all its rows. Both series are keyed to the stock ENTRY
+      // year, so a batch whose lots entered in different years has no single
+      // series to draw from: the shared number would be ambiguous and the
+      // edit cascades (which group by bill # + entry year) could never
+      // reassemble the batch. Reject it and make the operator split the
+      // batch by entry year. In practice this cannot arise — the store is
+      // emptied of the old season's stock before the new season arrives.
+      const entryYearRows = await tx.selectDistinct({
+        y: sql<number>`extract(year from ${lots.createdAt})`,
+      })
+        .from(lots)
+        .where(inArray(lots.id, resolvedLots.map(l => l.id)));
+      const batchEntryYears = Array.from(
+        new Set(entryYearRows.map(r => Number(r.y)).filter(y => Number.isFinite(y))),
+      ).sort((a, b) => a - b);
+      if (batchEntryYears.length === 0) {
+        throw new Error("Cannot determine stock entry year for the selected lots");
+      }
+      if (batchEntryYears.length > 1) {
+        throw new Error(
+          `Master Nikasi cannot mix lots from different stock entry years (${batchEntryYears.join(", ")}). ` +
+          `Create one Master Nikasi per entry year.`,
+        );
+      }
+      const entryYear = batchEntryYears[0];
+
       // Allocate the shared exit bill number — either honor the user's
-      // override (with calendar-year duplicate check, ignoring reversed
-      // exits) or atomically reserve the next counter value.
+      // override (with entry-year duplicate check, ignoring reversed exits)
+      // or take MAX+1 within the batch's entry-year series.
       let sharedExitBillNumber: number;
       if (userSharedExitBill != null) {
         if (!Number.isFinite(userSharedExitBill) || userSharedExitBill <= 0) {
@@ -2776,7 +2887,7 @@ export class DatabaseStorage implements IStorage {
             eq(exitHistory.coldStorageId, coldStorageId),
             eq(exitHistory.billNumber, userSharedExitBill),
             eq(exitHistory.isReversed, 0),
-            sql`extract(year from ${exitHistory.exitDate}) = ${exitYear}`,
+            sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
           ));
         if (dup.length > 0) {
           const conflictDate: Date = dup[0].exitDate instanceof Date
@@ -2786,29 +2897,32 @@ export class DatabaseStorage implements IStorage {
           throw new Error(`Exit Bill # ${userSharedExitBill} already used on ${onDate}`);
         }
         sharedExitBillNumber = userSharedExitBill;
-        await tx.update(coldStorages)
-          .set({ nextExitBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextExitBillNumber}, 1), ${sharedExitBillNumber + 1})` })
-          .where(eq(coldStorages.id, coldStorageId));
       } else {
-        const counterRow = await tx.update(coldStorages)
-          .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 1) + 1` })
-          .where(eq(coldStorages.id, coldStorageId))
-          .returning({ next: coldStorages.nextExitBillNumber });
-        if (counterRow.length === 0 || counterRow[0].next == null) {
-          throw new Error("Cold storage not found");
-        }
-        sharedExitBillNumber = (counterRow[0].next as number) - 1;
+        // MAX(billNumber) + 1 over (cold storage, entry year) — identical
+        // rule to createExit. The legacy lifetime counter column is no
+        // longer read or written; it cannot express a per-entry-year series.
+        const [maxExitRow] = await tx.select({
+          max: sql<number | null>`MAX(${exitHistory.billNumber})`,
+        })
+          .from(exitHistory)
+          .where(and(
+            eq(exitHistory.coldStorageId, coldStorageId),
+            eq(exitHistory.isReversed, 0),
+            sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
+          ));
+        sharedExitBillNumber = ((maxExitRow?.max as number | null) ?? 0) + 1;
       }
 
       // Allocate the single shared CS bill # once before the row loop —
       // mirrors the shared-exit-bill resolution above. The same value is
       // written to every sales_history row in the batch so that
-      // (coldStorageId, coldStorageBillNumber, year(soldAt)) is the
-      // collective batch identity for the print path.
+      // (coldStorageId, coldStorageBillNumber, entry year) is the
+      // collective batch identity for the print path and the edit cascade.
       //
-      // year(soldAt) == year(exitDate) here (saleDate := exitDate above),
-      // so the dup check / MAX+1 are scoped to the operator-picked exit
-      // calendar year, matching the physical receipt-book year.
+      // Task #354 — scoped to the batch's stock ENTRY year (validated
+      // single-valued above), NOT the operator-picked exit/sale year, so a
+      // January batch of stock stored last season keeps last season's
+      // receipt-book series.
       //
       // Task #256 — auto-skip rule: when the operator left the shared
       // CS Bill # input blank AND every selected lot was ALREADY base-
@@ -2821,7 +2935,7 @@ export class DatabaseStorage implements IStorage {
       // (or absence thereof) consistent across all sibling rows.
       const allLotsBaseBilled = resolvedLots.every(l => l.baseColdChargesBilled === 1);
       let sharedColdStorageBillNumber: number | null;
-      const csYear = saleDate.getFullYear();
+      const csYear = entryYear;
       if (userSharedCsBill != null) {
         if (!Number.isFinite(userSharedCsBill) || userSharedCsBill <= 0) {
           throw new Error("Invalid cold storage bill number");
@@ -2834,7 +2948,7 @@ export class DatabaseStorage implements IStorage {
           .where(and(
             eq(salesHistory.coldStorageId, coldStorageId),
             eq(salesHistory.coldStorageBillNumber, userSharedCsBill),
-            sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+            sql`${SALE_ENTRY_YEAR_SQL} = ${csYear}`,
           ))
           .limit(1);
         if (dupCs.length > 0) {
@@ -2850,18 +2964,18 @@ export class DatabaseStorage implements IStorage {
         // produces only extras (or nothing). Land all rows with NULL.
         sharedColdStorageBillNumber = null;
       } else {
-        // MAX(coldStorageBillNumber) + 1 over (cold storage, year(soldAt)).
-        // Identical sequencing rule to assignBillNumber + the legacy
-        // per-row Master Nikasi path so backdated batches still slot into
-        // the right year. The outer FOR UPDATE lock on cold_storages
-        // serialises concurrent assigners.
+        // MAX(coldStorageBillNumber) + 1 over (cold storage, entry year).
+        // Identical sequencing rule to assignBillNumber, so a batch and a
+        // single partial sale of same-season stock draw from one series.
+        // The outer FOR UPDATE lock on cold_storages serialises concurrent
+        // assigners.
         const [maxRow] = await tx.select({
           max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
         })
           .from(salesHistory)
           .where(and(
             eq(salesHistory.coldStorageId, coldStorageId),
-            sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+            sql`${SALE_ENTRY_YEAR_SQL} = ${csYear}`,
           ));
         sharedColdStorageBillNumber = ((maxRow?.max as number | null) ?? 0) + 1;
       }
@@ -3276,30 +3390,37 @@ export class DatabaseStorage implements IStorage {
   // Exit History methods
   async createExit(data: InsertExitHistory, opts?: { userBillNumber?: number | null }): Promise<ExitHistory> {
     const userBill = opts?.userBillNumber ?? null;
-    const exitDateForYear = (data.exitDate as Date | undefined) ?? new Date();
-    const year = new Date(exitDateForYear).getFullYear();
 
-    // Wrap counter+insert in a transaction so concurrent writers cannot
+    // Wrap resolution+insert in a transaction so concurrent writers cannot
     // produce duplicate bill numbers when the user did not override it.
     const record = await db.transaction(async (tx) => {
       let billNumber: number;
+
+      // Lock the cold-storage row FIRST so both the auto-number MAX+1 and
+      // the explicit-number duplicate check are serialised against every
+      // other exit allocation in this cold storage. Neither bill column has
+      // a DB unique index — this lock IS the uniqueness guarantee, so it
+      // must stay wrapped around read-then-write on both branches.
+      await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${data.coldStorageId} FOR UPDATE`);
+
+      // Task #354 — the Exit / Nikasi series resets per STOCK ENTRY year,
+      // exactly like the CS series. Resolved from the parent sale (falling
+      // back to the lot) rather than from exitDate, so a lot stored in 2026
+      // and taken out in Jan 2027 keeps drawing from the 2026 series.
+      const year = await this.entryYearForSale(tx, data.salesHistoryId);
 
       if (userBill != null) {
         if (!Number.isFinite(userBill) || userBill <= 0) {
           throw new Error("Invalid exit bill number");
         }
-        // Lock the cold-storage row so two concurrent operators submitting
-        // the same explicit bill # serialize on this counter — closes the
-        // check+insert race for the common case.
-        await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${data.coldStorageId} FOR UPDATE`);
-        // Calendar-year-scoped duplicate check, ignoring reversed exits.
+        // Entry-year-scoped duplicate check, ignoring reversed exits.
         const dup = await tx.select({ id: exitHistory.id, exitDate: exitHistory.exitDate })
           .from(exitHistory)
           .where(and(
             eq(exitHistory.coldStorageId, data.coldStorageId),
             eq(exitHistory.billNumber, userBill),
             eq(exitHistory.isReversed, 0),
-            sql`extract(year from ${exitHistory.exitDate}) = ${year}`,
+            sql`${EXIT_ENTRY_YEAR_SQL} = ${year}`,
           ));
         if (dup.length > 0) {
           const conflictDate: Date = dup[0].exitDate instanceof Date
@@ -3309,19 +3430,22 @@ export class DatabaseStorage implements IStorage {
           throw new Error(`Exit Bill # ${userBill} already used on ${onDate}`);
         }
         billNumber = userBill;
-        // Bump counter forward so future auto-numbers skip past this one.
-        await tx.update(coldStorages)
-          .set({ nextExitBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextExitBillNumber}, 1), ${billNumber + 1})` })
-          .where(eq(coldStorages.id, data.coldStorageId));
       } else {
-        const counterRow = await tx.update(coldStorages)
-          .set({ nextExitBillNumber: sql`COALESCE(${coldStorages.nextExitBillNumber}, 1) + 1` })
-          .where(eq(coldStorages.id, data.coldStorageId))
-          .returning({ next: coldStorages.nextExitBillNumber });
-        if (counterRow.length === 0 || counterRow[0].next == null) {
-          throw new Error("Cold storage not found");
-        }
-        billNumber = (counterRow[0].next as number) - 1;
+        // MAX(billNumber) + 1 over (cold storage, entry year), ignoring
+        // reversed exits — the entry-year twin of the CS-bill rule. The
+        // legacy cold_storages.next_exit_bill_number lifetime counter is
+        // deliberately no longer read or written: it cannot express a
+        // per-entry-year series.
+        const [maxRow] = await tx.select({
+          max: sql<number | null>`MAX(${exitHistory.billNumber})`,
+        })
+          .from(exitHistory)
+          .where(and(
+            eq(exitHistory.coldStorageId, data.coldStorageId),
+            eq(exitHistory.isReversed, 0),
+            sql`${EXIT_ENTRY_YEAR_SQL} = ${year}`,
+          ));
+        billNumber = ((maxRow?.max as number | null) ?? 0) + 1;
       }
 
       const [inserted] = await tx.insert(exitHistory)
@@ -3407,7 +3531,11 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getExitsByBillNumber(coldStorageId: string, billNumber: number) {
+  // Task #354 — a bill # is only unique WITHIN one stock-entry-year series,
+  // so `entryYear` is a required part of the lookup key. Without it this
+  // would sweep in an unrelated batch that happens to reuse the number in a
+  // different entry season.
+  async getExitsByBillNumber(coldStorageId: string, billNumber: number, entryYear: number) {
     const rows = await db.select({
       exitId: exitHistory.id,
       exitDate: exitHistory.exitDate,
@@ -3431,21 +3559,30 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(exitHistory.coldStorageId, coldStorageId),
         eq(exitHistory.billNumber, billNumber),
+        sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
       ))
       .orderBy(asc(salesHistory.lotNo));
     return rows;
   }
 
   // Edit the bill # and/or exit date for every non-reversed exit row that
-  // shares oldBillNumber within this cold storage (i.e. one single-lot
-  // nikasi OR all sibling rows of a Master Nikasi). Mirrors the
-  // year-scoped uniqueness check used by createExit / createMasterNikasi
-  // so we can't accidentally collide with another active bill in the
-  // target year. Counter is bumped forward only — never rewound — when
-  // newBillNumber > current next.
+  // shares (oldBillNumber, entryYear) within this cold storage (i.e. one
+  // single-lot nikasi OR all sibling rows of a Master Nikasi). Mirrors the
+  // entry-year-scoped uniqueness check used by createExit /
+  // createMasterNikasi so we can't accidentally collide with another active
+  // bill in the same entry-year series.
+  //
+  // Task #354 — `entryYear` is NOT optional and NOT a filter refinement: a
+  // Master Nikasi batch has no batch/group ID, so its rows are bound
+  // together ONLY by (bill #, entry year). Now that numbering restarts each
+  // entry year, dropping the year predicate would make this cascade sweep an
+  // unrelated batch from another season into the same edit. Entry year is
+  // immutable, so it stays a stable grouping key even when the operator
+  // moves the exit date across a year boundary.
   async updateExitsByBillNumber(
     coldStorageId: string,
     oldBillNumber: number,
+    entryYear: number,
     opts: { newBillNumber?: number; newExitDate?: Date },
   ): Promise<{
     updatedCount: number;
@@ -3475,17 +3612,20 @@ export class DatabaseStorage implements IStorage {
           eq(exitHistory.coldStorageId, coldStorageId),
           eq(exitHistory.billNumber, oldBillNumber),
           eq(exitHistory.isReversed, 0),
+          sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
         ));
 
       if (targetRows.length === 0) {
-        throw new Error(`No active exits found for bill # ${oldBillNumber}`);
+        throw new Error(`No active exits found for bill # ${oldBillNumber} in entry year ${entryYear}`);
       }
 
       const effectiveBillNumber = opts.newBillNumber ?? oldBillNumber;
-      const effectiveExitDate = opts.newExitDate ?? (targetRows[0].exitDate as Date);
-      const targetYear = new Date(effectiveExitDate).getFullYear();
 
-      // Year-scoped collision check, excluding the rows we're updating.
+      // Entry-year-scoped collision check, excluding the rows we're
+      // updating. Scoped by ENTRY year, not the (possibly edited) exit
+      // date: moving an exit date across a year boundary must not move the
+      // bill into a different series, so the only numbers it can collide
+      // with are the ones already in its own entry-year series.
       const targetIds = targetRows.map(r => r.id);
       const dup = await tx.select({ id: exitHistory.id, exitDate: exitHistory.exitDate })
         .from(exitHistory)
@@ -3493,7 +3633,7 @@ export class DatabaseStorage implements IStorage {
           eq(exitHistory.coldStorageId, coldStorageId),
           eq(exitHistory.billNumber, effectiveBillNumber),
           eq(exitHistory.isReversed, 0),
-          sql`extract(year from ${exitHistory.exitDate}) = ${targetYear}`,
+          sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
           sql`${exitHistory.id} NOT IN (${sql.join(targetIds.map(id => sql`${id}`), sql`, `)})`,
         ));
       if (dup.length > 0) {
@@ -3508,20 +3648,17 @@ export class DatabaseStorage implements IStorage {
       if (opts.newBillNumber != null) updates.billNumber = opts.newBillNumber;
       if (opts.newExitDate != null) updates.exitDate = opts.newExitDate;
 
+      // Update exactly the rows we resolved above — never re-derive the set
+      // from the predicate, so the write can't drift from what the dup check
+      // was validated against.
       const updatedRows = await tx.update(exitHistory)
         .set(updates)
-        .where(and(
-          eq(exitHistory.coldStorageId, coldStorageId),
-          eq(exitHistory.billNumber, oldBillNumber),
-          eq(exitHistory.isReversed, 0),
-        ))
+        .where(inArray(exitHistory.id, targetIds))
         .returning();
 
-      if (opts.newBillNumber != null) {
-        await tx.update(coldStorages)
-          .set({ nextExitBillNumber: sql`GREATEST(COALESCE(${coldStorages.nextExitBillNumber}, 1), ${opts.newBillNumber + 1})` })
-          .where(eq(coldStorages.id, coldStorageId));
-      }
+      // cold_storages.next_exit_bill_number is deliberately NOT bumped here
+      // (Task #354): the exit series is now MAX+1 per entry year, so that
+      // lifetime counter no longer participates in allocation.
 
       return {
         updatedCount: targetRows.length,
@@ -3542,16 +3679,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Cascade-edit (or first-time-assign) the CS Bill # and/or sale date
-  // across every sales_history row sharing a (coldStorageBillNumber, year)
-  // within one cold storage. Mirrors updateExitsByBillNumber semantics:
+  // across every sales_history row sharing a (coldStorageBillNumber,
+  // entryYear) within one cold storage. Mirrors updateExitsByBillNumber:
   //   • FOR UPDATE lock on cold_storages serializes concurrent assigns
-  //   • year-scoped collision check excluding the rows being updated
+  //   • entry-year-scoped collision check excluding the rows being updated
   //   • IST-noon-anchored newSoldAt (caller validates calendar/future)
   //   • saleId path supports first-time assignment when oldBillNumber=null
+  //
+  // Task #354 — the grouping key is the STOCK ENTRY year, not saleYear. A
+  // Master Nikasi batch has no batch/group ID; its rows are held together
+  // only by (bill #, series year). Since the series now restarts per entry
+  // year, saleYear would no longer identify a batch uniquely — and unlike
+  // saleYear (which this very method can edit), entry year is immutable, so
+  // an in-flight date edit can never move rows out of their own group.
   async updateColdStorageBillByNumber(
     coldStorageId: string,
     oldBillNumber: number | null,
-    oldYear: number,
+    entryYear: number,
     opts: {
       // Three states:
       //   undefined → don't touch the column
@@ -3634,10 +3778,10 @@ export class DatabaseStorage implements IStorage {
           .where(and(
             eq(salesHistory.coldStorageId, coldStorageId),
             eq(salesHistory.coldStorageBillNumber, oldBillNumber),
-            eq(salesHistory.saleYear, oldYear),
+            sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
           ));
         if (rows.length === 0) {
-          throw new Error(`No sales found for CS Bill # ${oldBillNumber} in year ${oldYear}`);
+          throw new Error(`No sales found for CS Bill # ${oldBillNumber} in entry year ${entryYear}`);
         }
         targetRows = rows.map(r => ({
           id: r.id,
@@ -3653,23 +3797,29 @@ export class DatabaseStorage implements IStorage {
       const effectiveBillNumber: number | null = hasNewBill
         ? (opts.newBillNumber as number | null)
         : oldBillNumber;
-      const effectiveSoldAt = opts.newSoldAt ?? targetRows[0].soldAt;
-      const targetYear = new Date(effectiveSoldAt).getFullYear();
       const targetIds = targetRows.map(r => r.id);
 
-      // Year-scoped collision check excluding the rows being updated.
-      // Skipped when bill # itself is unchanged (date-only edit) since
-      // the existing rows' (bill#, year) tuple is allowed to remain.
-      // Also skipped when clearing to NULL — eq(coldStorageBillNumber, X)
-      // never matches NULL by SQL three-valued logic, so a NULL bill #
-      // can never collide with anything.
+      // Entry-year-scoped collision check excluding the rows being updated.
+      //
+      // Task #354 — scoped by ENTRY year, never by the (possibly edited)
+      // sale year. This closes the old date-only-edit gap: previously the
+      // check ran against the year derived from the NEW sale date, so moving
+      // a batch's sale date into another calendar year silently moved it
+      // into a different series and could land it on top of an existing
+      // number there. Entry year is immutable, so the series a bill belongs
+      // to cannot be changed by editing dates at all, and the only numbers
+      // it can conflict with are those already in its own series.
+      //
+      // Skipped when clearing to NULL — eq(coldStorageBillNumber, X) never
+      // matches NULL by SQL three-valued logic, so a NULL bill # can never
+      // collide with anything.
       if (effectiveBillNumber != null) {
         const dup = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
           .from(salesHistory)
           .where(and(
             eq(salesHistory.coldStorageId, coldStorageId),
             eq(salesHistory.coldStorageBillNumber, effectiveBillNumber),
-            eq(salesHistory.saleYear, targetYear),
+            sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
             sql`${salesHistory.id} NOT IN (${sql.join(targetIds.map(id => sql`${id}`), sql`, `)})`,
           ));
         if (dup.length > 0) {
@@ -3688,7 +3838,11 @@ export class DatabaseStorage implements IStorage {
       if (hasNewBill) updates.coldStorageBillNumber = opts.newBillNumber; // number | null
       if (opts.newSoldAt != null) {
         updates.soldAt = opts.newSoldAt;
-        updates.saleYear = targetYear;
+        // saleYear stays a denormalised copy of year(soldAt) — it drives the
+        // sales-list year filter/dropdowns. It is NOT the bill series key
+        // any more (that's the entry year), so keeping it in sync with the
+        // new sale date has no effect on numbering.
+        updates.saleYear = opts.newSoldAt.getFullYear();
       }
 
       await tx.update(salesHistory)
@@ -6793,12 +6947,85 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  // ── Entry-year resolvers (Task #354) ──────────────────────────────────
+  // The single source of truth for "which bill series does this row belong
+  // to". See the SALE_ENTRY_YEAR_SQL / EXIT_ENTRY_YEAR_SQL block at the top
+  // of this file for the rule. Every resolver evaluates the year in
+  // Postgres so the number used for scoping predicates is bit-identical to
+  // the number surfaced in error messages and UI hints.
+  //
+  // `runner` accepts either the pool (`db`) or a transaction handle, so a
+  // caller inside a FOR UPDATE-locked transaction resolves the year under
+  // the same lock as the allocation it feeds.
+
+  async entryYearForSale(runner: DbRunner, saleId: string): Promise<number> {
+    const [row] = await runner.select({ y: SALE_ENTRY_YEAR_SQL })
+      .from(salesHistory)
+      .where(eq(salesHistory.id, saleId));
+    const year = row?.y == null ? NaN : Number(row.y);
+    if (!Number.isFinite(year)) {
+      throw new Error(`Cannot determine stock entry year for sale ${saleId}`);
+    }
+    return year;
+  }
+
+  async entryYearForLot(runner: DbRunner, lotId: string): Promise<number> {
+    const [row] = await runner.select({ y: sql<number>`extract(year from ${lots.createdAt})` })
+      .from(lots)
+      .where(eq(lots.id, lotId));
+    const year = row?.y == null ? NaN : Number(row.y);
+    if (!Number.isFinite(year)) {
+      throw new Error(`Cannot determine stock entry year for lot ${lotId}`);
+    }
+    return year;
+  }
+
+  // Ownership-checked variants for HTTP handlers: resolve the entry year of
+  // a sale / exit ONLY if the row belongs to the caller's cold storage.
+  // Returns null when the row is missing or belongs elsewhere, so a route
+  // can answer 404 without a second round-trip. These are the entry points
+  // routes should use — never trust a client-supplied year for scoping.
+  async entryYearForSaleInColdStorage(coldStorageId: string, saleId: string): Promise<number | null> {
+    const [row] = await db.select({ y: SALE_ENTRY_YEAR_SQL })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.id, saleId),
+        eq(salesHistory.coldStorageId, coldStorageId),
+      ));
+    const year = row?.y == null ? NaN : Number(row.y);
+    return Number.isFinite(year) ? year : null;
+  }
+
+  async entryYearForExitInColdStorage(coldStorageId: string, exitId: string): Promise<number | null> {
+    const [row] = await db.select({ y: EXIT_ENTRY_YEAR_SQL })
+      .from(exitHistory)
+      .where(and(
+        eq(exitHistory.id, exitId),
+        eq(exitHistory.coldStorageId, coldStorageId),
+      ));
+    const year = row?.y == null ? NaN : Number(row.y);
+    return Number.isFinite(year) ? year : null;
+  }
+
+  async entryYearForExit(runner: DbRunner, exitId: string): Promise<number> {
+    const [row] = await runner.select({ y: EXIT_ENTRY_YEAR_SQL })
+      .from(exitHistory)
+      .where(eq(exitHistory.id, exitId));
+    const year = row?.y == null ? NaN : Number(row.y);
+    if (!Number.isFinite(year)) {
+      throw new Error(`Cannot determine stock entry year for exit ${exitId}`);
+    }
+    return year;
+  }
+
   async assignBillNumber(saleId: string, billType: "coldStorage" | "sales"): Promise<number> {
     // Concurrency-safe assignment in a single transaction.
     //
     // For "coldStorage" the next number is computed as
     // MAX(coldStorageBillNumber) + 1 over the same cold storage and the
-    // same calendar year (year(soldAt)). Reversing the most recent bill #
+    // same STOCK ENTRY year (Task #354 — the year the lot came into the
+    // cold store, resolved in SQL, NOT year(soldAt)). Reversing the most
+    // recent bill #
     // frees that trailing slot for the next blank-input sale; interior
     // gaps from older reversals are intentionally NOT refilled (see
     // Task #233). The FOR UPDATE lock on the cold-storages row
@@ -6825,22 +7052,24 @@ export class DatabaseStorage implements IStorage {
       let billNumber: number;
       if (billType === "coldStorage") {
         await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${sale.coldStorageId} FOR UPDATE`);
-        const csYear = new Date(sale.soldAt).getFullYear();
-        // MAX(coldStorageBillNumber) + 1 over (cold storage, year(soldAt)).
+        // Task #354 — scoped to the lot's STOCK ENTRY year, not year(soldAt).
+        // Resolved under the FOR UPDATE lock taken above.
+        const csYear = await this.entryYearForSale(tx, saleId);
+        // MAX(coldStorageBillNumber) + 1 over (cold storage, entry year).
         // Only the TRAILING gap left by reversing the most recent bill #
         // is reused — interior gaps from older reversals are intentionally
         // preserved (e.g. with [#1, #3] active because #2 was reversed,
         // the next blank-input sale gets #4, not #2). The FOR UPDATE
         // lock above serialises concurrent assigners. Falls back to 1
-        // when the year has no rows yet. Do NOT switch to lowest-missing
-        // — see Task #233 for the rationale.
+        // when the entry year has no rows yet. Do NOT switch to
+        // lowest-missing — see Task #233 for the rationale.
         const [maxRow] = await tx.select({
           max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
         })
           .from(salesHistory)
           .where(and(
             eq(salesHistory.coldStorageId, sale.coldStorageId),
-            sql`extract(year from ${salesHistory.soldAt}) = ${csYear}`,
+            sql`${SALE_ENTRY_YEAR_SQL} = ${csYear}`,
           ));
         billNumber = ((maxRow?.max as number | null) ?? 0) + 1;
       } else {
@@ -6892,13 +7121,15 @@ export class DatabaseStorage implements IStorage {
   // reject explicit user-supplied cold-storage bill numbers BEFORE any
   // sale/lot mutations occur. The same check is also enforced at
   // assignment time for safety against concurrent inserts.
-  async findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, year: number): Promise<{ id: string; soldAt: Date } | null> {
+  // `entryYear` is the STOCK ENTRY year of the lot being sold (Task #354),
+  // not the sale year — the CS bill series is keyed to when stock arrived.
+  async findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, entryYear: number): Promise<{ id: string; soldAt: Date } | null> {
     const dup = await db.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
         eq(salesHistory.coldStorageBillNumber, billNumber),
-        sql`extract(year from ${salesHistory.soldAt}) = ${year}`,
+        sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
       ))
       .limit(1);
     return dup.length > 0 ? { id: dup[0].id, soldAt: dup[0].soldAt } : null;
@@ -6907,12 +7138,12 @@ export class DatabaseStorage implements IStorage {
   // Read-only hint for the SaleDialog / MasterNikasiDialog "next CS bill #"
   // preview. Mirrors the MAX+1 rule used by assignBillNumber and
   // createMasterNikasi at submit time.
-  async getNextColdStorageBillNumber(coldStorageId: string, year: number): Promise<number> {
-    // Read-only MAX(coldStorageBillNumber) + 1 over (cold_storage,
-    // year(soldAt)) — same algorithm the authoritative assigners
+  async getNextColdStorageBillNumber(coldStorageId: string, entryYear: number): Promise<number> {
+    // Read-only MAX(coldStorageBillNumber) + 1 over (cold_storage, STOCK
+    // ENTRY year) — same algorithm the authoritative assigners
     // (assignBillNumber + createMasterNikasi) use, so the displayed
     // hint matches what the server will commit. Returns 1 when the
-    // year has no rows yet. Only the TRAILING gap left by reversing
+    // entry year has no rows yet. Only the TRAILING gap left by reversing
     // the most recent bill # is reused; interior gaps are intentionally
     // preserved. No transaction or lock — this is a UI hint; the
     // authoritative assignment takes FOR UPDATE on cold_storages so
@@ -6924,7 +7155,24 @@ export class DatabaseStorage implements IStorage {
       .from(salesHistory)
       .where(and(
         eq(salesHistory.coldStorageId, coldStorageId),
-        sql`extract(year from ${salesHistory.soldAt}) = ${year}`,
+        sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
+      ));
+    return ((maxRow?.max as number | null) ?? 0) + 1;
+  }
+
+  // Read-only twin of getNextColdStorageBillNumber for the Exit / Nikasi
+  // series (Task #354). Both series now reset per stock entry year, so the
+  // Exit dialog's pre-fill has to be derived the same way the allocator
+  // derives it instead of reading the legacy lifetime counter column.
+  async getNextExitBillNumber(coldStorageId: string, entryYear: number): Promise<number> {
+    const [maxRow] = await db.select({
+      max: sql<number | null>`MAX(${exitHistory.billNumber})`,
+    })
+      .from(exitHistory)
+      .where(and(
+        eq(exitHistory.coldStorageId, coldStorageId),
+        eq(exitHistory.isReversed, 0),
+        sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
       ));
     return ((maxRow?.max as number | null) ?? 0) + 1;
   }
@@ -6947,13 +7195,14 @@ export class DatabaseStorage implements IStorage {
       // createMasterNikasi.
       await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${sale.coldStorageId} FOR UPDATE`);
 
-      const year = new Date(sale.soldAt).getFullYear();
+      // Task #354 — uniqueness is per (cold storage, STOCK ENTRY year).
+      const year = await this.entryYearForSale(tx, saleId);
       const dup = await tx.select({ id: salesHistory.id })
         .from(salesHistory)
         .where(and(
           eq(salesHistory.coldStorageId, sale.coldStorageId),
           eq(salesHistory.coldStorageBillNumber, billNumber),
-          sql`extract(year from ${salesHistory.soldAt}) = ${year}`,
+          sql`${SALE_ENTRY_YEAR_SQL} = ${year}`,
         ));
       if (dup.length > 0) {
         throw new Error(`Cold storage bill number ${billNumber} is already used in ${year}`);
@@ -7103,11 +7352,15 @@ export class DatabaseStorage implements IStorage {
     // Reset bill number counters and set status to active.
     // nextColdStorageBillNumber is omitted on purpose — it is deprecated
     // (#230) and no longer drives CS bill # assignment, which now derives
-    // from MAX(coldStorageBillNumber) per (cold_storage, year). With every
-    // sale row deleted above, the implicit "next" is 1 anyway.
+    // from MAX(coldStorageBillNumber) per (cold_storage, stock entry year).
+    // With every sale row deleted above, the implicit "next" is 1 anyway.
+    // nextExitBillNumber is omitted for the same reason (Task #354): the
+    // Exit/Nikasi series is now MAX+1 per (cold_storage, stock entry year),
+    // so the lifetime counter column is dead and must not be written — a
+    // lingering write is exactly what would make a future reader believe
+    // it is still authoritative.
     await db.update(coldStorages)
       .set({
-        nextExitBillNumber: 1,
         nextSalesBillNumber: 1,
         nextEntryBillNumber: 1,
         nextWaferLotNumber: 1,

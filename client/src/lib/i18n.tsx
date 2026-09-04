@@ -512,6 +512,7 @@ const translations: Translations = {
   exitBillNumber: { en: "Exit Bill #", hi: "निकासी बिल #" },
   noLotsAvailable: { en: "No lots with remaining bags available.", hi: "कोई लॉट उपलब्ध नहीं है।" },
   duplicateReceipt: { en: "Each receipt # can only be used once per Master Nikasi.", hi: "प्रत्येक रसीद # एक मास्टर निकासी में केवल एक बार उपयोग की जा सकती है।" },
+  mixedEntryYearNikasi: { en: "These lots came into the cold store in different years, so they can't share one bill number. Remove the odd rows and run a separate Nikasi for each entry year.", hi: "ये लॉट अलग-अलग वर्षों में कोल्ड स्टोर में आए थे, इसलिए इनका एक ही बिल नंबर नहीं हो सकता। अलग पंक्तियाँ हटाएँ और हर प्रवेश वर्ष के लिए अलग निकासी करें।" },
   duplicateLotData: { en: "Data error: more than one lot exists for Receipt#/Marka#", hi: "डेटा त्रुटि: रसीद#/मार्का# के लिए एक से अधिक लॉट मौजूद हैं" },
   fixDuplicateLot: { en: "Fix the duplicate lot entries before proceeding.", hi: "आगे बढ़ने से पहले डुप्लिकेट लॉट प्रविष्टियों को ठीक करें।" },
   exitReceipt: { en: "Exit Receipt", hi: "निकासी रसीद" },

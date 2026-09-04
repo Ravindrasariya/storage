@@ -172,14 +172,20 @@ async function setupFixtures(): Promise<Fixtures> {
          id, cold_storage_id, farmer_name, village, tehsil, district, state,
          contact_number, lot_no, size, remaining_size, chamber_id, floor,
          position, type, bag_type, quality, potato_size, assaying_type,
-         up_for_sale, sale_status, base_cold_charges_billed, farmer_ledger_id
+         up_for_sale, sale_status, base_cold_charges_billed, farmer_ledger_id,
+         created_at
        ) VALUES (
          $1, $2, 'Smoke Farmer', 'X', 'X', 'X', 'X',
          '0000000000', $3, 100, 100, $4, 0,
          'P1', 'seed', 'seed', 'good', 'large', 'self',
-         0, 'available', $5, $6
+         0, 'available', $5, $6,
+         $7
        )`,
-      [lotId, coldStorageId, `__lot_${lotId}`, chamberId, baseBilled, farmerLedgerId],
+      // created_at is pinned to TEST_YEAR because bill # numbering and the
+      // dup checks are scoped to the lot's STOCK ENTRY year (Task #354).
+      // Leaving it to default to now() would put the fixtures' entry year in
+      // the real current year and let concurrent real data affect the run.
+      [lotId, coldStorageId, `__lot_${lotId}`, chamberId, baseBilled, farmerLedgerId, TEST_ENTRY_INSTANT],
     );
   }
 
@@ -214,6 +220,10 @@ async function getSaleBillNumber(saleId: string): Promise<number | null> {
 // guard (rejects typo'd years like 0026) accepts these test fixtures.
 const TEST_YEAR = 2016;
 const TEST_DATE = `${TEST_YEAR}-06-15`;
+// Stock ENTRY instant for every fixture lot / sale. Task #354 scopes both
+// bill series to the entry year, so the fixtures must declare it explicitly
+// rather than inheriting now().
+const TEST_ENTRY_INSTANT = new Date(`${TEST_YEAR}-03-01T12:00:00+05:30`);
 
 async function main(): Promise<void> {
   // Clear leftovers from any prior crashed run before we touch fixtures.
@@ -383,22 +393,24 @@ async function main(): Promise<void> {
          contact_number, lot_no, lot_id, chamber_name, floor, position,
          potato_type, bag_type, quality, original_lot_size, sale_type,
          quantity_sold, price_per_bag, cold_storage_charge, payment_status,
-         sale_year, sold_at, cold_storage_bill_number, farmer_ledger_id, is_self_sale
+         sale_year, sold_at, cold_storage_bill_number, farmer_ledger_id, is_self_sale,
+         entry_date
        ) VALUES (
          $1, $2, 'Smoke Farmer', 'X', 'X', 'X', 'X',
          '0000000000', '__lot_smoke', $3, 'C1', 0, 'P1',
          'seed', 'seed', 'good', 100, 'partial',
          1, 0, 0, 'due',
-         $4, $5, 999, $6, 1
+         $4, $5, 999, $6, 1,
+         $7
        )`,
-      [sale3aId, fixtures.coldStorageId, lotIds[0], TEST_YEAR, new Date(`${TEST_DATE}T12:00:00+05:30`), fixtures.farmerLedgerId],
+      [sale3aId, fixtures.coldStorageId, lotIds[0], TEST_YEAR, new Date(`${TEST_DATE}T12:00:00+05:30`), fixtures.farmerLedgerId, TEST_ENTRY_INSTANT],
     );
     const clear3aResp = await fetch(
       `${baseUrl}/api/sales-history/cs-bill/999?year=${TEST_YEAR}`,
       {
         method: "PATCH",
         headers: authHeaders,
-        body: JSON.stringify({ newBillNumber: null }),
+        body: JSON.stringify({ newBillNumber: null, saleId: sale3aId }),
       },
     );
     if (!clear3aResp.ok) {
@@ -437,15 +449,17 @@ async function main(): Promise<void> {
            contact_number, lot_no, lot_id, chamber_name, floor, position,
            potato_type, bag_type, quality, original_lot_size, sale_type,
            quantity_sold, price_per_bag, cold_storage_charge, payment_status,
-           sale_year, sold_at, cold_storage_bill_number, farmer_ledger_id, is_self_sale
+           sale_year, sold_at, cold_storage_bill_number, farmer_ledger_id, is_self_sale,
+           entry_date
          ) VALUES (
            $1, $2, 'Smoke Farmer', 'X', 'X', 'X', 'X',
            '0000000000', '__lot_smoke', $3, 'C1', 0, 'P1',
            'seed', 'seed', 'good', 100, 'partial',
            1, 0, 0, 'due',
-           $4, $5, 998, $6, 1
+           $4, $5, 998, $6, 1,
+           $7
          )`,
-        [sId, fixtures.coldStorageId, lotIds[0], TEST_YEAR, new Date(`${TEST_DATE}T12:00:00+05:30`), fixtures.farmerLedgerId],
+        [sId, fixtures.coldStorageId, lotIds[0], TEST_YEAR, new Date(`${TEST_DATE}T12:00:00+05:30`), fixtures.farmerLedgerId, TEST_ENTRY_INSTANT],
       );
     }
     const clear3bResp = await fetch(
@@ -453,7 +467,7 @@ async function main(): Promise<void> {
       {
         method: "PATCH",
         headers: authHeaders,
-        body: JSON.stringify({ newBillNumber: null }),
+        body: JSON.stringify({ newBillNumber: null, saleId: sale3bIds[0] }),
       },
     );
     if (!clear3bResp.ok) {
@@ -504,15 +518,17 @@ async function main(): Promise<void> {
          contact_number, lot_no, lot_id, chamber_name, floor, position,
          potato_type, bag_type, quality, original_lot_size, sale_type,
          quantity_sold, price_per_bag, cold_storage_charge, payment_status,
-         sale_year, sold_at, cold_storage_bill_number, farmer_ledger_id, is_self_sale
+         sale_year, sold_at, cold_storage_bill_number, farmer_ledger_id, is_self_sale,
+         entry_date
        ) VALUES (
          $1, $2, 'Smoke Farmer', 'X', 'X', 'X', 'X',
          '0000000000', '__lot_smoke', $3, 'C1', 0, 'P1',
          'seed', 'seed', 'good', 100, 'partial',
          1, 0, 0, 'due',
-         $4, $5, NULL, $6, 1
+         $4, $5, NULL, $6, 1,
+         $7
        )`,
-      [sale4Id, fixtures.coldStorageId, lotIds[0], TEST_YEAR, new Date(`${TEST_DATE}T12:00:00+05:30`), fixtures.farmerLedgerId],
+      [sale4Id, fixtures.coldStorageId, lotIds[0], TEST_YEAR, new Date(`${TEST_DATE}T12:00:00+05:30`), fixtures.farmerLedgerId, TEST_ENTRY_INSTANT],
     );
 
     // Reset the assign-bill request counter so step (b)'s assertion

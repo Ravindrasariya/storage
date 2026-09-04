@@ -69,21 +69,36 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     queryKey: ["/api/cold-storage"],
   });
 
-  // Pre-fill the exit bill number from the cold-storage counter when the
-  // dialog opens. The operator can override this to match a manual
-  // receipt-book number; we keep an "edited" flag to switch the visual
-  // state from auto/amber to edited/blue.
+  // Live preview of the next Exit / Nikasi bill # the server would assign.
+  //
+  // Task #354 — the exit series resets per STOCK ENTRY year, so this comes
+  // from a server hint anchored to this sale's lot, not from the old
+  // cold_storages.next_exit_bill_number lifetime counter (now dead). Hint
+  // only: createExit recomputes MAX+1 under a row lock at submit time.
+  const { data: nextExitBillData } = useQuery<{ nextBillNumber: number; entryYear: number }>({
+    queryKey: ["/api/cold-storages", coldStorage?.id, "next-exit-bill", sale?.lotId],
+    enabled: open && !!coldStorage?.id && !!sale?.lotId,
+    queryFn: async () => {
+      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-exit-bill?lotId=${encodeURIComponent(sale!.lotId)}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
+  });
+
+  // Pre-fill the exit bill number from that hint when the dialog opens. The
+  // operator can override it to match a manual receipt-book number; the
+  // "edited" flag switches the visual state from auto/amber to edited/blue
+  // and stops us overwriting their value.
   useEffect(() => {
-    if (open && coldStorage?.nextExitBillNumber != null) {
-      setBillNumberInput(String(coldStorage.nextExitBillNumber));
-      setBillNumberEdited(false);
+    if (open && !billNumberEdited && nextExitBillData?.nextBillNumber != null) {
+      setBillNumberInput(String(nextExitBillData.nextBillNumber));
       setBillNumberError(null);
     }
     if (!open) {
       setBillNumberInput("");
       setBillNumberEdited(false);
     }
-  }, [open, coldStorage?.nextExitBillNumber]);
+  }, [open, billNumberEdited, nextExitBillData?.nextBillNumber]);
 
   // Pre-fill the Exit Date with today (IST) when the dialog opens, and
   // reset on close. Computed via Intl.DateTimeFormat in Asia/Kolkata so
@@ -226,7 +241,12 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     }
     setReprintingExitId(exit.id);
     try {
-      const response = await authFetch(`/api/exits/by-bill/${exit.billNumber}`);
+      // Task #354 — bill #s restart each stock entry year, so the by-bill
+      // lookup must be scoped. Pass this exit's id and let the server
+      // resolve the entry year rather than guessing it client-side.
+      const response = await authFetch(
+        `/api/exits/by-bill/${exit.billNumber}?exitId=${encodeURIComponent(exit.id)}`,
+      );
       const json = await response.json() as { exits: BatchExitRow[] };
       const siblings = json.exits || [];
       if (siblings.length >= 2) {

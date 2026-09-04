@@ -168,21 +168,26 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     enabled: !!sale?.id && open,
   });
 
-  // Fetch sibling sales sharing this (bill #, year) so the operator
-  // sees up front how many rows the cascade will touch. Skipped for
-  // first-time assignments (no siblings to resolve).
+  // Fetch sibling sales sharing this (bill #, stock entry year) so the
+  // operator sees up front how many rows the cascade will touch. Skipped
+  // for first-time assignments (no siblings to resolve).
+  //
+  // Task #354 — grouping is by ENTRY year, which the server derives from
+  // `saleId`. Sending the sale id rather than a year keeps this preview and
+  // the cascade below reading from the exact same key, so the "covers N
+  // rows" notice can never disagree with what the save actually touches.
   const csBillBatchEnabled =
-    !!sale?.coldStorageBillNumber && !!sale?.saleYear && open;
+    !!sale?.coldStorageBillNumber && !!sale?.id && open;
   const { data: csBillSiblings = [] } = useQuery<CsBillSibling[]>({
     queryKey: [
       "/api/sales-history/cs-bill-batch",
       sale?.coldStorageBillNumber,
-      sale?.saleYear,
+      sale?.id,
     ],
     queryFn: async () => {
-      if (!sale?.coldStorageBillNumber || !sale?.saleYear) return [];
+      if (!sale?.coldStorageBillNumber || !sale?.id) return [];
       const response = await authFetch(
-        `/api/sales-history/cs-bill-batch?billNumber=${sale.coldStorageBillNumber}&year=${sale.saleYear}`,
+        `/api/sales-history/cs-bill-batch?billNumber=${sale.coldStorageBillNumber}&saleId=${encodeURIComponent(sale.id)}`,
       );
       if (!response.ok) return [];
       return response.json();
@@ -366,13 +371,16 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     : 0;
 
   // Cascade-update CS Bill # / sale date for the current sale and every
-  // sibling sharing the same (bill #, year). Invoked from handleSave
-  // BEFORE the per-sale PATCH so we can short-circuit the entire save if
-  // the cascade fails (e.g. duplicate bill #).
+  // sibling sharing the same (bill #, stock entry year). Invoked from
+  // handleSave BEFORE the per-sale PATCH so we can short-circuit the entire
+  // save if the cascade fails (e.g. duplicate bill #).
+  //
+  // Task #354 — no year is sent. The server resolves the ENTRY year from
+  // `saleId`, so a mis-derived client year can never scope the cascade onto
+  // another season's batch.
   const updateCsBillMutation = useMutation({
     mutationFn: async (vars: {
       oldBillNumber: number | null;
-      oldYear: number;
       // Tri-state: undefined = leave alone, number = set, null = CLEAR
       // (Task #256 — operator removed an existing CS Bill #).
       newBillNumber?: number | null;
@@ -380,7 +388,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       saleId: string;
     }) => {
       const billPath = vars.oldBillNumber == null ? "none" : String(vars.oldBillNumber);
-      const yearQuery = vars.oldBillNumber == null ? "" : `?year=${vars.oldYear}`;
       const body: Record<string, unknown> = { saleId: vars.saleId };
       // Use `in vars` so an explicit null ("clear") is forwarded but
       // a missing key ("don't touch") is not — `!== undefined` would
@@ -389,7 +396,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       if (vars.newSoldAt !== undefined) body.newSoldAt = vars.newSoldAt;
       const response = await apiRequest(
         "PATCH",
-        `/api/sales-history/cs-bill/${billPath}${yearQuery}`,
+        `/api/sales-history/cs-bill/${billPath}`,
         body,
       );
       return response.json();
@@ -605,7 +612,6 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
           : undefined;
         await updateCsBillMutation.mutateAsync({
           oldBillNumber: sale.coldStorageBillNumber ?? null,
-          oldYear: sale.saleYear ?? new Date(sale.soldAt).getFullYear(),
           newBillNumber: newBillForCascade,
           newSoldAt: dateChanged ? csBillDateInput : undefined,
           saleId: sale.id,

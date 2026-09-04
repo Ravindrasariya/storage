@@ -185,33 +185,6 @@ export function MasterNikasiDialog({
     new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const [exitDate, setExitDate] = useState<string>(todayIst);
 
-  // Year used for the live next-CS-bill # preview. Server-side
-  // createMasterNikasi scopes the CS bill # year to the picked
-  // exitDate's calendar year (not the row's soldAt, which is "now"), so
-  // the hint must follow the same rule. A new exitDate input ⇒ new
-  // previewYear ⇒ new query key ⇒ refreshed hint.
-  const previewYear = useMemo(() => {
-    if (exitDate && /^\d{4}-\d{2}-\d{2}$/.test(exitDate)) {
-      const y = parseInt(exitDate.slice(0, 4), 10);
-      if (Number.isFinite(y) && y > 1900 && y < 3000) return y;
-    }
-    return new Date().getFullYear();
-  }, [exitDate]);
-
-  // Live preview of the next CS bill # the server would auto-assign.
-  // Best-effort hint only — the server recomputes at submit time. Key
-  // shape matches the spec ['/api/cold-storages', coldStorageId,
-  // 'next-cs-bill', year] and the URL uses year as a query param.
-  const { data: nextCsBillData, isFetching: nextCsBillFetching } = useQuery<{ nextBillNumber: number }>({
-    queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", previewYear],
-    enabled: open && !!coldStorage?.id,
-    queryFn: async () => {
-      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-cs-bill?year=${previewYear}`);
-      if (!res.ok) throw new Error(`${res.status}`);
-      return res.json();
-    },
-  });
-
   const [rows, setRows] = useState<RowState[]>(() => [newRow()]);
   const [result, setResult] = useState<MasterNikasiResult | null>(null);
   // SELF_BUYER (default) keeps the legacy self-sale path; selecting a real
@@ -237,6 +210,11 @@ export function MasterNikasiDialog({
   // operator can correct duplicates without losing the toast. The
   // matching field is detected via substring on the message.
   const [billNumberError, setBillNumberError] = useState<string | null>(null);
+  // Task #354 — batch-level rejection: the selected lots came into the cold
+  // store in different years, so one shared bill # can't belong to a single
+  // series. Kept separate from billNumberError because the fix is to split
+  // the batch by entry year, not to retype a number.
+  const [entryYearError, setEntryYearError] = useState<string | null>(null);
 
   // ---- Task #294: Inline payment ---------------------------------------
   // When set, the MN submit payload includes a `payment` block. The server
@@ -257,10 +235,9 @@ export function MasterNikasiDialog({
   // by re-opening the sub-dialog with the message highlighted.
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  // Reset state whenever dialog opens. The shared exit bill # is still
-  // pre-filled from the cold-storage running counter (out of scope for
-  // #230). The first row's cold-storage bill # starts empty and is
-  // populated by the follow-up effect below once nextCsBillData arrives.
+  // Reset state whenever dialog opens. Both shared bill # inputs start
+  // empty and are populated by the follow-up effects below, once the
+  // entry-year-scoped hints arrive.
   useEffect(() => {
     if (open) {
       setExitDate(todayIst());
@@ -268,13 +245,17 @@ export function MasterNikasiDialog({
       const onlyMarka = (only?.marka || "").trim();
       const onlyMarkaState = only ? (onlyMarka === "" ? NO_MARKA : onlyMarka) : "";
       setRows([newRow(only?.lotNo || "", onlyMarkaState)]);
-      setSharedExitBillInput(coldStorage?.nextExitBillNumber ? String(coldStorage.nextExitBillNumber) : "");
+      // Shared exit bill # is autofilled by the follow-up effect below once
+      // nextExitBillData lands (Task #354 — it comes from the per-entry-year
+      // MAX+1 hint, no longer from the dead lifetime counter column).
+      setSharedExitBillInput("");
       setSharedExitBillEdited(false);
       // Shared CS bill # is autofilled by the follow-up effect below
       // once nextCsBillData lands; reset to blank/non-edited here.
       setSharedColdStorageBillInput("");
       setSharedColdStorageBillEdited(false);
       setBillNumberError(null);
+      setEntryYearError(null);
       setResult(null);
       setTargetBuyerSel(SELF_BUYER);
       setBuyerComboboxOpen(false);
@@ -284,7 +265,7 @@ export function MasterNikasiDialog({
       setPaymentDialogOpen(false);
       setPaymentError(null);
     }
-  }, [open, lots, coldStorage?.nextExitBillNumber]);
+  }, [open, lots]);
 
   // Index lots by (lotNo, marka) so a row can resolve its database lot id
   // from the user-facing identity. Per the operator workflow, the same
@@ -346,6 +327,61 @@ export function MasterNikasiDialog({
     return resolved.every(l => l.lot.baseColdChargesBilled === 1);
   }, [rows, lotByKey]);
 
+  // Task #354 — both bill series are keyed to the lot's STOCK ENTRY year,
+  // so the hint has to be anchored to a lot the operator ACTUALLY picked.
+  // Anchoring on `lots[0]` (the farmer's first available lot) looks
+  // equivalent and usually is, but it silently breaks the ordinary case of
+  // a farmer holding stock from two seasons: pick only the 2017 lot and the
+  // dialog would still pre-fill — and then SUBMIT — the 2016 series' next
+  // number as an explicit shared bill #, landing an out-of-sequence number
+  // in the 2017 series or colliding with one already used there.
+  //
+  // The entry year itself remains a server-computed value: the years below
+  // are a UI-only heuristic used to decide WHICH lot to ask about and when
+  // to stay quiet. The authoritative year comes back on the hint response,
+  // and a genuinely mixed batch is still rejected server-side at submit.
+  const selectedEntryYears = useMemo(() => {
+    const resolved = rows
+      .filter(r => r.lotNo && r.marka)
+      .map(r => lotByKey.get(`${r.lotNo}::${canonMarka(r.marka)}`))
+      .filter((l): l is LotWithCharges => !!l);
+    const years = new Set<number>();
+    for (const l of resolved) {
+      const created = l.lot.createdAt ? new Date(l.lot.createdAt) : null;
+      if (created && !Number.isNaN(created.getTime())) years.add(created.getFullYear());
+    }
+    return { anchorLotId: resolved[0]?.lot.id ?? null, distinctYears: years.size };
+  }, [rows, lotByKey]);
+
+  // Null until exactly one entry year is on screen. While it is null both
+  // hints are disabled and both inputs are held blank, so the dialog can
+  // never submit a number belonging to a series the operator didn't pick.
+  const hintLotId = selectedEntryYears.distinctYears === 1 ? selectedEntryYears.anchorLotId : null;
+  const mixedEntryYearSelection = selectedEntryYears.distinctYears > 1;
+
+  // Live previews of the next CS / Exit bill #s the server would
+  // auto-assign. Best-effort hints only — the server recomputes both at
+  // submit time under a row lock, so a stale value here is safe.
+  const { data: nextCsBillData, isFetching: nextCsBillFetching } = useQuery<{ nextBillNumber: number; entryYear: number }>({
+    queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", hintLotId],
+    enabled: open && !!coldStorage?.id && !!hintLotId,
+    queryFn: async () => {
+      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-cs-bill?lotId=${encodeURIComponent(hintLotId!)}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
+  });
+
+  const { data: nextExitBillData } = useQuery<{ nextBillNumber: number; entryYear: number }>({
+    queryKey: ["/api/cold-storages", coldStorage?.id, "next-exit-bill", hintLotId],
+    enabled: open && !!coldStorage?.id && !!hintLotId,
+    queryFn: async () => {
+      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-exit-bill?lotId=${encodeURIComponent(hintLotId!)}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
+  });
+
   // Keep the shared CS bill # input in sync with the live MAX+1
   // preview while the operator hasn't manually edited it. Mirrors the
   // shared-exit-bill autofill semantics:
@@ -367,14 +403,34 @@ export function MasterNikasiDialog({
     }
     // Gate on isFetching so we never display a stale cached number
     // during a year change or post-sale invalidation: clear the input
-    // to empty until the fresh hint lands.
-    if (nextCsBillFetching || !nextCsBillData?.nextBillNumber) {
+    // to empty until the fresh hint lands. Same for a missing anchor —
+    // see the exit-bill effect below.
+    if (!hintLotId || nextCsBillFetching || !nextCsBillData?.nextBillNumber) {
       setSharedColdStorageBillInput(prev => (prev === "" ? prev : ""));
       return;
     }
     const nextStr = String(nextCsBillData.nextBillNumber);
     setSharedColdStorageBillInput(prev => (prev === nextStr ? prev : nextStr));
   }, [open, nextCsBillData?.nextBillNumber, nextCsBillFetching, sharedColdStorageBillEdited, allSelectedRowsBaseBilled]);
+
+  // Same autofill contract for the shared Exit / Nikasi bill # (Task #354).
+  // Previously pre-filled from cold_storages.next_exit_bill_number, a
+  // lifetime counter; that column is dead now that the exit series also
+  // resets per stock entry year, so the value comes from the server hint.
+  useEffect(() => {
+    if (!open) return;
+    if (sharedExitBillEdited) return;
+    // No usable anchor (nothing picked yet, or the picked rows span two
+    // entry years) → hold the input blank rather than leave a number from
+    // a previous, possibly different, series sitting in the field where it
+    // would be submitted as an explicit override.
+    if (!hintLotId || !nextExitBillData?.nextBillNumber) {
+      setSharedExitBillInput(prev => (prev === "" ? prev : ""));
+      return;
+    }
+    const nextStr = String(nextExitBillData.nextBillNumber);
+    setSharedExitBillInput(prev => (prev === nextStr ? prev : nextStr));
+  }, [open, hintLotId, nextExitBillData?.nextBillNumber, sharedExitBillEdited]);
 
   // Used (lotNo, marka) pairs across rows, so duplicates are blocked.
   const usedKeys = useMemo(
@@ -611,8 +667,10 @@ export function MasterNikasiDialog({
       // the inline-payment side effects too.
       invalidateSaleSideEffects(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/farmers"] });
-      // Refresh the cold-storage counter so subsequent dialogs see the
-      // bumped nextExitBillNumber / nextColdStorageBillNumber values.
+      // Refresh the cold-storage record so subsequent dialogs re-read it.
+      // The bill # pre-fills themselves no longer come from stored counters
+      // (Task #354 — both series are MAX+1 per stock entry year); those
+      // hint queries are refreshed by invalidateSaleSideEffects above.
       queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
       // Explicit invalidations for the inline-payment side effects (already
       // covered by invalidateSaleSideEffects, but stated explicitly per
@@ -637,7 +695,11 @@ export function MasterNikasiDialog({
       // CS bill # is a single shared field now — no row mapping. Its
       // server error and the shared exit-bill error both render under
       // the matching shared input via substring on the message.
-      if (body?.field === "coldStorageBillNumber" || /Cold Storage Bill #|cold storage bill number/i.test(msg)) {
+      if (/different stock entry years/i.test(msg)) {
+        // Surfaced above the lot grid — the operator has to remove rows,
+        // not fix a field, so this must not render under a bill # input.
+        setEntryYearError(msg);
+      } else if (body?.field === "coldStorageBillNumber" || /Cold Storage Bill #|cold storage bill number/i.test(msg)) {
         setBillNumberError(msg);
       } else if (body?.field === "sharedExitBillNumber" || /Exit Bill #|exit bill number/i.test(msg)) {
         setBillNumberError(msg);
@@ -896,6 +958,31 @@ export function MasterNikasiDialog({
             data-testid="error-mn-bill-number"
           >
             {billNumberError}
+          </p>
+        )}
+        {/* Task #354: the batch spans more than one stock entry year. Shown
+            above the grid, not under a bill # input, because the operator
+            fixes it by removing rows and running one Nikasi per entry
+            year — no number they type here can resolve it. */}
+        {entryYearError && (
+          <p
+            className="text-xs text-red-600 dark:text-red-400 px-1 -mt-1"
+            data-testid="error-mn-entry-year"
+          >
+            {entryYearError}
+          </p>
+        )}
+        {/* Same problem, caught before submit. The rows on screen already
+            carry their lots' entry dates, so there's no reason to make the
+            operator fill in the whole batch first. This also explains why
+            both bill # fields have gone blank: with two series in play
+            there is no single "next number" to offer. */}
+        {!result && !entryYearError && mixedEntryYearSelection && (
+          <p
+            className="text-xs text-amber-700 dark:text-amber-400 px-1 -mt-1"
+            data-testid="warning-mn-mixed-entry-year"
+          >
+            {t("mixedEntryYearNikasi")}
           </p>
         )}
         {/* Task #256: hint that blank input is intentional when every

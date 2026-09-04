@@ -82,30 +82,19 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
     queryKey: ["/api/cold-storage"],
   });
 
-  // Year used for the live next-CS-bill # preview. Derived from the
-  // current sale-date input so that, if the operator backdates the sale
-  // into a different calendar year, the hint matches what the server
-  // would actually assign (assignBillNumber computes MAX+1 over the same
-  // year(soldAt)). Falls back to today when the input is empty/invalid.
-  const saleYear = useMemo(() => {
-    if (saleDateInput && /^\d{4}-\d{2}-\d{2}$/.test(saleDateInput)) {
-      const y = parseInt(saleDateInput.slice(0, 4), 10);
-      if (Number.isFinite(y) && y > 1900 && y < 3000) return y;
-    }
-    return new Date().getFullYear();
-  }, [saleDateInput]);
-
   // Live preview of the next CS bill # the server would auto-assign.
   // Best-effort hint only — the server recomputes at submit time, so a
-  // stale value here is safe. Key shape matches the spec
-  // ['/api/cold-storages', coldStorageId, 'next-cs-bill', year] so cache
-  // invalidation is granular per cold storage and year. Custom queryFn
-  // builds the spec endpoint URL with year as a query param.
-  const { data: nextCsBillData, isFetching: nextCsBillFetching } = useQuery<{ nextBillNumber: number }>({
-    queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", saleYear],
-    enabled: open && !!coldStorage?.id,
+  // stale value here is safe.
+  //
+  // Task #354 — the CS bill series is keyed to the lot's STOCK ENTRY year,
+  // not the sale date, so we send `lotId` and let the server resolve the
+  // year. Changing the sale date no longer changes the hint: selling this
+  // lot in January still draws from the season it was stored in.
+  const { data: nextCsBillData, isFetching: nextCsBillFetching } = useQuery<{ nextBillNumber: number; entryYear: number }>({
+    queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", lot?.id],
+    enabled: open && !!coldStorage?.id && !!lot?.id,
     queryFn: async () => {
-      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-cs-bill?year=${saleYear}`);
+      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-cs-bill?lotId=${encodeURIComponent(lot!.id)}`);
       if (!res.ok) throw new Error(`${res.status}`);
       return res.json();
     },

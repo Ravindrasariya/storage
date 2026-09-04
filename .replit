@@ -41,6 +41,10 @@ args = "remaining-bags-filter"
 task = "workflow.run"
 args = "self-buyer-filter"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "entry-year-bill-scoping"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -90,6 +94,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "tsx scripts/check-self-buyer-filter.mts"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "entry-year-bill-scoping"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "tsx scripts/check-entry-year-bill-scoping.mts"
 
 [workflows.workflow.metadata]
 outputType = "console"

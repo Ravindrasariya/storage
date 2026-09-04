@@ -1480,7 +1480,10 @@ export async function registerRoutes(
         }
       }
       if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
-        const csYear = saleDate.getFullYear();
+        // Task #354 — the CS bill series is keyed to the lot's STOCK ENTRY
+        // year, not the sale date, so a January sale of last season's stock
+        // is checked against last season's numbers.
+        const csYear = await storage.entryYearForLot(db, lot.id);
         // findColdStorageBillDuplicate does eq(coldStorageBillNumber, X)
         // which by SQL three-valued logic NEVER matches NULL rows — so
         // any number of NULL-bill sales in the same year coexist freely
@@ -2109,28 +2112,56 @@ export async function registerRoutes(
     }
   });
 
-  // Hint-only live preview of the next cold-storage bill # the server
-  // would auto-assign in (this cold storage, given calendar year). Used
-  // by SaleDialog and MasterNikasiDialog to pre-fill the CS bill # input
-  // so the displayed value matches what assignBillNumber /
-  // createMasterNikasi would compute. The server still recomputes on
-  // submit, so a stale hint is safe — never the source of truth.
-  // The :id path segment must match the caller's session cold storage;
-  // year is an optional query param defaulting to the current year.
+  // Hint-only live preview of the next cold-storage / exit bill # the
+  // server would auto-assign in (this cold storage, the lot's STOCK ENTRY
+  // year). Used by SaleDialog, ExitDialog and MasterNikasiDialog to
+  // pre-fill the bill # inputs so the displayed value matches what
+  // assignBillNumber / createExit / createMasterNikasi would compute. The
+  // server still recomputes on submit, so a stale hint is safe — never the
+  // source of truth. The :id path segment must match the caller's session
+  // cold storage.
+  //
+  // Task #354 — the series is keyed to the entry year, so the caller passes
+  // `lotId` (the lot being sold / exited) and the server derives the year
+  // from it. `year` remains accepted as an explicit override for callers
+  // that already know the entry year; it is NOT the sale/exit year. With
+  // neither, we fall back to the current calendar year.
+  const resolveHintEntryYear = async (req: AuthenticatedRequest): Promise<number> => {
+    const lotId = typeof req.query.lotId === "string" ? req.query.lotId.trim() : "";
+    if (lotId) return await storage.entryYearForLot(db, lotId);
+    const yearParam = typeof req.query.year === "string" ? parseInt(req.query.year, 10) : NaN;
+    if (Number.isFinite(yearParam) && yearParam > 1900 && yearParam < 3000) return yearParam;
+    return new Date().getFullYear();
+  };
+
   app.get("/api/cold-storages/:id/next-cs-bill", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const sessionColdStorageId = getColdStorageId(req);
       if (req.params.id !== sessionColdStorageId) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const yearParam = typeof req.query.year === "string" ? parseInt(req.query.year, 10) : NaN;
-      const year = Number.isFinite(yearParam) && yearParam > 1900 && yearParam < 3000
-        ? yearParam
-        : new Date().getFullYear();
-      const nextBillNumber = await storage.getNextColdStorageBillNumber(sessionColdStorageId, year);
-      res.json({ nextBillNumber });
+      const entryYear = await resolveHintEntryYear(req);
+      const nextBillNumber = await storage.getNextColdStorageBillNumber(sessionColdStorageId, entryYear);
+      res.json({ nextBillNumber, entryYear });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch next cold storage bill number" });
+    }
+  });
+
+  // Exit / Nikasi twin of the hint above. Replaces the old client-side
+  // pre-fill from cold_storages.next_exit_bill_number, which was a lifetime
+  // counter and cannot express a per-entry-year series (Task #354).
+  app.get("/api/cold-storages/:id/next-exit-bill", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const sessionColdStorageId = getColdStorageId(req);
+      if (req.params.id !== sessionColdStorageId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const entryYear = await resolveHintEntryYear(req);
+      const nextBillNumber = await storage.getNextExitBillNumber(sessionColdStorageId, entryYear);
+      res.json({ nextBillNumber, entryYear });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch next exit bill number" });
     }
   });
 
@@ -2231,14 +2262,30 @@ export async function registerRoutes(
       const billNumberRaw = req.query.billNumber;
       const yearRaw = req.query.year;
       const billNumber = parseInt(String(billNumberRaw ?? ""), 10);
-      const year = parseInt(String(yearRaw ?? ""), 10);
       if (!Number.isFinite(billNumber) || billNumber <= 0) {
         return res.status(400).json({ error: "billNumber is required" });
       }
-      if (!Number.isFinite(year) || year < 1900 || year > 9999) {
-        return res.status(400).json({ error: "year is required" });
+      // Task #354 — siblings are grouped by (bill #, STOCK ENTRY year).
+      // Preferred form: pass `saleId` and let the server resolve the entry
+      // year, so the preview can never disagree with what the cascade would
+      // actually touch. `year` is accepted as an explicit entry-year
+      // override for non-UI callers; it is NOT the sale year.
+      const saleIdRaw = typeof req.query.saleId === "string" ? req.query.saleId.trim() : "";
+      let entryYear: number;
+      if (saleIdRaw) {
+        const resolved = await storage.entryYearForSaleInColdStorage(coldStorageId, saleIdRaw);
+        if (resolved == null) {
+          return res.status(404).json({ error: "Sale not found" });
+        }
+        entryYear = resolved;
+      } else {
+        const year = parseInt(String(yearRaw ?? ""), 10);
+        if (!Number.isFinite(year) || year < 1900 || year > 9999) {
+          return res.status(400).json({ error: "saleId or entry year is required" });
+        }
+        entryYear = year;
       }
-      const siblings = await storage.getSalesByColdStorageBillNumber(coldStorageId, billNumber, year);
+      const siblings = await storage.getSalesByColdStorageBillNumber(coldStorageId, billNumber, entryYear);
       res.json(siblings);
     } catch (error) {
       console.error("Failed to fetch CS bill batch:", error);
@@ -2256,9 +2303,10 @@ export async function registerRoutes(
   //   :billNumber — numeric old CS bill #, or "none" / "0" for first-time
   //   assignment of a bill # to a sale that currently has none.
   // Query params:
-  //   year — required for the cascade path so we can scope the existing
-  //   batch; ignored for first-time assignment (saleId in body identifies
-  //   the row directly).
+  //   year — legacy fallback ONLY, used when the body carries no saleId.
+  //   Since Task #354 it means the STOCK ENTRY year (the year the lot came
+  //   into the store), not the sale year. UI callers always send saleId and
+  //   let the server resolve the entry year itself.
   // Body:
   //   { newBillNumber?, newSoldAt? "YYYY-MM-DD", saleId? }
   // newBillNumber is tri-state:
@@ -2291,16 +2339,30 @@ export async function registerRoutes(
         oldBillNumber = parsedBill;
       }
 
-      let oldYear = 0;
-      if (oldBillNumber != null) {
+      const parsed = updateCsBillSchema.parse(req.body);
+
+      // Task #354 — the cascade groups by (bill #, STOCK ENTRY year). The
+      // entry year is resolved SERVER-SIDE from the sale being edited, never
+      // taken from the client: entry year is immutable and is the only thing
+      // holding a Master Nikasi batch together, so guessing it wrong would
+      // silently rewrite a different season's batch.
+      //
+      // `?year=` is still accepted for non-UI callers that have no saleId,
+      // and is interpreted as the ENTRY year (it used to be the sale year).
+      let entryYear = 0;
+      if (parsed.saleId) {
+        const resolved = await storage.entryYearForSaleInColdStorage(coldStorageId, parsed.saleId);
+        if (resolved == null) {
+          return res.status(404).json({ error: "Sale not found" });
+        }
+        entryYear = resolved;
+      } else if (oldBillNumber != null) {
         const yearParam = parseInt(String(req.query.year ?? ""), 10);
         if (!Number.isFinite(yearParam) || yearParam < 1900 || yearParam > 9999) {
-          return res.status(400).json({ error: "year query param is required" });
+          return res.status(400).json({ error: "saleId (preferred) or entry year query param is required" });
         }
-        oldYear = yearParam;
+        entryYear = yearParam;
       }
-
-      const parsed = updateCsBillSchema.parse(req.body);
 
       // Empty body → no-op (per task spec). Return a 200 with an empty
       // result so the client can call this endpoint optimistically without
@@ -2342,7 +2404,7 @@ export async function registerRoutes(
         resolvedSoldAt = parsedDate;
       }
 
-      const result = await storage.updateColdStorageBillByNumber(coldStorageId, oldBillNumber, oldYear, {
+      const result = await storage.updateColdStorageBillByNumber(coldStorageId, oldBillNumber, entryYear, {
         newBillNumber: parsed.newBillNumber,
         newSoldAt: resolvedSoldAt,
         saleId: parsed.saleId,
@@ -2934,6 +2996,28 @@ export async function registerRoutes(
   // Lookup all exits sharing a single bill number, scoped to the current
   // cold storage. Used by the Exit dialog reprint to detect Master Nikasi
   // batches and render a consolidated receipt instead of a single-lot one.
+  //
+  // Task #354 — bill numbers restart each STOCK ENTRY year, so a bill # on
+  // its own no longer identifies one batch. Callers pass `exitId` (a row
+  // they already have) and the server derives the entry year from it;
+  // `entryYear` is accepted as an explicit override for non-UI callers.
+  const resolveExitEntryYear = async (
+    coldStorageId: string,
+    req: AuthenticatedRequest,
+  ): Promise<{ ok: true; entryYear: number } | { ok: false; status: number; error: string }> => {
+    const exitId = typeof req.query.exitId === "string" ? req.query.exitId.trim() : "";
+    if (exitId) {
+      const resolved = await storage.entryYearForExitInColdStorage(coldStorageId, exitId);
+      if (resolved == null) return { ok: false, status: 404, error: "Exit not found" };
+      return { ok: true, entryYear: resolved };
+    }
+    const yearParam = parseInt(String(req.query.entryYear ?? ""), 10);
+    if (Number.isFinite(yearParam) && yearParam >= 1900 && yearParam <= 9999) {
+      return { ok: true, entryYear: yearParam };
+    }
+    return { ok: false, status: 400, error: "exitId (preferred) or entryYear is required" };
+  };
+
   app.get("/api/exits/by-bill/:billNumber", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
@@ -2941,7 +3025,9 @@ export async function registerRoutes(
       if (!Number.isFinite(billNumber) || billNumber <= 0) {
         return res.status(400).json({ error: "Invalid bill number" });
       }
-      const exits = await storage.getExitsByBillNumber(coldStorageId, billNumber);
+      const scope = await resolveExitEntryYear(coldStorageId, req);
+      if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+      const exits = await storage.getExitsByBillNumber(coldStorageId, billNumber, scope.entryYear);
       res.json({ exits });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch exits by bill number" });
@@ -2952,7 +3038,8 @@ export async function registerRoutes(
   // single-lot exit this updates one row; for a Master Nikasi (one
   // shared bill # spanning multiple lots) it updates every sibling
   // non-reversed row in one transaction so the bill # / date stay in
-  // lock-step. Counter is bumped forward only — never rewound.
+  // lock-step. Scoped by (bill #, stock entry year) — see the GET above
+  // for how the entry year is resolved.
   const updateExitsByBillSchema = z.object({
     newBillNumber: z.number().int().positive().optional(),
     newExitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -2969,6 +3056,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid bill number" });
       }
       const parsed = updateExitsByBillSchema.parse(req.body);
+      const scope = await resolveExitEntryYear(coldStorageId, req);
+      if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
 
       // IST-noon-anchored date parsing — same guard as POST exits so
       // we never drift the calendar day across timezones, and we
@@ -2999,7 +3088,7 @@ export async function registerRoutes(
         resolvedExitDate = parsedDate;
       }
 
-      const result = await storage.updateExitsByBillNumber(coldStorageId, oldBillNumber, {
+      const result = await storage.updateExitsByBillNumber(coldStorageId, oldBillNumber, scope.entryYear, {
         newBillNumber: parsed.newBillNumber,
         newExitDate: resolvedExitDate,
       });

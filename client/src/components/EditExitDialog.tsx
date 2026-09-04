@@ -69,14 +69,22 @@ export function EditExitDialog({ exit, open, onOpenChange, parentSaleId }: EditE
   // Pre-fetch siblings so we can show a "covers N lots" notice for
   // Master Nikasi entries. Same endpoint used by reprint-batch in
   // ExitDialog — kept thin so the dialog opens fast.
+  //
+  // Task #354 — bill #s restart each stock entry year, so a bill # alone no
+  // longer identifies one batch. We pass this exit's id and let the server
+  // resolve the entry year; the same id is sent on the PATCH below, so the
+  // "covers N lots" notice always describes exactly the rows the edit will
+  // touch.
   const { data: siblingsData } = useQuery<{ exits: SiblingRow[] }>({
-    queryKey: ["/api/exits/by-bill", originalBillNumber],
+    queryKey: ["/api/exits/by-bill", originalBillNumber, exit?.id],
     queryFn: async () => {
-      if (!originalBillNumber) return { exits: [] };
-      const response = await authFetch(`/api/exits/by-bill/${originalBillNumber}`);
+      if (!originalBillNumber || !exit?.id) return { exits: [] };
+      const response = await authFetch(
+        `/api/exits/by-bill/${originalBillNumber}?exitId=${encodeURIComponent(exit.id)}`,
+      );
       return response.json();
     },
-    enabled: open && !!originalBillNumber,
+    enabled: open && !!originalBillNumber && !!exit?.id,
   });
 
   // Only non-reversed siblings are part of the edit transaction.
@@ -88,7 +96,7 @@ export function EditExitDialog({ exit, open, onOpenChange, parentSaleId }: EditE
     mutationFn: async (payload: { newBillNumber?: number; newExitDate?: string }) => {
       const response = await apiRequest(
         "PATCH",
-        `/api/exits/by-bill/${originalBillNumber}`,
+        `/api/exits/by-bill/${originalBillNumber}?exitId=${encodeURIComponent(exit!.id)}`,
         payload,
       );
       return response.json() as Promise<{ updatedCount: number; effectiveBillNumber: number }>;
