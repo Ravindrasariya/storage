@@ -48,6 +48,7 @@ interface FarmerLotGroupProps {
   lots: LotWithCharges[];
   chamberMap: Record<string, string>;
   salesByLot?: Record<string, SaleSummary[]>;
+  salesSummaryState?: "loading" | "error" | "ready";
   onEdit: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
@@ -122,6 +123,7 @@ export function FarmerLotGroup({
   lots,
   chamberMap,
   salesByLot,
+  salesSummaryState = "ready",
   onEdit,
   onToggleSale,
   onPrintReceipt,
@@ -310,20 +312,25 @@ export function FarmerLotGroup({
               const tid = sale ? sale.saleId : `empty-${lot.id}`;
               // Defensive: `exits` may be null on imperfect data; treat as [].
               const exits = sale && Array.isArray(sale.exits) ? sale.exits : [];
+              const summaryPlaceholder = !sale && salesSummaryState !== "ready"
+                ? (salesSummaryState === "loading" ? t("loading") : t("error"))
+                : null;
               return (
                 <>
                   <span
                     className={`${RIGHT_HALF_START} text-center tabular-nums`}
                     data-testid={`cell-exited-sold-${tid}`}
                   >
-                    {sale ? `${sale.totalExited} / ${sale.quantitySold}` : "—"}
+                    {sale ? `${sale.totalExited} / ${sale.quantitySold}` : (summaryPlaceholder || "—")}
                   </span>
                   <span
                     className="text-center truncate text-xs tabular-nums"
                     title={exits.map(e => fmtDateShort(e.exitDate)).join(", ")}
                     data-testid={`cell-exit-dates-${tid}`}
                   >
-                    {exits.length > 0
+                    {summaryPlaceholder
+                      ? "…"
+                      : exits.length > 0
                       ? exits.map(e => fmtDateShort(e.exitDate)).join(", ")
                       : "—"}
                   </span>
@@ -332,7 +339,9 @@ export function FarmerLotGroup({
                     title={exits.map(e => String(e.billNumber)).join(", ")}
                     data-testid={`cell-exit-bills-${tid}`}
                   >
-                    {exits.length > 0
+                    {summaryPlaceholder
+                      ? "…"
+                      : exits.length > 0
                       ? exits.map(e => String(e.billNumber)).join(", ")
                       : "—"}
                   </span>
@@ -340,7 +349,11 @@ export function FarmerLotGroup({
                     className="text-center font-mono tabular-nums"
                     data-testid={`cell-cold-bill-${tid}`}
                   >
-                    {sale && sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—"}
+                    {summaryPlaceholder
+                      ? "…"
+                      : sale && sale.coldStorageBillNumber != null
+                        ? String(sale.coldStorageBillNumber)
+                        : "—"}
                   </span>
                   <span className="flex items-center justify-center gap-1">
                     {sale && onExitSale && (

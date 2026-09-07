@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { FarmerLotGroup, type LotWithCharges, type SaleSummary } from "@/components/FarmerLotGroup";
+import { loadSalesSummaryBatches } from "@/lib/salesSummaryBatch";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { SaleDialog } from "@/components/SaleDialog";
@@ -427,17 +428,32 @@ export default function StockRegister() {
   // paginated displayed set). Drives the right-hand "Exited / Sold" /
   // "Exit Dates" / "Exit Bills" / "Cold Bill No" columns inside
   // FarmerLotGroup.
-  const renderedLotIds = (hasSearched ? searchResults : displayedLots).filter(l => l != null && l.id != null).map(l => l.id);
+  const renderedLotIds = Array.from(new Set(
+    (hasSearched ? searchResults : displayedLots)
+      .filter(l => l != null && l.id != null)
+      .map(l => l.id),
+  ));
   const renderedLotIdsKey = [...renderedLotIds].sort().join(",");
   const { data: salesByLot, isLoading: salesByLotLoading, isError: salesByLotError } = useQuery<Record<string, SaleSummary[]>>({
     queryKey: ["/api/lots/sales-summary", renderedLotIdsKey],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!renderedLotIdsKey) return {};
-      const response = await authFetch(
-        `/api/lots/sales-summary?lotIds=${encodeURIComponent(renderedLotIdsKey)}`,
+      return loadSalesSummaryBatches<SaleSummary>(
+        renderedLotIds,
+        async (batch) => {
+          const response = await authFetch(
+            `/api/lots/sales-summary?lotIds=${encodeURIComponent(batch.join(","))}`,
+            { signal },
+          );
+          if (!response.ok) {
+            const detail = await response.text().catch(() => "");
+            throw new Error(
+              `Failed to fetch sales summary (${response.status})${detail ? `: ${detail}` : ""}`,
+            );
+          }
+          return response.json();
+        },
       );
-      if (!response.ok) throw new Error("Failed to fetch sales summary");
-      return response.json();
     },
     enabled: renderedLotIds.length > 0,
   });
@@ -2503,6 +2519,9 @@ export default function StockRegister() {
                   lots={group.items}
                   chamberMap={chamberMap}
                   salesByLot={salesByLot}
+                  salesSummaryState={
+                    salesByLotError ? "error" : salesByLotLoading ? "loading" : "ready"
+                  }
                   onEdit={handleEditClick}
                   onToggleSale={handleToggleSale}
                   onPrintReceipt={(lot) => {
