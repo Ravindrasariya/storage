@@ -462,9 +462,25 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     onError: (error: unknown) => {
       // Surface server's buyerLedgerId rejection inline next to the
       // picker (active transfer / unknown buyer / archived buyer).
-      const body = error as { error?: string; field?: string } | undefined;
+      // The mutationFn throws the parsed JSON body directly on !ok, but
+      // apiRequest itself rejects earlier with an Error carrying the body
+      // under `.body`. Accept both shapes so the structured `field` tag is
+      // never lost behind a generic failure toast.
+      const thrown = error as { error?: string; field?: string; body?: { error?: string; field?: string } } | undefined;
+      const body = thrown?.field !== undefined || thrown?.error !== undefined ? thrown : thrown?.body;
       if (body && body.field === "buyerLedgerId") {
         setBuyerError(body.error || t("error"));
+        return;
+      }
+      // Task #361 — sale is frozen because money is already recorded against
+      // it. Show the server's message verbatim (it names the blocking lot /
+      // bill #) instead of the generic update-failed text.
+      if (body && body.field === "paymentRecorded") {
+        toast({
+          title: t("error"),
+          description: body.error || t("saleEditBlockedByPayment"),
+          variant: "destructive",
+        });
         return;
       }
       toast({ title: t("error"), description: t("failedToUpdateSale"), variant: "destructive" });
@@ -630,6 +646,17 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
         const errorObj = err as { message?: string; body?: { field?: string; error?: string } };
         const field = errorObj.body?.field;
         const message = errorObj.body?.error || errorObj.message || t("failedToUpdateSale");
+        // Task #361 — a sibling in this CS Bill # group already has a payment,
+        // so nothing was written. Not an input-validation problem, so it goes
+        // to a toast rather than an inline field error.
+        if (field === "paymentRecorded") {
+          toast({
+            title: t("error"),
+            description: message || t("saleEditBlockedByPayment"),
+            variant: "destructive",
+          });
+          return;
+        }
         if (field === "newBillNumber") {
           setCsBillNumberError(message);
           setCsBillEditing(true);

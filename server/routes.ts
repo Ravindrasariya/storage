@@ -35,6 +35,22 @@ interface RegisterFilterParams {
   floor?: string;
 }
 
+/**
+ * Task #361 — human-readable "this sale is already paid" message. Names the
+ * blocking sale(s) by lot number (and CS Bill # when present) so the
+ * operator knows exactly which row's payment to reverse first.
+ */
+function describePaymentBlock(
+  blockers: Array<{ lotNo: string; coldStorageBillNumber: number | null }>,
+): string {
+  const labels = blockers.slice(0, 5).map((b) => {
+    const bill = b.coldStorageBillNumber != null ? `, CS Bill # ${b.coldStorageBillNumber}` : "";
+    return `Lot ${b.lotNo}${bill}`;
+  });
+  const more = blockers.length > labels.length ? ` and ${blockers.length - labels.length} more` : "";
+  return `A payment already exists for ${labels.join("; ")}${more}. Reverse the payment first, then make your changes here.`;
+}
+
 function parseRegisterParams(q: any): RegisterFilterParams {
   const validTypes = ["phone", "lotNoSize", "filter", "farmerName"];
   const yearStr = typeof q.year === "string" ? q.year : undefined;
@@ -2424,6 +2440,12 @@ export async function registerRoutes(
         });
       }
       const message = error instanceof Error ? error.message : "Failed to update CS bill";
+      // Task #361 — payment block first: the message can mention a CS Bill #
+      // and would otherwise be mis-tagged as a bill-number field error and
+      // shown inline on the bill input instead of as a blocking toast.
+      if (/^A payment already exists for /.test(message)) {
+        return res.status(400).json({ error: message, field: "paymentRecorded" });
+      }
       if (/already used (on|in)|Invalid CS bill|CS Bill #/i.test(message)) {
         return res.status(400).json({ error: message, field: "newBillNumber" });
       }
@@ -2652,6 +2674,20 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Sale not found" });
       }
       
+      // Task #361 — a sale with money already recorded against it is frozen.
+      // Editing it would silently desync paid/due amounts, buyer ledger
+      // balances and FIFO receipt allocations from what was actually
+      // collected, so the operator must reverse the payment first. Every
+      // field is covered: no partial-edit exemption.
+      const paidBlockers = await storage.findSalesWithRecordedPayment([req.params.id]);
+      if (paidBlockers.length > 0) {
+        return res.status(400).json({
+          error: describePaymentBlock(paidBlockers),
+          field: "paymentRecorded",
+          blockedSaleIds: paidBlockers.map(b => b.id),
+        });
+      }
+
       // Server-side computation: if any sub-field is provided, compute extraDueToMerchant as sum
       if (validatedData.extraDueHammaliMerchant !== undefined ||
           validatedData.extraDueGradingMerchant !== undefined ||
@@ -2876,6 +2912,14 @@ export async function registerRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid update data", details: error.errors });
+      }
+      // Task #361 — the storage layer's race-safe guard rejected the write
+      // because a payment landed between the pre-check above and the UPDATE.
+      // Surface it the same way as the pre-check so the operator sees one
+      // consistent message instead of a generic 500.
+      const message = error instanceof Error ? error.message : "";
+      if (/^A payment already exists for /.test(message)) {
+        return res.status(400).json({ error: message, field: "paymentRecorded" });
       }
       res.status(500).json({ error: "Failed to update sale" });
     }

@@ -343,6 +343,12 @@ const translations: Translations = {
     hi: "यह शीत भण्डार बिल {n} बिक्रियों पर लागू है — सहेजने से सभी अपडेट होंगी",
   },
   csBillUpdated: { en: "CS Bill updated", hi: "शीत भण्डार बिल अपडेट हुआ" },
+  // Task #361 — fallback text when the server's detailed payment-block
+  // message is unavailable; the server normally names the blocking lot.
+  saleEditBlockedByPayment: {
+    en: "A payment already exists for this sale. Reverse the payment first, then make your changes here.",
+    hi: "इस बिक्री के लिए भुगतान पहले से दर्ज है। पहले भुगतान वापस करें, फिर यहाँ बदलाव करें।",
+  },
   csBillNumberInvalid: { en: "Invalid CS Bill number", hi: "अमान्य शीत भण्डार बिल संख्या" },
   csBillDateInvalid: { en: "Invalid sale date", hi: "अमान्य बिक्री तिथि" },
   // Task #256 — UI strings for clearing a CS Bill # back to NULL.

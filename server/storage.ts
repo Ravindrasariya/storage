@@ -156,6 +156,40 @@ type DbRunner = Pick<typeof db, "select">;
 
 // Entry year of a sales_history row. Correlates to `lots` for the fallback, so
 // it may be used in any query whose FROM includes sales_history.
+// Task #361 — "money has been recorded against this sales_history row".
+// ONE predicate, reused by the read-side check (findSalesWithRecordedPayment,
+// which powers the friendly error messages) and by the race-safe UPDATE
+// guards, so the two can never drift apart. Correlates to sales_history, so
+// it may be used in any query whose FROM includes it.
+//
+// Evidence (any one is enough): money booked on the row itself, an active
+// FIFO/lumpsum application row, or an active manual single-sale receipt.
+// Deliberately NOT evidence: payment_status / paid_at alone (legacy rows
+// carry status='paid' with zero money and must stay editable) and
+// transferred_amount (a transfer moves a liability, it collects no cash).
+// Amounts use a half-paisa epsilon because the columns are `real` and FIFO
+// reversal can leave float residue like 4.5e-13 behind.
+const PAYMENT_EPSILON = 0.005;
+const saleHasRecordedPaymentSql = () => sql`(
+  COALESCE(${salesHistory.paidAmount}, 0) > ${PAYMENT_EPSILON}
+  OR COALESCE(${salesHistory.paidCash}, 0) > ${PAYMENT_EPSILON}
+  OR COALESCE(${salesHistory.paidAccount}, 0) > ${PAYMENT_EPSILON}
+  OR COALESCE(${salesHistory.discountAllocated}, 0) > ${PAYMENT_EPSILON}
+  OR EXISTS (
+    SELECT 1 FROM cash_receipt_applications cra
+    JOIN cash_receipts cr ON cr.id = cra.cash_receipt_id
+    WHERE cra.sales_history_id = ${salesHistory.id}
+      AND COALESCE(cr.is_reversed, 0) = 0
+      AND COALESCE(cra.amount_applied, 0) > ${PAYMENT_EPSILON}
+  )
+  OR EXISTS (
+    SELECT 1 FROM cash_receipts mr
+    WHERE mr.applies_to_sale_id = ${salesHistory.id}
+      AND COALESCE(mr.is_reversed, 0) = 0
+      AND COALESCE(mr.amount, 0) > ${PAYMENT_EPSILON}
+  )
+)`;
+
 const SALE_ENTRY_YEAR_SQL = sql<number>`extract(year from COALESCE(${salesHistory.entryDate}, (SELECT ${lots.createdAt} FROM ${lots} WHERE ${lots.id} = ${salesHistory.lotId})))`;
 
 // Entry year of an exit_history row, reached through its parent sale (falling
@@ -427,6 +461,11 @@ export interface IStorage {
   entryYearForExit(runner: DbRunner, exitId: string): Promise<number>;
   entryYearForSaleInColdStorage(coldStorageId: string, saleId: string): Promise<number | null>;
   entryYearForExitInColdStorage(coldStorageId: string, exitId: string): Promise<number | null>;
+  // Task #361 — shared "already paid?" rule for both sale-edit paths.
+  findSalesWithRecordedPayment(
+    saleIds: string[],
+    runner?: DbRunner,
+  ): Promise<Array<{ id: string; lotNo: string; coldStorageBillNumber: number | null }>>;
   assignLotBillNumber(lotId: string): Promise<number>;
   // Admin - Cold Storage Management
   getAllColdStorages(): Promise<ColdStorage[]>;
@@ -2427,10 +2466,26 @@ export class DatabaseStorage implements IStorage {
       updateData.pricePerBag = ratePerBag;
     }
 
+    // Task #361 — the authoritative, race-safe half of the payment guard.
+    // The route layer checks first so it can return a friendly message, but
+    // a payment can commit between that check and this write. Folding the
+    // "no payment recorded" predicate into the UPDATE's WHERE closes the
+    // window: Postgres re-evaluates the predicate against the freshly locked
+    // row version, and every payment path writes the sale's paid_* columns,
+    // so a concurrent payment either lands first (making this update match
+    // zero rows) or waits for us.
     const [updated] = await db.update(salesHistory)
       .set(updateData)
-      .where(eq(salesHistory.id, saleId))
+      .where(and(
+        eq(salesHistory.id, saleId),
+        sql`NOT (${saleHasRecordedPaymentSql()})`,
+      ))
       .returning();
+    if (!updated) {
+      throw new Error(
+        `A payment already exists for Lot ${sale.lotNo}. Reverse the payment first, then make your changes here.`,
+      );
+    }
 
     // Task #312 — sale edits that touch extras (extraDueToMerchant or any of
     // its sub-fields) are extras-affecting events: the baseline shifts, so
@@ -3798,6 +3853,32 @@ export class DatabaseStorage implements IStorage {
         ? (opts.newBillNumber as number | null)
         : oldBillNumber;
       const targetIds = targetRows.map(r => r.id);
+
+      // Task #361 — the cascade rewrites EVERY sibling sharing this CS Bill #,
+      // so if any one of them already has money recorded, the whole operation
+      // is refused and nothing is written. Checked inside the transaction (the
+      // cold_storages row is already locked above) so a payment landing
+      // concurrently cannot slip past the guard.
+      // Lock the sibling rows themselves before checking. Every payment path
+      // writes the sale's paid_* columns, so holding these row locks for the
+      // rest of the transaction means a payment landing concurrently must
+      // wait for this cascade to commit or roll back — it cannot slip in
+      // between the check and the UPDATE below.
+      await tx.execute(sql`SELECT id FROM sales_history WHERE id IN (${sql.join(targetIds.map(id => sql`${id}`), sql`, `)}) FOR UPDATE`);
+
+      const paidTargets = await this.findSalesWithRecordedPayment(targetIds, tx);
+      if (paidTargets.length > 0) {
+        const labels = paidTargets.slice(0, 5).map((b) => {
+          const bill = b.coldStorageBillNumber != null ? `, CS Bill # ${b.coldStorageBillNumber}` : "";
+          return `Lot ${b.lotNo}${bill}`;
+        });
+        const more = paidTargets.length > labels.length
+          ? ` and ${paidTargets.length - labels.length} more`
+          : "";
+        throw new Error(
+          `A payment already exists for ${labels.join("; ")}${more}. Reverse the payment first, then make your changes here.`,
+        );
+      }
 
       // Entry-year-scoped collision check excluding the rows being updated.
       //
@@ -6994,6 +7075,55 @@ export class DatabaseStorage implements IStorage {
       ));
     const year = row?.y == null ? NaN : Number(row.y);
     return Number.isFinite(year) ? year : null;
+  }
+
+  /**
+   * Task #361 — "does this sale already have money recorded against it?"
+   *
+   * Single shared rule used by BOTH sale-edit paths (single-sale PATCH and
+   * the CS Bill # group cascade). Returns one row per BLOCKING sale so the
+   * caller can name it in the error message; an empty array means every
+   * requested sale is free to edit.
+   *
+   * Evidence of a real payment (any one is enough):
+   *   1. Money already booked on the sale row itself — paidAmount /
+   *      paidCash / paidAccount / discountAllocated. Discounts count
+   *      because they move ledger balances exactly like cash does.
+   *   2. An active application row from a FIFO/lumpsum receipt.
+   *   3. An active manual single-sale receipt (appliesToSaleId).
+   *
+   * Deliberately NOT evidence:
+   *   - `paymentStatus` / `paidAt` alone. Legacy rows carry
+   *     paymentStatus='paid' with a zero paidAmount; treating the flag as
+   *     proof would permanently freeze old data that never saw a rupee.
+   *   - `transferredAmount` / `clearanceType='transfer'`. A buyer-to-buyer
+   *     transfer moves a LIABILITY to another buyer; no cash was collected,
+   *     and the buyer-change path already has its own transfer guard.
+   *
+   * Amounts are compared against a half-paisa epsilon because the columns
+   * are `real` — FIFO reversal can leave a float residue like 4.5e-13 that
+   * must not read as "paid".
+   */
+  async findSalesWithRecordedPayment(
+    saleIds: string[],
+    runner: DbRunner = db,
+  ): Promise<Array<{ id: string; lotNo: string; coldStorageBillNumber: number | null }>> {
+    if (saleIds.length === 0) return [];
+    const rows = await runner.select({
+      id: salesHistory.id,
+      lotNo: salesHistory.lotNo,
+      coldStorageBillNumber: salesHistory.coldStorageBillNumber,
+    })
+      .from(salesHistory)
+      .where(and(
+        inArray(salesHistory.id, saleIds),
+        saleHasRecordedPaymentSql(),
+      ));
+    return rows.map(r => ({
+      id: r.id,
+      lotNo: r.lotNo,
+      coldStorageBillNumber: r.coldStorageBillNumber,
+    }));
   }
 
   async entryYearForExitInColdStorage(coldStorageId: string, exitId: string): Promise<number | null> {
