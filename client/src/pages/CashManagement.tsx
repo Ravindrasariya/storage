@@ -2195,10 +2195,19 @@ export default function CashManagement() {
     doc.setFontSize(8);
     doc.text(scopeLine, margin, nextY + 7);
     doc.text(`Generated: ${format(new Date(), 'dd/MM/yyyy')}`, pageWidth - margin, nextY + 7, { align: 'right' });
-    const tableStartY = nextY + 13;
 
     let totalDr = 0;
     let totalCr = 0;
+    // Task #364 — Cash/Account In-Out summary boxes. Accumulated from the
+    // SAME cashRows the detail table below is built from (already filtered,
+    // non-reversed, inflow/outflow only — never transfers or discounts) so
+    // the boxes and the detail rows can never disagree. Receipt amounts are
+    // netted of roundOff, mirroring how `summary.totalCashReceived` /
+    // `totalAccountReceived` treat round-off elsewhere on this page.
+    let cashIn = 0;
+    let cashOut = 0;
+    let accountIn = 0;
+    let accountOut = 0;
     const tableBody: string[][] = cashRows.map(item => {
       const dateStr = format(new Date(item.timestamp), 'dd/MM/yyyy');
       if (item.type === "inflow") {
@@ -2209,6 +2218,8 @@ export default function CashManagement() {
           : `Account: ${getAccountLabel(r.accountId || r.accountType)}`;
         const amt = Number(r.amount) || 0;
         totalCr += amt;
+        const netAmt = amt - (Number(r.roundOff) || 0);
+        if (r.receiptType === "cash") cashIn += netAmt; else accountIn += netAmt;
         return [dateStr, party, mode, '-', fmtAmt(amt), r.notes || ''];
       } else {
         const e = item.data as Expense;
@@ -2220,9 +2231,78 @@ export default function CashManagement() {
           : `Account: ${getAccountLabel(e.accountId || e.accountType)}`;
         const amt = Number(e.amount) || 0;
         totalDr += amt;
+        if (e.paymentMode === "cash") cashOut += amt; else accountOut += amt;
         return [dateStr, party, mode, fmtAmt(amt), '-', e.remarks || ''];
       }
     });
+
+    // --- Cash / Account summary boxes -----------------------------------
+    const netCash = cashIn - cashOut;
+    const netAccount = accountIn - accountOut;
+    const GREEN_ACCENT: [number, number, number] = [46, 125, 50];
+    const RED_ACCENT: [number, number, number] = [198, 40, 40];
+    const BOX_TINT: [number, number, number] = [237, 247, 237];
+
+    const boxTop = nextY + 12;
+    const boxGap = 6;
+    const boxWidth = (pageWidth - margin * 2 - boxGap) / 2;
+    const boxHeight = 30;
+    const leftBoxX = margin;
+    const rightBoxX = margin + boxWidth + boxGap;
+
+    const drawSummaryBox = (
+      x: number,
+      label: string,
+      inLabel: string,
+      inAmt: number,
+      outLabel: string,
+      outAmt: number,
+      netLabel: string,
+      netAmt: number,
+    ) => {
+      doc.setDrawColor(...GREEN_ACCENT);
+      doc.setFillColor(...BOX_TINT);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(x, boxTop, boxWidth, boxHeight, 1, 1, 'FD');
+
+      const padX = 4;
+      let rowY = boxTop + 6;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...GREEN_ACCENT);
+      doc.text(label, x + padX, rowY);
+
+      rowY += 6.5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(60);
+      doc.text(inLabel, x + padX, rowY);
+      doc.setTextColor(...GREEN_ACCENT);
+      doc.text(`Rs.${fmtAmt(inAmt)}`, x + boxWidth - padX, rowY, { align: 'right' });
+
+      rowY += 5.5;
+      doc.setTextColor(60);
+      doc.text(outLabel, x + padX, rowY);
+      doc.setTextColor(...RED_ACCENT);
+      doc.text(`Rs.${fmtAmt(outAmt)}`, x + boxWidth - padX, rowY, { align: 'right' });
+
+      rowY += 6.5;
+      doc.setDrawColor(220);
+      doc.setLineWidth(0.15);
+      doc.line(x + padX, rowY - 4, x + boxWidth - padX, rowY - 4);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30);
+      doc.text(netLabel, x + padX, rowY);
+      doc.setTextColor(...(netAmt >= 0 ? GREEN_ACCENT : RED_ACCENT));
+      doc.text(`${netAmt < 0 ? '-' : ''}Rs.${fmtAmt(Math.abs(netAmt))}`, x + boxWidth - padX, rowY, { align: 'right' });
+
+      doc.setTextColor(0);
+    };
+
+    drawSummaryBox(leftBoxX, 'CASH', 'Total Cash In', cashIn, 'Total Cash Out', cashOut, 'Net Cash', netCash);
+    drawSummaryBox(rightBoxX, 'ACCOUNT', 'Total Account In', accountIn, 'Total Account Out', accountOut, 'Net Account', netAccount);
+
+    const tableStartY = boxTop + boxHeight + 6;
 
     tableBody.push([
       '',
