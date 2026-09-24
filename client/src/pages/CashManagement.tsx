@@ -2753,14 +2753,34 @@ export default function CashManagement() {
     return uniqueBuyers.filter(b => b.toLowerCase().includes(search));
   }, [uniqueBuyers, filterBuyerSearch]);
 
+  // Task #367 — mirror Stock Register's getFarmerNameSuggestions matching:
+  // split the query into whitespace tokens and require every token to
+  // appear in either the farmer name or village (not a single raw
+  // substring match against the whole query). Contact-number matching is
+  // preserved as an additional, non-tokenized check so searching by phone
+  // number still works. Names starting with the first token rank first,
+  // same as Stock Register, then results are capped at 50.
+  const FARMER_FILTER_SUGGESTION_CAP = 50;
   const filteredFarmerOptions = useMemo(() => {
-    if (!filterFarmerSearch) return uniqueFarmers;
-    const search = filterFarmerSearch.toLowerCase();
-    return uniqueFarmers.filter(f =>
-      f.name.toLowerCase().includes(search) ||
-      f.contactNumber.toLowerCase().includes(search) ||
-      f.village.toLowerCase().includes(search)
-    );
+    const search = filterFarmerSearch.trim().toLowerCase();
+    if (!search) return uniqueFarmers.slice(0, FARMER_FILTER_SUGGESTION_CAP);
+    const tokens = search.split(/\s+/).filter(Boolean);
+    const firstToken = tokens[0];
+    const matches = uniqueFarmers.filter(f => {
+      const name = f.name.toLowerCase();
+      const village = f.village.toLowerCase();
+      const contactNumber = f.contactNumber.toLowerCase();
+      return (
+        tokens.every(token => name.includes(token) || village.includes(token)) ||
+        contactNumber.includes(search)
+      );
+    });
+    matches.sort((a, b) => {
+      const aStarts = a.name.toLowerCase().startsWith(firstToken) ? 0 : 1;
+      const bStarts = b.name.toLowerCase().startsWith(firstToken) ? 0 : 1;
+      return aStarts - bStarts;
+    });
+    return matches.slice(0, FARMER_FILTER_SUGGESTION_CAP);
   }, [uniqueFarmers, filterFarmerSearch]);
 
   const summary = useMemo(() => {
