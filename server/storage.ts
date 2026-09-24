@@ -370,8 +370,9 @@ export interface IStorage {
     contactNumber?: string;
     paymentStatus?: "paid" | "due";
     buyerName?: string;
+    coldStorageBillNumber?: number;
   }): Promise<number>;
-  getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string; village?: string; bagType?: string }): Promise<ExitRegisterResponse>;
+  getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string; village?: string; bagType?: string; coldStorageBillNumber?: number }): Promise<ExitRegisterResponse>;
   getExitRegisterYears(coldStorageId: string): Promise<number[]>;
   reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
   updateExitsByBillNumber(
@@ -2022,6 +2023,7 @@ export class DatabaseStorage implements IStorage {
     contactNumber?: string;
     paymentStatus?: "paid" | "due" | "partial";
     buyerName?: string;
+    coldStorageBillNumber?: number;
   }): Promise<SalesHistoryWithLastPayment[]> {
     let conditions = [eq(salesHistory.coldStorageId, coldStorageId)];
     
@@ -2042,6 +2044,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.paymentStatus) {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
+    }
+    if (filters?.coldStorageBillNumber != null) {
+      conditions.push(eq(salesHistory.coldStorageBillNumber, filters.coldStorageBillNumber));
     }
     if (filters?.buyerName) {
       const _b = filters.buyerName.trim();
@@ -4082,6 +4087,7 @@ export class DatabaseStorage implements IStorage {
       buyerName?: string;
       village?: string;
       bagType?: string;
+      coldStorageBillNumber?: number;
     }
   ): Promise<{
     rows: Array<{
@@ -4177,6 +4183,9 @@ export class DatabaseStorage implements IStorage {
       } else {
         where.push(sql`${effectiveBuyer} ILIKE ${`%${b}%`}`);
       }
+    }
+    if (filters.coldStorageBillNumber != null) {
+      where.push(eq(salesHistory.coldStorageBillNumber, filters.coldStorageBillNumber));
     }
 
     const rows = await db
@@ -4422,6 +4431,7 @@ export class DatabaseStorage implements IStorage {
     contactNumber?: string;
     paymentStatus?: "paid" | "due";
     buyerName?: string;
+    coldStorageBillNumber?: number;
   }): Promise<number> {
     // Count non-reversed exits whose parent sale matches the same filter set
     // used by getSalesHistory, so the Sold/Exit summary card's denominator
@@ -4458,6 +4468,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.paymentStatus) {
       conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
+    }
+    if (filters?.coldStorageBillNumber != null) {
+      conditions.push(eq(salesHistory.coldStorageBillNumber, filters.coldStorageBillNumber));
     }
     if (filters?.buyerName) {
       const _b = filters.buyerName.trim();

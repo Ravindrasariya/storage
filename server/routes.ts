@@ -2240,7 +2240,7 @@ export async function registerRoutes(
   app.get("/api/sales-history", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, farmerName, village, contactNumber, paymentStatus, buyerName } = req.query;
+      const { year, farmerName, village, contactNumber, paymentStatus, buyerName, coldStorageBillNumber } = req.query;
       
       const filters: {
         year?: number;
@@ -2249,6 +2249,7 @@ export async function registerRoutes(
         contactNumber?: string;
         paymentStatus?: "paid" | "due" | "partial";
         buyerName?: string;
+        coldStorageBillNumber?: number;
       } = {};
       
       if (year) filters.year = parseInt(year as string);
@@ -2259,6 +2260,10 @@ export async function registerRoutes(
         filters.paymentStatus = paymentStatus;
       }
       if (buyerName) filters.buyerName = buyerName as string;
+      if (coldStorageBillNumber) {
+        const n = parseInt(coldStorageBillNumber as string, 10);
+        if (Number.isFinite(n)) filters.coldStorageBillNumber = n;
+      }
       
       const salesHistory = await storage.getSalesHistory(coldStorageId, filters);
       res.json(salesHistory);
@@ -2476,8 +2481,9 @@ export async function registerRoutes(
   app.get("/api/exit-register", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, months, days, farmerName, farmerContact, buyerName, village, bagType } = req.query as Record<string, string | undefined>;
+      const { year, months, days, farmerName, farmerContact, buyerName, village, bagType, coldStorageBillNumber } = req.query as Record<string, string | undefined>;
       const parseCsvInts = (v?: string) => (v ? v.split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n)) : undefined);
+      const parsedBillNumber = coldStorageBillNumber ? parseInt(coldStorageBillNumber, 10) : undefined;
       const result = await storage.getExitRegister(coldStorageId, {
         year: year && year !== "all" ? parseInt(year, 10) : undefined,
         months: parseCsvInts(months),
@@ -2487,6 +2493,7 @@ export async function registerRoutes(
         buyerName: buyerName?.trim() || undefined,
         village: village?.trim() || undefined,
         bagType: bagType?.trim() || undefined,
+        coldStorageBillNumber: Number.isFinite(parsedBillNumber) ? parsedBillNumber : undefined,
       });
       res.json(result);
     } catch (error) {
@@ -2510,7 +2517,7 @@ export async function registerRoutes(
   app.get("/api/sales-history/exits-summary", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const { year, months, days, bagType, farmerName, village, contactNumber, paymentStatus, buyerName } = req.query;
+      const { year, months, days, bagType, farmerName, village, contactNumber, paymentStatus, buyerName, coldStorageBillNumber } = req.query;
 
       const parseIntCsv = (raw: unknown): number[] | undefined => {
         if (raw === undefined || raw === null || raw === "") return undefined;
@@ -2530,6 +2537,10 @@ export async function registerRoutes(
       if (contactNumber) filters.contactNumber = contactNumber as string;
       if (paymentStatus === "paid" || paymentStatus === "due") filters.paymentStatus = paymentStatus;
       if (buyerName) filters.buyerName = buyerName as string;
+      if (coldStorageBillNumber) {
+        const n = parseInt(coldStorageBillNumber as string, 10);
+        if (Number.isFinite(n)) filters.coldStorageBillNumber = n;
+      }
 
       const totalBagsExited = await storage.getTotalBagsExited(coldStorageId, filters);
       res.json({ totalBagsExited });

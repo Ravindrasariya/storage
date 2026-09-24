@@ -63,6 +63,7 @@ export default function SalesHistoryPage() {
   const [paymentFilter, setPaymentFilter] = useState<string>(savedFilters?.paymentFilter ?? "");
   const [buyerFilter, setBuyerFilter] = useState(savedFilters?.buyerFilter ?? "");
   const [typeFilter, setTypeFilter] = useState<string>(savedFilters?.typeFilter ?? "all");
+  const [coldBillFilter, setColdBillFilter] = useState<string>(savedFilters?.coldBillFilter ?? "");
 
   const [activeTab, setActiveTab] = useState<"sales" | "tracker" | "exits">(savedFilters?.activeTab ?? "sales");
 
@@ -79,10 +80,11 @@ export default function SalesHistoryPage() {
       paymentFilter,
       buyerFilter,
       typeFilter,
+      coldBillFilter,
       activeTab,
     };
     localStorage.setItem(SALES_FILTERS_KEY, JSON.stringify(filters));
-  }, [yearFilter, selectedMonths, selectedDays, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, villageFilter, paymentFilter, buyerFilter, typeFilter, activeTab]);
+  }, [yearFilter, selectedMonths, selectedDays, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, villageFilter, paymentFilter, buyerFilter, typeFilter, coldBillFilter, activeTab]);
 
   // Autocomplete state
   const [showFarmerSuggestions, setShowFarmerSuggestions] = useState(false);
@@ -166,11 +168,12 @@ export default function SalesHistoryPage() {
     if (selectedFarmerMobile) params.append("contactNumber", selectedFarmerMobile);
     if (paymentFilter) params.append("paymentStatus", paymentFilter);
     if (buyerFilter) params.append("buyerName", buyerFilter);
+    if (coldBillFilter.trim()) params.append("coldStorageBillNumber", coldBillFilter.trim());
     return params.toString();
   };
 
   const { data: salesHistory = [], isLoading: historyLoading } = useQuery<SalesHistoryWithLastPayment[]>({
-    queryKey: ["/api/sales-history", yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, villageFilter, paymentFilter, buyerFilter],
+    queryKey: ["/api/sales-history", yearFilter, farmerFilter, selectedFarmerVillage, selectedFarmerMobile, villageFilter, paymentFilter, buyerFilter, coldBillFilter],
     queryFn: async () => {
       const queryString = buildQueryString();
       const response = await authFetch(`/api/sales-history${queryString ? `?${queryString}` : ""}`);
@@ -190,9 +193,10 @@ export default function SalesHistoryPage() {
     setPaymentFilter("");
     setBuyerFilter("");
     setTypeFilter("all");
+    setColdBillFilter("");
   };
 
-  const hasActiveFilters = yearFilter || selectedMonths.length || selectedDays.length || farmerFilter || selectedFarmerVillage || villageFilter || paymentFilter || buyerFilter || (typeFilter && typeFilter !== "all");
+  const hasActiveFilters = yearFilter || selectedMonths.length || selectedDays.length || farmerFilter || selectedFarmerVillage || villageFilter || paymentFilter || buyerFilter || coldBillFilter || (typeFilter && typeFilter !== "all");
 
   // Download function for sales export
   const getDownloadToken = async (): Promise<string | null> => {
@@ -280,6 +284,7 @@ export default function SalesHistoryPage() {
       villageFilter,
       paymentFilter,
       buyerFilter,
+      coldBillFilter,
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -293,6 +298,7 @@ export default function SalesHistoryPage() {
       if (selectedFarmerMobile) params.append("contactNumber", selectedFarmerMobile);
       if (paymentFilter) params.append("paymentStatus", paymentFilter);
       if (buyerFilter) params.append("buyerName", buyerFilter);
+      if (coldBillFilter.trim()) params.append("coldStorageBillNumber", coldBillFilter.trim());
       const qs = params.toString();
       const response = await authFetch(`/api/sales-history/exits-summary${qs ? `?${qs}` : ""}`);
       if (!response.ok) throw new Error("Failed to fetch exits summary");
@@ -393,6 +399,7 @@ export default function SalesHistoryPage() {
     if (buyerFilter) filterParts.push(`${t("buyerName")}: ${buyerFilter.toLowerCase() === "self" ? t("self") : buyerFilter}`);
     if (typeFilter && typeFilter !== "all") filterParts.push(`${t("bagType")}: ${formatBagType(typeFilter)}`);
     if (paymentFilter && paymentFilter !== "all") filterParts.push(`${t("paymentStatus")}: ${t(paymentFilter)}`);
+    if (coldBillFilter.trim()) filterParts.push(`${t("coldBillNo")}: ${coldBillFilter.trim()}`);
 
     const bagsExitedTotal = exitsSummary?.totalBagsExited || 0;
 
@@ -769,7 +776,7 @@ export default function SalesHistoryPage() {
               </div>
             </div>
 
-            <div className="w-full sm:w-32 space-y-2">
+            <div className="w-full sm:w-28 space-y-2">
               <label className="text-sm text-muted-foreground">{t("filterByType")}</label>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger data-testid="select-type-filter">
@@ -784,7 +791,7 @@ export default function SalesHistoryPage() {
               </Select>
             </div>
 
-            <div className="w-full sm:w-36 space-y-2">
+            <div className="w-full sm:w-32 space-y-2">
               <label className="text-sm text-muted-foreground">{t("paymentStatus")}</label>
               <Select value={paymentFilter} onValueChange={setPaymentFilter}>
                 <SelectTrigger data-testid="select-payment-filter">
@@ -797,6 +804,18 @@ export default function SalesHistoryPage() {
                   <SelectItem value="due">{t("due")}</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="w-full sm:w-28 space-y-2">
+              <label className="text-sm text-muted-foreground">{t("coldBillNo")}</label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={coldBillFilter}
+                onChange={(e) => setColdBillFilter(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder={t("coldBillNo")}
+                data-testid="input-cold-bill-filter"
+              />
             </div>
 
             {hasActiveFilters && (
@@ -1510,6 +1529,7 @@ function ExitRegister() {
   const [showVillageSug, setShowVillageSug] = useState(false);
   const [showBuyerSug, setShowBuyerSug] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [coldBillFilter, setColdBillFilter] = useState("");
 
   const { data: years = [] } = useQuery<number[]>({
     queryKey: ["/api/exit-register/years"],
@@ -1597,11 +1617,12 @@ function ExitRegister() {
     if (buyerFilter) p.append("buyerName", buyerFilter);
     if (villageFilter) p.append("village", villageFilter);
     if (typeFilter && typeFilter !== "all") p.append("bagType", typeFilter);
+    if (coldBillFilter.trim()) p.append("coldStorageBillNumber", coldBillFilter.trim());
     return p.toString();
-  }, [year, months, days, farmerFilter, farmerContact, buyerFilter, villageFilter, typeFilter]);
+  }, [year, months, days, farmerFilter, farmerContact, buyerFilter, villageFilter, typeFilter, coldBillFilter]);
 
   const { data, isLoading } = useQuery<ExitRegisterResponse>({
-    queryKey: ["/api/exit-register", year, months.join(","), days.join(","), farmerFilter, farmerContact, buyerFilter, villageFilter, typeFilter],
+    queryKey: ["/api/exit-register", year, months.join(","), days.join(","), farmerFilter, farmerContact, buyerFilter, villageFilter, typeFilter, coldBillFilter],
     queryFn: async () => {
       const res = await authFetch(`/api/exit-register${queryString ? `?${queryString}` : ""}`);
       if (!res.ok) throw new Error("Failed to fetch exit register");
@@ -1635,6 +1656,7 @@ function ExitRegister() {
     setVillageFilter("");
     setBuyerFilter("");
     setTypeFilter("all");
+    setColdBillFilter("");
   };
 
   const todayIST = getTodayIST();
@@ -1643,6 +1665,7 @@ function ExitRegister() {
     months.length > 0 ||
     days.length > 0 ||
     !!farmerFilter || !!farmerContact || !!villageFilter || !!buyerFilter ||
+    !!coldBillFilter ||
     (typeFilter !== "" && typeFilter !== "all");
 
   const summary = data?.summary;
@@ -1720,6 +1743,7 @@ function ExitRegister() {
     if (days.length) filterParts.push(`${t("daysLabel")}: ${days.join(", ")}`);
     if (farmerFilter) filterParts.push(`${t("farmerName")}: ${farmerFilter}`);
     if (buyerFilter) filterParts.push(`${t("buyerName")}: ${buyerFilter.toLowerCase() === "self" ? t("self") : buyerFilter}`);
+    if (coldBillFilter.trim()) filterParts.push(`${t("coldBillNo")}: ${coldBillFilter.trim()}`);
 
     const escape = (s: string | number | null | undefined): string =>
       String(s ?? "")
@@ -1914,7 +1938,7 @@ function ExitRegister() {
             </div>
 
             {/* Farmer autocomplete */}
-            <div className="relative w-56">
+            <div className="relative w-44">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
               <Input
                 value={farmerFilter}
@@ -1946,7 +1970,7 @@ function ExitRegister() {
             </div>
 
             {/* Village autocomplete */}
-            <div className="relative w-56">
+            <div className="relative w-40">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
               <Input
                 value={villageFilter}
@@ -1977,7 +2001,7 @@ function ExitRegister() {
             </div>
 
             {/* Buyer autocomplete */}
-            <div className="relative w-56">
+            <div className="relative w-44">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
               <Input
                 value={buyerFilter}
@@ -2005,6 +2029,19 @@ function ExitRegister() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Cold Bill No. */}
+            <div className="w-32">
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={coldBillFilter}
+                onChange={(e) => setColdBillFilter(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder={t("coldBillNo")}
+                className="h-9"
+                data-testid="input-exit-cold-bill-filter"
+              />
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
