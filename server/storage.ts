@@ -2020,7 +2020,7 @@ export class DatabaseStorage implements IStorage {
     farmerName?: string;
     village?: string;
     contactNumber?: string;
-    paymentStatus?: "paid" | "due";
+    paymentStatus?: "paid" | "due" | "partial";
     buyerName?: string;
   }): Promise<SalesHistoryWithLastPayment[]> {
     let conditions = [eq(salesHistory.coldStorageId, coldStorageId)];

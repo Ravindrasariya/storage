@@ -2247,7 +2247,7 @@ export async function registerRoutes(
         farmerName?: string;
         village?: string;
         contactNumber?: string;
-        paymentStatus?: "paid" | "due";
+        paymentStatus?: "paid" | "due" | "partial";
         buyerName?: string;
       } = {};
       
@@ -2255,7 +2255,7 @@ export async function registerRoutes(
       if (farmerName) filters.farmerName = farmerName as string;
       if (village) filters.village = village as string;
       if (contactNumber) filters.contactNumber = contactNumber as string;
-      if (paymentStatus === "paid" || paymentStatus === "due") {
+      if (paymentStatus === "paid" || paymentStatus === "due" || paymentStatus === "partial") {
         filters.paymentStatus = paymentStatus;
       }
       if (buyerName) filters.buyerName = buyerName as string;

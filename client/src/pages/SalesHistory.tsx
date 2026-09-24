@@ -793,6 +793,7 @@ export default function SalesHistoryPage() {
                 <SelectContent>
                   <SelectItem value="all">{t("all")}</SelectItem>
                   <SelectItem value="paid">{t("paid")}</SelectItem>
+                  <SelectItem value="partial">{t("partial")}</SelectItem>
                   <SelectItem value="due">{t("due")}</SelectItem>
                 </SelectContent>
               </Select>
