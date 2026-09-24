@@ -419,6 +419,31 @@ export default function SalesHistoryPage() {
       return escape(baseBuyer);
     };
 
+    // Task #365 — village names wrap after the first word instead of running
+    // on one line, while the column keeps its original width. For a
+    // two-word village this puts the second word on its own line; for
+    // longer names everything but the last word stays on line one and the
+    // last word wraps down.
+    const renderVillageCell = (village: string): string => {
+      const words = (village || "").trim().split(/\s+/).filter(Boolean);
+      if (words.length < 2) return escape(village || "");
+      const firstLine = words.slice(0, -1).join(" ");
+      const secondLine = words[words.length - 1];
+      return `${escape(firstLine)}<br/>${escape(secondLine)}`;
+    };
+
+    // Task #365 — Payment Mode column: show each payment mode actually used
+    // (account, then cash) with its amount, one per line; skip zero amounts.
+    const renderPaymentModeCell = (sale: SalesHistoryWithLastPayment): string => {
+      const account = Number(sale.paidAccount) || 0;
+      const cash = Number(sale.paidCash) || 0;
+      const lines: string[] = [];
+      if (account > 0) lines.push(`Account - ${fmtINR(account)}`);
+      if (cash > 0) lines.push(`${t("cash")} - ${fmtINR(cash)}`);
+      if (lines.length === 0) return "—";
+      return lines.map((l) => escape(l)).join("<br/>");
+    };
+
     const rowsHtml = filteredSalesHistory
       .map((sale) => {
         const remainingAfter =
@@ -427,7 +452,7 @@ export default function SalesHistoryPage() {
         <tr>
           <td class="nowrap">${escape(format(new Date(sale.soldAt), "dd MMM yyyy"))}</td>
           <td class="wrap">${escape(sale.farmerName)}</td>
-          <td class="nowrap">${escape(sale.village)}</td>
+          <td class="nowrap">${renderVillageCell(sale.village)}</td>
           <td class="nowrap">${escape(sale.lotNo)}</td>
           <td class="nowrap">${escape(sale.marka || "—")}</td>
           <td class="nowrap">${escape(sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—")}</td>
@@ -437,8 +462,8 @@ export default function SalesHistoryPage() {
           <td class="nowrap r">${escape(sale.quantitySold)}</td>
           <td class="nowrap r">${escape(fmtINR(calculateTotalColdCharges(sale)))}</td>
           <td class="wrap">${renderBuyerCell(sale)}</td>
-          <td class="nowrap r">${sale.pricePerKg ? escape(fmtINR(sale.pricePerKg)) : "—"}</td>
           <td class="nowrap">${escape(t(sale.paymentStatus))}</td>
+          <td class="nowrap">${renderPaymentModeCell(sale)}</td>
         </tr>
       `;
       })
@@ -465,11 +490,11 @@ export default function SalesHistoryPage() {
   .nowrap{white-space:nowrap;}
   .wrap{word-break:break-word;overflow-wrap:anywhere;white-space:normal;}
   .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  col.c-date{width:6.5%;} col.c-farmer{width:14%;} col.c-village{width:8%;}
+  col.c-date{width:6.5%;} col.c-farmer{width:13.3%;} col.c-village{width:8%;}
   col.c-lot{width:4.5%;} col.c-marka{width:5%;} col.c-cbill{width:5%;}
   col.c-obags{width:5%;} col.c-rbags{width:5%;} col.c-btype{width:6%;}
-  col.c-qty{width:5%;} col.c-charges{width:8%;} col.c-buyer{width:14%;}
-  col.c-price{width:6%;} col.c-status{width:8%;}
+  col.c-qty{width:5%;} col.c-charges{width:8%;} col.c-buyer{width:11.2%;}
+  col.c-status{width:8%;} col.c-paymode{width:9.5%;}
   @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(6,1fr);}}
 </style></head><body>
   <h1>${escape(t("salesHistory"))}</h1>
@@ -489,8 +514,8 @@ export default function SalesHistoryPage() {
       <col class="c-qty"/>
       <col class="c-charges"/>
       <col class="c-buyer"/>
-      <col class="c-price"/>
       <col class="c-status"/>
+      <col class="c-paymode"/>
     </colgroup>
     <thead><tr>
       <th>${escape(t("saleDate"))}</th>
@@ -505,8 +530,8 @@ export default function SalesHistoryPage() {
       <th class="r">${escape(t("quantitySold"))}</th>
       <th class="r">${escape(t("totalColdStorageCharges"))}</th>
       <th>${escape(t("buyerName"))}</th>
-      <th class="r">${escape(t("pricePerKg"))}</th>
       <th>${escape(t("paymentStatus"))}</th>
+      <th>${escape(t("paymentMode"))}</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
