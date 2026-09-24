@@ -146,6 +146,23 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
   // Actual cash paid = paidAmount - discountAllocated
   const actualCashPaid = Math.max(0, (sale.paidAmount || 0) - discountAllocated);
 
+  // Cash/Account split for a single sale row. `paidCash`/`paidAccount` are
+  // the authoritative counters, incremented per-receipt. Legacy sales
+  // (paid before those counters existed) have both at 0 — for those, fall
+  // back to the row's single `paymentMode` flag and attribute its whole
+  // actual paid amount to that mode, mirroring the fallback already used
+  // elsewhere (e.g. server/storage.ts cash/account rollups).
+  const getCashAccountSplit = (s: SalesHistoryWithLastPayment): { cash: number; account: number } => {
+    const cash = s.paidCash || 0;
+    const account = s.paidAccount || 0;
+    if (cash > 0 || account > 0) return { cash, account };
+    const legacyPaid = Math.max(0, (s.paidAmount || 0) - (s.discountAllocated || 0));
+    if (legacyPaid <= 0) return { cash: 0, account: 0 };
+    if (s.paymentMode === "cash") return { cash: legacyPaid, account: 0 };
+    if (s.paymentMode === "account") return { cash: 0, account: legacyPaid };
+    return { cash: 0, account: 0 };
+  };
+
   const resolveBillNumber = async (type: "deduction" | "sales"): Promise<number | null> => {
     // Deduction (CS bill) path: NEVER auto-assign on print/share. After
     // Task #256 NULL is a deliberate "no charge to bill" value; opening
@@ -479,6 +496,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
     let bags = 0, cold = 0, hammali = 0, kata = 0, extraHam = 0, grading = 0;
     let adjA = 0, adjP = 0, adjF = 0, adjAd = 0, adjS = 0;
     let discount = 0, paid = 0, due = 0, income = 0;
+    let cashPaid = 0, accountPaid = 0;
     type TaggedPayment = SalePayment & { lotNo: string; marka: string | null };
     const merged: TaggedPayment[] = [];
     let latestMs = 0;
@@ -498,6 +516,9 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
       discount += s.discountAllocated || 0;
       paid += s.paidAmount || 0;
       due += s.dueAmount || 0;
+      const sSplit = getCashAccountSplit(s);
+      cashPaid += sSplit.cash;
+      accountPaid += sSplit.account;
       income += (s.netWeight || 0) * (s.pricePerKg || 0);
       // Latest payment date across the batch:
       //   • fully-paid sale → its paidAt;
@@ -535,6 +556,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
       adj: adjA, adjP, adjF, adjAd, adjS, hasAdjBreakdown,
       discount, paid, due, income, netPayable,
       extras, totalCharges, netColdBill, actualCashPaid,
+      cashPaid, accountPaid,
       status,
       latestPaymentAt: latestMs > 0 ? new Date(latestMs) : null,
       mergedPayments: merged,
@@ -599,6 +621,9 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
     const dispTotalCharges = isBatch ? agg.totalCharges : totalCharges;
     const dispNetColdBill = isBatch ? agg.netColdBill : netColdBill;
     const dispDue = isBatch ? agg.due : (sale.dueAmount || 0);
+    const singleSplit = getCashAccountSplit(sale);
+    const dispCashPaid = isBatch ? agg.cashPaid : singleSplit.cash;
+    const dispAccountPaid = isBatch ? agg.accountPaid : singleSplit.account;
     const dispStatus: "paid" | "partial" | "due" = isBatch
       ? agg.status
       : (sale.paymentStatus as "paid" | "partial" | "due");
@@ -905,6 +930,15 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
       {dispLatestPaymentAt && (
         <div className="payment-status">
           भुगतान तिथि: {format(dispLatestPaymentAt, "dd/MM/yyyy")}
+        </div>
+      )}
+
+      {(dispCashPaid > 0 || dispAccountPaid > 0) && (
+        <div className="payment-status" data-testid="text-payment-mode-breakdown">
+          भुगतान माध्यम: {[
+            dispCashPaid > 0 ? `नकद रु. ${formatAmount(dispCashPaid)}` : null,
+            dispAccountPaid > 0 ? `खाता रु. ${formatAmount(dispAccountPaid)}` : null,
+          ].filter(Boolean).join(", ")}
         </div>
       )}
 
