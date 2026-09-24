@@ -1739,13 +1739,56 @@ function ExitRegister() {
       </div>
     `;
 
+    // Task #366 — village names wrap after the first word instead of running
+    // on one line, while the column keeps its original width. Same behavior
+    // as the Sales History PDF's renderVillageCell (client/src/pages/SalesHistory.tsx handleSalesPrint).
+    const renderExitVillageCell = (village: string): string => {
+      const words = (village || "").trim().split(/\s+/).filter(Boolean);
+      if (words.length < 2) return escape(village || "");
+      const firstLine = words.slice(0, -1).join(" ");
+      const secondLine = words[words.length - 1];
+      return `${escape(firstLine)}<br/>${escape(secondLine)}`;
+    };
+
+    // Task #366 — Payment Mode column: mirrors the exact per-row cash/account
+    // attribution the exit-register summary cards already use (server/storage.ts
+    // getExitRegister, ~lines 4323-4333) so the column never disagrees with
+    // the Cash Received / Account Received cards above the table:
+    //   1) If the sale has non-zero paidCash/paidAccount counters, prorate
+    //      each by this exit's bagsExited/quantitySold share.
+    //   2) Otherwise (legacy rows with zero counters), fall back to the
+    //      sale's single paymentMode field and attribute the whole prorated
+    //      paidShare to that one mode.
+    const renderPaymentModeCell = (r: ExitRegisterRow): string => {
+      const qty = r.quantitySold || 0;
+      const share = qty > 0 ? r.bagsExited / qty : 0;
+      const paidCash = Number(r.paidCash) || 0;
+      const paidAccount = Number(r.paidAccount) || 0;
+      const counterTotal = paidCash + paidAccount;
+      let cashAmt = 0;
+      let accountAmt = 0;
+      if (counterTotal > 0) {
+        cashAmt = paidCash * share;
+        accountAmt = paidAccount * share;
+      } else if (r.paymentMode === "cash") {
+        cashAmt = r.paidShare;
+      } else if (r.paymentMode === "account") {
+        accountAmt = r.paidShare;
+      }
+      const lines: string[] = [];
+      if (accountAmt > 0) lines.push(`Account - ${fmtINR(accountAmt)}`);
+      if (cashAmt > 0) lines.push(`${t("cash")} - ${fmtINR(cashAmt)}`);
+      if (lines.length === 0) return "—";
+      return lines.map((l) => escape(l)).join("<br/>");
+    };
+
     const rowsHtml = rows
       .map(
         (r) => `
         <tr>
           <td class="nowrap">${escape(format(new Date(r.exitDate), "dd MMM yyyy"))}</td>
           <td class="wrap">${escape(r.farmerName)}</td>
-          <td class="nowrap">${escape(r.village)}</td>
+          <td class="nowrap">${renderExitVillageCell(r.village)}</td>
           <td class="nowrap">${escape(r.lotNo)}</td>
           <td class="nowrap">${escape(r.marka || "—")}</td>
           <td class="nowrap">${isKnownBagType(r.bagType) ? `<span class="bag-badge" style="${bagTypePrintStyle(r.bagType)}">${escape(formatBagType(r.bagType))}</span>` : "—"}</td>
@@ -1755,6 +1798,7 @@ function ExitRegister() {
           <td class="nowrap r">${escape(fmtINR(r.coldChargeShare))}</td>
           <td class="nowrap r cash">${r.paidShare > 0 ? escape(fmtINR(r.paidShare)) : "—"}</td>
           <td class="nowrap r due">${r.dueShare > 0 ? escape(fmtINR(r.dueShare)) : "—"}</td>
+          <td class="nowrap">${renderPaymentModeCell(r)}</td>
         </tr>
       `,
       )
@@ -1772,34 +1816,58 @@ function ExitRegister() {
   .lbl{font-size:11px;line-height:1.25;color:#555;word-break:break-word;overflow-wrap:anywhere;}
   .val{font-size:16px;line-height:1.3;font-weight:700;margin-top:2px;white-space:nowrap;}
   .val.cash{color:#047857;} .val.acct{color:#4338ca;} .val.disc{color:#7c3aed;} .val.due{color:#be123c;}
-  table{width:100%;border-collapse:collapse;font-size:11px;}
-  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;}
+  table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
+  th,td{border:1px solid #d4d4d8;padding:4px 6px;text-align:left;vertical-align:top;}
   th{background:#f4f4f5;font-weight:700;}
   td.r,th.r{text-align:right;}
   td.cash{color:#047857;} td.due{color:#be123c;}
   .nowrap{white-space:nowrap;}
   .wrap{word-break:break-word;overflow-wrap:anywhere;}
-  th.date{width:64px;} th.lot{width:48px;} th.bags{width:48px;} th.cold-bill{width:60px;} th.cold-charges{width:80px;}
   .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  /* Task #366 — explicit percentage widths (table-layout:fixed) so Buyer
+     Name and Cold Charges can be tightened and the freed space can be
+     redistributed to the new Payment Mode column, while Village keeps its
+     original share of the page width. */
+  col.c-date{width:6.5%;} col.c-farmer{width:13%;} col.c-village{width:8%;}
+  col.c-lot{width:4.5%;} col.c-marka{width:5%;} col.c-btype{width:6%;}
+  col.c-cbill{width:5%;} col.c-bags{width:5%;} col.c-buyer{width:10%;}
+  col.c-charges{width:7%;} col.c-paid{width:8%;} col.c-due{width:8%;}
+  col.c-paymode{width:14%;}
   @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(8,1fr);}}
 </style></head><body>
   <h1>${escape(t("exitRegister"))}</h1>
   <div class="meta">${filterParts.map((p) => escape(p)).join(" &nbsp;|&nbsp; ")}</div>
   ${summaryCardsHtml}
   <table>
+    <colgroup>
+      <col class="c-date"/>
+      <col class="c-farmer"/>
+      <col class="c-village"/>
+      <col class="c-lot"/>
+      <col class="c-marka"/>
+      <col class="c-btype"/>
+      <col class="c-cbill"/>
+      <col class="c-bags"/>
+      <col class="c-buyer"/>
+      <col class="c-charges"/>
+      <col class="c-paid"/>
+      <col class="c-due"/>
+      <col class="c-paymode"/>
+    </colgroup>
     <thead><tr>
-      <th class="nowrap date">${escape(t("exitDate"))}</th>
+      <th class="nowrap">${escape(t("exitDate"))}</th>
       <th class="wrap">${escape(t("farmerName"))}</th>
       <th class="nowrap">${escape(t("village"))}</th>
-      <th class="nowrap lot">${escape(t("lotNo"))}</th>
+      <th class="nowrap">${escape(t("lotNo"))}</th>
       <th class="nowrap">${escape(t("marka"))}</th>
       <th class="nowrap">${escape(t("potatoType"))}</th>
-      <th class="nowrap cold-bill">${escape(t("coldBillNo"))}</th>
-      <th class="nowrap r bags">${escape(t("bagsExited"))}</th>
+      <th class="nowrap">${escape(t("coldBillNo"))}</th>
+      <th class="nowrap r">${escape(t("bagsExited"))}</th>
       <th class="wrap">${escape(t("buyerName"))}</th>
-      <th class="nowrap r cold-charges">Cold Charges</th>
+      <th class="nowrap r">Cold Charges</th>
       <th class="nowrap r">${escape(t("paid"))}</th>
       <th class="nowrap r">${escape(t("due"))}</th>
+      <th>${escape(t("paymentMode"))}</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
