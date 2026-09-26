@@ -2217,10 +2217,10 @@ export default function CashManagement() {
           ? "Cash"
           : `Account: ${getAccountLabel(r.accountId || r.accountType)}`;
         const amt = Number(r.amount) || 0;
-        totalCr += amt;
         const netAmt = amt - (Number(r.roundOff) || 0);
+        totalCr += netAmt;
         if (r.receiptType === "cash") cashIn += netAmt; else accountIn += netAmt;
-        return [dateStr, party, mode, '-', fmtAmt(amt), r.notes || ''];
+        return [dateStr, party, mode, '-', fmtAmt(netAmt), r.notes || ''];
       } else {
         const e = item.data as Expense;
         const party = e.receiverName
