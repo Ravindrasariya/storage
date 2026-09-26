@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Filter, Package, IndianRupee, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent } from "lucide-react";
+import { Search, X, Filter, Package, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -330,19 +330,8 @@ export default function SalesHistoryPage() {
   const summary = filteredSalesHistory.reduce(
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
-      acc.amountPaid += sale.paidAmount || 0;
-
-      // Task #374 — Cash Paid / Account Paid split. Mirrors the exact
-      // per-sale cash/account attribution the Nikasi Register summary cards
-      // already use (server/storage.ts getExitRegister, ~lines 4332-4385):
-      //   1) If the sale has non-zero paidCash/paidAccount counters, use them
-      //      directly (they already track the real cash vs account split).
-      //   2) Otherwise (legacy rows with zero counters), fall back to the
-      //      sale's single paymentMode field and attribute the whole
-      //      paidAmount to that one mode.
-      // adjSelfDue is netted out of whichever bucket(s) actually received the
-      // self-due transfer payment, proportionally, so cashPaid + accountPaid
-      // still equals amountPaid after the shared totalAdjSelfDue subtraction below.
+      // Match the Nikasi Register's cash/account attribution, including its
+      // fallback for older sales that have no separate payment counters.
       const cash = Number(sale.paidCash) || 0;
       const account = Number(sale.paidAccount) || 0;
       const counterTotal = cash + account;
@@ -369,20 +358,25 @@ export default function SalesHistoryPage() {
           for (const payment of sale.payments) {
             if (new Date(payment.receivedAt).getTime() > paymentCutoff.getTime()) continue;
             const amt = payment.amount || 0;
-            acc.amountPaidByCutoff += amt;
             if (payment.receiptType === "cash") {
               acc.cashPaidByCutoff += amt;
-            } else {
+            } else if (payment.receiptType === "account") {
+              acc.accountPaidByCutoff += amt;
+            } else if (sale.paymentMode === "cash") {
+              acc.cashPaidByCutoff += amt;
+            } else if (sale.paymentMode === "account") {
               acc.accountPaidByCutoff += amt;
             }
           }
         } else if (sale.paidAt && new Date(sale.paidAt).getTime() <= paymentCutoff.getTime()) {
           // Legacy/manual fully paid rows may pre-date receipt-application tracking.
-          acc.amountPaidByCutoff += sale.paidAmount || 0;
           if (sale.paymentMode === "cash") {
             acc.cashPaidByCutoff += sale.paidAmount || 0;
           } else if (sale.paymentMode === "account") {
             acc.accountPaidByCutoff += sale.paidAmount || 0;
+          } else if (counterTotal > 0) {
+            acc.cashPaidByCutoff += cash;
+            acc.accountPaidByCutoff += account;
           }
         }
       }
@@ -394,19 +388,15 @@ export default function SalesHistoryPage() {
       return acc;
     },
     {
-      totalBags: 0, amountPaid: 0, amountPaidByCutoff: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0, totalAdjSelfDue: 0,
+      totalBags: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0, totalAdjSelfDue: 0,
       cashPaid: 0, accountPaid: 0, cashSelfDueNet: 0, accountSelfDueNet: 0, cashPaidByCutoff: 0, accountPaidByCutoff: 0,
     }
   );
 
-  summary.amountPaid = Math.max(0, summary.amountPaid - summary.totalAdjSelfDue);
   summary.cashPaid = Math.max(0, summary.cashPaid - summary.cashSelfDueNet);
   summary.accountPaid = Math.max(0, summary.accountPaid - summary.accountSelfDueNet);
-  summary.amountPaidByCutoff = paymentCutoff
-    ? Math.max(0, summary.amountPaidByCutoff - summary.totalAdjSelfDue)
-    : 0;
-  summary.cashPaidByCutoff = paymentCutoff ? Math.max(0, summary.cashPaidByCutoff) : 0;
-  summary.accountPaidByCutoff = paymentCutoff ? Math.max(0, summary.accountPaidByCutoff) : 0;
+  summary.cashPaidByCutoff = paymentCutoff ? Math.max(0, summary.cashPaidByCutoff - summary.cashSelfDueNet) : 0;
+  summary.accountPaidByCutoff = paymentCutoff ? Math.max(0, summary.accountPaidByCutoff - summary.accountSelfDueNet) : 0;
   summary.totalColdStorageCharges = Math.max(0, summary.totalColdStorageCharges - summary.totalAdjSelfDue);
 
   const handleSalesPrint = () => {
@@ -534,7 +524,7 @@ export default function SalesHistoryPage() {
   body{font-family:Arial,Helvetica,"Liberation Sans","DejaVu Sans",sans-serif;margin:16px;color:#111;}
   h1{margin:0 0 4px 0;font-size:18px;}
   .meta{font-size:11px;color:#555;margin-bottom:12px;}
-  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px;}
+  .cards{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:14px;}
   .card{border:1px solid #d4d4d8;border-radius:6px;padding:8px 10px;min-height:44px;}
   .lbl{font-size:11px;line-height:1.25;color:#555;word-break:break-word;overflow-wrap:anywhere;}
    .val{font-size:16px;line-height:1.3;font-weight:700;margin-top:2px;white-space:nowrap;}
