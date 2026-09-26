@@ -331,16 +331,59 @@ export default function SalesHistoryPage() {
     (acc, sale) => {
       acc.totalBags += sale.quantitySold || 0;
       acc.amountPaid += sale.paidAmount || 0;
+
+      // Task #374 — Cash Paid / Account Paid split. Mirrors the exact
+      // per-sale cash/account attribution the Nikasi Register summary cards
+      // already use (server/storage.ts getExitRegister, ~lines 4332-4385):
+      //   1) If the sale has non-zero paidCash/paidAccount counters, use them
+      //      directly (they already track the real cash vs account split).
+      //   2) Otherwise (legacy rows with zero counters), fall back to the
+      //      sale's single paymentMode field and attribute the whole
+      //      paidAmount to that one mode.
+      // adjSelfDue is netted out of whichever bucket(s) actually received the
+      // self-due transfer payment, proportionally, so cashPaid + accountPaid
+      // still equals amountPaid after the shared totalAdjSelfDue subtraction below.
+      const cash = Number(sale.paidCash) || 0;
+      const account = Number(sale.paidAccount) || 0;
+      const counterTotal = cash + account;
+      if (counterTotal > 0) {
+        acc.cashPaid += cash;
+        acc.accountPaid += account;
+      } else if (sale.paymentMode === "cash") {
+        acc.cashPaid += sale.paidAmount || 0;
+      } else if (sale.paymentMode === "account") {
+        acc.accountPaid += sale.paidAmount || 0;
+      }
+      const adjSelfDueShare = sale.adjSelfDue || 0;
+      if (counterTotal > 0) {
+        acc.cashSelfDueNet += adjSelfDueShare * (cash / counterTotal);
+        acc.accountSelfDueNet += adjSelfDueShare * (account / counterTotal);
+      } else if (sale.paymentMode === "cash") {
+        acc.cashSelfDueNet += adjSelfDueShare;
+      } else if (sale.paymentMode === "account") {
+        acc.accountSelfDueNet += adjSelfDueShare;
+      }
+
       if (paymentCutoff) {
         if (sale.payments && sale.payments.length > 0) {
-          acc.amountPaidByCutoff += sale.payments.reduce((total, payment) => (
-            new Date(payment.receivedAt).getTime() <= paymentCutoff.getTime()
-              ? total + (payment.amount || 0)
-              : total
-          ), 0);
+          for (const payment of sale.payments) {
+            if (new Date(payment.receivedAt).getTime() > paymentCutoff.getTime()) continue;
+            const amt = payment.amount || 0;
+            acc.amountPaidByCutoff += amt;
+            if (payment.receiptType === "cash") {
+              acc.cashPaidByCutoff += amt;
+            } else {
+              acc.accountPaidByCutoff += amt;
+            }
+          }
         } else if (sale.paidAt && new Date(sale.paidAt).getTime() <= paymentCutoff.getTime()) {
           // Legacy/manual fully paid rows may pre-date receipt-application tracking.
           acc.amountPaidByCutoff += sale.paidAmount || 0;
+          if (sale.paymentMode === "cash") {
+            acc.cashPaidByCutoff += sale.paidAmount || 0;
+          } else if (sale.paymentMode === "account") {
+            acc.accountPaidByCutoff += sale.paidAmount || 0;
+          }
         }
       }
       const coldStorageDue = Math.max(0, (sale.coldStorageCharge || 0) - (sale.paidAmount || 0));
@@ -350,13 +393,20 @@ export default function SalesHistoryPage() {
       acc.totalAdjSelfDue += sale.adjSelfDue || 0;
       return acc;
     },
-    { totalBags: 0, amountPaid: 0, amountPaidByCutoff: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0, totalAdjSelfDue: 0 }
+    {
+      totalBags: 0, amountPaid: 0, amountPaidByCutoff: 0, amountDue: 0, totalColdStorageCharges: 0, totalReceivableAdj: 0, totalAdjSelfDue: 0,
+      cashPaid: 0, accountPaid: 0, cashSelfDueNet: 0, accountSelfDueNet: 0, cashPaidByCutoff: 0, accountPaidByCutoff: 0,
+    }
   );
 
   summary.amountPaid = Math.max(0, summary.amountPaid - summary.totalAdjSelfDue);
+  summary.cashPaid = Math.max(0, summary.cashPaid - summary.cashSelfDueNet);
+  summary.accountPaid = Math.max(0, summary.accountPaid - summary.accountSelfDueNet);
   summary.amountPaidByCutoff = paymentCutoff
     ? Math.max(0, summary.amountPaidByCutoff - summary.totalAdjSelfDue)
     : 0;
+  summary.cashPaidByCutoff = paymentCutoff ? Math.max(0, summary.cashPaidByCutoff) : 0;
+  summary.accountPaidByCutoff = paymentCutoff ? Math.max(0, summary.accountPaidByCutoff) : 0;
   summary.totalColdStorageCharges = Math.max(0, summary.totalColdStorageCharges - summary.totalAdjSelfDue);
 
   const handleSalesPrint = () => {
@@ -406,7 +456,8 @@ export default function SalesHistoryPage() {
     const summaryCardsHtml = `
       <div class="cards">
         <div class="card"><div class="lbl">${escape(t("totalBagsSold"))}</div><div class="val">${summary.totalBags.toLocaleString()}</div></div>
-        <div class="card"><div class="lbl">${escape(t("amountPaid"))}</div><div class="val cash">${escape(fmtINR(summary.amountPaid))}<div class="subval">${paymentCutoff ? escape(fmtINR(summary.amountPaidByCutoff)) : "—"}</div></div></div>
+        <div class="card"><div class="lbl">${escape(t("cashPaid"))}</div><div class="val cash">${escape(fmtINR(summary.cashPaid))}<div class="subval">${paymentCutoff ? escape(fmtINR(summary.cashPaidByCutoff)) : "—"}</div></div></div>
+        <div class="card"><div class="lbl">${escape(t("accountPaid"))}</div><div class="val acct">${escape(fmtINR(summary.accountPaid))}<div class="subval">${paymentCutoff ? escape(fmtINR(summary.accountPaidByCutoff)) : "—"}</div></div></div>
         <div class="card"><div class="lbl">${escape(t("amountDue"))}</div><div class="val due">${escape(fmtINR(summary.amountDue))}</div></div>
         <div class="card"><div class="lbl">${escape(t("sold"))}/${escape(t("exit"))}</div><div class="val">${summary.totalBags}/${bagsExitedTotal}</div></div>
         <div class="card"><div class="lbl">${escape(t("coldStorageCharges"))}</div><div class="val acct">${escape(fmtINR(summary.totalColdStorageCharges))}</div></div>
@@ -830,7 +881,7 @@ export default function SalesHistoryPage() {
 
       {/* Summary Section */}
       {!historyLoading && filteredSalesHistory.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 lg:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-7 gap-2 lg:gap-4">
           <Card data-testid="card-summary-bags">
             <CardContent className="p-3 lg:pt-6 lg:px-6">
               <div className="flex items-center gap-2">
@@ -845,19 +896,38 @@ export default function SalesHistoryPage() {
             </CardContent>
           </Card>
 
-          <Card data-testid="card-summary-paid">
+          <Card data-testid="card-summary-cash-paid">
             <CardContent className="p-3 lg:pt-6 lg:px-6">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 lg:p-2 rounded-lg bg-emerald-500/10 shrink-0">
-                  <IndianRupee className="h-4 w-4 lg:h-5 lg:w-5 text-emerald-500" />
+                  <Banknote className="h-4 w-4 lg:h-5 lg:w-5 text-emerald-500" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("amountPaid")}</p>
-                  <p className="text-base lg:text-lg font-bold text-emerald-600 dark:text-emerald-400 truncate" data-testid="text-amount-paid">
-                    <Currency amount={summary.amountPaid} />
+                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("cashPaid")}</p>
+                  <p className="text-base lg:text-lg font-bold text-emerald-600 dark:text-emerald-400 truncate" data-testid="text-cash-paid">
+                    <Currency amount={summary.cashPaid} />
                   </p>
-                  <p className="text-[10px] leading-tight font-medium text-emerald-700/80 dark:text-emerald-300/80 whitespace-nowrap" data-testid="text-amount-paid-by-date">
-                    {paymentCutoff ? <Currency amount={summary.amountPaidByCutoff} /> : "—"}
+                  <p className="text-[10px] leading-tight font-medium text-emerald-700/80 dark:text-emerald-300/80 whitespace-nowrap" data-testid="text-cash-paid-by-date">
+                    {paymentCutoff ? <Currency amount={summary.cashPaidByCutoff} /> : "—"}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-summary-account-paid">
+            <CardContent className="p-3 lg:pt-6 lg:px-6">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 lg:p-2 rounded-lg bg-indigo-500/10 shrink-0">
+                  <CreditCard className="h-4 w-4 lg:h-5 lg:w-5 text-indigo-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("accountPaid")}</p>
+                  <p className="text-base lg:text-lg font-bold text-indigo-600 dark:text-indigo-400 truncate" data-testid="text-account-paid">
+                    <Currency amount={summary.accountPaid} />
+                  </p>
+                  <p className="text-[10px] leading-tight font-medium text-indigo-700/80 dark:text-indigo-300/80 whitespace-nowrap" data-testid="text-account-paid-by-date">
+                    {paymentCutoff ? <Currency amount={summary.accountPaidByCutoff} /> : "—"}
                   </p>
                 </div>
               </div>
@@ -2137,7 +2207,7 @@ function ExitRegister() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">{t("totalBagsExited")}</p>
-                  <p className="text-lg font-bold text-violet-700 dark:text-violet-300 truncate" data-testid="stat-bags-exited">
+                  <p className="text-base font-bold text-violet-700 dark:text-violet-300 truncate" data-testid="stat-bags-exited">
                     {summary.totalBagsExited.toLocaleString()}
                   </p>
                 </div>
@@ -2153,7 +2223,7 @@ function ExitRegister() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">{t("coldStorageCharges")}</p>
-                  <p className="text-lg font-bold text-sky-700 dark:text-sky-400 truncate" data-testid="stat-cold-charges">
+                  <p className="text-base font-bold text-sky-700 dark:text-sky-400 truncate" data-testid="stat-cold-charges">
                     <Currency amount={summary.coldChargesTotal} />
                   </p>
                 </div>
@@ -2169,7 +2239,7 @@ function ExitRegister() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">{t("cashReceived")}</p>
-                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400 truncate" data-testid="stat-cash">
+                  <p className="text-base font-bold text-emerald-700 dark:text-emerald-400 truncate" data-testid="stat-cash">
                     <Currency amount={summary.cashReceived} />
                   </p>
                 </div>
@@ -2185,7 +2255,7 @@ function ExitRegister() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">{t("accountReceived")}</p>
-                  <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400 truncate" data-testid="stat-account">
+                  <p className="text-base font-bold text-indigo-700 dark:text-indigo-400 truncate" data-testid="stat-account">
                     <Currency amount={summary.accountReceived} />
                   </p>
                 </div>
@@ -2201,7 +2271,7 @@ function ExitRegister() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">{t("discountReceived")}</p>
-                  <p className="text-lg font-bold text-violet-700 dark:text-violet-400 truncate" data-testid="stat-discount">
+                  <p className="text-base font-bold text-violet-700 dark:text-violet-400 truncate" data-testid="stat-discount">
                     <Currency amount={summary.discountReceived} />
                   </p>
                   {summary.roundOffReceived > 0 && (
@@ -2222,7 +2292,7 @@ function ExitRegister() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">{t("amountDue")}</p>
-                  <p className="text-lg font-bold text-rose-700 dark:text-rose-400 truncate" data-testid="stat-due">
+                  <p className="text-base font-bold text-rose-700 dark:text-rose-400 truncate" data-testid="stat-due">
                     <Currency amount={summary.amountDue} />
                   </p>
                 </div>
@@ -2238,7 +2308,7 @@ function ExitRegister() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">{t("receivableAdjustments")}</p>
-                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400 truncate" data-testid="stat-receivable-adj">
+                  <p className="text-base font-bold text-orange-600 dark:text-orange-400 truncate" data-testid="stat-receivable-adj">
                     <Currency amount={summary.receivableAdjReceived} />
                   </p>
                 </div>

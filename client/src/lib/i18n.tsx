@@ -593,6 +593,8 @@ const translations: Translations = {
   exitRegister: { en: "Nikasi Register", hi: "निकासी रजिस्टर" },
   cashReceived: { en: "Cash Received", hi: "नकद प्राप्त" },
   accountReceived: { en: "Account Received", hi: "खाता प्राप्त" },
+  cashPaid: { en: "Cash Paid", hi: "नकद भुगतान" },
+  accountPaid: { en: "Account Paid", hi: "खाता भुगतान" },
   discountReceived: { en: "Discount", hi: "छूट" },
   ofWhichRoundOff: { en: "of which round-off", hi: "जिसमें राउंड-ऑफ" },
   roundOffShort: { en: "Round off", hi: "राउंड-ऑफ" },
