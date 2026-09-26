@@ -2145,15 +2145,23 @@ export class DatabaseStorage implements IStorage {
     const roundOffRows = await db
       .select({
         saleId: cashReceiptApplications.salesHistoryId,
+        // Task #380 — cast every operand to double precision (and SUM in
+        // double precision) before dividing/multiplying. The underlying
+        // columns are `real` (single-precision, ~7 significant digits);
+        // Postgres's SUM(real) also accumulates in single precision, so
+        // summing this share across many application rows compounds that
+        // imprecision into a visible few-tenths-of-a-rupee drift (e.g. a
+        // ₹30 round-off reading back as ₹29.9). Casting to double precision
+        // keeps the arithmetic and the running total accurate to the paisa.
         cashRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'cash' THEN
-          ${cashReceiptApplications.amountApplied}
-          * ${cashReceipts.roundOff}
-          / NULLIF(${cashReceipts.amount}, 0)
+          ${cashReceiptApplications.amountApplied}::double precision
+          * ${cashReceipts.roundOff}::double precision
+          / NULLIF(${cashReceipts.amount}::double precision, 0)
         ELSE 0 END), 0)`,
         accountRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'account' THEN
-          ${cashReceiptApplications.amountApplied}
-          * ${cashReceipts.roundOff}
-          / NULLIF(${cashReceipts.amount}, 0)
+          ${cashReceiptApplications.amountApplied}::double precision
+          * ${cashReceipts.roundOff}::double precision
+          / NULLIF(${cashReceipts.amount}::double precision, 0)
         ELSE 0 END), 0)`,
       })
       .from(cashReceiptApplications)
@@ -4330,15 +4338,23 @@ export class DatabaseStorage implements IStorage {
           // its round-off slice is that share times round_off — NOT divided
           // by (amount + roundOff), which would double-count the round-off
           // and understate the slice attributed to each sale.
+          // Task #380 — cast every operand to double precision (and SUM in
+          // double precision) before dividing/multiplying. The underlying
+          // columns are `real` (single-precision, ~7 significant digits);
+          // Postgres's SUM(real) also accumulates in single precision, so
+          // summing this share across many application rows compounds that
+          // imprecision into a visible few-tenths-of-a-rupee drift (e.g. a
+          // ₹30 round-off reading back as ₹29.9). Casting to double precision
+          // keeps the arithmetic and the running total accurate to the paisa.
           cashRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'cash' THEN
-            ${cashReceiptApplications.amountApplied}
-            * ${cashReceipts.roundOff}
-            / NULLIF(${cashReceipts.amount}, 0)
+            ${cashReceiptApplications.amountApplied}::double precision
+            * ${cashReceipts.roundOff}::double precision
+            / NULLIF(${cashReceipts.amount}::double precision, 0)
           ELSE 0 END), 0)`,
           accountRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'account' THEN
-            ${cashReceiptApplications.amountApplied}
-            * ${cashReceipts.roundOff}
-            / NULLIF(${cashReceipts.amount}, 0)
+            ${cashReceiptApplications.amountApplied}::double precision
+            * ${cashReceipts.roundOff}::double precision
+            / NULLIF(${cashReceipts.amount}::double precision, 0)
           ELSE 0 END), 0)`,
         })
         .from(cashReceiptApplications)

@@ -271,6 +271,73 @@ async function main(): Promise<void> {
     } else {
       ok("getExitRegister — total round-off received across both receipts is ₹30 (₹10 + ₹20), not double-counted or shrunk");
     }
+
+    // Case 3 (Task #380): ONE sale paid off via MANY separate receipts over
+    // time (a realistic long-running buyer ledger), each with its own gross
+    // amount/round-off. The round-off SQL query GROUPs BY sale and SUMs
+    // `amountApplied * roundOff / amount` in Postgres — the underlying
+    // columns are `real` (single precision, ~7 significant digits), and
+    // SUM(real) also accumulates in single precision. Summing a couple of
+    // rows never shows this, but summing hundreds of irregular per-receipt
+    // shares into ONE group compounds it into a visible drift (confirmed via
+    // direct SQL: this exact fixture drifts by ~₹0.005 under `real`, which is
+    // the same class of bug as the reported "₹30 round-off reads as ₹29.9").
+    // This guards the double-precision cast in getSalesHistory's and
+    // getExitRegister's round-off queries — reverting either should fail
+    // this check.
+    const manySaleId = await makeSale("many", { paidAmount: 0, paidCash: 0 });
+    // Deterministic LCG so the fixture (and its expected drift) is reproducible.
+    let seed = 424242;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    const MANY_COUNT = 800;
+    const manyRows: { amt: number; ro: number; gross: number }[] = [];
+    let expectedTotal = 0;
+    for (let i = 0; i < MANY_COUNT; i++) {
+      const amt = Math.round((100 + rnd() * 50000) * 100) / 100;
+      const ro = Math.round((1 + rnd() * 30) * 100) / 100;
+      const gross = Math.round((1000 + rnd() * 300000) * 100) / 100;
+      manyRows.push({ amt, ro, gross });
+      expectedTotal += (amt * ro) / gross;
+    }
+    const receiptValues: string[] = [];
+    const receiptParams: unknown[] = [];
+    const appValues: string[] = [];
+    const appParams: unknown[] = [];
+    manyRows.forEach((row, i) => {
+      const receiptId = `${RUN_ID}_rcpt_many_${i}`;
+      const base = receiptParams.length;
+      receiptValues.push(`($${base + 1}, $${base + 2}, 'cold_merchant', 'cold_charges', 'Smoke Buyer', 'cash', $${base + 3}, $${base + 4}, $${base + 5}, $${base + 3}, 0, 0)`);
+      receiptParams.push(receiptId, COLD_STORAGE_ID, row.gross, row.ro, new Date(`${TEST_DATE}T12:00:00+05:30`));
+      const appBase = appParams.length;
+      appValues.push(`($${appBase + 1}, $${appBase + 2}, $${appBase + 3}, $${appBase + 4}, $${appBase + 5})`);
+      appParams.push(`${RUN_ID}_app_many_${i}`, COLD_STORAGE_ID, receiptId, manySaleId, row.amt);
+    });
+    await pool.query(
+      `INSERT INTO cash_receipts (
+         id, cold_storage_id, payer_type, due_type, buyer_name, receipt_type,
+         amount, round_off, received_at, applied_amount, unapplied_amount, is_reversed
+       ) VALUES ${receiptValues.join(", ")}`,
+      receiptParams,
+    );
+    await pool.query(
+      `INSERT INTO cash_receipt_applications (
+         id, cold_storage_id, cash_receipt_id, sales_history_id, amount_applied
+       ) VALUES ${appValues.join(", ")}`,
+      appParams,
+    );
+
+    const salesHistoryRowsMany = await storage.getSalesHistory(COLD_STORAGE_ID);
+    const manySale = salesHistoryRowsMany.find((r) => r.id === manySaleId);
+    if (!manySale) {
+      fail("getSalesHistory — many-receipt sale not found");
+    } else if (!approxEqual(manySale.roundOffCash ?? 0, expectedTotal, 0.0005)) {
+      fail(`getSalesHistory — ${MANY_COUNT}-receipt round-off sum: expected ~${expectedTotal.toFixed(6)} (±0.0005), got ${manySale.roundOffCash}`);
+    } else {
+      ok(`getSalesHistory — round-off across ${MANY_COUNT} receipts on one sale still sums accurately (no float precision drift)`);
+    }
   } finally {
     await wipeByPrefix();
     await pool.end();
