@@ -2133,11 +2133,13 @@ export class DatabaseStorage implements IStorage {
     });
 
     // Task #378 — per-sale round-off applied so far, sourced the same way as
-    // the Exit/Nikasi Register (see getExitRegister below): each application's
-    // share of its parent receipt's gross is
-    // (amount_applied / (amount + round_off)) * round_off. Sales History's
-    // Cash Paid / Account Paid cards net this out and surface it in a
-    // separate Discount card, matching the Nikasi Register.
+    // the Exit/Nikasi Register (see getExitRegister below). `amount` is
+    // already the gross amount (inclusive of round_off — see the schema
+    // comment on cashReceipts.roundOff) and amount_applied rows sum to that
+    // gross across sales, so each sale's round-off slice is
+    // (amount_applied / amount) * round_off. Sales History's Cash Paid /
+    // Account Paid cards net this out and surface it in a separate Discount
+    // card, matching the Nikasi Register.
     const roundOffCashBySale = new Map<string, number>();
     const roundOffAccountBySale = new Map<string, number>();
     const roundOffRows = await db
@@ -2146,12 +2148,12 @@ export class DatabaseStorage implements IStorage {
         cashRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'cash' THEN
           ${cashReceiptApplications.amountApplied}
           * ${cashReceipts.roundOff}
-          / NULLIF(${cashReceipts.amount} + ${cashReceipts.roundOff}, 0)
+          / NULLIF(${cashReceipts.amount}, 0)
         ELSE 0 END), 0)`,
         accountRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'account' THEN
           ${cashReceiptApplications.amountApplied}
           * ${cashReceipts.roundOff}
-          / NULLIF(${cashReceipts.amount} + ${cashReceipts.roundOff}, 0)
+          / NULLIF(${cashReceipts.amount}, 0)
         ELSE 0 END), 0)`,
       })
       .from(cashReceiptApplications)
@@ -4321,15 +4323,22 @@ export class DatabaseStorage implements IStorage {
           // Split by receipt type so we can subtract each slice from the
           // matching bucket (cashReceived / accountReceived) and preserve the
           // exit-register invariant: cash + account + discount + due == coldCharges.
+          // `cash_receipts.amount` is the gross amount (already includes
+          // round_off — see the schema comment on cashReceipts.roundOff), and
+          // `amount_applied` rows sum to that same gross amount across sales.
+          // So each sale's share of the gross is amountApplied / amount, and
+          // its round-off slice is that share times round_off — NOT divided
+          // by (amount + roundOff), which would double-count the round-off
+          // and understate the slice attributed to each sale.
           cashRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'cash' THEN
             ${cashReceiptApplications.amountApplied}
             * ${cashReceipts.roundOff}
-            / NULLIF(${cashReceipts.amount} + ${cashReceipts.roundOff}, 0)
+            / NULLIF(${cashReceipts.amount}, 0)
           ELSE 0 END), 0)`,
           accountRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'account' THEN
             ${cashReceiptApplications.amountApplied}
             * ${cashReceipts.roundOff}
-            / NULLIF(${cashReceipts.amount} + ${cashReceipts.roundOff}, 0)
+            / NULLIF(${cashReceipts.amount}, 0)
           ELSE 0 END), 0)`,
         })
         .from(cashReceiptApplications)
