@@ -885,33 +885,49 @@ export default function SalesHistoryPage() {
 
       {/* Summary Section */}
       {!historyLoading && filteredSalesHistory.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-8 gap-2 lg:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
           <Card data-testid="card-summary-bags">
-            <CardContent className="p-3 lg:pt-6 lg:px-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 lg:p-2 rounded-lg bg-primary/10 shrink-0">
-                  <Package className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                  <Package className="h-5 w-5 text-primary" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("totalBagsSold")}</p>
-                  <p className="text-xs font-bold truncate" data-testid="text-total-bags">{summary.totalBags.toLocaleString()}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs leading-tight text-muted-foreground">{t("totalBagsSold")}</p>
+                  <p className="text-xs font-bold" data-testid="text-total-bags">{summary.totalBags.toLocaleString()}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-summary-cold-charges">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-sky-500/10 shrink-0">
+                  <Warehouse className="h-5 w-5 text-sky-500" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs leading-tight text-muted-foreground">{t("coldStorageCharges")}</p>
+                  <p className="text-xs font-bold text-sky-600 dark:text-sky-400" data-testid="text-cold-charges">
+                    <Currency amount={summary.totalColdStorageCharges} />
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card data-testid="card-summary-cash-paid">
-            <CardContent className="p-3 lg:pt-6 lg:px-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 lg:p-2 rounded-lg bg-emerald-500/10 shrink-0">
-                  <Banknote className="h-4 w-4 lg:h-5 lg:w-5 text-emerald-500" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/10 shrink-0">
+                  <Banknote className="h-5 w-5 text-emerald-500" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("cashPaid")}</p>
-                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate" data-testid="text-cash-paid">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs leading-tight text-muted-foreground">{t("cashPaid")}</p>
+                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-cash-paid">
                     <Currency amount={summary.cashPaid} />
                   </p>
-                  <p className="text-[10px] leading-tight font-medium text-emerald-700/80 dark:text-emerald-300/80 whitespace-nowrap" data-testid="text-cash-paid-by-date">
+                  <p className="text-[10px] leading-tight font-medium text-emerald-700/80 dark:text-emerald-300/80" data-testid="text-cash-paid-by-date">
                     {paymentCutoff ? <Currency amount={summary.cashPaidByCutoff} /> : "—"}
                   </p>
                 </div>
@@ -920,17 +936,17 @@ export default function SalesHistoryPage() {
           </Card>
 
           <Card data-testid="card-summary-account-paid">
-            <CardContent className="p-3 lg:pt-6 lg:px-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 lg:p-2 rounded-lg bg-indigo-500/10 shrink-0">
-                  <CreditCard className="h-4 w-4 lg:h-5 lg:w-5 text-indigo-500" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-500/10 shrink-0">
+                  <CreditCard className="h-5 w-5 text-indigo-500" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("accountPaid")}</p>
-                  <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 truncate" data-testid="text-account-paid">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs leading-tight text-muted-foreground">{t("accountPaid")}</p>
+                  <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400" data-testid="text-account-paid">
                     <Currency amount={summary.accountPaid} />
                   </p>
-                  <p className="text-[10px] leading-tight font-medium text-indigo-700/80 dark:text-indigo-300/80 whitespace-nowrap" data-testid="text-account-paid-by-date">
+                  <p className="text-[10px] leading-tight font-medium text-indigo-700/80 dark:text-indigo-300/80" data-testid="text-account-paid-by-date">
                     {paymentCutoff ? <Currency amount={summary.accountPaidByCutoff} /> : "—"}
                   </p>
                 </div>
@@ -939,18 +955,18 @@ export default function SalesHistoryPage() {
           </Card>
 
           <Card data-testid="card-summary-discount">
-            <CardContent className="p-3 lg:pt-6 lg:px-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 lg:p-2 rounded-lg bg-violet-500/10 shrink-0">
-                  <BadgePercent className="h-4 w-4 lg:h-5 lg:w-5 text-violet-500" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-violet-500/10 shrink-0">
+                  <BadgePercent className="h-5 w-5 text-violet-500" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("discountReceived")}</p>
-                  <p className="text-xs font-bold text-violet-600 dark:text-violet-400 truncate" data-testid="text-discount">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs leading-tight text-muted-foreground">{t("discountReceived")}</p>
+                  <p className="text-xs font-bold text-violet-600 dark:text-violet-400" data-testid="text-discount">
                     <Currency amount={discountReceived} />
                   </p>
                   {roundOffReceived > 0 && (
-                    <p className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap" data-testid="text-discount-roundoff">
+                    <p className="text-[10px] leading-tight text-muted-foreground" data-testid="text-discount-roundoff">
                       {t("roundOffShort")}: ₹{formatCurrency(roundOffReceived)}
                     </p>
                   )}
@@ -960,14 +976,14 @@ export default function SalesHistoryPage() {
           </Card>
 
           <Card data-testid="card-summary-due">
-            <CardContent className="p-3 lg:pt-6 lg:px-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 lg:p-2 rounded-lg bg-amber-500/10 shrink-0">
-                  <Clock className="h-4 w-4 lg:h-5 lg:w-5 text-amber-500" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/10 shrink-0">
+                  <Clock className="h-5 w-5 text-amber-500" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("amountDue")}</p>
-                  <p className="text-xs font-bold text-amber-600 dark:text-amber-400 truncate" data-testid="text-amount-due">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs leading-tight text-muted-foreground">{t("amountDue")}</p>
+                  <p className="text-xs font-bold text-amber-600 dark:text-amber-400" data-testid="text-amount-due">
                     <Currency amount={summary.amountDue} />
                   </p>
                 </div>
@@ -976,14 +992,14 @@ export default function SalesHistoryPage() {
           </Card>
 
           <Card data-testid="card-summary-bags-exit">
-            <CardContent className="p-3 lg:pt-6 lg:px-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 lg:p-2 rounded-lg bg-violet-500/10 shrink-0">
-                  <LogOut className="h-4 w-4 lg:h-5 lg:w-5 text-violet-500" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-violet-500/10 shrink-0">
+                  <LogOut className="h-5 w-5 text-violet-500" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("sold")}/{t("exit")}</p>
-                  <p className="text-xs font-bold truncate" data-testid="text-bags-sold-exited">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs leading-tight text-muted-foreground">{t("sold")}/{t("exit")}</p>
+                  <p className="text-xs font-bold" data-testid="text-bags-sold-exited">
                     {summary.totalBags}/{exitsSummary?.totalBagsExited || 0}
                   </p>
                 </div>
@@ -991,31 +1007,15 @@ export default function SalesHistoryPage() {
             </CardContent>
           </Card>
 
-          <Card data-testid="card-summary-cold-charges">
-            <CardContent className="p-3 lg:pt-6 lg:px-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 lg:p-2 rounded-lg bg-sky-500/10 shrink-0">
-                  <Warehouse className="h-4 w-4 lg:h-5 lg:w-5 text-sky-500" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("coldStorageCharges")}</p>
-                  <p className="text-xs font-bold text-sky-600 dark:text-sky-400 truncate" data-testid="text-cold-charges">
-                    <Currency amount={summary.totalColdStorageCharges} />
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
           <Card data-testid="card-summary-receivable-adj">
-            <CardContent className="p-3 lg:pt-6 lg:px-6">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 lg:p-2 rounded-lg bg-orange-500/10 shrink-0">
-                  <FileCheck className="h-4 w-4 lg:h-5 lg:w-5 text-orange-500" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/10 shrink-0">
+                  <FileCheck className="h-5 w-5 text-orange-500" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs lg:text-sm text-muted-foreground truncate">{t("receivableAdjustments")}</p>
-                  <p className="text-xs font-bold text-orange-600 dark:text-orange-400 truncate" data-testid="text-receivable-adj">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs leading-tight text-muted-foreground">{t("receivableAdjustments")}</p>
+                  <p className="text-xs font-bold text-orange-600 dark:text-orange-400" data-testid="text-receivable-adj">
                     <Currency amount={summary.totalReceivableAdj} />
                   </p>
                 </div>
