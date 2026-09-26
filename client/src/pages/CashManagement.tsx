@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { DateFilterBar, dateMatchesFilter } from "@/components/DateFilterBar";
-import type { CashReceipt as BaseCashReceipt, Expense as BaseExpense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
+import type { CashReceiptWithBillNumbers as BaseCashReceipt, Expense as BaseExpense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
 
 type Expense = BaseExpense & { advanceRateOfInterest?: number; advanceEffectiveDate?: string | null };
 type CashReceipt = BaseCashReceipt;
@@ -2220,7 +2220,11 @@ export default function CashManagement() {
         const netAmt = amt - (Number(r.roundOff) || 0);
         totalCr += netAmt;
         if (r.receiptType === "cash") cashIn += netAmt; else accountIn += netAmt;
-        return [dateStr, party, mode, '-', fmtAmt(netAmt), r.notes || ''];
+        // Task #377 — bill numbers come only from actual recorded receipt->sale
+        // allocations (cash_receipt_applications), never inferred from party/
+        // date/amount. Blank when the receipt has no such link.
+        const billNumbers = r.coldStorageBillNumbers || '';
+        return [dateStr, party, billNumbers, mode, '-', fmtAmt(netAmt), r.notes || ''];
       } else {
         const e = item.data as Expense;
         const party = e.receiverName
@@ -2232,7 +2236,7 @@ export default function CashManagement() {
         const amt = Number(e.amount) || 0;
         totalDr += amt;
         if (e.paymentMode === "cash") cashOut += amt; else accountOut += amt;
-        return [dateStr, party, mode, fmtAmt(amt), '-', e.remarks || ''];
+        return [dateStr, party, '', mode, fmtAmt(amt), '-', e.remarks || ''];
       }
     });
 
@@ -2308,6 +2312,7 @@ export default function CashManagement() {
       '',
       'Total',
       '',
+      '',
       totalDr > 0 ? fmtAmt(totalDr) : '-',
       totalCr > 0 ? fmtAmt(totalCr) : '-',
       '',
@@ -2319,19 +2324,20 @@ export default function CashManagement() {
     const lastIdx = tableBody.length - 1;
 
     autoTable(doc, {
-      head: [['Date', 'Party', 'Mode', 'Dr (Outflow)', 'Cr (Inflow)', 'Remarks']],
+      head: [['Date', 'Party', 'Col Bill #', 'Mode', 'Dr (Outflow)', 'Cr (Inflow)', 'Remarks']],
       body: tableBody,
       startY: tableStartY,
       margin: { left: margin, right: margin },
       styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
       headStyles: { fillColor: GREEN, textColor: 255, fontStyle: 'bold' },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 55.5, overflow: 'linebreak' },
-        2: { cellWidth: 26 },
-        3: { halign: 'right', cellWidth: 22 },
-        4: { halign: 'right', cellWidth: 22 },
-        5: { cellWidth: 40.5, overflow: 'linebreak' },
+        0: { cellWidth: 18 },
+        1: { cellWidth: 42, overflow: 'linebreak' },
+        2: { cellWidth: 20, overflow: 'linebreak' },
+        3: { cellWidth: 22 },
+        4: { halign: 'right', cellWidth: 19 },
+        5: { halign: 'right', cellWidth: 19 },
+        6: { cellWidth: 33, overflow: 'linebreak' },
       },
       didParseCell: (hookData) => {
         if (hookData.section !== 'body') return;

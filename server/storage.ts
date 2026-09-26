@@ -46,6 +46,7 @@ import {
   type ExitHistory,
   type InsertExitHistory,
   type CashReceipt,
+  type CashReceiptWithBillNumbers,
   type InsertCashReceipt,
   type CashReceiptApplication,
   type SalePayment,
@@ -414,7 +415,7 @@ export interface IStorage {
   getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number; extrasDue: number }[]>;
   getFarmerReceivablesWithDues(coldStorageId: string, year: number): Promise<{ id: string; farmerLedgerId: string | null; farmerName: string; contactNumber: string; village: string; totalDue: number }[]>;
   createFarmerReceivablePayment(data: { coldStorageId: string; farmerReceivableId: string; farmerLedgerId: string | null; farmerDetails: { farmerName: string; contactNumber: string; village: string } | null; buyerName: string | null; receiptType: string; accountType: string | null; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
-  getCashReceipts(coldStorageId: string): Promise<CashReceipt[]>;
+  getCashReceipts(coldStorageId: string): Promise<CashReceiptWithBillNumbers[]>;
   getSalesGoodsBuyers(coldStorageId: string): Promise<string[]>;
   createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
   createManualSalePayment(data: { coldStorageId: string; saleId: string; receiptType: string; accountType: string | null; accountId: string | null; amount: number; roundOff?: number; receivedAt: Date; notes: string | null }): Promise<{ receipt: CashReceipt; salesUpdated: number }>;
@@ -5136,11 +5137,47 @@ export class DatabaseStorage implements IStorage {
       .where(eq(lots.id, lotId));
   }
 
-  async getCashReceipts(coldStorageId: string): Promise<CashReceipt[]> {
-    return await db.select()
+  async getCashReceipts(coldStorageId: string): Promise<CashReceiptWithBillNumbers[]> {
+    const receipts = await db.select()
       .from(cashReceipts)
       .where(eq(cashReceipts.coldStorageId, coldStorageId))
       .orderBy(desc(cashReceipts.receivedAt));
+
+    if (receipts.length === 0) return receipts;
+
+    // Task #377 — attach the actual cold storage bill numbers each receipt
+    // was applied against, via the cash_receipt_applications junction table.
+    // Never inferred from party/date/amount — only real recorded allocations.
+    const receiptIds = receipts.map(r => r.id);
+    const billRows = await db.select({
+      receiptId: cashReceiptApplications.cashReceiptId,
+      billNumber: salesHistory.coldStorageBillNumber,
+    })
+      .from(cashReceiptApplications)
+      .innerJoin(salesHistory, eq(cashReceiptApplications.salesHistoryId, salesHistory.id))
+      .where(and(
+        eq(cashReceiptApplications.coldStorageId, coldStorageId),
+        inArray(cashReceiptApplications.cashReceiptId, receiptIds),
+        sql`${salesHistory.coldStorageBillNumber} IS NOT NULL`,
+      ));
+
+    const billsByReceipt = new Map<string, Set<number>>();
+    for (const row of billRows) {
+      if (row.billNumber == null) continue;
+      const set = billsByReceipt.get(row.receiptId) ?? new Set<number>();
+      set.add(row.billNumber);
+      billsByReceipt.set(row.receiptId, set);
+    }
+
+    return receipts.map(r => {
+      const bills = billsByReceipt.get(r.id);
+      return {
+        ...r,
+        coldStorageBillNumbers: bills && bills.size > 0
+          ? Array.from(bills).sort((a, b) => a - b).join(", ")
+          : null,
+      };
+    });
   }
 
   async getSalesGoodsBuyers(coldStorageId: string): Promise<string[]> {

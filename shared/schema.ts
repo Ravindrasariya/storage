@@ -935,6 +935,10 @@ export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSche
 export type ExitHistory = typeof exitHistory.$inferSelect;
 export type InsertExitHistory = z.infer<typeof insertExitHistorySchema>;
 export type CashReceipt = typeof cashReceipts.$inferSelect;
+// Task #377 — CashReceipt enriched with the actual cold storage bill numbers
+// it was applied against (comma-separated, or null if none/unapplied).
+// Derived from cash_receipt_applications -> sales_history, never inferred.
+export type CashReceiptWithBillNumbers = CashReceipt & { coldStorageBillNumbers: string | null };
 export type InsertCashReceipt = z.infer<typeof insertCashReceiptSchema>;
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
