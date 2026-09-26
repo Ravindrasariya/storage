@@ -869,6 +869,12 @@ export type SalePayment = {
 export type SalesHistoryWithLastPayment = SalesHistory & {
   lastPaymentAt: Date | null;
   payments?: SalePayment[];
+  // Task #378 — per-sale round-off already applied via receipt allocations
+  // (see getSalesHistory), split by receipt type. Used by Sales History to
+  // net round-off out of Cash Paid / Account Paid and show it in a separate
+  // Discount card, matching the Nikasi Register.
+  roundOffCash?: number;
+  roundOffAccount?: number;
 };
 export type CashReceiptApplication = typeof cashReceiptApplications.$inferSelect;
 export type InsertCashReceiptApplication = z.infer<typeof insertCashReceiptApplicationSchema>;

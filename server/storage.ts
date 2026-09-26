@@ -2132,10 +2132,48 @@ export class DatabaseStorage implements IStorage {
       list.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
     });
 
+    // Task #378 — per-sale round-off applied so far, sourced the same way as
+    // the Exit/Nikasi Register (see getExitRegister below): each application's
+    // share of its parent receipt's gross is
+    // (amount_applied / (amount + round_off)) * round_off. Sales History's
+    // Cash Paid / Account Paid cards net this out and surface it in a
+    // separate Discount card, matching the Nikasi Register.
+    const roundOffCashBySale = new Map<string, number>();
+    const roundOffAccountBySale = new Map<string, number>();
+    const roundOffRows = await db
+      .select({
+        saleId: cashReceiptApplications.salesHistoryId,
+        cashRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'cash' THEN
+          ${cashReceiptApplications.amountApplied}
+          * ${cashReceipts.roundOff}
+          / NULLIF(${cashReceipts.amount} + ${cashReceipts.roundOff}, 0)
+        ELSE 0 END), 0)`,
+        accountRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'account' THEN
+          ${cashReceiptApplications.amountApplied}
+          * ${cashReceipts.roundOff}
+          / NULLIF(${cashReceipts.amount} + ${cashReceipts.roundOff}, 0)
+        ELSE 0 END), 0)`,
+      })
+      .from(cashReceiptApplications)
+      .innerJoin(cashReceipts, eq(cashReceipts.id, cashReceiptApplications.cashReceiptId))
+      .where(and(
+        eq(cashReceiptApplications.coldStorageId, coldStorageId),
+        inArray(cashReceiptApplications.salesHistoryId, saleIds),
+        eq(cashReceipts.isReversed, 0),
+        sql`${cashReceipts.roundOff} > 0`,
+      ))
+      .groupBy(cashReceiptApplications.salesHistoryId);
+    for (const r of roundOffRows) {
+      roundOffCashBySale.set(r.saleId, Number(r.cashRoundOff) || 0);
+      roundOffAccountBySale.set(r.saleId, Number(r.accountRoundOff) || 0);
+    }
+
     return sales.map((sale): SalesHistoryWithLastPayment => ({
       ...sale,
       lastPaymentAt: lastPaymentBySale.get(sale.id) ?? null,
       payments: paymentsBySale.get(sale.id),
+      roundOffCash: roundOffCashBySale.get(sale.id) ?? 0,
+      roundOffAccount: roundOffAccountBySale.get(sale.id) ?? 0,
     }));
   }
 
@@ -5143,7 +5181,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(cashReceipts.coldStorageId, coldStorageId))
       .orderBy(desc(cashReceipts.receivedAt));
 
-    if (receipts.length === 0) return receipts;
+    if (receipts.length === 0) return receipts.map(r => ({ ...r, coldStorageBillNumbers: null }));
 
     // Task #377 — attach the actual cold storage bill numbers each receipt
     // was applied against, via the cash_receipt_applications junction table.
