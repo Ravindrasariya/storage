@@ -54,26 +54,26 @@ function deliveryTypeLabel(code: string): string {
 
 export const nikasiPrintStyles = `
   @page { size: A4; margin: 8mm; }
-  body { font-family: 'Noto Sans Devanagari', Arial, sans-serif; padding: 0; margin: 0; font-size: 13px; }
+  body { font-family: 'Noto Sans Devanagari', Arial, sans-serif; padding: 0; margin: 0; font-size: 17px; }
   .copies-container { display: flex; flex-direction: column; height: 100vh; }
   .copy { flex: 1; padding: 10px 18px; border-bottom: 2px dashed #000; page-break-inside: avoid; }
   .copy:last-child { border-bottom: none; }
-  .copy-label { text-align: right; font-size: 11px; font-weight: bold; color: #666; margin-bottom: 6px; }
+  .copy-label { text-align: right; font-size: 15px; font-weight: bold; color: #666; margin-bottom: 6px; }
   .header { text-align: center; margin-bottom: 8px; }
-  .header h1 { font-size: 18px; margin: 0 0 4px; }
-  .header h2 { font-size: 14px; margin: 0; font-weight: normal; border: 1px solid #000; padding: 3px 10px; display: inline-block; }
-  .header h3 { font-size: 14px; margin: 6px 0 0; }
-  .meta { display: flex; justify-content: space-between; font-size: 13px; margin: 6px 0; }
-  .party { font-size: 13px; margin-bottom: 6px; }
-  table.lots { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .header h1 { font-size: 22px; margin: 0 0 4px; }
+  .header h2 { font-size: 18px; margin: 0; font-weight: normal; border: 1px solid #000; padding: 3px 10px; display: inline-block; }
+  .header h3 { font-size: 18px; margin: 6px 0 0; }
+  .meta { display: flex; justify-content: space-between; font-size: 17px; margin: 6px 0; }
+  .party { font-size: 17px; margin-bottom: 6px; }
+  table.lots { width: 100%; border-collapse: collapse; font-size: 17px; margin-top: 8px; }
   table.lots th, table.lots td { border: 1px solid #000; padding: 3px 4px; text-align: center; }
   table.lots th { background: #f3f3f3; }
   table.lots td.lft, table.lots th.lft { text-align: left; }
   table.lots tr.tot td { font-weight: bold; background: #f8f8f8; }
-  .delivery-type { margin-top: 8px; font-size: 13px; }
-  .signature { margin-top: 14px; text-align: right; font-size: 13px; }
+  .delivery-type { margin-top: 8px; font-size: 17px; }
+  .signature { margin-top: 14px; text-align: right; font-size: 17px; }
   .signature-line { border-top: 1px solid #000; width: 200px; margin-left: auto; padding-top: 4px; }
-  .footer { text-align: center; margin-top: 8px; font-size: 10px; color: #666; }
+  .footer { text-align: center; margin-top: 8px; font-size: 14px; color: #666; }
 `;
 
 export function printNikasiReceipt(innerHTML: string, title: string) {
