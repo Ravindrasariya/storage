@@ -2502,6 +2502,17 @@ export default function StockRegister() {
             }
           }
 
+          // Order farmer cards alphabetically by name (A→Z) rather than by
+          // encounter order (which follows the selected row sort, e.g. lot
+          // number). Rows *within* each card still follow `sortedLots` above.
+          // Tie-break by village, then keep original relative order for an
+          // exact name+village match.
+          farmerGroups.sort((a, b) => {
+            const nameCmp = a.farmerName.localeCompare(b.farmerName, undefined, { sensitivity: "base" });
+            if (nameCmp !== 0) return nameCmp;
+            return a.village.localeCompare(b.village, undefined, { sensitivity: "base" });
+          });
+
           // No need to hide the last group: the server's `groupBy=farmer`
           // option guarantees that the farmer at the page boundary is fully
           // included in the loaded set, so a farmer's lots are never split
