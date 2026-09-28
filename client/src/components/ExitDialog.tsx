@@ -25,6 +25,7 @@ type BatchExitRow = {
   lotNo: string;
   marka: string | null;
   bagType: string;
+  potatoType: string;
   chamberName: string;
   floor: number;
   position: string;
@@ -271,6 +272,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             marka: s.marka,
             bagsExited: s.bagsExited,
             bagType: s.bagType,
+            variety: s.potatoType,
             chamberName: s.chamberName,
             floor: s.floor,
             position: s.position,
@@ -577,6 +579,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                   marka: sale.marka,
                   bagsExited: lastExit.bagsExited,
                   bagType: sale.bagType,
+                  variety: sale.potatoType,
                   chamberName: sale.chamberName,
                   floor: sale.floor,
                   position: sale.position,

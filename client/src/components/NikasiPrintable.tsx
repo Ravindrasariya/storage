@@ -16,6 +16,7 @@ export interface NikasiReceiptData {
     marka: string | null;
     bagsExited: number;
     bagType: string;
+    variety?: string | null;
     chamberName: string;
     floor: number;
     position: string;
@@ -117,6 +118,7 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
             <th className="lft">{t("marka") || "Marka"}</th>
             <th>{t("bagsExited")}</th>
             <th>{t("bagTypeLabel")}</th>
+            <th className="lft">{t("variety") || "Variety"}</th>
             <th>{t("chamber")}</th>
             <th>{t("floor")}</th>
             <th>{t("position")}</th>
@@ -136,6 +138,7 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
                   ? t("ration")
                   : t("seed")}
               </td>
+              <td className="lft">{s.variety || ""}</td>
               <td>{s.chamberName}</td>
               <td>{s.floor}</td>
               <td>{s.position}</td>
@@ -145,7 +148,7 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
             <tr className="tot">
               <td colSpan={3} className="lft">{t("total") || "Total"}</td>
               <td>{totalBags}</td>
-              <td colSpan={4}></td>
+              <td colSpan={5}></td>
             </tr>
           )}
         </tbody>

@@ -1351,6 +1351,7 @@ export function MasterNikasiDialog({
                     marka: s.marka,
                     bagsExited: s.bagsExited,
                     bagType: s.bagType,
+                    variety: s.potatoType,
                     chamberName: s.chamberName,
                     floor: s.floor,
                     position: s.position,

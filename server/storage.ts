@@ -353,6 +353,7 @@ export interface IStorage {
     lotNo: string;
     marka: string | null;
     bagType: string;
+    potatoType: string;
     chamberName: string;
     floor: number;
     position: string;
@@ -3655,6 +3656,7 @@ export class DatabaseStorage implements IStorage {
       lotNo: salesHistory.lotNo,
       marka: salesHistory.marka,
       bagType: salesHistory.bagType,
+      potatoType: salesHistory.potatoType,
       chamberName: salesHistory.chamberName,
       floor: salesHistory.floor,
       position: salesHistory.position,
