@@ -350,6 +350,7 @@ export interface IStorage {
     bagsExited: number;
     isReversed: number;
     saleId: string;
+    lotId: string;
     lotNo: string;
     marka: string | null;
     bagType: string;
@@ -403,6 +404,7 @@ export interface IStorage {
     affectedSaleIds: string[];
     effectiveBillNumber: number | null;
   }>;
+  getLotBalances(coldStorageId: string, lotIds: string[]): Promise<Record<string, number>>;
   getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
     saleId: string;
     soldAt: Date;
@@ -3666,6 +3668,7 @@ export class DatabaseStorage implements IStorage {
       bagsExited: exitHistory.bagsExited,
       isReversed: exitHistory.isReversed,
       saleId: salesHistory.id,
+      lotId: salesHistory.lotId,
       lotNo: salesHistory.lotNo,
       marka: salesHistory.marka,
       bagType: salesHistory.bagType,
@@ -4055,6 +4058,58 @@ export class DatabaseStorage implements IStorage {
       await this.syncSaleExitSummary(saleId);
     }
 
+    return result;
+  }
+
+  // Task #401 — per-lot Balance for the Nikasi receipt: Remaining Bags
+  // (unsold) + Sold-but-not-yet-physically-exited bags. Mirrors the same
+  // aggregation used by the Stock Register summary tile (routes.ts
+  // /api/lots/summary) but scoped to a specific set of lots instead of a
+  // filtered search, so print flows can resolve it on demand.
+  async getLotBalances(coldStorageId: string, lotIds: string[]): Promise<Record<string, number>> {
+    const result: Record<string, number> = {};
+    if (lotIds.length === 0) return result;
+
+    const lotRows = await db.select({
+      id: lots.id,
+      remainingSize: lots.remainingSize,
+    })
+      .from(lots)
+      .where(and(eq(lots.coldStorageId, coldStorageId), inArray(lots.id, lotIds)));
+
+    const soldByLot = new Map<string, number>();
+    const saleRows = await db.select({
+      lotId: salesHistory.lotId,
+      quantitySold: salesHistory.quantitySold,
+    })
+      .from(salesHistory)
+      .where(and(eq(salesHistory.coldStorageId, coldStorageId), inArray(salesHistory.lotId, lotIds)));
+    for (const row of saleRows) {
+      soldByLot.set(row.lotId, (soldByLot.get(row.lotId) || 0) + (row.quantitySold || 0));
+    }
+
+    const exitedByLot = new Map<string, number>();
+    const exitRows = await db.select({
+      lotId: exitHistory.lotId,
+      totalExited: sql<number>`COALESCE(SUM(${exitHistory.bagsExited}), 0)`.as("total_exited"),
+    })
+      .from(exitHistory)
+      .where(and(
+        eq(exitHistory.coldStorageId, coldStorageId),
+        inArray(exitHistory.lotId, lotIds),
+        eq(exitHistory.isReversed, 0),
+      ))
+      .groupBy(exitHistory.lotId);
+    for (const row of exitRows) {
+      exitedByLot.set(row.lotId, Number(row.totalExited) || 0);
+    }
+
+    for (const lot of lotRows) {
+      const soldForLot = soldByLot.get(lot.id) || 0;
+      const exitedForLot = exitedByLot.get(lot.id) || 0;
+      const soldNotExited = Math.max(0, soldForLot - exitedForLot);
+      result[lot.id] = lot.remainingSize + soldNotExited;
+    }
     return result;
   }
 

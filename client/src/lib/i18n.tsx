@@ -9,7 +9,7 @@ interface Translations {
   };
 }
 
-const translations: Translations = {
+export const translations: Translations = {
   // App Header
   appTitle: { en: "Cold Store Manager", hi: "शीत भंडार प्रबंधक" },
   dashboard: { en: "Dashboard", hi: "डैशबोर्ड" },
@@ -84,7 +84,7 @@ const translations: Translations = {
   type: { en: "Potato Variety", hi: "आलू की किस्म" },
   bagType: { en: "Potato Type", hi: "आलू का प्रकार" },
   bagTypeLabel: { en: "Bag type", hi: "बैग प्रकार" },
-  marka: { en: "Marka", hi: "मारका" },
+  marka: { en: "Marka", hi: "मार्का" },
   rstNo: { en: "RST No", hi: "RST No" },
   vehicle: { en: "Vehicle", hi: "वाहन" },
   enterBagType: { en: "e.g., 50kg, Jute", hi: "जैसे: 50kg, जूट" },
@@ -532,7 +532,7 @@ const translations: Translations = {
   exitHistory: { en: "Exit History", hi: "निकासी इतिहास" },
   noExitHistory: { en: "No exit history", hi: "कोई निकासी इतिहास नहीं" },
   exitDate: { en: "Exit Date", hi: "निकासी तिथि" },
-  bagsExited: { en: "Bags Exited", hi: "निकासी किए गए बैग" },
+  bagsExited: { en: "Bags Exited", hi: "निकासी बैग" },
   reverseExit: { en: "Reverse Latest Exit", hi: "नवीनतम निकासी वापस करें" },
   exitReversed: { en: "Exit reversed successfully", hi: "निकासी सफलतापूर्वक वापस कर दी गई" },
   failedToReverseExit: { en: "Failed to reverse exit", hi: "निकासी वापस करने में विफल" },

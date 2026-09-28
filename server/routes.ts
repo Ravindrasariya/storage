@@ -1092,6 +1092,26 @@ export async function registerRoutes(
     }
   });
 
+  // Task #401 — per-lot Balance (Remaining + Sold-but-not-exited) for the
+  // Nikasi receipt's Balance column. Batched by lotIds so a multi-lot
+  // Master Nikasi print resolves everything in one request.
+  app.get("/api/lots/balances", requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const raw = (req.query.lotIds as string) || "";
+      const lotIds = raw.split(",").map(s => s.trim()).filter(Boolean);
+      if (lotIds.length === 0) return res.json({});
+      if (lotIds.length > 1000) {
+        return res.status(400).json({ error: "Too many lotIds (max 1000)" });
+      }
+      const balances = await storage.getLotBalances(coldStorageId, lotIds);
+      res.json(balances);
+    } catch (error) {
+      console.error("lot balances error:", error);
+      res.status(500).json({ error: "Failed to fetch lot balances" });
+    }
+  });
+
   app.get("/api/lots/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);

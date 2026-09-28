@@ -22,6 +22,7 @@ type BatchExitRow = {
   bagsExited: number;
   isReversed: number;
   saleId: string;
+  lotId: string;
   lotNo: string;
   marka: string | null;
   bagType: string;
@@ -65,6 +66,24 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   const [reprintingExitId, setReprintingExitId] = useState<string | null>(null);
   const [editExit, setEditExit] = useState<ExitHistory | null>(null);
   const batchPrintRef = useRef<HTMLDivElement>(null);
+  // Task #401 — per-lotId Balance (Remaining + Sold-not-exited) resolved
+  // right before printing, for the receipt's Balance column.
+  const [lotBalances, setLotBalances] = useState<Record<string, number>>({});
+
+  const fetchLotBalances = async (lotIds: string[]): Promise<Record<string, number>> => {
+    const unique = Array.from(new Set(lotIds.filter(Boolean)));
+    if (unique.length === 0) return {};
+    try {
+      const res = await authFetch(`/api/lots/balances?lotIds=${encodeURIComponent(unique.join(","))}`);
+      const json = await res.json() as Record<string, number>;
+      setLotBalances(prev => ({ ...prev, ...json }));
+      return json;
+    } catch {
+      // Non-fatal — the receipt shows "—" for any lot whose balance
+      // couldn't be resolved rather than blocking the print.
+      return {};
+    }
+  };
 
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
@@ -148,14 +167,25 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     }
   }, [sale, open, remainingToExit]);
 
-  // Auto-print when lastExit is set and print is pending
+  // Auto-print when lastExit is set and print is pending. Task #401 —
+  // the Balance lookup must resolve and its state update flush to the
+  // hidden print DOM *before* we read printRef.innerHTML, otherwise the
+  // receipt would print with a stale/blank Balance. So we await the
+  // fetch first, then give React one more tick to re-render with the
+  // new value before firing the print.
   useEffect(() => {
     if (pendingPrint && lastExit) {
-      const timer = setTimeout(() => {
-        handlePrint();
-        setPendingPrint(false);
-      }, 100);
-      return () => clearTimeout(timer);
+      let cancelled = false;
+      (async () => {
+        if (sale?.lotId) await fetchLotBalances([sale.lotId]);
+        if (cancelled) return;
+        setTimeout(() => {
+          if (cancelled) return;
+          handlePrint();
+          setPendingPrint(false);
+        }, 50);
+      })();
+      return () => { cancelled = true; };
     }
   }, [pendingPrint, lastExit]);
 
@@ -258,6 +288,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
           (a, b) => new Date(a.exitDate).getTime() - new Date(b.exitDate).getTime(),
         );
         const first = sortedByDate[0];
+        const balances = await fetchLotBalances(siblings.map(s => s.lotId));
         setBatchData({
           sharedExitBillNumber: exit.billNumber,
           exitDate: first.exitDate,
@@ -276,6 +307,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
             chamberName: s.chamberName,
             floor: s.floor,
             position: s.position,
+            balance: balances[s.lotId] ?? null,
           })),
         });
         setPendingBatchPrint(true);
@@ -586,6 +618,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                   chamberName: sale.chamberName,
                   floor: sale.floor,
                   position: sale.position,
+                  balance: lotBalances[sale.lotId] ?? null,
                 }],
               }}
               coldStorage={coldStorage}

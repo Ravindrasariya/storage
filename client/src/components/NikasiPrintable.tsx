@@ -1,5 +1,15 @@
 import { format } from "date-fns";
 import type { ColdStorage } from "@shared/schema";
+import { translations } from "@/lib/i18n";
+
+// Task #401 — the printed Nikasi receipt always renders in Hindi,
+// regardless of the app's current language toggle. This local helper
+// ignores the caller's `t` prop/current language entirely so the print
+// output stays consistent for every operator.
+function th(key: string): string {
+  const entry = translations[key];
+  return entry ? entry.hi : key;
+}
 
 export interface NikasiReceiptData {
   sharedExitBillNumber: number;
@@ -23,16 +33,21 @@ export interface NikasiReceiptData {
     chamberName: string;
     floor: number;
     position: string;
+    // Task #401 — Remaining Bags (unsold) + Sold-but-not-yet-exited bags
+    // for this sale's lot, as of print time. Undefined when the caller
+    // could not resolve it (e.g. lookup failure) so we can show "—".
+    balance?: number | null;
   }>;
 }
 
 // Task #393 — map the stored delivery type code to its localized label.
-function deliveryTypeLabel(code: string, t: (key: string) => string): string {
+// Task #401 — always resolves via the forced-Hindi helper above.
+function deliveryTypeLabel(code: string): string {
   switch (code) {
-    case "gate": return t("gateCut");
-    case "gateWeighing": return t("gateCutWeighing");
-    case "bilty": return t("biltyCut");
-    case "biltyWeighing": return t("biltyCutWeighing");
+    case "gate": return th("gateCut");
+    case "gateWeighing": return th("gateCutWeighing");
+    case "bilty": return th("biltyCut");
+    case "biltyWeighing": return th("biltyCutWeighing");
     default: return code;
   }
 }
@@ -50,7 +65,7 @@ export const nikasiPrintStyles = `
   .header h3 { font-size: 14px; margin: 6px 0 0; }
   .meta { display: flex; justify-content: space-between; font-size: 12px; margin: 6px 0; }
   .party { font-size: 13px; margin-bottom: 6px; }
-  table.lots { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+  table.lots { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
   table.lots th, table.lots td { border: 1px solid #000; padding: 3px 4px; text-align: center; }
   table.lots th { background: #f3f3f3; }
   table.lots td.lft, table.lots th.lft { text-align: left; }
@@ -62,7 +77,8 @@ export const nikasiPrintStyles = `
 `;
 
 export function printNikasiReceipt(innerHTML: string, title: string) {
-  const htmlContent = `<!DOCTYPE html><html><head><title>${title}</title><style>${nikasiPrintStyles}</style></head><body><div class="copies-container"><div class="copy"><div class="copy-label">OFFICE COPY / कार्यालय प्रति</div>${innerHTML}</div><div class="copy"><div class="copy-label">CUSTOMER COPY / ग्राहक प्रति</div>${innerHTML}</div></div></body></html>`;
+  // Task #401 — copy labels are Hindi-only, matching the forced-Hindi body.
+  const htmlContent = `<!DOCTYPE html><html><head><title>${title}</title><style>${nikasiPrintStyles}</style></head><body><div class="copies-container"><div class="copy"><div class="copy-label">कार्यालय प्रति</div>${innerHTML}</div><div class="copy"><div class="copy-label">ग्राहक प्रति</div>${innerHTML}</div></div></body></html>`;
   const printWindow = window.open("", "_blank", "width=595,height=842");
   if (printWindow) {
     printWindow.document.write(htmlContent);
@@ -92,7 +108,10 @@ interface NikasiPrintableProps {
   t: (key: string) => string;
 }
 
-export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiPrintableProps) {
+// Task #401 — `t` is accepted for prop-compatibility with existing callers
+// but intentionally unused: the printed receipt always renders in Hindi via
+// the `th` helper above, independent of the app's language toggle.
+export function NikasiPrintable({ data, coldStorage, partyRowLabel }: NikasiPrintableProps) {
   const totalBags = data.sales.reduce((s, r) => s + r.bagsExited, 0);
   const address = [
     coldStorage?.address,
@@ -104,39 +123,40 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
 
   const buyerDisplay = data.buyerName && data.buyerName.trim().length > 0
     ? data.buyerName
-    : `${t("self") || "Self"} / स्वयं`;
+    : th("self");
 
   return (
     <>
       <div className="header">
         <h1>{coldStorage?.name || "Cold Storage"}</h1>
         {address && <div style={{ fontSize: 11 }}>{address}</div>}
-        <h2>{t("exitReceipt")} / निकासी रसीद</h2>
-        <h3>Exit Bill No. / निकासी बिल नं. {data.sharedExitBillNumber || "-"}</h3>
+        <h2>{th("exitReceipt")}</h2>
+        <h3>निकासी बिल नं. {data.sharedExitBillNumber || "-"}</h3>
       </div>
       <div className="meta">
-        <span><strong>{t("exitDate")}:</strong> {format(new Date(data.exitDate), "dd/MM/yyyy")}</span>
+        <span><strong>{th("exitDate")}:</strong> {format(new Date(data.exitDate), "dd/MM/yyyy")}</span>
       </div>
       <div className="party">
         <strong>{partyRowLabel}:</strong> {data.farmer.farmerName} &nbsp;|&nbsp;
-        <strong>{t("village")}:</strong> {data.farmer.village} &nbsp;|&nbsp;
-        <strong>{t("phone") || "Phone"}:</strong> {data.farmer.contactNumber}
+        <strong>{th("village")}:</strong> {data.farmer.village} &nbsp;|&nbsp;
+        <strong>{th("phone")}:</strong> {data.farmer.contactNumber}
       </div>
       <div className="party" data-testid="text-nikasi-buyer">
-        <strong>{t("buyer") || "Buyer"} / खरीदार:</strong> {buyerDisplay}
+        <strong>{th("buyer")}:</strong> {buyerDisplay}
       </div>
       <table className="lots">
         <thead>
           <tr>
             <th>#</th>
-            <th className="lft">{t("receiptNo")}</th>
-            <th className="lft">{t("marka") || "Marka"}</th>
-            <th>{t("bagsExited")}</th>
-            <th>{t("bagTypeLabel")}</th>
-            <th className="lft">{t("variety") || "Variety"}</th>
-            <th>{t("chamber")}</th>
-            <th>{t("floor")}</th>
-            <th>{t("position")}</th>
+            <th className="lft">{th("receiptNo")}</th>
+            <th className="lft">{th("marka")}</th>
+            <th>{th("bagsExited")}</th>
+            <th>बैलेंस</th>
+            <th>{th("bagTypeLabel")}</th>
+            <th className="lft">{th("variety")}</th>
+            <th>{th("chamber")}</th>
+            <th>{th("floor")}</th>
+            <th>{th("position")}</th>
           </tr>
         </thead>
         <tbody>
@@ -146,12 +166,13 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
               <td className="lft">{s.lotNo}</td>
               <td className="lft">{s.marka || "—"}</td>
               <td><strong>{s.bagsExited}</strong></td>
+              <td>{s.balance == null ? "—" : s.balance}</td>
               <td>
                 {s.bagType?.toLowerCase() === "wafer"
-                  ? t("wafer")
+                  ? th("wafer")
                   : s.bagType?.toLowerCase() === "ration"
-                  ? t("ration")
-                  : t("seed")}
+                  ? th("ration")
+                  : th("seed")}
               </td>
               <td className="lft">{s.variety || ""}</td>
               <td>{s.chamberName}</td>
@@ -161,20 +182,20 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
           ))}
           {data.sales.length > 1 && (
             <tr className="tot">
-              <td colSpan={3} className="lft">{t("total") || "Total"}</td>
+              <td colSpan={3} className="lft">{th("total")}</td>
               <td>{totalBags}</td>
-              <td colSpan={5}></td>
+              <td colSpan={6}></td>
             </tr>
           )}
         </tbody>
       </table>
       {data.deliveryType && (
         <div className="delivery-type" data-testid="text-nikasi-delivery-type">
-          <strong>{t("deliveryType") || "Delivery Type"}:</strong> {deliveryTypeLabel(data.deliveryType, t)}
+          <strong>{th("deliveryType")}:</strong> {deliveryTypeLabel(data.deliveryType)}
         </div>
       )}
       <div className="signature">
-        <div className="signature-line">{t("authorisedSignatory") || "Authorised Signatory"}</div>
+        <div className="signature-line">{th("authorisedSignatory")}</div>
       </div>
     </>
   );

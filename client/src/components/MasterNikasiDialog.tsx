@@ -190,6 +190,9 @@ export function MasterNikasiDialog({
 
   const [rows, setRows] = useState<RowState[]>(() => [newRow()]);
   const [result, setResult] = useState<MasterNikasiResult | null>(null);
+  // Task #401 — per-lotId Balance (Remaining + Sold-not-exited) resolved
+  // right before printing, for the receipt's Balance column.
+  const [lotBalances, setLotBalances] = useState<Record<string, number>>({});
   // SELF_BUYER (default) keeps the legacy self-sale path; selecting a real
   // buyer ledger id routes the whole nikasi to that buyer (regular sale).
   const [targetBuyerSel, setTargetBuyerSel] = useState<string>(SELF_BUYER);
@@ -690,7 +693,23 @@ export function MasterNikasiDialog({
       });
       return (await res.json()) as MasterNikasiResult;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      // Task #401 — resolve Balance for the receipt's lots BEFORE setting
+      // result / triggering auto-print. Printing reads printRef.innerHTML
+      // directly, so the Balance state must already reflect the fetched
+      // values by the time that DOM renders, or the receipt would print
+      // with a stale/blank Balance.
+      const lotIds = Array.from(new Set(data.sales.map(s => s.lotId).filter(Boolean)));
+      let balances: Record<string, number> = {};
+      if (lotIds.length > 0) {
+        try {
+          const res = await authFetch(`/api/lots/balances?lotIds=${encodeURIComponent(lotIds.join(","))}`);
+          balances = await res.json();
+        } catch {
+          // Non-fatal — receipt shows "—" for any unresolved lot.
+        }
+      }
+      setLotBalances(balances);
       setResult(data);
       // invalidateSaleSideEffects already invalidates cash-receipts,
       // cash-flow, buyer-ledger, farmer-ledger, bank-accounts — covering
@@ -1387,6 +1406,7 @@ export function MasterNikasiDialog({
                     chamberName: s.chamberName,
                     floor: s.floor,
                     position: s.position,
+                    balance: lotBalances[s.lotId] ?? null,
                   })),
                 }}
                 coldStorage={coldStorage}
