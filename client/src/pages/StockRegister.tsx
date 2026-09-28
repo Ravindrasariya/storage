@@ -126,7 +126,11 @@ export default function StockRegister() {
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [sortBy, setSortBy] = useState<"lotNo" | "chargeDue" | "remainingBags" | "farmerName">("lotNo");
+  const [sortBy, setSortBy] = useState<"lotNo" | "chargeDue" | "remainingBags" | "farmerName">(() => {
+    const allowed = new Set(["lotNo", "chargeDue", "remainingBags", "farmerName"]);
+    const saved = savedState?.sortBy;
+    return saved && allowed.has(saved) ? saved : "lotNo";
+  });
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
@@ -639,9 +643,10 @@ export default function StockRegister() {
       filterEntryDate,
       bagTypeFilter,
       selectedYear,
+      sortBy,
     };
     sessionStorage.setItem("stockRegisterState", JSON.stringify(stateToSave));
-  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, remainingBagsOnly, filterEntryDate, bagTypeFilter, selectedYear]);
+  }, [searchType, farmerNameQuery, selectedFarmerVillage, selectedFarmerMobile, searchQuery, lotNoFrom, lotNoTo, sizeQuery, qualityFilter, potatoTypeFilter, potatoSizeFilter, paymentDueFilter, upForSaleOnly, noExitOnly, remainingBagsOnly, filterEntryDate, bagTypeFilter, selectedYear, sortBy]);
   
   // Mark initial mount as complete after first render and trigger search if there's saved state
   useEffect(() => {
