@@ -13,6 +13,10 @@ import { z } from "zod";
 // applied to the EXACT same DB snapshot. This is the contract that lets
 // the Stock Register summary card always be a fresh server query — the
 // client never has to re-derive numbers from rendered card data.
+// Task #393 — valid Delivery Type codes accepted from the Individual Sale
+// Dialog. Anything else (including absent/legacy callers) is stored as NULL.
+const DELIVERY_TYPES = new Set(["gate", "gateWeighing", "bilty", "biltyWeighing"]);
+
 interface RegisterFilterParams {
   type?: "phone" | "lotNoSize" | "filter" | "farmerName";
   query?: string;
@@ -1428,7 +1432,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt: soldAtInput } = req.body;
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt: soldAtInput, deliveryType } = req.body;
 
       if (typeof quantitySold !== "number" || quantitySold <= 0) {
         return res.status(400).json({ error: "Invalid quantity sold" });
@@ -1751,6 +1755,10 @@ export async function registerRoutes(
         // Buyer ledger reference (ensure buyer exists and get IDs)
         buyerLedgerId: buyerEntry?.id || null,
         buyerId: buyerEntry?.buyerId || null,
+        // Task #393 — Delivery Type selected in the Individual Sale Dialog.
+        // Only this creation path ever sets it; Master Nikasi batch/multi
+        // sales are created elsewhere and intentionally leave this NULL.
+        deliveryType: (typeof deliveryType === "string" && DELIVERY_TYPES.has(deliveryType)) ? deliveryType : null,
       }, {
         // When the operator supplies an explicit cold-storage bill #
         // (to match their manual receipt book), createSalesHistory

@@ -1524,6 +1524,19 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    name: "2026-09-28_add_sales_history_delivery_type",
+    up: async () => {
+      // Task #393 — Delivery Type selected in the Individual Sale Dialog
+      // ('gate' | 'gateWeighing' | 'bilty' | 'biltyWeighing'). Additive,
+      // nullable, no default: legacy sales and every Master Nikasi
+      // batch/multi sale intentionally stay NULL.
+      await db.execute(sql`
+        ALTER TABLE sales_history
+        ADD COLUMN IF NOT EXISTS delivery_type TEXT
+      `);
+    },
+  },
 ];
 
 function migrationLog(message: string): void {

@@ -10,6 +10,9 @@ export interface NikasiReceiptData {
     contactNumber: string;
   };
   buyerName?: string | null;
+  // Task #393 — Delivery Type selected in the Individual Sale Dialog.
+  // Only individual (non-Master-Nikasi) exit receipts populate this.
+  deliveryType?: string | null;
   sales: Array<{
     saleId: string;
     lotNo: string;
@@ -21,6 +24,17 @@ export interface NikasiReceiptData {
     floor: number;
     position: string;
   }>;
+}
+
+// Task #393 — map the stored delivery type code to its localized label.
+function deliveryTypeLabel(code: string, t: (key: string) => string): string {
+  switch (code) {
+    case "gate": return t("gateCut");
+    case "gateWeighing": return t("gateCutWeighing");
+    case "bilty": return t("biltyCut");
+    case "biltyWeighing": return t("biltyCutWeighing");
+    default: return code;
+  }
 }
 
 export const nikasiPrintStyles = `
@@ -109,6 +123,11 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
       </div>
       <div className="party" data-testid="text-nikasi-buyer">
         <strong>{t("buyer") || "Buyer"} / खरीदार:</strong> {buyerDisplay}
+        {data.deliveryType && (
+          <span data-testid="text-nikasi-delivery-type">
+            &nbsp;|&nbsp;<strong>{deliveryTypeLabel(data.deliveryType, t)}</strong>
+          </span>
+        )}
       </div>
       <table className="lots">
         <thead>

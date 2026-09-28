@@ -256,6 +256,11 @@ export const salesHistory = pgTable("sales_history", {
   // Denormalised exit info (comma-separated; maintained on exit create/reverse)
   exitBillNumbers: text("exit_bill_numbers"), // e.g., "12, 13, 14" - non-reversed exit bill numbers ordered by exitDate asc
   exitDates: text("exit_dates"), // e.g., "15/04/2026, 16/04/2026" - matching non-reversed exit dates ordered by exitDate asc
+  // Task #393 — Delivery Type selected in the Individual Sale Dialog: 'gate' |
+  // 'gateWeighing' | 'bilty' | 'biltyWeighing'. Nullable, no default, no
+  // back-fill: legacy sales and every Master Nikasi batch/multi sale
+  // intentionally leave this NULL (Master Nikasi support is a separate task).
+  deliveryType: text("delivery_type"),
 });
 
 // Edit history for tracking changes

@@ -573,6 +573,9 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
                 buyerName: sale.isSelfSale === 1
                   ? null
                   : (sale.buyerName || null),
+                // Task #393 — only individual sales ever carry a stored
+                // Delivery Type; Master Nikasi batch sales leave it NULL.
+                deliveryType: (sale as any).deliveryType || null,
                 sales: [{
                   saleId: sale.id,
                   lotNo: sale.lotNo,

@@ -71,6 +71,16 @@ interface PrintBillDialogProps {
 
 export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: PrintBillDialogProps) {
   const { t } = useI18n();
+  // Task #393 — map the stored delivery type code to its localized label.
+  const deliveryTypeLabel = (code: string) => {
+    switch (code) {
+      case "gate": return t("gateCut");
+      case "gateWeighing": return t("gateCutWeighing");
+      case "bilty": return t("biltyCut");
+      case "biltyWeighing": return t("biltyCutWeighing");
+      default: return code;
+    }
+  };
   const [billType, setBillType] = useState<"deduction" | "sales" | null>(null);
   const [billNumber, setBillNumber] = useState<number | null>(null);
   const [action, setAction] = useState<"print" | "share" | null>(null);
@@ -704,6 +714,14 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
               <span className="info-label">खरीदार:</span>
               <span className="info-value">{sale.isSelfSale === 1 ? "स्वयं" : (sale.buyerName || "-")}</span>
             </div>
+            {(sale as any).deliveryType && (
+              <div className="info-row">
+                <span className="info-label">डिलीवरी प्रकार:</span>
+                <span className="info-value" data-testid="text-single-delivery-type">
+                  <strong>{deliveryTypeLabel((sale as any).deliveryType)}</strong>
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1087,6 +1105,14 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
               <span className="info-label">खरीदार:</span>
               <span className="info-value">{sale.isSelfSale === 1 ? "स्वयं" : (sale.buyerName || "-")}</span>
             </div>
+            {(sale as any).deliveryType && (
+              <div className="info-row">
+                <span className="info-label">डिलीवरी प्रकार:</span>
+                <span className="info-value" data-testid="text-single-delivery-type-sales">
+                  <strong>{deliveryTypeLabel((sale as any).deliveryType)}</strong>
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
