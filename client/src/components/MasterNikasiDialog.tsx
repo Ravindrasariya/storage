@@ -1473,27 +1473,33 @@ export function MasterNikasiDialog({
 
               {/* Task #395 — batch-wide Delivery Type. Defaults to blank
                   ("-"); Gate Cut options are disabled once any row carries
-                  Extra Hammali/Bag, Grading/Bag, or a Grading amount. */}
-              <Select
-                value={deliveryType === "" ? "__none__" : deliveryType}
-                onValueChange={(value) => setDeliveryType(value === "__none__" ? "" : (value as typeof deliveryType))}
-                disabled={!!result || submitMutation.isPending}
-              >
-                <SelectTrigger className="h-9 w-[180px]" data-testid="select-mn-delivery-type">
-                  <SelectValue placeholder="-" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">-</SelectItem>
-                  <SelectItem value="gate" disabled={anyExtraChargesInBatch} className={anyExtraChargesInBatch ? "opacity-50" : ""}>
-                    {t("gateCut")}
-                  </SelectItem>
-                  <SelectItem value="gateWeighing" disabled={anyExtraChargesInBatch} className={anyExtraChargesInBatch ? "opacity-50" : ""}>
-                    {t("gateCutWeighing")}
-                  </SelectItem>
-                  <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
-                  <SelectItem value="biltyWeighing">{t("biltyCutWeighing")}</SelectItem>
-                </SelectContent>
-              </Select>
+                  Extra Hammali/Bag, Grading/Bag, or a Grading amount.
+                  Task #397 — labeled so the field's purpose is clear. */}
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="select-mn-delivery-type" className="text-xs text-muted-foreground whitespace-nowrap">
+                  {t("deliveryType") || "Delivery Type"}
+                </Label>
+                <Select
+                  value={deliveryType === "" ? "__none__" : deliveryType}
+                  onValueChange={(value) => setDeliveryType(value === "__none__" ? "" : (value as typeof deliveryType))}
+                  disabled={!!result || submitMutation.isPending}
+                >
+                  <SelectTrigger id="select-mn-delivery-type" className="h-9 w-[180px]" data-testid="select-mn-delivery-type">
+                    <SelectValue placeholder="-" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-</SelectItem>
+                    <SelectItem value="gate" disabled={anyExtraChargesInBatch} className={anyExtraChargesInBatch ? "opacity-50" : ""}>
+                      {t("gateCut")}
+                    </SelectItem>
+                    <SelectItem value="gateWeighing" disabled={anyExtraChargesInBatch} className={anyExtraChargesInBatch ? "opacity-50" : ""}>
+                      {t("gateCutWeighing")}
+                    </SelectItem>
+                    <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
+                    <SelectItem value="biltyWeighing">{t("biltyCutWeighing")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
           <div className="flex gap-2 ml-auto sm:ml-0">
