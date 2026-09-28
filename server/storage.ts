@@ -885,7 +885,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(chamberFloors).where(eq(chamberFloors.chamberId, chamberId));
   }
 
-
   async createLot(insertLot: InsertLot, tx?: any): Promise<Lot> {
     const exec = tx ?? db;
     const id = await generateSequentialId('lot');
@@ -1083,6 +1082,7 @@ export class DatabaseStorage implements IStorage {
   // winner gets `true` (proceed to bill base); the loser gets `false` (treat
   // base as already billed and bill 0). Race-safe by construction — no row
   // lock needed because the predicate-on-flag UPDATE is the lock.
+
   async claimBaseColdCharges(lotId: string): Promise<boolean> {
     const updated = await db.update(lots)
       .set({ baseColdChargesBilled: 1 })
@@ -1105,6 +1105,7 @@ export class DatabaseStorage implements IStorage {
   //       and our release.
   //   (2) The UPDATE itself is predicate-gated on baseColdChargesBilled=1
   //       so a no-op call (flag already 0) is harmless.
+
   async releaseBaseColdCharges(lotId: string): Promise<boolean> {
     const existingBaseBilling = await db.select({ id: salesHistory.id })
       .from(salesHistory)
@@ -1888,8 +1889,8 @@ export class DatabaseStorage implements IStorage {
   }
 
 
-
   // Sales History Methods
+
   async createSalesHistory(data: InsertSalesHistory, opts?: { userColdStorageBillNumber?: number | null }): Promise<SalesHistory> {
     const id = await generateSequentialId('sales');
     // Seed paidCash / paidAccount counters from inline payment, if any.
@@ -2039,377 +2040,7 @@ export class DatabaseStorage implements IStorage {
     paymentStatus?: "paid" | "due" | "partial";
     buyerName?: string;
     coldStorageBillNumber?: number;
-  }): Promise<SalesHistoryWithLastPayment[]> {
-    let conditions = [eq(salesHistory.coldStorageId, coldStorageId)];
-    
-    if (filters?.year) {
-      conditions.push(eq(salesHistory.saleYear, filters.year));
-    }
-    if (filters?.farmerName) {
-      const normalizedName = filters.farmerName.trim().toLowerCase();
-      conditions.push(sql`lower(trim(${salesHistory.farmerName})) LIKE ${`%${normalizedName}%`}`);
-    }
-    if (filters?.village) {
-      const normalizedVillage = filters.village.trim().toLowerCase();
-      conditions.push(sql`lower(trim(${salesHistory.village})) = ${normalizedVillage}`);
-    }
-    if (filters?.contactNumber) {
-      const normalizedContact = filters.contactNumber.trim();
-      conditions.push(sql`trim(${salesHistory.contactNumber}) LIKE ${`%${normalizedContact}%`}`);
-    }
-    if (filters?.paymentStatus) {
-      conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
-    }
-    if (filters?.coldStorageBillNumber != null) {
-      conditions.push(eq(salesHistory.coldStorageBillNumber, filters.coldStorageBillNumber));
-    }
-    if (filters?.buyerName) {
-      const _b = filters.buyerName.trim();
-      if (_b.toLowerCase() === "self") {
-        // Self: isSelfSale flag is set AND no active transfer to a real buyer
-        conditions.push(sql`${salesHistory.isSelfSale} = 1 AND (${salesHistory.transferToBuyerName} IS NULL OR ${salesHistory.transferToBuyerName} = '' OR ${salesHistory.isTransferReversed} = 1)`);
-      } else {
-        // Search by effective buyer: original if transfer reversed, else transfer destination or original
-        conditions.push(
-          sql`CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END ILIKE ${`%${_b}%`}`
-        );
-      }
-    }
 
-    // Display sort for the Sales History page (Tasks #264 + #266 + #272):
-    //   1. soldAt DESC                — newest sale date at the top.
-    //   2. createdAt DESC             — within a date, newest entered first.
-    //   3. coldStorageBillNumber DESC  — CS Bill # descending so highest bill
-    //                                   appears first within a date group.
-    //                                   NULLS LAST keeps sales without a bill
-    //                                   at the bottom.
-    //   4. lot_no ASC, numeric        — receipt # tiebreaker, cast to bigint.
-    //   5. (remaining_size_at_sale - quantity_sold) ASC NULLS LAST
-    //                                 — post-sale "Remaining # Bags" tiebreaker.
-    const sales = await db.select()
-      .from(salesHistory)
-      .where(and(...conditions))
-      .orderBy(
-        desc(salesHistory.soldAt),
-        desc(salesHistory.createdAt),
-        sql`${salesHistory.coldStorageBillNumber} DESC NULLS LAST`,
-        sql`NULLIF(regexp_replace(${salesHistory.lotNo}, '[^0-9]', '', 'g'), '')::bigint ASC NULLS LAST`,
-        sql`(${salesHistory.remainingSizeAtSale} - ${salesHistory.quantitySold}) ASC NULLS LAST`,
-      );
-
-    if (sales.length === 0) return [];
-
-    // Enrich each sale with `lastPaymentAt` and a `payments` list — derived
-    // from the cash_receipt_applications junction table. Each row records a
-    // (cash_receipt → sales_history, amount_applied) allocation; reversal &
-    // recompute paths delete/re-insert so this is always in sync with the
-    // current set of non-reversed receipts.
-    const saleIds = sales.map(s => s.id);
-    const appRows = await db.select({
-      saleId: cashReceiptApplications.salesHistoryId,
-      receiptId: cashReceiptApplications.cashReceiptId,
-      amountApplied: cashReceiptApplications.amountApplied,
-      appliedAt: cashReceiptApplications.appliedAt,
-      receivedAt: cashReceipts.receivedAt,
-      receiptType: cashReceipts.receiptType,
-      transactionId: cashReceipts.transactionId,
-    })
-      .from(cashReceiptApplications)
-      .innerJoin(cashReceipts, eq(cashReceiptApplications.cashReceiptId, cashReceipts.id))
-      .where(and(
-        eq(cashReceiptApplications.coldStorageId, coldStorageId),
-        eq(cashReceipts.isReversed, 0),
-        inArray(cashReceiptApplications.salesHistoryId, saleIds),
-      ));
-
-    const paymentsBySale = new Map<string, SalePayment[]>();
-    const lastPaymentBySale = new Map<string, Date>();
-    for (const row of appRows) {
-      const when = (row.receivedAt ?? row.appliedAt) as Date | null;
-      if (!when) continue;
-      const whenDate = new Date(when as unknown as string);
-      const list = paymentsBySale.get(row.saleId) ?? [];
-      list.push({
-        receiptId: row.receiptId,
-        transactionId: row.transactionId ?? null,
-        receivedAt: whenDate,
-        amount: Number(row.amountApplied || 0),
-        receiptType: row.receiptType ?? null,
-      });
-      paymentsBySale.set(row.saleId, list);
-      const cur = lastPaymentBySale.get(row.saleId);
-      if (!cur || whenDate > cur) lastPaymentBySale.set(row.saleId, whenDate);
-    }
-
-    // Sort each sale's payments oldest → newest for stable display.
-    Array.from(paymentsBySale.values()).forEach(list => {
-      list.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
-    });
-
-    // Task #378 — per-sale round-off applied so far, sourced the same way as
-    // the Exit/Nikasi Register (see getExitRegister below). `amount` is
-    // already the gross amount (inclusive of round_off — see the schema
-    // comment on cashReceipts.roundOff) and amount_applied rows sum to that
-    // gross across sales, so each sale's round-off slice is
-    // (amount_applied / amount) * round_off. Sales History's Cash Paid /
-    // Account Paid cards net this out and surface it in a separate Discount
-    // card, matching the Nikasi Register.
-    const roundOffCashBySale = new Map<string, number>();
-    const roundOffAccountBySale = new Map<string, number>();
-    const roundOffRows = await db
-      .select({
-        saleId: cashReceiptApplications.salesHistoryId,
-        // Task #380 — cast every operand to double precision (and SUM in
-        // double precision) before dividing/multiplying. The underlying
-        // columns are `real` (single-precision, ~7 significant digits);
-        // Postgres's SUM(real) also accumulates in single precision, so
-        // summing this share across many application rows compounds that
-        // imprecision into a visible few-tenths-of-a-rupee drift (e.g. a
-        // ₹30 round-off reading back as ₹29.9). Casting to double precision
-        // keeps the arithmetic and the running total accurate to the paisa.
-        cashRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'cash' THEN
-          ${cashReceiptApplications.amountApplied}::double precision
-          * ${cashReceipts.roundOff}::double precision
-          / NULLIF(${cashReceipts.amount}::double precision, 0)
-        ELSE 0 END), 0)`,
-        accountRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'account' THEN
-          ${cashReceiptApplications.amountApplied}::double precision
-          * ${cashReceipts.roundOff}::double precision
-          / NULLIF(${cashReceipts.amount}::double precision, 0)
-        ELSE 0 END), 0)`,
-      })
-      .from(cashReceiptApplications)
-      .innerJoin(cashReceipts, eq(cashReceipts.id, cashReceiptApplications.cashReceiptId))
-      .where(and(
-        eq(cashReceiptApplications.coldStorageId, coldStorageId),
-        inArray(cashReceiptApplications.salesHistoryId, saleIds),
-        eq(cashReceipts.isReversed, 0),
-        sql`${cashReceipts.roundOff} > 0`,
-      ))
-      .groupBy(cashReceiptApplications.salesHistoryId);
-    for (const r of roundOffRows) {
-      roundOffCashBySale.set(r.saleId, Number(r.cashRoundOff) || 0);
-      roundOffAccountBySale.set(r.saleId, Number(r.accountRoundOff) || 0);
-    }
-
-    return sales.map((sale): SalesHistoryWithLastPayment => ({
-      ...sale,
-      lastPaymentAt: lastPaymentBySale.get(sale.id) ?? null,
-      payments: paymentsBySale.get(sale.id),
-      roundOffCash: roundOffCashBySale.get(sale.id) ?? 0,
-      roundOffAccount: roundOffAccountBySale.get(sale.id) ?? 0,
-    }));
-  }
-
-  async getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, entryYear: number): Promise<SalesHistoryWithLastPayment[]> {
-    // Sibling sales sharing (coldStorageId, coldStorageBillNumber, STOCK
-    // ENTRY year) — the same grouping key the CS-bill cascade uses, so the
-    // "affected rows" preview and the print batch can never disagree with
-    // what an edit would actually touch (Task #354).
-    //
-    // Membership is resolved in SQL (entry year is computed by Postgres
-    // from entry_date, falling back to the lot's created_at); the enriched
-    // rows then come from getSalesHistory so every sibling still carries
-    // `payments` / `lastPaymentAt` for the collective bill timeline.
-    const idRows = await db.select({ id: salesHistory.id })
-      .from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        eq(salesHistory.coldStorageBillNumber, billNumber),
-        sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
-      ));
-    if (idRows.length === 0) return [];
-    const ids = new Set(idRows.map(r => r.id));
-    const all = await this.getSalesHistory(coldStorageId, {});
-    return all.filter(s => ids.has(s.id));
-  }
-
-  async markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined> {
-    const [updated] = await db.update(salesHistory)
-      .set({ 
-        paymentStatus: "paid",
-        paidAt: new Date()
-      })
-      .where(eq(salesHistory.id, saleId))
-      .returning();
-    return updated;
-  }
-
-  async markSaleAsDue(saleId: string): Promise<SalesHistory | undefined> {
-    const [updated] = await db.update(salesHistory)
-      .set({ 
-        paymentStatus: "due",
-        paidAt: null
-      })
-      .where(eq(salesHistory.id, saleId))
-      .returning();
-    return updated;
-  }
-
-  async updateSalesHistoryForTransfer(saleId: string, updates: {
-    clearanceType: string;
-    transferToBuyerName: string;
-    transferToBuyerLedgerId?: string | null;
-    transferGroupId: string;
-    transferDate: Date;
-    transferRemarks: string | null;
-    transferTransactionId?: string;
-    transferAmount?: number;
-    paymentStatus?: string;
-    paidAmount?: number;
-    dueAmount?: number;
-  }): Promise<SalesHistory | undefined> {
-    // Build update object - only include payment fields if provided
-    const updateData: any = {
-      clearanceType: updates.clearanceType,
-      transferToBuyerName: updates.transferToBuyerName,
-      // Task #313 — stamp the destination buyer's ledger UUID alongside the
-      // display name so cold-side FIFO can key on buyer_ledger_id.
-      transferToBuyerLedgerId: updates.transferToBuyerLedgerId ?? null,
-      transferGroupId: updates.transferGroupId,
-      transferDate: updates.transferDate,
-      transferRemarks: updates.transferRemarks,
-      // Clear reversal flags when making a new transfer (in case this was previously reversed)
-      isTransferReversed: 0,
-      transferReversedAt: null,
-    };
-    
-    // Add CF transaction ID for buyer-to-buyer transfers
-    if (updates.transferTransactionId) {
-      updateData.transferTransactionId = updates.transferTransactionId;
-    }
-    
-    // Store the original transfer amount (preserved for display even after FIFO payments)
-    if (updates.transferAmount !== undefined) {
-      updateData.transferAmount = updates.transferAmount;
-    }
-    
-    // Only update payment fields if explicitly provided (for liability transfers, we don't update these)
-    if (updates.paymentStatus !== undefined) {
-      updateData.paymentStatus = updates.paymentStatus;
-      updateData.paidAt = updates.paymentStatus === 'paid' ? new Date() : null;
-    }
-    if (updates.paidAmount !== undefined) {
-      updateData.paidAmount = updates.paidAmount;
-      // Direct overwrite — credit the entire new paidAmount to the matching
-      // bucket based on the row's current paymentMode (or the explicit one
-      // being set in the same call). Better than leaving stale counters.
-      const newPaid = updates.paidAmount || 0;
-      const mode = updates.paymentStatus !== undefined && (updateData as any).paymentMode
-        ? (updateData as any).paymentMode as string
-        : null;
-      // Fall back to existing paymentMode by re-reading the sale row.
-      const [existing] = await db.select({ paymentMode: salesHistory.paymentMode })
-        .from(salesHistory)
-        .where(eq(salesHistory.id, saleId));
-      const effMode = mode || existing?.paymentMode || null;
-      updateData.paidCash = effMode === "cash" ? newPaid : 0;
-      updateData.paidAccount = effMode === "account" ? newPaid : 0;
-    }
-    if (updates.dueAmount !== undefined) {
-      updateData.dueAmount = updates.dueAmount;
-    }
-    
-    const [updated] = await db.update(salesHistory)
-      .set(updateData)
-      .where(eq(salesHistory.id, saleId))
-      .returning();
-    return updated;
-  }
-
-  async reverseBuyerToBuyerTransfer(saleId: string): Promise<{ success: boolean; message?: string; fromBuyer?: string; toBuyer?: string; coldStorageId?: string }> {
-    // Get the sale record
-    const [sale] = await db.select()
-      .from(salesHistory)
-      .where(eq(salesHistory.id, saleId));
-    
-    if (!sale) {
-      return { success: false, message: "Sale record not found" };
-    }
-    
-    // Check if this sale has a buyer-to-buyer transfer
-    if (!sale.transferToBuyerName || sale.clearanceType !== 'transfer') {
-      return { success: false, message: "This sale does not have a buyer-to-buyer transfer to reverse" };
-    }
-    
-    // Check if transfer is already reversed
-    if (sale.isTransferReversed === 1) {
-      return { success: false, message: "This buyer-to-buyer transfer has already been reversed" };
-    }
-    
-    const fromBuyer = sale.buyerName || "";
-    const toBuyer = sale.transferToBuyerName;
-    const coldStorageId = sale.coldStorageId;
-    // Task #313 — capture ledger IDs BEFORE reversal so we recompute by ledger.
-    const fromBuyerLedgerId = sale.buyerLedgerId;
-    const toBuyerLedgerId = sale.transferToBuyerLedgerId;
-    
-    // Mark transfer as reversed (keep fields for history display, just mark as reversed)
-    await db.update(salesHistory)
-      .set({
-        isTransferReversed: 1,
-        transferReversedAt: new Date(),
-      })
-      .where(eq(salesHistory.id, saleId));
-    
-    // Recompute FIFO for both buyers (from original buyer and to transferred buyer).
-    // Task #313 — keyed on buyer_ledger_id. If either side is missing a ledger ID
-    // (legacy null-ledger row), resolve it via ensureBuyerLedgerEntry from the name.
-    if (coldStorageId) {
-      if (fromBuyerLedgerId) {
-        await this.recomputeBuyerPayments(coldStorageId, fromBuyerLedgerId);
-      } else if (fromBuyer) {
-        const entry = await this.ensureBuyerLedgerEntry(coldStorageId, { buyerName: fromBuyer });
-        await this.recomputeBuyerPayments(coldStorageId, entry.id);
-      }
-      if (toBuyerLedgerId) {
-        await this.recomputeBuyerPayments(coldStorageId, toBuyerLedgerId);
-      } else if (toBuyer) {
-        const entry = await this.ensureBuyerLedgerEntry(coldStorageId, { buyerName: toBuyer });
-        await this.recomputeBuyerPayments(coldStorageId, entry.id);
-      }
-    }
-
-    // Task #312 — extras are keyed on `buyerLedgerId`, so the cold-side
-    // recompute by buyerName above does NOT touch extras. The reversed
-    // transfer can change which ledger owns this sale's extras pool, so
-    // re-replay extras for the original (from) buyer ledger here. The
-    // "to" buyer's extras pool is unaffected because extras always stay
-    // with the ORIGINAL buyer ledger (`buyerLedgerId` is never rewritten
-    // by a transfer — only `transferToBuyerName` is set).
-    if (sale.buyerLedgerId && coldStorageId) {
-      await this.recomputeBuyerExtras(sale.buyerLedgerId, coldStorageId);
-    }
-
-    return { success: true, message: "Buyer-to-buyer transfer reversed successfully", fromBuyer, toBuyer, coldStorageId };
-  }
-
-  async updateSalesHistory(saleId: string, updates: {
-    buyerName?: string | null;
-    buyerId?: string | null;
-    buyerLedgerId?: string | null;
-    isSelfSale?: 0 | 1;
-    pricePerKg?: number;
-    paymentStatus?: "paid" | "due" | "partial";
-    paidAmount?: number;
-    dueAmount?: number;
-    paymentMode?: "cash" | "account";
-    netWeight?: number | null;
-    coldCharge?: number;
-    hammali?: number;
-    kataCharges?: number;
-    extraHammali?: number;
-    gradingCharges?: number;
-    // Task #300 — operator-entered per-bag grading rate; null clears, undefined leaves untouched.
-    gradingPerBag?: number | null;
-    coldStorageCharge?: number;
-    baseHammaliAmount?: number;
-    chargeBasis?: "actual" | "totalRemaining";
-    extraDueToMerchant?: number;
-    extraDueHammaliMerchant?: number;
-    extraDueGradingMerchant?: number;
-    extraDueOtherMerchant?: number;
-    adjReceivableSelfDueAmount?: number;
   }): Promise<SalesHistory | undefined> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) return undefined;
@@ -2573,6 +2204,158 @@ export class DatabaseStorage implements IStorage {
     // Note: FIFO recomputation is triggered in routes.ts after update
     return updated;
   }
+
+  async getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, entryYear: number): Promise<SalesHistoryWithLastPayment[]> {
+    // Sibling sales sharing (coldStorageId, coldStorageBillNumber, STOCK
+    // ENTRY year) — the same grouping key the CS-bill cascade uses, so the
+    // "affected rows" preview and the print batch can never disagree with
+    // what an edit would actually touch (Task #354).
+    //
+    // Membership is resolved in SQL (entry year is computed by Postgres
+    // from entry_date, falling back to the lot's created_at); the enriched
+    // rows then come from getSalesHistory so every sibling still carries
+    // `payments` / `lastPaymentAt` for the collective bill timeline.
+    const idRows = await db.select({ id: salesHistory.id })
+      .from(salesHistory)
+      .where(and(
+        eq(salesHistory.coldStorageId, coldStorageId),
+        eq(salesHistory.coldStorageBillNumber, billNumber),
+        sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
+      ));
+    if (idRows.length === 0) return [];
+    const ids = new Set(idRows.map(r => r.id));
+    const all = await this.getSalesHistory(coldStorageId, {});
+    return all.filter(s => ids.has(s.id));
+  }
+
+  async markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined> {
+    const [updated] = await db.update(salesHistory)
+      .set({ 
+        paymentStatus: "paid",
+        paidAt: new Date()
+      })
+      .where(eq(salesHistory.id, saleId))
+      .returning();
+    return updated;
+  }
+
+  async markSaleAsDue(saleId: string): Promise<SalesHistory | undefined> {
+    const [updated] = await db.update(salesHistory)
+      .set({ 
+        paymentStatus: "due",
+        paidAt: null
+      })
+      .where(eq(salesHistory.id, saleId))
+      .returning();
+    return updated;
+  }
+
+  async updateSalesHistoryForTransfer(saleId: string, updates: {
+    clearanceType: string;
+    transferToBuyerName: string;
+    transferToBuyerLedgerId?: string | null;
+    transferGroupId: string;
+    transferDate: Date;
+    transferRemarks: string | null;
+    transferTransactionId?: string;
+    transferAmount?: number;
+    paymentStatus?: string;
+    paidAmount?: number;
+    dueAmount?: number;
+
+  async reverseBuyerToBuyerTransfer(saleId: string): Promise<{ success: boolean; message?: string; fromBuyer?: string; toBuyer?: string; coldStorageId?: string }> {
+    // Get the sale record
+    const [sale] = await db.select()
+      .from(salesHistory)
+      .where(eq(salesHistory.id, saleId));
+    
+    if (!sale) {
+      return { success: false, message: "Sale record not found" };
+    }
+    
+    // Check if this sale has a buyer-to-buyer transfer
+    if (!sale.transferToBuyerName || sale.clearanceType !== 'transfer') {
+      return { success: false, message: "This sale does not have a buyer-to-buyer transfer to reverse" };
+    }
+    
+    // Check if transfer is already reversed
+    if (sale.isTransferReversed === 1) {
+      return { success: false, message: "This buyer-to-buyer transfer has already been reversed" };
+    }
+    
+    const fromBuyer = sale.buyerName || "";
+    const toBuyer = sale.transferToBuyerName;
+    const coldStorageId = sale.coldStorageId;
+    // Task #313 — capture ledger IDs BEFORE reversal so we recompute by ledger.
+    const fromBuyerLedgerId = sale.buyerLedgerId;
+    const toBuyerLedgerId = sale.transferToBuyerLedgerId;
+    
+    // Mark transfer as reversed (keep fields for history display, just mark as reversed)
+    await db.update(salesHistory)
+      .set({
+        isTransferReversed: 1,
+        transferReversedAt: new Date(),
+      })
+      .where(eq(salesHistory.id, saleId));
+    
+    // Recompute FIFO for both buyers (from original buyer and to transferred buyer).
+    // Task #313 — keyed on buyer_ledger_id. If either side is missing a ledger ID
+    // (legacy null-ledger row), resolve it via ensureBuyerLedgerEntry from the name.
+    if (coldStorageId) {
+      if (fromBuyerLedgerId) {
+        await this.recomputeBuyerPayments(coldStorageId, fromBuyerLedgerId);
+      } else if (fromBuyer) {
+        const entry = await this.ensureBuyerLedgerEntry(coldStorageId, { buyerName: fromBuyer });
+        await this.recomputeBuyerPayments(coldStorageId, entry.id);
+      }
+      if (toBuyerLedgerId) {
+        await this.recomputeBuyerPayments(coldStorageId, toBuyerLedgerId);
+      } else if (toBuyer) {
+        const entry = await this.ensureBuyerLedgerEntry(coldStorageId, { buyerName: toBuyer });
+        await this.recomputeBuyerPayments(coldStorageId, entry.id);
+      }
+    }
+
+    // Task #312 — extras are keyed on `buyerLedgerId`, so the cold-side
+    // recompute by buyerName above does NOT touch extras. The reversed
+    // transfer can change which ledger owns this sale's extras pool, so
+    // re-replay extras for the original (from) buyer ledger here. The
+    // "to" buyer's extras pool is unaffected because extras always stay
+    // with the ORIGINAL buyer ledger (`buyerLedgerId` is never rewritten
+    // by a transfer — only `transferToBuyerName` is set).
+    if (sale.buyerLedgerId && coldStorageId) {
+      await this.recomputeBuyerExtras(sale.buyerLedgerId, coldStorageId);
+    }
+
+    return { success: true, message: "Buyer-to-buyer transfer reversed successfully", fromBuyer, toBuyer, coldStorageId };
+  }
+
+  async updateSalesHistory(saleId: string, updates: {
+    buyerName?: string | null;
+    buyerId?: string | null;
+    buyerLedgerId?: string | null;
+    isSelfSale?: 0 | 1;
+    pricePerKg?: number;
+    paymentStatus?: "paid" | "due" | "partial";
+    paidAmount?: number;
+    dueAmount?: number;
+    paymentMode?: "cash" | "account";
+    netWeight?: number | null;
+    coldCharge?: number;
+    hammali?: number;
+    kataCharges?: number;
+    extraHammali?: number;
+    gradingCharges?: number;
+    // Task #300 — operator-entered per-bag grading rate; null clears, undefined leaves untouched.
+    gradingPerBag?: number | null;
+    coldStorageCharge?: number;
+    baseHammaliAmount?: number;
+    chargeBasis?: "actual" | "totalRemaining";
+    extraDueToMerchant?: number;
+    extraDueHammaliMerchant?: number;
+    extraDueGradingMerchant?: number;
+    extraDueOtherMerchant?: number;
+    adjReceivableSelfDueAmount?: number;
 
   async getSalesYears(coldStorageId: string): Promise<number[]> {
     const results = await db.select({ year: salesHistory.saleYear })
@@ -2808,6 +2591,7 @@ export class DatabaseStorage implements IStorage {
 
   // Master Nikasi — bulk self-sale + exit for one farmer/company. All rows
   // share a single freshly-allocated exit bill number and exit date.
+
   async createMasterNikasi(args: {
     coldStorageId: string;
     farmerLedgerId: string;
@@ -2863,6 +2647,7 @@ export class DatabaseStorage implements IStorage {
       // Task #300 — operator-typed per-bag grading rate (audit only).
       gradingPerBag?: number | null;
     }>;
+
   }): Promise<{
     sharedExitBillNumber: number;
     // null when every selected lot was already base-billed AND the
@@ -2909,638 +2694,254 @@ export class DatabaseStorage implements IStorage {
       buyerId: string | null;
       buyerName: string;
     } | null;
+
   }> {
-    const { coldStorageId, farmerLedgerId, buyerLedgerId, exitDate, rows } = args;
-    // Sale rows' soldAt mirrors the operator-picked exitDate so that:
-    //   (a) year(soldAt) == year(exitDate) — the spec's year-scoping rule
-    //       (year(soldAt)) lines up with the bill #'s exitDate-year
-    //       sequencing without an extra column, and
-    //   (b) backdated exits also backdate their sale rows, matching
-    //       createSalesHistory's user-supplied dataSoldAt convention.
-    const saleDate = exitDate;
-
-    if (rows.length === 0) {
-      throw new Error("No rows provided");
+    const [currentBuyer] = await db.select()
+      .from(buyerLedger)
+      .where(eq(buyerLedger.id, id));
+    
+    if (!currentBuyer) {
+      return { buyer: undefined, merged: false };
     }
-
-    // Disallow duplicate lotId in the batch (the dialog also blocks this).
-    const seenLot = new Set<string>();
-    for (const r of rows) {
-      if (seenLot.has(r.lotId)) throw new Error("Duplicate lot in master nikasi batch");
-      seenLot.add(r.lotId);
-    }
-    // Resolve lots up-front so we can also enforce the business key
-    // (Receipt# + Marka#) is unique within the batch.
-    const resolvedLots = await Promise.all(rows.map(async (r) => {
-      const l = await this.getLot(r.lotId);
-      if (!l) throw new Error(`Lot ${r.lotId} not found`);
-      return l;
-    }));
-    const seenReceiptMarka = new Set<string>();
-    for (const lot of resolvedLots) {
-      const key = `${(lot.lotNo || "").trim()}::${(lot.marka || "").trim()}`;
-      if (seenReceiptMarka.has(key)) {
-        throw new Error(`Duplicate Receipt#/Marka# in batch: ${lot.lotNo}/${lot.marka || "-"}`);
+    
+    const mergeCheck = await this.checkBuyerPotentialMerge(id, updates);
+    
+    if (mergeCheck.willMerge) {
+      if (!confirmMerge) {
+        return { buyer: undefined, merged: false, needsConfirmation: true };
       }
-      seenReceiptMarka.add(key);
-    }
-
-    const coldStorage = await this.getColdStorage(coldStorageId);
-    if (!coldStorage) throw new Error("Cold storage not found");
-
-    // Look up farmer entity / custom rates once.
-    const farmerRecords = await this.getFarmerRecords(coldStorageId, undefined, true);
-    const farmerRecord = farmerRecords.find(f => f.farmerLedgerId === farmerLedgerId);
-    if (!farmerRecord) throw new Error("Farmer not found");
-    const farmerEntityType = farmerRecord.entityType || "farmer";
-    const effectiveChargeUnit = farmerEntityType === "company" ? "quintal" : (coldStorage.chargeUnit || "bag");
-
-    // Resolve target buyer (when set the bulk exit is billed to that buyer
-    // instead of being a self-sale; default behavior — null/omitted — keeps
-    // the legacy self-sale path).
-    let buyerRecord: { id: string; buyerId: string | null; buyerName: string } | null = null;
-    if (buyerLedgerId) {
-      const [b] = await db.select().from(buyerLedger).where(and(
-        eq(buyerLedger.id, buyerLedgerId),
-        eq(buyerLedger.coldStorageId, coldStorageId),
-      ));
-      if (!b) throw new Error("Buyer not found in this cold storage");
-      if (b.isArchived === 1) throw new Error("Selected buyer is archived");
-      buyerRecord = { id: b.id, buyerId: b.buyerId ?? null, buyerName: b.buyerName };
-    }
-
-    const userSharedExitBill = args.sharedExitBillNumber ?? null;
-    const userSharedCsBill = args.sharedColdStorageBillNumber ?? null;
-    // Task #395 — shared Delivery Type for the whole batch.
-    const deliveryType = args.deliveryType ?? null;
-
-    const masterNikasiResult = await db.transaction(async (tx) => {
-      // Lock the cold-storage row up front. This serializes all bill-#
-      // checks (shared exit + per-row CS) for this cold storage so two
-      // concurrent batches submitting overlapping numbers cannot both
-      // pass their dup checks before either inserts.
-      await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${coldStorageId} FOR UPDATE`);
-
-      // Task #354 — a Master Nikasi batch shares ONE exit bill # and ONE CS
-      // bill # across all its rows. Both series are keyed to the stock ENTRY
-      // year, so a batch whose lots entered in different years has no single
-      // series to draw from: the shared number would be ambiguous and the
-      // edit cascades (which group by bill # + entry year) could never
-      // reassemble the batch. Reject it and make the operator split the
-      // batch by entry year. In practice this cannot arise — the store is
-      // emptied of the old season's stock before the new season arrives.
-      const entryYearRows = await tx.selectDistinct({
-        y: sql<number>`extract(year from ${lots.createdAt})`,
-      })
-        .from(lots)
-        .where(inArray(lots.id, resolvedLots.map(l => l.id)));
-      const batchEntryYears = Array.from(
-        new Set(entryYearRows.map(r => Number(r.y)).filter(y => Number.isFinite(y))),
-      ).sort((a, b) => a - b);
-      if (batchEntryYears.length === 0) {
-        throw new Error("Cannot determine stock entry year for the selected lots");
-      }
-      if (batchEntryYears.length > 1) {
-        throw new Error(
-          `Master Nikasi cannot mix lots from different stock entry years (${batchEntryYears.join(", ")}). ` +
-          `Create one Master Nikasi per entry year.`,
-        );
-      }
-      const entryYear = batchEntryYears[0];
-
-      // Allocate the shared exit bill number — either honor the user's
-      // override (with entry-year duplicate check, ignoring reversed exits)
-      // or take MAX+1 within the batch's entry-year series.
-      let sharedExitBillNumber: number;
-      if (userSharedExitBill != null) {
-        if (!Number.isFinite(userSharedExitBill) || userSharedExitBill <= 0) {
-          throw new Error("Invalid exit bill number");
-        }
-        const dup = await tx.select({ id: exitHistory.id, exitDate: exitHistory.exitDate })
-          .from(exitHistory)
-          .where(and(
-            eq(exitHistory.coldStorageId, coldStorageId),
-            eq(exitHistory.billNumber, userSharedExitBill),
-            eq(exitHistory.isReversed, 0),
-            sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
-          ));
-        if (dup.length > 0) {
-          const conflictDate: Date = dup[0].exitDate instanceof Date
-            ? dup[0].exitDate
-            : new Date(dup[0].exitDate as string);
-          const onDate = conflictDate.toLocaleDateString("en-IN");
-          throw new Error(`Exit Bill # ${userSharedExitBill} already used on ${onDate}`);
-        }
-        sharedExitBillNumber = userSharedExitBill;
-      } else {
-        // MAX(billNumber) + 1 over (cold storage, entry year) — identical
-        // rule to createExit. The legacy lifetime counter column is no
-        // longer read or written; it cannot express a per-entry-year series.
-        const [maxExitRow] = await tx.select({
-          max: sql<number | null>`MAX(${exitHistory.billNumber})`,
+      
+      // Perform merge - transfer all records to target buyer and archive current
+      const targetBuyer = mergeCheck.targetBuyer!;
+      const buyerNameLower = currentBuyer.buyerName.trim().toLowerCase();
+      
+      // Transfer sales history to target buyer (by buyerLedgerId)
+      await db.update(salesHistory)
+        .set({ 
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
         })
-          .from(exitHistory)
-          .where(and(
-            eq(exitHistory.coldStorageId, coldStorageId),
-            eq(exitHistory.isReversed, 0),
-            sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
-          ));
-        sharedExitBillNumber = ((maxExitRow?.max as number | null) ?? 0) + 1;
-      }
-
-      // Allocate the single shared CS bill # once before the row loop —
-      // mirrors the shared-exit-bill resolution above. The same value is
-      // written to every sales_history row in the batch so that
-      // (coldStorageId, coldStorageBillNumber, entry year) is the
-      // collective batch identity for the print path and the edit cascade.
-      //
-      // Task #354 — scoped to the batch's stock ENTRY year (validated
-      // single-valued above), NOT the operator-picked exit/sale year, so a
-      // January batch of stock stored last season keeps last season's
-      // receipt-book series.
-      //
-      // Task #256 — auto-skip rule: when the operator left the shared
-      // CS Bill # input blank AND every selected lot was ALREADY base-
-      // billed earlier (so this batch will only bill extras, if anything),
-      // we skip the MAX+1 lookup AND the per-row write entirely so every
-      // row in the batch lands with NULL coldStorageBillNumber. Eligibility
-      // is captured at SUBMIT time from the snapshot we read up-front in
-      // resolvedLots — mid-loop CAS flips inside this transaction do not
-      // retroactively change the decision, which keeps the batch's bill #
-      // (or absence thereof) consistent across all sibling rows.
-      const allLotsBaseBilled = resolvedLots.every(l => l.baseColdChargesBilled === 1);
-      let sharedColdStorageBillNumber: number | null;
-      const csYear = entryYear;
-      if (userSharedCsBill != null) {
-        if (!Number.isFinite(userSharedCsBill) || userSharedCsBill <= 0) {
-          throw new Error("Invalid cold storage bill number");
-        }
-        // eq(coldStorageBillNumber, X) excludes NULL rows by SQL three-
-        // valued logic, so the dup check correctly ignores any sibling
-        // batches that legitimately landed with NULL CS bill #.
-        const dupCs = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
-          .from(salesHistory)
-          .where(and(
-            eq(salesHistory.coldStorageId, coldStorageId),
-            eq(salesHistory.coldStorageBillNumber, userSharedCsBill),
-            sql`${SALE_ENTRY_YEAR_SQL} = ${csYear}`,
-          ))
-          .limit(1);
-        if (dupCs.length > 0) {
-          const conflictDate = dupCs[0].soldAt instanceof Date ? dupCs[0].soldAt : new Date();
-          const dd = String(conflictDate.getDate()).padStart(2, "0");
-          const mm = String(conflictDate.getMonth() + 1).padStart(2, "0");
-          const yyyy = conflictDate.getFullYear();
-          throw new Error(`Cold Storage Bill # ${userSharedCsBill} already used on ${dd}/${mm}/${yyyy}`);
-        }
-        sharedColdStorageBillNumber = userSharedCsBill;
-      } else if (allLotsBaseBilled) {
-        // Auto-skip: every lot is already base-billed, so this batch
-        // produces only extras (or nothing). Land all rows with NULL.
-        sharedColdStorageBillNumber = null;
-      } else {
-        // MAX(coldStorageBillNumber) + 1 over (cold storage, entry year).
-        // Identical sequencing rule to assignBillNumber, so a batch and a
-        // single partial sale of same-season stock draw from one series.
-        // The outer FOR UPDATE lock on cold_storages serialises concurrent
-        // assigners.
-        const [maxRow] = await tx.select({
-          max: sql<number | null>`MAX(${salesHistory.coldStorageBillNumber})`,
+        .where(and(
+          eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+          eq(salesHistory.buyerLedgerId, currentBuyer.id)
+        ));
+      
+      // Also transfer legacy sales (no buyerLedgerId) matched by name
+      await db.update(salesHistory)
+        .set({ 
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
         })
-          .from(salesHistory)
-          .where(and(
-            eq(salesHistory.coldStorageId, coldStorageId),
-            sql`${SALE_ENTRY_YEAR_SQL} = ${csYear}`,
-          ));
-        sharedColdStorageBillNumber = ((maxRow?.max as number | null) ?? 0) + 1;
-      }
+        .where(and(
+          eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+          isNull(salesHistory.buyerLedgerId),
+          sql`LOWER(TRIM(${salesHistory.buyerName})) = ${buyerNameLower}`
+        ));
+      
+      // Transfer cash receipts to target buyer (by buyerLedgerId)
+      await db.update(cashReceipts)
+        .set({
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
+          eq(cashReceipts.buyerLedgerId, currentBuyer.id)
+        ));
+      
+      // Also transfer legacy cash receipts (no buyerLedgerId) matched by name
+      await db.update(cashReceipts)
+        .set({
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
+          isNull(cashReceipts.buyerLedgerId),
+          sql`LOWER(TRIM(${cashReceipts.buyerName})) = ${buyerNameLower}`
+        ));
+      
+      // Transfer opening receivables to target buyer (by buyerLedgerId)
+      await db.update(openingReceivables)
+        .set({
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
+          eq(openingReceivables.buyerLedgerId, currentBuyer.id)
+        ));
+      
+      // Also transfer legacy opening receivables (no buyerLedgerId) matched by name
+      await db.update(openingReceivables)
+        .set({
+          buyerName: targetBuyer.buyerName,
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
+          isNull(openingReceivables.buyerLedgerId),
+          sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${buyerNameLower}`
+        ));
+      
+      // Transfer merchant advances to target buyer
+      await db.update(merchantAdvance)
+        .set({
+          buyerLedgerId: targetBuyer.id,
+          buyerId: targetBuyer.buyerId,
+        })
+        .where(and(
+          eq(merchantAdvance.coldStorageId, currentBuyer.coldStorageId),
+          eq(merchantAdvance.buyerLedgerId, currentBuyer.id)
+        ));
+      
+      // Archive the current buyer
+      await db.update(buyerLedger)
+        .set({
+          isArchived: 1,
+          archivedAt: new Date(),
+        })
+        .where(eq(buyerLedger.id, id));
+      
+      // Record merge history
+      await db.insert(buyerLedgerEditHistory).values({
+        id: randomUUID(),
+        buyerLedgerId: targetBuyer.id,
+        coldStorageId: currentBuyer.coldStorageId,
+        editType: 'merge',
+        mergedFromId: id,
+        mergedFromBuyerId: currentBuyer.buyerId,
+        mergedSalesCount: mergeCheck.salesCount,
+        mergedTransfersCount: mergeCheck.transfersCount,
+        mergedTotalDues: String(mergeCheck.totalDues),
+        modifiedBy,
+      });
 
-      const createdSales: Array<{
-        saleId: string;
-        lotId: string;
-        lotNo: string;
-        marka: string | null;
-        bagsExited: number;
-        baseColdCharge: number;
-        kataCharges: number;
-        extraHammaliPerBag: number;
-        extraHammali: number;
-        gradingCharges: number;
-        totalColdStorageCharge: number;
-        coldStorageBillNumber: number | null;
-        potatoType: string;
-        bagType: string;
-        chamberName: string;
-        floor: number;
-        position: string;
-      }> = [];
+      // Task #312 — the merge above rewrote both sales_history.buyer_ledger_id
+      // AND cash_receipts.buyer_ledger_id from source → target. The cold-side
+      // recompute is name-keyed and is handled by the route layer, but the
+      // extras-side FIFO is ledger-keyed and would otherwise see the
+      // pre-merge partition. Replay the TARGET ledger's extras now so newly
+      // adopted receipts redistribute across the combined sales pool. The
+      // source ledger has no remaining extras rows after the rewrite, so
+      // no replay is needed there (and the source is archived in the next
+      // block).
+      await this.recomputeBuyerExtras(targetBuyer.id, currentBuyer.coldStorageId);
 
-      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-        const row = rows[rowIndex];
-        const [lot] = await tx.select().from(lots).where(eq(lots.id, row.lotId));
-        if (!lot) throw new Error(`Lot ${row.lotId} not found`);
-        if (lot.coldStorageId !== coldStorageId) throw new Error("Lot does not belong to this cold storage");
-        if (lot.farmerLedgerId !== farmerLedgerId) throw new Error("Lot does not belong to this farmer");
-        if (row.exitBags <= 0) throw new Error("Exit bags must be > 0");
-        const chamber = await this.getChamber(lot.chamberId);
-        // soldBags is the *commercial* quantity for this row. When the
-        // caller omits it, fall back to exitBags (the legacy contract:
-        // sold == exited). The relationship invariants are
-        //   exitBags >= 1 && soldBags >= exitBags && soldBags <= remainingSize.
-        // We deduct soldBags from remainingSize (commercial inventory)
-        // but only exitBags go into exit_history (physical stock).
-        const soldBags = row.soldBags ?? row.exitBags;
-        if (soldBags <= 0) throw new Error("Sold bags must be > 0");
-        if (soldBags < row.exitBags) {
-          throw new Error(`Lot ${lot.lotNo}: sold bags (${soldBags}) cannot be less than exit bags (${row.exitBags})`);
-        }
-        if (soldBags > lot.remainingSize) {
-          throw new Error(`Lot ${lot.lotNo}: only ${lot.remainingSize} bag(s) remaining`);
-        }
-
-        const useWaferRates = lot.bagType === "wafer";
-        const defaultColdCharge = useWaferRates ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
-        const defaultHammali = useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0);
-        const coldChargeRate = farmerRecord.customColdChargeRate ?? defaultColdCharge;
-        const hammaliRate = farmerRecord.customHammaliRate ?? defaultHammali;
-
-        // Per-row charge basis (mirrors partial-sale path). When
-        // "totalRemaining", we bill base cold + hammali against the
-        // lot's full remainingSize before this row's deduction. We use a
-        // race-safe atomic compare-and-set on lots.baseColdChargesBilled
-        // (0 -> 1) here — winner bills base, loser silently downgrades
-        // to "actual" — so two concurrent submissions (this batch vs.
-        // another partial-sale or another Master Nikasi row hitting the
-        // same lot) cannot double-bill the farmer. Inside this txn the
-        // CAS is also what enforces the per-batch invariant: once an
-        // earlier row in this same loop wins, the second row's CAS sees
-        // the in-tx flag = 1 and downgrades on the spot. No revert path
-        // is needed because the surrounding tx auto-rolls back on error.
-        const requestedBasis = row.chargeBasis ?? "actual";
-        let chargeBasis: "actual" | "totalRemaining" =
-          lot.baseColdChargesBilled === 1 ? "actual" : requestedBasis;
-        let baseAlreadyBilled = lot.baseColdChargesBilled === 1;
-        if (chargeBasis === "totalRemaining" && !baseAlreadyBilled) {
-          const cas = await tx.update(lots)
-            .set({ baseColdChargesBilled: 1 })
-            .where(and(
-              eq(lots.id, lot.id),
-              eq(lots.baseColdChargesBilled, 0),
-            ))
-            .returning({ id: lots.id });
-          if (cas.length === 0) {
-            chargeBasis = "actual";
-            baseAlreadyBilled = true;
-          }
-        }
-        const chargeQuantity = chargeBasis === "totalRemaining"
-          ? lot.remainingSize
-          : soldBags;
-
-        let storageCharge = 0;
-        let baseHammaliAmount = 0;
-        if (baseAlreadyBilled) {
-          storageCharge = 0;
-          baseHammaliAmount = 0;
-        } else if (effectiveChargeUnit === "quintal") {
-          const coldChargeQuintal = (lot.netWeight && lot.size > 0)
-            ? (lot.netWeight * chargeQuantity * coldChargeRate) / (lot.size * 100)
-            : 0;
-          const hammaliPerBag = hammaliRate * chargeQuantity;
-          storageCharge = coldChargeQuintal + hammaliPerBag;
-          baseHammaliAmount = hammaliPerBag;
-        } else {
-          storageCharge = chargeQuantity * (coldChargeRate + hammaliRate);
-          baseHammaliAmount = hammaliRate * chargeQuantity;
-        }
-
-        const kata = row.kataCharges || 0;
-        const extraPerBag = row.extraHammaliPerBag || 0;
-        const extraTotal = extraPerBag * soldBags;
-        const grading = row.gradingCharges || 0;
-        const totalChargeForLot = storageCharge + kata + extraTotal + grading;
-
-        // Atomic, race-safe stock decrement: WHERE clause asserts current
-        // remainingSize is sufficient. If any concurrent write reduced stock
-        // below soldBags, the UPDATE affects 0 rows and we abort the txn.
-        // Note we deduct soldBags (commercial) here — the chamber fill
-        // decrement below uses exitBags (physical).
-        //
-        // The baseColdChargesBilled flag flip is NOT folded into this
-        // UPDATE — it's already done above via the predicate-gated CAS
-        // (lots.baseColdChargesBilled = 0 -> 1) so two concurrent
-        // submissions can't both win. Keeping the two updates separate
-        // is what makes the race-safety provable: the flag-flip's
-        // success is independent of the stock-decrement's success.
-        const updatedLotRows = await tx.update(lots)
-          .set({
-            remainingSize: sql`${lots.remainingSize} - ${soldBags}`,
-            totalDueCharge: sql`COALESCE(${lots.totalDueCharge}, 0) + ${totalChargeForLot}`,
-          })
-          .where(and(
-            eq(lots.id, lot.id),
-            gte(lots.remainingSize, soldBags),
-          ))
-          .returning({ remainingSize: lots.remainingSize });
-        if (updatedLotRows.length === 0) {
-          throw new Error(`Lot ${lot.lotNo}: insufficient remaining bags (concurrent change)`);
-        }
-        const newRemainingSize = updatedLotRows[0].remainingSize;
-        const isLotFullySold = newRemainingSize === 0;
-
-        if (isLotFullySold) {
-          await tx.update(lots).set({
-            saleStatus: "sold",
-            paymentStatus: "due",
-            saleCharge: storageCharge,
-            soldAt: new Date(),
-            upForSale: 0,
-          }).where(eq(lots.id, lot.id));
-        }
-
-        // Lot edit history (mirrors partial-sale path)
-        await tx.insert(lotEditHistory).values({
-          id: randomUUID(),
-          lotId: lot.id,
-          changeType: isLotFullySold ? "final_sale" : "partial_sale",
-          previousData: JSON.stringify({ remainingSize: lot.remainingSize }),
-          newData: JSON.stringify(isLotFullySold
-            ? { remainingSize: 0, saleStatus: "sold" }
-            : { remainingSize: newRemainingSize }),
-          soldQuantity: soldBags,
-          pricePerBag: 0,
-          coldCharge: coldChargeRate,
-          hammali: hammaliRate,
-          pricePerKg: null,
-          buyerName: buyerRecord?.buyerName ?? null,
-          totalPrice: 0,
-          salePaymentStatus: "due",
-          saleCharge: storageCharge,
-        });
-
-        // Create sales_history row (self-sale, due, no buyer)
-        const saleId = await generateSequentialId('sales');
-        const [createdSale] = await tx.insert(salesHistory).values({
-          id: saleId,
-          coldStorageId: lot.coldStorageId,
-          farmerName: lot.farmerName,
-          village: lot.village,
-          tehsil: lot.tehsil,
-          district: lot.district,
-          state: lot.state,
-          contactNumber: lot.contactNumber,
-          lotNo: lot.lotNo,
-          marka: lot.marka || null,
-          lotId: lot.id,
-          chamberName: chamber?.name || "Unknown",
-          floor: lot.floor,
-          position: lot.position,
-          potatoType: lot.type,
-          bagType: lot.bagType,
-          bagTypeLabel: lot.bagTypeLabel || null,
-          quality: lot.quality,
-          originalLotSize: lot.size,
-          saleType: isLotFullySold ? "full" : "partial",
-          quantitySold: soldBags,
-          pricePerBag: coldChargeRate + hammaliRate,
-          coldCharge: coldChargeRate,
-          hammali: hammaliRate,
-          coldStorageCharge: totalChargeForLot,
-          kataCharges: kata,
-          extraHammali: extraTotal,
-          gradingCharges: grading,
-          // Task #300 — only persist when the operator typed a finite number;
-          // otherwise leave NULL (legacy-row shape).
-          gradingPerBag: typeof row.gradingPerBag === "number" && Number.isFinite(row.gradingPerBag) ? row.gradingPerBag : null,
-          netWeight: null,
-          buyerName: buyerRecord?.buyerName ?? null,
-          pricePerKg: null,
-          paymentStatus: "due",
-          paymentMode: null,
-          paidAmount: 0,
-          dueAmount: totalChargeForLot,
-          entryDate: lot.createdAt,
-          saleYear: saleDate.getFullYear(),
-          chargeBasis,
-          chargeUnitAtSale: effectiveChargeUnit,
-          initialNetWeightKg: lot.netWeight || null,
-          baseChargeAmountAtSale: storageCharge,
-          baseHammaliAmount,
-          remainingSizeAtSale: lot.remainingSize,
-          // When buyerRecord is set the bulk exit is billed to that buyer
-          // (regular sale, due tracked under cold_merchant); otherwise the
-          // legacy self-sale path is preserved (due tracked under farmer).
-          isSelfSale: buyerRecord ? 0 : 1,
-          adjReceivableSelfDueAmount: 0,
-          farmerLedgerId: lot.farmerLedgerId || null,
-          farmerId: lot.farmerId || null,
-          buyerLedgerId: buyerRecord?.id ?? null,
-          buyerId: buyerRecord?.buyerId ?? null,
-          soldAt: saleDate,
-          // Task #405 — deliberately omit createdAt so the column's
-          // DB-side defaultNow() fires instead of a JS-side `new Date()`.
-          // Postgres's NOW() is fixed at TRANSACTION START, so a JS
-          // `new Date()` evaluated partway through this tx is always
-          // *later* than the exit_history row's NOW()-derived createdAt
-          // inserted further down in the same transaction. That skew
-          // made getLotBalances' `sale.createdAt <= exit.createdAt`
-          // filter wrongly exclude the sale (and its own exit) from the
-          // point-in-time Balance, showing the full lot size instead of
-          // the correct remainder. Letting both rows share the same
-          // transaction-start NOW() keeps them consistently orderable.
-          // Task #395 — shared Delivery Type for the whole batch; NULL
-          // when the operator left it blank.
-          deliveryType: deliveryType ?? null,
-        } as InsertSalesHistory).returning();
-
-        // Single shared CS bill # — resolved once before the row loop.
-        // Writing the same value to every row in this batch is what
-        // enables the collective bill view: the print path identifies
-        // siblings by (coldStorageId, coldStorageBillNumber, year(soldAt)).
-        // When sharedColdStorageBillNumber is null (auto-skip path —
-        // all lots already base-billed), we leave the column at its
-        // INSERT-time NULL and skip the write entirely so the row stays
-        // bill-less. NULL CS Bill # is a first-class value (Task #256).
-        const coldStorageBillNumber: number | null = sharedColdStorageBillNumber;
-        if (coldStorageBillNumber != null) {
-          await tx.update(salesHistory)
-            .set({ coldStorageBillNumber })
-            .where(eq(salesHistory.id, saleId));
-        }
-
-        // Create exit_history row sharing the master bill number / date.
-        // Task #403 — capture this row's true creation instant so the
-        // caller can resolve the point-in-time Nikasi Balance using the
-        // exit's own createdAt instead of guessing with client-side "now".
-        const [insertedExit] = await tx.insert(exitHistory).values({
-          id: randomUUID(),
-          salesHistoryId: saleId,
-          lotId: lot.id,
-          coldStorageId: lot.coldStorageId,
-          bagsExited: row.exitBags,
-          billNumber: sharedExitBillNumber,
-          exitDate,
-        } as InsertExitHistory).returning({ createdAt: exitHistory.createdAt });
-
-        // Denormalize exit summary onto the sale row (single exit per sale here).
-        const dd = String(exitDate.getDate()).padStart(2, "0");
-        const mm = String(exitDate.getMonth() + 1).padStart(2, "0");
-        const yyyy = exitDate.getFullYear();
-        await tx.update(salesHistory)
-          .set({
-            exitBillNumbers: String(sharedExitBillNumber),
-            exitDates: `${dd}/${mm}/${yyyy}`,
-          })
-          .where(eq(salesHistory.id, saleId));
-
-        createdSales.push({
-          saleId,
-          lotId: lot.id,
-          lotNo: lot.lotNo,
-          marka: lot.marka || null,
-          bagsExited: row.exitBags,
-          baseColdCharge: storageCharge,
-          kataCharges: kata,
-          extraHammaliPerBag: extraPerBag,
-          extraHammali: extraTotal,
-          gradingCharges: grading,
-          totalColdStorageCharge: totalChargeForLot,
-          coldStorageBillNumber,
-          potatoType: lot.type,
-          bagType: lot.bagType,
-          chamberName: chamber?.name || "Unknown",
-          floor: lot.floor,
-          position: lot.position,
-          exitCreatedAt: insertedExit.createdAt,
-        });
-      }
-
-      // ---- Optional inline payment (Task #294) ----------------------------
-      // Allocate `amount + roundOff` top-to-bottom across the freshly-created
-      // sales. One cashReceipts row per touched sale (FIFO-excluded so future
-      // receipts don't re-allocate). Round-off lands on the LAST touched
-      // receipt only. Entire allocation runs inside the same `tx`, so a
-      // mid-batch failure rolls back the whole nikasi.
-      const paymentReceipts: Array<{ receiptId: string; saleId: string; amount: number; roundOff: number }> = [];
-      if (args.payment) {
-        const p = args.payment;
-        const amountOnly = roundAmount(p.amount || 0);
-        const roundOffOnly = roundAmount(p.roundOff || 0);
-        if (amountOnly <= 0) {
-          throw new Error("payment amount must be greater than zero");
-        }
-        if (p.receiptType === "account" && !p.accountId) {
-          throw new Error("bank account is required when payment mode is account");
-        }
-        const totalDue = createdSales.reduce((sum, s) => sum + (s.totalColdStorageCharge || 0), 0);
-        // Per spec: validate / allocate against `amount` only. `roundOff` is
-        // metadata stamped on the LAST touched receipt and does NOT reduce sale
-        // dues (it's a rounding tip captured in cash flow on the receipt row).
-        if (amountOnly > roundAmount(totalDue) + 0.5) {
-          throw new Error(`payment amount (₹${amountOnly}) exceeds total cold-storage due (₹${roundAmount(totalDue)})`);
-        }
-
-        // Top-to-bottom allocation against each sale's freshly-billed due,
-        // distributing `amountOnly` only.
-        const allocations: number[] = new Array(createdSales.length).fill(0);
-        let remaining = amountOnly;
-        for (let i = 0; i < createdSales.length; i++) {
-          if (remaining <= 0) break;
-          const due = roundAmount(createdSales[i].totalColdStorageCharge || 0);
-          const alloc = Math.min(remaining, due);
-          if (alloc > 0) {
-            allocations[i] = roundAmount(alloc);
-            remaining = roundAmount(remaining - alloc);
-          }
-        }
-        // Round-off stamp goes on the LAST touched receipt only.
-        let lastTouchedIdx = -1;
-        for (let i = allocations.length - 1; i >= 0; i--) {
-          if (allocations[i] > 0) { lastTouchedIdx = i; break; }
-        }
-
-        for (let i = 0; i < createdSales.length; i++) {
-          const alloc = allocations[i];
-          if (alloc <= 0) continue;
-          const isLast = i === lastTouchedIdx;
-          const receiptRoundOff = isLast ? roundAmount(p.roundOff || 0) : 0;
-          // Re-read the sale row inside the tx so dueAmount reflects the
-          // just-inserted INSERT (defensive against any later schema where
-          // the sale may already carry partial payment data on creation).
-          const [freshSale] = await tx.select().from(salesHistory)
-            .where(eq(salesHistory.id, createdSales[i].saleId))
-            .limit(1);
-          if (!freshSale) throw new Error(`Sale ${createdSales[i].saleId} not found in tx`);
-          const { receipt } = await this._applyManualPaymentTx(tx, {
-            coldStorageId: args.coldStorageId,
-            sale: freshSale,
-            receiptType: p.receiptType,
-            accountType: null,
-            accountId: p.accountId,
-            grossAmount: alloc,
-            roundOff: receiptRoundOff,
-            receivedAt: p.receivedAt,
-            notes: p.notes,
-          });
-          paymentReceipts.push({
-            receiptId: receipt.id,
-            saleId: createdSales[i].saleId,
-            amount: alloc,
-            roundOff: receiptRoundOff,
-          });
-        }
-      }
-
-      return {
-        sharedExitBillNumber,
-        sharedColdStorageBillNumber,
-        exitDate,
-        deliveryType,
-        sales: createdSales,
-        farmer: {
-          farmerName: farmerRecord.farmerName,
-          contactNumber: farmerRecord.contactNumber,
-          village: farmerRecord.village,
-          tehsil: farmerRecord.tehsil,
-          district: farmerRecord.district,
-          state: farmerRecord.state,
-          entityType: farmerEntityType,
-        },
-        buyer: buyerRecord
-          ? {
-              buyerLedgerId: buyerRecord.id,
-              buyerId: buyerRecord.buyerId,
-              buyerName: buyerRecord.buyerName,
-            }
-          : null,
-        // Receipts created for the inline payment (empty array when no
-        // payment was attached). Order matches createdSales — useful for
-        // the UI to surface "₹X received against N lots".
-        paymentReceipts,
-      };
+      return { buyer: targetBuyer, merged: true, mergedFromId: currentBuyer.buyerId };
+    }
+    
+    // Regular update (no merge)
+    const beforeValues = JSON.stringify({
+      buyerName: currentBuyer.buyerName,
+      address: currentBuyer.address,
+      contactNumber: currentBuyer.contactNumber,
     });
+    
+    const [updated] = await db.update(buyerLedger)
+      .set({
+        buyerName: updates.buyerName?.trim() || currentBuyer.buyerName,
+        address: updates.address?.trim() || currentBuyer.address,
+        contactNumber: updates.contactNumber?.trim() || currentBuyer.contactNumber,
+      })
+      .where(eq(buyerLedger.id, id))
+      .returning();
+    
+    const afterValues = JSON.stringify({
+      buyerName: updated.buyerName,
+      address: updated.address,
+      contactNumber: updated.contactNumber,
+    });
+    
+    // Only create edit history entry if there are actual changes
+    if (beforeValues !== afterValues) {
+      await db.insert(buyerLedgerEditHistory).values({
+        id: randomUUID(),
+        buyerLedgerId: id,
+        coldStorageId: currentBuyer.coldStorageId,
+        editType: 'edit',
+        beforeValues,
+        afterValues,
+        modifiedBy,
+      });
+      
+      // Propagate buyer name changes to all related tables
+      if (currentBuyer.buyerName !== updated.buyerName) {
+        const oldNameLower = currentBuyer.buyerName.trim().toLowerCase();
+        
+        await db.update(salesHistory)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+            eq(salesHistory.buyerLedgerId, id)
+          ));
+        
+        await db.update(cashReceipts)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
+            eq(cashReceipts.buyerLedgerId, id)
+          ));
+        
+        await db.update(openingReceivables)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
+            eq(openingReceivables.buyerLedgerId, id)
+          ));
+        
+        // Also update salesHistory where buyerName matches but buyerLedgerId might be null (legacy)
+        await db.update(salesHistory)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
+            isNull(salesHistory.buyerLedgerId),
+            sql`LOWER(TRIM(${salesHistory.buyerName})) = ${oldNameLower}`
+          ));
+        
+        // Also update cashReceipts where buyerLedgerId might be null (legacy)
+        await db.update(cashReceipts)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
+            isNull(cashReceipts.buyerLedgerId),
+            sql`LOWER(TRIM(${cashReceipts.buyerName})) = ${oldNameLower}`
+          ));
+        
+        // Also update openingReceivables where buyerLedgerId might be null (legacy)
+        await db.update(openingReceivables)
+          .set({ buyerName: updated.buyerName })
+          .where(and(
+            eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
+            isNull(openingReceivables.buyerLedgerId),
+            sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${oldNameLower}`
+          ));
 
-    // Task #333 — Cold Merchant Advance auto-apply for the master nikasi batch.
-    // When the batch is billed to a real buyer (not a self-sale) and that buyer
-    // holds a prepaid advance sitting as unapplied cold-charges credit, replay
-    // the cold-charges FIFO ONCE so the credit drains onto the batch's newly
-    // created sales. Sales already closed by the inline payment are
-    // fifoExclusion=1 and stay untouched, so there is no double-count with the
-    // inline allocation. Runs AFTER the tx commits so the new rows are visible.
-    if (masterNikasiResult.buyer?.buyerLedgerId) {
-      const advanceCredit = await this.getBuyerUnappliedColdChargesCredit(
-        args.coldStorageId,
-        masterNikasiResult.buyer.buyerLedgerId,
-      );
-      if (advanceCredit > 0) {
-        await this.recomputeBuyerPayments(args.coldStorageId, masterNikasiResult.buyer.buyerLedgerId);
+        // Task #312 — buyer rename is one of the six extras-affecting events.
+        // Although the ledger-keyed FIFO does not depend on the buyer_name
+        // text, the legacy buyer_name columns are propagated above so that
+        // pre-rename rows now carry the new buyer_name. Re-replay extras for
+        // this ledger to keep the trigger matrix uniform across all six
+        // events and to converge any legacy rows whose buyer_ledger_id was
+        // just rewritten by the isNull-buyer_ledger_id fallback updates
+        // above (those updates only touch buyer_name, but a future
+        // adjacent change could extend them to ledger ID; this hook keeps
+        // the extras side honest either way).
+        await this.recomputeBuyerExtras(id, currentBuyer.coldStorageId);
       }
     }
-
-    return masterNikasiResult;
+    
+    return { buyer: updated, merged: false };
   }
 
-  // Exit History methods
+  // Archive a buyer
+
   async createExit(data: InsertExitHistory, opts?: { userBillNumber?: number | null }): Promise<ExitHistory> {
     const userBill = opts?.userBillNumber ?? null;
 
@@ -3615,6 +3016,7 @@ export class DatabaseStorage implements IStorage {
 
   // Recompute and persist comma-separated exit bill numbers / dates
   // on the parent sales_history row from live (non-reversed) exit_history rows.
+
   private async syncSaleExitSummary(salesHistoryId: string): Promise<void> {
     const exits = await db.select({
       billNumber: exitHistory.billNumber,
@@ -3688,6 +3090,7 @@ export class DatabaseStorage implements IStorage {
   // so `entryYear` is a required part of the lookup key. Without it this
   // would sweep in an unrelated batch that happens to reuse the number in a
   // different entry season.
+
   async getExitsByBillNumber(coldStorageId: string, billNumber: number, entryYear: number) {
     const rows = await db.select({
       exitId: exitHistory.id,
@@ -3735,119 +3138,62 @@ export class DatabaseStorage implements IStorage {
   // unrelated batch from another season into the same edit. Entry year is
   // immutable, so it stays a stable grouping key even when the operator
   // moves the exit date across a year boundary.
+
   async updateExitsByBillNumber(
     coldStorageId: string,
     oldBillNumber: number,
     entryYear: number,
     opts: { newBillNumber?: number; newExitDate?: Date },
+
   ): Promise<{
-    updatedCount: number;
-    affectedSaleIds: string[];
-    effectiveBillNumber: number;
-    updatedRows: ExitHistory[];
-  }> {
-    if (opts.newBillNumber == null && opts.newExitDate == null) {
-      throw new Error("Nothing to update");
-    }
-    if (opts.newBillNumber != null && (!Number.isFinite(opts.newBillNumber) || opts.newBillNumber <= 0)) {
-      throw new Error("Invalid exit bill number");
-    }
+    rows: Array<{
+      exitId: string;
+      exitDate: Date;
+      billNumber: number;
+      bagsExited: number;
+      saleId: string;
+      farmerName: string;
+      village: string;
+      contactNumber: string;
+      lotNo: string;
+      marka: string | null;
+      coldStorageBillNumber: number | null;
+      potatoType: string;
+      buyerName: string | null;
+      transferToBuyerName: string | null;
+      isTransferReversed: number;
+      isSelfSale: number;
+      paymentStatus: string;
+      paymentMode: string | null;
+      quantitySold: number;
+      coldStorageCharge: number;
+      paidAmount: number;
+      paidCash: number;
+      paidAccount: number;
+      discountAllocated: number;
+      adjPyReceivables: number;
+      adjAdvance: number;
+      adjFreight: number;
+      adjSelfDue: number;
+      dueAmount: number;
+      coldChargeShare: number;
+      paidShare: number;
+      dueShare: number;
+      discountShare: number;
+    }>;
+    summary: {
+      totalBagsExited: number;
+      farmers: number;
+      exitsWithDue: number;
+      coldChargesTotal: number;
+      cashReceived: number;
+      accountReceived: number;
+      discountReceived: number;
+      roundOffReceived: number;
+      receivableAdjReceived: number;
+      amountDue: number;
+    };
 
-    const result = await db.transaction(async (tx) => {
-      // Lock the cold-storage row so concurrent edits / inserts targeting
-      // the same bill # serialize on this counter.
-      await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${coldStorageId} FOR UPDATE`);
-
-      const targetRows = await tx.select({
-        id: exitHistory.id,
-        salesHistoryId: exitHistory.salesHistoryId,
-        exitDate: exitHistory.exitDate,
-      })
-        .from(exitHistory)
-        .where(and(
-          eq(exitHistory.coldStorageId, coldStorageId),
-          eq(exitHistory.billNumber, oldBillNumber),
-          eq(exitHistory.isReversed, 0),
-          sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
-        ));
-
-      if (targetRows.length === 0) {
-        throw new Error(`No active exits found for bill # ${oldBillNumber} in entry year ${entryYear}`);
-      }
-
-      const effectiveBillNumber = opts.newBillNumber ?? oldBillNumber;
-
-      // Entry-year-scoped collision check, excluding the rows we're
-      // updating. Scoped by ENTRY year, not the (possibly edited) exit
-      // date: moving an exit date across a year boundary must not move the
-      // bill into a different series, so the only numbers it can collide
-      // with are the ones already in its own entry-year series.
-      const targetIds = targetRows.map(r => r.id);
-      const dup = await tx.select({ id: exitHistory.id, exitDate: exitHistory.exitDate })
-        .from(exitHistory)
-        .where(and(
-          eq(exitHistory.coldStorageId, coldStorageId),
-          eq(exitHistory.billNumber, effectiveBillNumber),
-          eq(exitHistory.isReversed, 0),
-          sql`${EXIT_ENTRY_YEAR_SQL} = ${entryYear}`,
-          sql`${exitHistory.id} NOT IN (${sql.join(targetIds.map(id => sql`${id}`), sql`, `)})`,
-        ));
-      if (dup.length > 0) {
-        const conflictDate: Date = dup[0].exitDate instanceof Date
-          ? dup[0].exitDate
-          : new Date(dup[0].exitDate as string);
-        const onDate = conflictDate.toLocaleDateString("en-IN");
-        throw new Error(`Exit Bill # ${effectiveBillNumber} already used on ${onDate}`);
-      }
-
-      const updates: { billNumber?: number; exitDate?: Date } = {};
-      if (opts.newBillNumber != null) updates.billNumber = opts.newBillNumber;
-      if (opts.newExitDate != null) updates.exitDate = opts.newExitDate;
-
-      // Update exactly the rows we resolved above — never re-derive the set
-      // from the predicate, so the write can't drift from what the dup check
-      // was validated against.
-      const updatedRows = await tx.update(exitHistory)
-        .set(updates)
-        .where(inArray(exitHistory.id, targetIds))
-        .returning();
-
-      // cold_storages.next_exit_bill_number is deliberately NOT bumped here
-      // (Task #354): the exit series is now MAX+1 per entry year, so that
-      // lifetime counter no longer participates in allocation.
-
-      return {
-        updatedCount: targetRows.length,
-        affectedSaleIds: Array.from(new Set(targetRows.map(r => r.salesHistoryId))),
-        effectiveBillNumber,
-        updatedRows,
-      };
-    });
-
-    // Refresh the denormalised exit-bill / exit-date strings on each
-    // affected sale row so sales-history consumers (NIKASI page, sales
-    // list, etc.) immediately reflect the edit.
-    for (const saleId of result.affectedSaleIds) {
-      await this.syncSaleExitSummary(saleId);
-    }
-
-    return result;
-  }
-
-  // Cascade-edit (or first-time-assign) the CS Bill # and/or sale date
-  // across every sales_history row sharing a (coldStorageBillNumber,
-  // entryYear) within one cold storage. Mirrors updateExitsByBillNumber:
-  //   • FOR UPDATE lock on cold_storages serializes concurrent assigns
-  //   • entry-year-scoped collision check excluding the rows being updated
-  //   • IST-noon-anchored newSoldAt (caller validates calendar/future)
-  //   • saleId path supports first-time assignment when oldBillNumber=null
-  //
-  // Task #354 — the grouping key is the STOCK ENTRY year, not saleYear. A
-  // Master Nikasi batch has no batch/group ID; its rows are held together
-  // only by (bill #, series year). Since the series now restarts per entry
-  // year, saleYear would no longer identify a batch uniquely — and unlike
-  // saleYear (which this very method can edit), entry year is immutable, so
-  // an in-flight date edit can never move rows out of their own group.
   async updateColdStorageBillByNumber(
     coldStorageId: string,
     oldBillNumber: number | null,
@@ -3864,240 +3210,11 @@ export class DatabaseStorage implements IStorage {
       newSoldAt?: Date;
       saleId?: string;
     },
-  ): Promise<{
-    updatedCount: number;
-    affectedSaleIds: string[];
-    effectiveBillNumber: number | null;
-  }> {
-    const isClear = opts.newBillNumber === null;
-    const hasNewBill = opts.newBillNumber !== undefined; // includes null
-    if (!hasNewBill && opts.newSoldAt == null) {
-      throw new Error("Nothing to update");
-    }
-    if (opts.newBillNumber != null && (!Number.isFinite(opts.newBillNumber) || opts.newBillNumber <= 0)) {
-      throw new Error("Invalid CS bill number");
-    }
-    // Clear-to-NULL only makes sense when the row(s) currently have a
-    // bill # (oldBillNumber != null). First-time assignment paths use
-    // saleId + oldBillNumber == null and would have nothing to clear.
-    if (isClear && oldBillNumber == null) {
-      throw new Error("Cannot clear CS Bill # on a sale that already has none");
-    }
 
-    const result = await db.transaction(async (tx) => {
-      // Lock cold_storages row so concurrent assigns serialize.
-      await tx.execute(sql`SELECT id FROM cold_storages WHERE id = ${coldStorageId} FOR UPDATE`);
-
-      // Resolve target rows.
-      let targetRows: Array<{ id: string; soldAt: Date; coldStorageBillNumber: number | null }>;
-      if (oldBillNumber == null) {
-        // First-time assignment path: a single sale that has no CS bill #
-        // yet. saleId is required and the row must be active + bill-less.
-        if (!opts.saleId) {
-          throw new Error("saleId required for first-time CS bill # assignment");
-        }
-        const rows = await tx.select({
-          id: salesHistory.id,
-          soldAt: salesHistory.soldAt,
-          coldStorageBillNumber: salesHistory.coldStorageBillNumber,
-        })
-          .from(salesHistory)
-          .where(and(
-            eq(salesHistory.coldStorageId, coldStorageId),
-            eq(salesHistory.id, opts.saleId),
-          ));
-        if (rows.length === 0) {
-          // Reversed sales are hard-deleted from sales_history, so a
-          // missing row here means either truly-not-found or reversed.
-          throw new Error("Sale not found");
-        }
-        if (rows[0].coldStorageBillNumber != null) {
-          throw new Error(`Sale already has CS Bill # ${rows[0].coldStorageBillNumber}`);
-        }
-        // saleId path supports BOTH first-time bill # assignment AND
-        // date-only edits on a bill-less sale — the dialog exposes the
-        // sale date as editable independently of the bill #, and the
-        // outer "nothing to update" check already rejects fully-empty
-        // calls before we get here.
-        targetRows = rows.map(r => ({
-          id: r.id,
-          soldAt: r.soldAt as Date,
-          coldStorageBillNumber: r.coldStorageBillNumber,
-        }));
-      } else {
-        const rows = await tx.select({
-          id: salesHistory.id,
-          soldAt: salesHistory.soldAt,
-          coldStorageBillNumber: salesHistory.coldStorageBillNumber,
-        })
-          .from(salesHistory)
-          .where(and(
-            eq(salesHistory.coldStorageId, coldStorageId),
-            eq(salesHistory.coldStorageBillNumber, oldBillNumber),
-            sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
-          ));
-        if (rows.length === 0) {
-          throw new Error(`No sales found for CS Bill # ${oldBillNumber} in entry year ${entryYear}`);
-        }
-        targetRows = rows.map(r => ({
-          id: r.id,
-          soldAt: r.soldAt as Date,
-          coldStorageBillNumber: r.coldStorageBillNumber,
-        }));
-      }
-
-      // effectiveBillNumber semantics:
-      //   • undefined newBillNumber → bill # unchanged → keep oldBillNumber
-      //   • null newBillNumber      → CLEAR → effective is null
-      //   • number newBillNumber    → SET   → effective is that number
-      const effectiveBillNumber: number | null = hasNewBill
-        ? (opts.newBillNumber as number | null)
-        : oldBillNumber;
-      const targetIds = targetRows.map(r => r.id);
-
-      // Task #361 — the cascade rewrites EVERY sibling sharing this CS Bill #,
-      // so if any one of them already has money recorded, the whole operation
-      // is refused and nothing is written. Checked inside the transaction (the
-      // cold_storages row is already locked above) so a payment landing
-      // concurrently cannot slip past the guard.
-      // Lock the sibling rows themselves before checking. Every payment path
-      // writes the sale's paid_* columns, so holding these row locks for the
-      // rest of the transaction means a payment landing concurrently must
-      // wait for this cascade to commit or roll back — it cannot slip in
-      // between the check and the UPDATE below.
-      await tx.execute(sql`SELECT id FROM sales_history WHERE id IN (${sql.join(targetIds.map(id => sql`${id}`), sql`, `)}) FOR UPDATE`);
-
-      const paidTargets = await this.findSalesWithRecordedPayment(targetIds, tx);
-      if (paidTargets.length > 0) {
-        const labels = paidTargets.slice(0, 5).map((b) => {
-          const bill = b.coldStorageBillNumber != null ? `, CS Bill # ${b.coldStorageBillNumber}` : "";
-          return `Lot ${b.lotNo}${bill}`;
-        });
-        const more = paidTargets.length > labels.length
-          ? ` and ${paidTargets.length - labels.length} more`
-          : "";
-        throw new Error(
-          `A payment already exists for ${labels.join("; ")}${more}. Reverse the payment first, then make your changes here.`,
-        );
-      }
-
-      // Entry-year-scoped collision check excluding the rows being updated.
-      //
-      // Task #354 — scoped by ENTRY year, never by the (possibly edited)
-      // sale year. This closes the old date-only-edit gap: previously the
-      // check ran against the year derived from the NEW sale date, so moving
-      // a batch's sale date into another calendar year silently moved it
-      // into a different series and could land it on top of an existing
-      // number there. Entry year is immutable, so the series a bill belongs
-      // to cannot be changed by editing dates at all, and the only numbers
-      // it can conflict with are those already in its own series.
-      //
-      // Skipped when clearing to NULL — eq(coldStorageBillNumber, X) never
-      // matches NULL by SQL three-valued logic, so a NULL bill # can never
-      // collide with anything.
-      if (effectiveBillNumber != null) {
-        const dup = await tx.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
-          .from(salesHistory)
-          .where(and(
-            eq(salesHistory.coldStorageId, coldStorageId),
-            eq(salesHistory.coldStorageBillNumber, effectiveBillNumber),
-            sql`${SALE_ENTRY_YEAR_SQL} = ${entryYear}`,
-            sql`${salesHistory.id} NOT IN (${sql.join(targetIds.map(id => sql`${id}`), sql`, `)})`,
-          ));
-        if (dup.length > 0) {
-          const conflictDate: Date = dup[0].soldAt instanceof Date
-            ? dup[0].soldAt
-            : new Date(dup[0].soldAt as string);
-          const onDate = conflictDate.toLocaleDateString("en-IN");
-          throw new Error(`CS Bill # ${effectiveBillNumber} already used on ${onDate}`);
-        }
-      }
-
-      // Drizzle requires explicit null in the .set() payload to write
-      // NULL (omitting the key leaves the column unchanged). Use a
-      // record typed as `unknown` to allow the null branch.
-      const updates: Record<string, unknown> = {};
-      if (hasNewBill) updates.coldStorageBillNumber = opts.newBillNumber; // number | null
-      if (opts.newSoldAt != null) {
-        updates.soldAt = opts.newSoldAt;
-        // saleYear stays a denormalised copy of year(soldAt) — it drives the
-        // sales-list year filter/dropdowns. It is NOT the bill series key
-        // any more (that's the entry year), so keeping it in sync with the
-        // new sale date has no effect on numbering.
-        updates.saleYear = opts.newSoldAt.getFullYear();
-      }
-
-      await tx.update(salesHistory)
-        .set(updates)
-        .where(inArray(salesHistory.id, targetIds));
-
-      // Audit trail: write one sale_edit_history row per affected sale for
-      // each field that actually changed. Mirrors the per-field history
-      // writes done by the main sales-history PATCH route so the Edit
-      // History panel surfaces CS Bill # / Sale Date edits the same way
-      // it surfaces every other editable field. Old/new values are
-      // serialized as plain strings (bill # → integer or NULL on clear,
-      // soldAt → ISO timestamp); the EditSaleDialog formatter renders them.
-      const newBillStr = opts.newBillNumber != null ? String(opts.newBillNumber) : null;
-      const newSoldAtStr = opts.newSoldAt != null ? opts.newSoldAt.toISOString() : null;
-      for (const row of targetRows) {
-        if (hasNewBill) {
-          const oldBillStr = row.coldStorageBillNumber != null ? String(row.coldStorageBillNumber) : null;
-          if (oldBillStr !== newBillStr) {
-            await tx.insert(saleEditHistory).values({
-              id: randomUUID(),
-              saleId: row.id,
-              fieldChanged: "coldStorageBillNumber",
-              oldValue: oldBillStr,
-              newValue: newBillStr,
-            });
-          }
-        }
-        if (opts.newSoldAt != null) {
-          const oldSoldAtIso = row.soldAt instanceof Date
-            ? row.soldAt.toISOString()
-            : new Date(row.soldAt as unknown as string).toISOString();
-          if (oldSoldAtIso !== newSoldAtStr) {
-            await tx.insert(saleEditHistory).values({
-              id: randomUUID(),
-              saleId: row.id,
-              fieldChanged: "soldAt",
-              oldValue: oldSoldAtIso,
-              newValue: newSoldAtStr,
-            });
-          }
-        }
-      }
-
-      return {
-        updatedCount: targetRows.length,
-        affectedSaleIds: targetIds,
-        effectiveBillNumber: effectiveBillNumber ?? null,
-      };
-    });
-
-    // Mirror the exit-cascade pattern: after the cascade commits, fan out
-    // a per-sale refresh hook for every affected sale. syncSaleExitSummary
-    // re-derives the denormalised exit-bill / exit-date strings from the
-    // current exit_history rows; even though a CS-bill-only edit doesn't
-    // structurally change those, calling it keeps every sale-touching
-    // mutation consistent with the same post-commit invariant and is
-    // idempotent for unchanged exit data.
-    for (const saleId of result.affectedSaleIds) {
-      await this.syncSaleExitSummary(saleId);
-    }
-
-    return result;
-  }
-
-  // Task #401 — per-lot Balance for the Nikasi receipt: Remaining Bags
-  // (unsold) + Sold-but-not-yet-physically-exited bags. Mirrors the same
-  // aggregation used by the Stock Register summary tile (routes.ts
-  // /api/lots/summary) but scoped to a specific set of lots instead of a
-  // filtered search, so print flows can resolve it on demand.
   async getLotBalances(
     coldStorageId: string,
     requests: Array<{ lotId: string; asOf: Date }>,
+
   ): Promise<Record<string, number>> {
     const result: Record<string, number> = {};
     if (requests.length === 0) return result;
@@ -4188,6 +3305,7 @@ export class DatabaseStorage implements IStorage {
     coldStorageBillNumber: number | null;
     totalExited: number;
     exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
+
   }>>> {
     const result: Record<string, Array<{
       saleId: string;
@@ -4276,342 +3394,6 @@ export class DatabaseStorage implements IStorage {
       bagType?: string;
       coldStorageBillNumber?: number;
     }
-  ): Promise<{
-    rows: Array<{
-      exitId: string;
-      exitDate: Date;
-      billNumber: number;
-      bagsExited: number;
-      saleId: string;
-      farmerName: string;
-      village: string;
-      contactNumber: string;
-      lotNo: string;
-      marka: string | null;
-      coldStorageBillNumber: number | null;
-      potatoType: string;
-      buyerName: string | null;
-      transferToBuyerName: string | null;
-      isTransferReversed: number;
-      isSelfSale: number;
-      paymentStatus: string;
-      paymentMode: string | null;
-      quantitySold: number;
-      coldStorageCharge: number;
-      paidAmount: number;
-      paidCash: number;
-      paidAccount: number;
-      discountAllocated: number;
-      adjPyReceivables: number;
-      adjAdvance: number;
-      adjFreight: number;
-      adjSelfDue: number;
-      dueAmount: number;
-      coldChargeShare: number;
-      paidShare: number;
-      dueShare: number;
-      discountShare: number;
-    }>;
-    summary: {
-      totalBagsExited: number;
-      farmers: number;
-      exitsWithDue: number;
-      coldChargesTotal: number;
-      cashReceived: number;
-      accountReceived: number;
-      discountReceived: number;
-      roundOffReceived: number;
-      receivableAdjReceived: number;
-      amountDue: number;
-    };
-  }> {
-    const where: SQL[] = [
-      eq(exitHistory.coldStorageId, coldStorageId),
-      eq(exitHistory.isReversed, 0),
-    ];
-
-    if (filters.year) {
-      where.push(sql`EXTRACT(YEAR FROM (${exitHistory.exitDate} AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))::int = ${filters.year}`);
-    }
-    if (filters.months && filters.months.length > 0) {
-      where.push(sql`EXTRACT(MONTH FROM (${exitHistory.exitDate} AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))::int IN (${sql.join(filters.months.map(m => sql`${m}`), sql`, `)})`);
-    }
-    if (filters.days && filters.days.length > 0) {
-      where.push(sql`EXTRACT(DAY FROM (${exitHistory.exitDate} AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata'))::int IN (${sql.join(filters.days.map(d => sql`${d}`), sql`, `)})`);
-    }
-    if (filters.farmerName && filters.farmerName.trim()) {
-      where.push(ilike(salesHistory.farmerName, `%${filters.farmerName.trim()}%`));
-    }
-    if (filters.farmerContact && filters.farmerContact.trim()) {
-      where.push(eq(salesHistory.contactNumber, filters.farmerContact.trim()));
-    }
-    if (filters.village && filters.village.trim()) {
-      const v = filters.village.trim().toLowerCase();
-      where.push(sql`lower(trim(${salesHistory.village})) = ${v}`);
-    }
-    if (filters.bagType && filters.bagType.trim() && filters.bagType !== "all") {
-      const b = filters.bagType.trim().toLowerCase();
-      where.push(sql`lower(${salesHistory.bagType}) = ${b}`);
-    }
-    if (filters.buyerName && filters.buyerName.trim()) {
-      const b = filters.buyerName.trim();
-      // Effective buyer:
-      //   - if isTransferReversed=1 → original buyerName (or self)
-      //   - else if transferToBuyerName is non-empty → transferToBuyerName
-      //   - else → buyerName (or self if isSelfSale)
-      const effectiveBuyer = sql`CASE
-        WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName}
-        WHEN ${salesHistory.transferToBuyerName} IS NOT NULL AND ${salesHistory.transferToBuyerName} <> '' THEN ${salesHistory.transferToBuyerName}
-        ELSE ${salesHistory.buyerName}
-      END`;
-      if (b.toLowerCase() === "self") {
-        // Self only when self-sale AND no active transfer to a different buyer
-        where.push(sql`${salesHistory.isSelfSale} = 1 AND (${salesHistory.transferToBuyerName} IS NULL OR ${salesHistory.transferToBuyerName} = '' OR ${salesHistory.isTransferReversed} = 1)`);
-      } else {
-        where.push(sql`${effectiveBuyer} ILIKE ${`%${b}%`}`);
-      }
-    }
-    if (filters.coldStorageBillNumber != null) {
-      where.push(eq(salesHistory.coldStorageBillNumber, filters.coldStorageBillNumber));
-    }
-
-    const rows = await db
-      .select({
-        exitId: exitHistory.id,
-        exitDate: exitHistory.exitDate,
-        billNumber: exitHistory.billNumber,
-        bagsExited: exitHistory.bagsExited,
-        saleId: salesHistory.id,
-        farmerName: salesHistory.farmerName,
-        village: salesHistory.village,
-        contactNumber: salesHistory.contactNumber,
-        lotNo: salesHistory.lotNo,
-        marka: salesHistory.marka,
-        coldStorageBillNumber: salesHistory.coldStorageBillNumber,
-        potatoType: salesHistory.potatoType,
-        bagType: salesHistory.bagType,
-        buyerName: salesHistory.buyerName,
-        transferToBuyerName: salesHistory.transferToBuyerName,
-        isTransferReversed: salesHistory.isTransferReversed,
-        isSelfSale: salesHistory.isSelfSale,
-        paymentStatus: salesHistory.paymentStatus,
-        paymentMode: salesHistory.paymentMode,
-        quantitySold: salesHistory.quantitySold,
-        coldStorageCharge: salesHistory.coldStorageCharge,
-        paidAmount: salesHistory.paidAmount,
-        paidCash: salesHistory.paidCash,
-        paidAccount: salesHistory.paidAccount,
-        discountAllocated: salesHistory.discountAllocated,
-        adjPyReceivables: salesHistory.adjPyReceivables,
-        adjAdvance: salesHistory.adjAdvance,
-        adjFreight: salesHistory.adjFreight,
-        adjSelfDue: salesHistory.adjSelfDue,
-        dueAmount: salesHistory.dueAmount,
-        farmerId: salesHistory.farmerId,
-        buyerId: salesHistory.buyerId,
-      })
-      .from(exitHistory)
-      .innerJoin(salesHistory, eq(salesHistory.id, exitHistory.salesHistoryId))
-      .where(and(...where))
-      .orderBy(desc(exitHistory.exitDate), desc(exitHistory.billNumber));
-
-    const enriched = rows.map((r) => {
-      const qty = r.quantitySold || 0;
-      const share = qty > 0 ? r.bagsExited / qty : 0;
-      const coldChargeShare = (r.coldStorageCharge || 0) * share;
-      const paidShare = (r.paidAmount || 0) * share;
-      const dueShare = (r.dueAmount || 0) * share;
-      const discountShare = (r.discountAllocated || 0) * share;
-      return {
-        ...r,
-        isTransferReversed: r.isTransferReversed ?? 0,
-        isSelfSale: r.isSelfSale ?? 0,
-        paidAmount: r.paidAmount ?? 0,
-        paidCash: r.paidCash ?? 0,
-        paidAccount: r.paidAccount ?? 0,
-        discountAllocated: r.discountAllocated ?? 0,
-        adjPyReceivables: r.adjPyReceivables ?? 0,
-        adjAdvance: r.adjAdvance ?? 0,
-        adjFreight: r.adjFreight ?? 0,
-        adjSelfDue: r.adjSelfDue ?? 0,
-        dueAmount: r.dueAmount ?? 0,
-        coldChargeShare,
-        paidShare,
-        dueShare,
-        discountShare,
-      };
-    });
-
-    // Cash vs account attribution.
-    // Per-row decision:
-    //   1) If the sale has non-zero per-sale counters (paid_cash / paid_account),
-    //      use them — prorated by bags_exited / quantity_sold like paidShare.
-    //      These are kept in lockstep with paid_amount at every receipt
-    //      application, so they're accurate for any payment recorded after
-    //      the per-sale-split feature shipped.
-    //   2) Otherwise (legacy rows whose counters are still zero), fall back
-    //      to the sale's payment_mode field, same as before. This preserves
-    //      historical reporting without requiring a backfill.
-    // Per-sale round-off applied so far, sourced from the
-    // cash_receipt_applications junction table. Each application's share of
-    // its parent receipt's gross is (amount_applied / (amount + round_off));
-    // multiply by round_off to get the round-off slice attributable to this
-    // sale. Reattributing this from "Cash Received" to "Discount" lets the
-    // exit register surface round-off as a concession instead of bundling it
-    // into cash totals.
-    const saleIdsForRoundOff = enriched.map((r) => r.saleId);
-    const roundOffCashBySale = new Map<string, number>();
-    const roundOffAccountBySale = new Map<string, number>();
-    if (saleIdsForRoundOff.length > 0) {
-      const roundOffRows = await db
-        .select({
-          saleId: cashReceiptApplications.salesHistoryId,
-          // Split by receipt type so we can subtract each slice from the
-          // matching bucket (cashReceived / accountReceived) and preserve the
-          // exit-register invariant: cash + account + discount + due == coldCharges.
-          // `cash_receipts.amount` is the gross amount (already includes
-          // round_off — see the schema comment on cashReceipts.roundOff), and
-          // `amount_applied` rows sum to that same gross amount across sales.
-          // So each sale's share of the gross is amountApplied / amount, and
-          // its round-off slice is that share times round_off — NOT divided
-          // by (amount + roundOff), which would double-count the round-off
-          // and understate the slice attributed to each sale.
-          // Task #380 — cast every operand to double precision (and SUM in
-          // double precision) before dividing/multiplying. The underlying
-          // columns are `real` (single-precision, ~7 significant digits);
-          // Postgres's SUM(real) also accumulates in single precision, so
-          // summing this share across many application rows compounds that
-          // imprecision into a visible few-tenths-of-a-rupee drift (e.g. a
-          // ₹30 round-off reading back as ₹29.9). Casting to double precision
-          // keeps the arithmetic and the running total accurate to the paisa.
-          cashRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'cash' THEN
-            ${cashReceiptApplications.amountApplied}::double precision
-            * ${cashReceipts.roundOff}::double precision
-            / NULLIF(${cashReceipts.amount}::double precision, 0)
-          ELSE 0 END), 0)`,
-          accountRoundOff: sql<number>`COALESCE(SUM(CASE WHEN ${cashReceipts.receiptType} = 'account' THEN
-            ${cashReceiptApplications.amountApplied}::double precision
-            * ${cashReceipts.roundOff}::double precision
-            / NULLIF(${cashReceipts.amount}::double precision, 0)
-          ELSE 0 END), 0)`,
-        })
-        .from(cashReceiptApplications)
-        .innerJoin(cashReceipts, eq(cashReceipts.id, cashReceiptApplications.cashReceiptId))
-        .where(and(
-          eq(cashReceiptApplications.coldStorageId, coldStorageId),
-          inArray(cashReceiptApplications.salesHistoryId, saleIdsForRoundOff),
-          eq(cashReceipts.isReversed, 0),
-          sql`${cashReceipts.roundOff} > 0`,
-        ))
-        .groupBy(cashReceiptApplications.salesHistoryId);
-      for (const r of roundOffRows) {
-        roundOffCashBySale.set(r.saleId, Number(r.cashRoundOff) || 0);
-        roundOffAccountBySale.set(r.saleId, Number(r.accountRoundOff) || 0);
-      }
-    }
-
-    const farmerSet = new Set<string>();
-    let totalBagsExited = 0;
-    let exitsWithDue = 0;
-    let coldChargesTotal = 0;
-    let cashReceived = 0;
-    let accountReceived = 0;
-    let discountReceived = 0;
-    let roundOffCashTotal = 0;
-    let roundOffAccountTotal = 0;
-    let receivableAdjTotal = 0;
-    let cashSelfDueNet = 0;
-    let accountSelfDueNet = 0;
-    let adjSelfDueTotal = 0;
-    let amountDue = 0;
-    for (const r of enriched) {
-      farmerSet.add(r.contactNumber);
-      totalBagsExited += r.bagsExited;
-      if (r.dueShare > 0) exitsWithDue += 1;
-      coldChargesTotal += r.coldChargeShare;
-      amountDue += r.dueShare;
-
-      const qty = r.quantitySold || 0;
-      const share = qty > 0 ? r.bagsExited / qty : 0;
-      const counterTotal = (r.paidCash || 0) + (r.paidAccount || 0);
-      if (counterTotal > 0) {
-        cashReceived += (r.paidCash || 0) * share;
-        accountReceived += (r.paidAccount || 0) * share;
-      } else if (r.paymentMode === "cash") {
-        cashReceived += r.paidShare;
-      } else if (r.paymentMode === "account") {
-        accountReceived += r.paidShare;
-      }
-
-      // Discount portion: per-sale discount from sales_history.discount_allocated
-      // (sale-linked, prorated by bags_exited / quantity_sold). The receipt's
-      // gross amount (amount + roundOff) flows into sales_history.paid_amount
-      // during FIFO application, so the round-off slice is currently part of
-      // cashReceived above. We pull it back out here and add it to the
-      // discount total so round-off concessions are surfaced as discount-like
-      // adjustments rather than cash.
-      discountReceived += r.discountShare;
-      roundOffCashTotal += (roundOffCashBySale.get(r.saleId) || 0) * share;
-      roundOffAccountTotal += (roundOffAccountBySale.get(r.saleId) || 0) * share;
-
-      // Receivable adjustments: FIFO allocations of this sale's payments to
-      // other receivables (PY receivables / advance / freight) and self-sale
-      // due transfers. All four feed the informational "Receivable Adj" card.
-      // Only adjSelfDue inflates this sale's paid_amount AND coldStorageCharge
-      // (the self-due transfer is paid here and re-billed on the other side),
-      // so net it out of cash/account and cold-charges to keep the invariant
-      // cash + account + discount + due == coldCharges intact.
-      const adjPyShare = (r.adjPyReceivables || 0) * share;
-      const adjAdvanceShare = (r.adjAdvance || 0) * share;
-      const adjFreightShare = (r.adjFreight || 0) * share;
-      const adjSelfDueShare = (r.adjSelfDue || 0) * share;
-      receivableAdjTotal += adjPyShare + adjAdvanceShare + adjFreightShare + adjSelfDueShare;
-      // adjSelfDue always inflates this sale's coldStorageCharge (the self-due
-      // transfer is re-billed on this side), so unconditionally net it out of
-      // cold-charges to keep the aggregate invariant
-      // cash + account + discount + due == coldCharges. The matching cash
-      // inflow lives on the partner self-sale row whose paid_amount is the
-      // real cash collected — those two rows balance each other in the totals.
-      // The cash/account net-out, however, only fires when we can attribute
-      // the self-due payment to a bucket (counters or explicit paymentMode);
-      // legacy rows with neither leave cash/account untouched so we don't
-      // double-debit a bucket that never received the inflow on this row.
-      adjSelfDueTotal += adjSelfDueShare;
-      if (counterTotal > 0) {
-        cashSelfDueNet += adjSelfDueShare * ((r.paidCash || 0) / counterTotal);
-        accountSelfDueNet += adjSelfDueShare * ((r.paidAccount || 0) / counterTotal);
-      } else if (r.paymentMode === "cash") {
-        cashSelfDueNet += adjSelfDueShare;
-      } else if (r.paymentMode === "account") {
-        accountSelfDueNet += adjSelfDueShare;
-      }
-    }
-
-    const roundOffTotal = roundOffCashTotal + roundOffAccountTotal;
-    // Subtract each receipt-type's round-off slice from its matching bucket
-    // and roll the combined amount into discount. This keeps the invariant
-    // cash + account + discount + due == coldCharges (modulo rounding).
-    const cashNet = Math.max(0, cashReceived - roundOffCashTotal - cashSelfDueNet);
-    const accountNet = Math.max(0, accountReceived - roundOffAccountTotal - accountSelfDueNet);
-    const coldChargesNet = Math.max(0, coldChargesTotal - adjSelfDueTotal);
-    const discountWithRoundOff = discountReceived + roundOffTotal;
-
-    return {
-      rows: enriched,
-      summary: {
-        totalBagsExited,
-        farmers: farmerSet.size,
-        exitsWithDue,
-        coldChargesTotal: roundAmount(coldChargesNet),
-        cashReceived: roundAmount(cashNet),
-        accountReceived: roundAmount(accountNet),
-        discountReceived: roundAmount(discountWithRoundOff),
-        roundOffReceived: roundAmount(roundOffTotal),
-        receivableAdjReceived: roundAmount(receivableAdjTotal),
-        amountDue: roundAmount(amountDue),
-      },
-    };
-  }
 
   async getExitRegisterYears(coldStorageId: string): Promise<number[]> {
     const rows = await db.execute<{ year: number }>(sql`
@@ -4634,6 +3416,7 @@ export class DatabaseStorage implements IStorage {
     paymentStatus?: "paid" | "due";
     buyerName?: string;
     coldStorageBillNumber?: number;
+
   }): Promise<number> {
     // Count non-reversed exits whose parent sale matches the same filter set
     // used by getSalesHistory, so the Sold/Exit summary card's denominator
@@ -4726,6 +3509,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Cash Receipts methods
+
   async getBuyersWithDues(coldStorageId: string): Promise<{ buyerName: string; totalDue: number; extrasDue: number }[]> {
     // Use Buyer Ledger's netDue for consistent dues across the application
     // netDue = pyReceivables + salesDue + dueTransferIn - dueTransferOut
@@ -5154,6 +3938,7 @@ export class DatabaseStorage implements IStorage {
   //     only; it does NOT change the amount applied to the sale.
   //   - Writes exactly one cashReceipts row + one cashReceiptApplications row,
   //     stamps fifoExclusion=1, and recomputes lot totals via the same exec.
+
   private async _applyManualPaymentTx(
     exec: any,
     args: {
@@ -5167,6 +3952,7 @@ export class DatabaseStorage implements IStorage {
       receivedAt: Date;
       notes: string | null;
     },
+
   ): Promise<{ receipt: CashReceipt }> {
     const { sale, coldStorageId, grossAmount, receivedAt } = args;
     const billedAmount = sale.coldStorageCharge || 0;
@@ -5312,6 +4098,7 @@ export class DatabaseStorage implements IStorage {
   // Tx-aware variant of `recalculateLotTotals`. Use this when the surrounding
   // logic runs inside `db.transaction(...)` so the lot totals reflect the
   // uncommitted sales_history rows in the same tx.
+
   private async _recalculateLotTotalsOn(exec: any, lotId: string): Promise<void> {
     const lotSales = await exec.select().from(salesHistory).where(eq(salesHistory.lotId, lotId));
     let totalPaidCharge = 0;
@@ -5411,24 +4198,96 @@ export class DatabaseStorage implements IStorage {
   // The cash_receipt_applications table records each (cash_receipt → sales_history,
   // amount_applied) pair as receipts are applied. Reversal & recompute paths
   // delete and re-insert so the table always reflects active allocations.
+
   private async recordReceiptApplication(
     coldStorageId: string,
     cashReceiptId: string,
     salesHistoryId: string,
     amountApplied: number,
     appliedAt?: Date | null,
+
   ): Promise<void> {
-    const amt = roundAmount(amountApplied || 0);
-    if (amt <= 0) return;
-    await db.insert(cashReceiptApplications).values({
-      id: randomUUID(),
-      coldStorageId,
-      cashReceiptId,
-      salesHistoryId,
-      amountApplied: amt,
-      ...(appliedAt ? { appliedAt } : {}),
-    });
+    const farmerDetails = {
+      farmerName: farmer.name,
+      contactNumber: farmer.contactNumber,
+      village: farmer.village,
+      tehsil: farmer.tehsil || '',
+      district: farmer.district || '',
+      state: farmer.state || '',
+    };
+    
+    // Update all linked lots
+    await db.update(lots)
+      .set(farmerDetails)
+      .where(eq(lots.farmerLedgerId, farmerLedgerId));
+    
+    // Update all linked opening receivables (farmer receivables)
+    await db.update(openingReceivables)
+      .set({
+        farmerName: farmer.name,
+        contactNumber: farmer.contactNumber,
+        village: farmer.village,
+        tehsil: farmer.tehsil || '',
+        district: farmer.district || '',
+        state: farmer.state || '',
+      })
+      .where(eq(openingReceivables.farmerLedgerId, farmerLedgerId));
+    
+    // Update all linked sales history
+    await db.update(salesHistory)
+      .set(farmerDetails)
+      .where(eq(salesHistory.farmerLedgerId, farmerLedgerId));
+    
+    // Update buyerName on farmer-type cash receipts (stored as "FarmerName (Village)")
+    const farmerDisplayName = `${farmer.name} (${farmer.village})`;
+    await db.update(cashReceipts)
+      .set({ buyerName: farmerDisplayName })
+      .where(eq(cashReceipts.farmerLedgerId, farmerLedgerId));
+
+    // Update discounts — top-level fields + self-allocation buyerName in JSON
+    const farmerDiscountRecords = await db.select()
+      .from(discounts)
+      .where(eq(discounts.farmerLedgerId, farmerLedgerId));
+    const newSelfBuyerName = `${farmer.name.trim()} - ${farmer.contactNumber.trim()} - ${farmer.village.trim()}`;
+    for (const d of farmerDiscountRecords) {
+      const oldSelfBuyerName = `${d.farmerName.trim()} - ${d.contactNumber.trim()} - ${d.village.trim()}`;
+      let updatedAllocations = d.buyerAllocations;
+      try {
+        const allocations = JSON.parse(d.buyerAllocations || '[]');
+        const updated = allocations.map((a: { buyerName?: string; isFarmerSelf?: boolean; amount?: number }) => {
+          if (a.isFarmerSelf || (a.buyerName || '').trim().toLowerCase() === oldSelfBuyerName.toLowerCase()) {
+            return { ...a, buyerName: newSelfBuyerName };
+          }
+          return a;
+        });
+        updatedAllocations = JSON.stringify(updated);
+      } catch (e) {
+        console.warn(`[propagateFarmerDetails] Failed to parse buyerAllocations for discount ${d.id}:`, e);
+      }
+      await db.update(discounts)
+        .set({
+          farmerName: farmer.name,
+          contactNumber: farmer.contactNumber,
+          village: farmer.village,
+          buyerAllocations: updatedAllocations,
+        })
+        .where(eq(discounts.id, d.id));
+    }
   }
+
+  // One-shot cleanup: re-sync the denormalised farmer text fields on every
+  // touchpoint (lots, sales_history, opening_receivables, cash_receipts,
+  // discounts) from the canonical farmer_ledger row they point to via
+  // farmer_ledger_id. Used to repair pre-fix data where the same farmer
+  // had drifting farmer_name / contact_number / village text across
+  // separate receipts (whitespace, NBSP, casing, "+91" prefix) and was
+  // therefore rendered as multiple cards in the Stock Register.
+  //
+  // SAFETY: this method NEVER mutates farmer_ledger_id linkage. It only
+  // copies text fields from farmer_ledger to its already-linked rows.
+  // Touchpoints with NULL farmer_ledger_id (legacy lots) are untouched —
+  // the Stock Register's normalized fallback grouping handles them on
+  // the read path.
 
   private async clearApplicationsForReceipt(receiptId: string): Promise<void> {
     await db.delete(cashReceiptApplications)
@@ -5444,6 +4303,7 @@ export class DatabaseStorage implements IStorage {
   // it through. Excludes manual single-sale closure receipts — those are
   // owned by their target sale (applies_to_sale_id) and must not be
   // cleared/re-FIFO'd by the buyer-wide recompute path.
+
   private async clearApplicationsForBuyer(coldStorageId: string, buyerLedgerId: string, canonicalBuyerName: string): Promise<void> {
     const receiptIds = await db.select({ id: cashReceipts.id })
       .from(cashReceipts)
@@ -5462,31 +4322,12 @@ export class DatabaseStorage implements IStorage {
 
   // Clear applications for farmer receipts matching this farmer identity.
   // Called at the start of recomputeFarmerPayments / WithDiscounts.
+
   private async clearApplicationsForFarmer(
     coldStorageId: string,
     farmerLedgerId: string | null,
     farmerName: string,
     village: string,
-  ): Promise<void> {
-    const buyerDisplayName = `${farmerName.trim()} (${village.trim()})`;
-    // Exclude manual single-sale closure receipts — those are owned by their
-    // target sale (applies_to_sale_id) and must not be cleared/re-FIFO'd by
-    // the farmer-wide recompute path.
-    const receiptIds = await db.select({ id: cashReceipts.id })
-      .from(cashReceipts)
-      .where(and(
-        eq(cashReceipts.coldStorageId, coldStorageId),
-        eq(cashReceipts.payerType, "farmer"),
-        isNull(cashReceipts.appliesToSaleId),
-        sql`(
-          (${cashReceipts.farmerLedgerId} IS NOT NULL AND ${cashReceipts.farmerLedgerId} = ${farmerLedgerId})
-          OR (${cashReceipts.farmerLedgerId} IS NULL AND LOWER(TRIM(${cashReceipts.buyerName})) = LOWER(TRIM(${buyerDisplayName})))
-        )`,
-      ));
-    if (receiptIds.length === 0) return;
-    await db.delete(cashReceiptApplications)
-      .where(inArray(cashReceiptApplications.cashReceiptId, receiptIds.map(r => r.id)));
-  }
 
   async createCashReceiptWithFIFO(data: InsertCashReceipt): Promise<{ receipt: CashReceipt; salesUpdated: number }> {
     let remainingAmount = data.amount;
@@ -5743,6 +4584,7 @@ export class DatabaseStorage implements IStorage {
   // Task #313 — keyed on buyer_ledger_id (canonical) with a legacy name
   // fallback for null-ledger rows. canonicalBuyerName must be the
   // buyer_ledger.buyer_name corresponding to buyerLedgerId.
+
   private async getBuyerDueBalance(coldStorageId: string, buyerLedgerId: string, canonicalBuyerName: string): Promise<number> {
     const normalizedBuyer = canonicalBuyerName.trim().toLowerCase();
     let totalDue = 0;
@@ -6799,183 +5641,14 @@ export class DatabaseStorage implements IStorage {
   // Task #313 — keyed on (buyerLedgerId, canonical buyerName). Both passes
   // use the same ledger-first predicate with a name fallback for legacy
   // null-ledger rows.
+
   private async applyReceiptFIFO(
     receipt: CashReceipt,
     coldStorageId: string,
     buyerLedgerId: string,
     buyerName: string,
     currentYear: number
-  ): Promise<void> {
-    let remainingAmount = receipt.amount;
-    let appliedAmount = 0;
-    const paymentMode = receipt.receiptType as "cash" | "account";
-    // Task #309 — Merchant Extras receipts only touch extras (PASS 2);
-    // cold-charges receipts only touch opening receivables + cold dues
-    // (PASS 0 + PASS 1). No cross-spill between the two due types.
-    const isMerchantExtras = receipt.dueType === "merchant_extras";
 
-    // PASS 0: Apply to opening receivables first (FIFO by createdAt).
-    // Task #313 — ledger-first predicate with legacy name fallback.
-    if (remainingAmount > 0 && !isMerchantExtras) {
-      const buyerReceivables = await db.select()
-        .from(openingReceivables)
-        .where(and(
-          eq(openingReceivables.coldStorageId, coldStorageId),
-          eq(openingReceivables.year, currentYear),
-          eq(openingReceivables.payerType, "cold_merchant"),
-          sql`(
-            (${openingReceivables.buyerLedgerId} IS NOT NULL AND ${openingReceivables.buyerLedgerId} = ${buyerLedgerId})
-            OR (${openingReceivables.buyerLedgerId} IS NULL AND LOWER(TRIM(${openingReceivables.buyerName})) = LOWER(TRIM(${buyerName})))
-          )`,
-          sql`(COALESCE(${openingReceivables.finalAmount}, ${openingReceivables.dueAmount}) - ${openingReceivables.paidAmount}) > 0`
-        ))
-        .orderBy(openingReceivables.createdAt);
-
-      for (const receivable of buyerReceivables) {
-        if (remainingAmount <= 0) break;
-
-        const receivableDue = roundAmount((receivable.finalAmount ?? receivable.dueAmount ?? 0) - (receivable.paidAmount || 0));
-        if (receivableDue <= 0) continue;
-
-        if (remainingAmount >= receivableDue) {
-          const newPaid = roundAmount((receivable.paidAmount || 0) + receivableDue);
-          const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaid, receivable.dueAmount, receipt.receivedAt);
-          await db.update(openingReceivables)
-            .set({ paidAmount: newPaid, ...interestFields })
-            .where(eq(openingReceivables.id, receivable.id));
-          
-          remainingAmount = roundAmount(remainingAmount - receivableDue);
-          appliedAmount = roundAmount(appliedAmount + receivableDue);
-        } else {
-          const newPaidAmount = roundAmount((receivable.paidAmount || 0) + remainingAmount);
-          const interestFields = this.computeInterestAwarePaymentFields(receivable, newPaidAmount, receivable.dueAmount, receipt.receivedAt);
-          await db.update(openingReceivables)
-            .set({ paidAmount: newPaidAmount, ...interestFields })
-            .where(eq(openingReceivables.id, receivable.id));
-          
-          appliedAmount = roundAmount(appliedAmount + remainingAmount);
-          remainingAmount = 0;
-        }
-      }
-    }
-
-    // PASS 1: Apply to cold storage dues (FIFO by soldAt).
-    // Task #313 — keyed on the active-due ledger ID (transfer-aware) with a
-    // legacy name fallback for null-ledger rows.
-    if (remainingAmount > 0 && !isMerchantExtras) {
-      const sales = await db.select()
-        .from(salesHistory)
-        .where(and(
-          eq(salesHistory.coldStorageId, coldStorageId),
-          sql`(
-            (
-              (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) IS NOT NULL
-              AND (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) = ${buyerLedgerId}
-            )
-            OR (
-              (CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerLedgerId} ELSE COALESCE(${salesHistory.transferToBuyerLedgerId}, ${salesHistory.buyerLedgerId}) END) IS NULL
-              AND LOWER(TRIM(CASE WHEN ${salesHistory.isTransferReversed} = 1 THEN ${salesHistory.buyerName} ELSE COALESCE(NULLIF(${salesHistory.transferToBuyerName}, ''), ${salesHistory.buyerName}) END)) = LOWER(TRIM(${buyerName}))
-            )
-          )`,
-          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`,
-          sql`COALESCE(${salesHistory.fifoExclusion}, 0) = 0`
-        ))
-        .orderBy(salesHistory.soldAt);
-
-      for (const sale of sales) {
-        if (remainingAmount <= 0) break;
-
-        const totalCharges = sale.coldStorageCharge || 0;
-        const saleDueAmount = roundAmount(totalCharges - (sale.paidAmount || 0));
-        
-        if (saleDueAmount <= 0) continue;
-
-        if (remainingAmount >= saleDueAmount) {
-          const cashDelta = paymentMode === "cash" ? saleDueAmount : 0;
-          const accountDelta = paymentMode === "account" ? saleDueAmount : 0;
-          await db.update(salesHistory)
-            .set({
-              paymentStatus: "paid",
-              paidAmount: totalCharges,
-              paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
-              paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
-              dueAmount: 0,
-              paymentMode: paymentMode,
-              paidAt: receipt.receivedAt,
-            })
-            .where(eq(salesHistory.id, sale.id));
-          
-          await this.recordReceiptApplication(coldStorageId, receipt.id, sale.id, saleDueAmount, receipt.receivedAt);
-          remainingAmount = roundAmount(remainingAmount - saleDueAmount);
-          appliedAmount = roundAmount(appliedAmount + saleDueAmount);
-        } else {
-          const newPaidAmount = roundAmount((sale.paidAmount || 0) + remainingAmount);
-          const newDueAmount = roundAmount(totalCharges - newPaidAmount);
-          const cashDelta = paymentMode === "cash" ? remainingAmount : 0;
-          const accountDelta = paymentMode === "account" ? remainingAmount : 0;
-          
-          // If remaining due is less than ₹1, treat as fully paid (petty balance threshold)
-          const paymentStatusToSet = newDueAmount < 1 ? "paid" : "partial";
-          
-          await db.update(salesHistory)
-            .set({
-              paymentStatus: paymentStatusToSet,
-              paidAmount: newPaidAmount,
-              paidCash: sql`COALESCE(${salesHistory.paidCash}, 0) + ${cashDelta}`,
-              paidAccount: sql`COALESCE(${salesHistory.paidAccount}, 0) + ${accountDelta}`,
-              dueAmount: newDueAmount,
-              paymentMode: paymentMode,
-            })
-            .where(eq(salesHistory.id, sale.id));
-          
-          await this.recordReceiptApplication(coldStorageId, receipt.id, sale.id, remainingAmount, receipt.receivedAt);
-          appliedAmount = roundAmount(appliedAmount + remainingAmount);
-          remainingAmount = 0;
-        }
-      }
-    }
-
-    // Task #312 — PASS 2 (extras drain) moved into `recomputeBuyerExtras`'s
-    // private replay helper. `applyReceiptFIFO` is now cold-charges-only.
-    // The activeReceipts filter in `recomputeBuyerPayments` excludes
-    // merchant_extras receipts, so `isMerchantExtras` is effectively always
-    // `false` here — the guards above on PASS 0 / PASS 1 are retained
-    // defensively in case a future caller passes a non-cold receipt.
-
-    // Update the receipt's applied/unapplied amounts
-    await db.update(cashReceipts)
-      .set({
-        appliedAmount: appliedAmount,
-        unappliedAmount: remainingAmount,
-      })
-      .where(eq(cashReceipts.id, receipt.id));
-  }
-
-  /**
-   * Task #312 — Reset and replay Merchant Extras FIFO for a single buyer,
-   * keyed on `buyerLedgerId` (NOT on `buyerName` text). This closes the
-   * name-vs-ledger asymmetry that caused the Jatisha under-drain symptom:
-   * a ₹8,720 merchant_extras receipt was only draining ₹560 because the
-   * extras reset/replay queries matched sales by exact `LOWER(TRIM(buyer_name))`,
-   * which silently excluded any extras-bearing sale whose `buyer_name` text
-   * had drifted (rename, capitalisation, trailing space) from the receipt's
-   * `buyer_name`. Routing both reset and replay through `buyer_ledger_id`
-   * removes that text-equality dependency entirely.
-   *
-   * Invariants:
-   *  - Operates ONLY on rows where `buyer_ledger_id = $1` (no name match).
-   *  - Replays every non-reversed merchant_extras receipt for the same
-   *    ledger ID in `receivedAt` ASC order, exactly like the cold-charges
-   *    replay does for its own receipts.
-   *  - Does NOT honour `fifoExclusion` on sales — that flag is a
-   *    cold-charges pool marker (set only by `_applyManualPaymentTx` against
-   *    `due_amount`) and has nothing to do with extras. Honouring it here
-   *    was the Jatisha ₹8,160 under-drain bug.
-   *  - Excludes receipts with `applies_to_sale_id IS NOT NULL` (manual
-   *    single-sale closures own their target sale's payment state).
-   *  - Touches no opening receivables, no cold-charges sales fields, and
-   *    no lot totals — extras-only.
-   */
   async recomputeBuyerExtras(buyerLedgerId: string, coldStorageId: string): Promise<{ salesReset: number; receiptsReplayed: number }> {
     if (!buyerLedgerId || !coldStorageId) {
       return { salesReset: 0, receiptsReplayed: 0 };
@@ -7044,115 +5717,16 @@ export class DatabaseStorage implements IStorage {
    * `appliedAmount` / `unappliedAmount` at the end (mirroring the cold-side
    * `applyReceiptFIFO` contract).
    */
+
   private async _applyMerchantExtrasReceiptByLedger(
     receipt: CashReceipt,
     coldStorageId: string,
     buyerLedgerId: string,
-  ): Promise<void> {
-    let remainingAmount = receipt.amount;
-    let appliedAmount = 0;
 
-    // `fifo_exclusion` is a cold-charges pool flag — see comment in
-    // `recomputeBuyerExtras`. The extras drain must not honour it.
-    const salesWithExtraDue = await db.select()
-      .from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        eq(salesHistory.buyerLedgerId, buyerLedgerId),
-        sql`${salesHistory.extraDueToMerchant} > 0`,
-      ))
-      .orderBy(salesHistory.soldAt);
-
-    for (const sale of salesWithExtraDue) {
-      if (remainingAmount <= 0) break;
-      const extraDue = sale.extraDueToMerchant || 0;
-      if (extraDue <= 0) continue;
-
-      if (remainingAmount >= extraDue) {
-        await db.update(salesHistory)
-          .set({ extraDueToMerchant: 0 })
-          .where(eq(salesHistory.id, sale.id));
-        remainingAmount = roundAmount(remainingAmount - extraDue);
-        appliedAmount = roundAmount(appliedAmount + extraDue);
-      } else {
-        const newExtraDue = roundAmount(extraDue - remainingAmount);
-        await db.update(salesHistory)
-          .set({ extraDueToMerchant: newExtraDue })
-          .where(eq(salesHistory.id, sale.id));
-        appliedAmount = roundAmount(appliedAmount + remainingAmount);
-        remainingAmount = 0;
-      }
-    }
-
-    await db.update(cashReceipts)
-      .set({
-        appliedAmount: appliedAmount,
-        unappliedAmount: remainingAmount,
-      })
-      .where(eq(cashReceipts.id, receipt.id));
-  }
-
-  // Helper: Apply a single discount allocation.
-  // Task #313 — when allocation.buyerLedgerId is present (every #313+ discount
-  // tightens the JSON shape to require it), match the active-due ledger ID on
-  // sales_history first; fall back to the legacy name-equality predicate ONLY
-  // when the active-due ledger column is NULL (legacy pre-#313 sales) or
-  // when the allocation itself lacks a ledger ID (legacy pre-#313 discount).
   private async applyDiscountAllocation(
     discount: Discount,
     allocation: { buyerName: string; amount: number; buyerLedgerId?: string | null },
     coldStorageId: string
-  ): Promise<void> {
-    let remainingAmount = allocation.amount;
-    const allocBuyerLedgerId = allocation.buyerLedgerId ?? null;
-
-    const salesResult = await db.execute(sql`
-      SELECT id, due_amount
-      FROM sales_history
-      WHERE cold_storage_id = ${coldStorageId}
-        AND LOWER(TRIM(farmer_name)) = LOWER(TRIM(${discount.farmerName}))
-        AND LOWER(TRIM(village)) = LOWER(TRIM(${discount.village}))
-        AND TRIM(contact_number) = TRIM(${discount.contactNumber})
-        AND (
-          (
-            ${allocBuyerLedgerId}::text IS NOT NULL
-            AND (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) IS NOT NULL
-            AND (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) = ${allocBuyerLedgerId}
-          )
-          OR (
-            (${allocBuyerLedgerId}::text IS NULL OR (CASE WHEN is_transfer_reversed = 1 THEN buyer_ledger_id ELSE COALESCE(transfer_to_buyer_ledger_id, buyer_ledger_id) END) IS NULL)
-            AND LOWER(TRIM(CASE WHEN is_transfer_reversed = 1 THEN buyer_name ELSE COALESCE(NULLIF(transfer_to_buyer_name, ''), buyer_name) END)) = LOWER(TRIM(${allocation.buyerName}))
-          )
-        )
-        AND due_amount > 0
-        AND COALESCE(fifo_exclusion, 0) = 0
-      ORDER BY sold_at ASC
-    `);
-    
-    for (const row of salesResult.rows as { id: string; due_amount: number }[]) {
-      if (remainingAmount <= 0) break;
-      
-      const saleId = row.id;
-      const currentDue = row.due_amount;
-      const discountToApply = Math.min(remainingAmount, currentDue);
-      const newDue = roundAmount(currentDue - discountToApply);
-      
-      await db.execute(sql`
-        UPDATE sales_history
-        SET 
-          due_amount = (${newDue})::real,
-          paid_amount = paid_amount + (${discountToApply})::real,
-          discount_allocated = COALESCE(discount_allocated, 0) + (${discountToApply})::real,
-          payment_status = CASE 
-            WHEN (${newDue})::real < 1.0 THEN 'paid'
-            ELSE 'partial'
-          END
-        WHERE id = ${saleId}
-      `);
-      
-      remainingAmount = roundAmount(remainingAmount - discountToApply);
-    }
-  }
 
   async recalculateSalesCharges(coldStorageId: string): Promise<{ updated: number; message: string }> {
     // Get all sales for the cold storage
@@ -7317,6 +5891,7 @@ export class DatabaseStorage implements IStorage {
   // Returns null when the row is missing or belongs elsewhere, so a route
   // can answer 404 without a second round-trip. These are the entry points
   // routes should use — never trust a client-supplied year for scoping.
+
   async entryYearForSaleInColdStorage(coldStorageId: string, saleId: string): Promise<number | null> {
     const [row] = await db.select({ y: SALE_ENTRY_YEAR_SQL })
       .from(salesHistory)
@@ -7355,9 +5930,11 @@ export class DatabaseStorage implements IStorage {
    * are `real` — FIFO reversal can leave a float residue like 4.5e-13 that
    * must not read as "paid".
    */
+
   async findSalesWithRecordedPayment(
     saleIds: string[],
     runner: DbRunner = db,
+
   ): Promise<Array<{ id: string; lotNo: string; coldStorageBillNumber: number | null }>> {
     if (saleIds.length === 0) return [];
     const rows = await runner.select({
@@ -7504,6 +6081,7 @@ export class DatabaseStorage implements IStorage {
   // assignment time for safety against concurrent inserts.
   // `entryYear` is the STOCK ENTRY year of the lot being sold (Task #354),
   // not the sale year — the CS bill series is keyed to when stock arrived.
+
   async findColdStorageBillDuplicate(coldStorageId: string, billNumber: number, entryYear: number): Promise<{ id: string; soldAt: Date } | null> {
     const dup = await db.select({ id: salesHistory.id, soldAt: salesHistory.soldAt })
       .from(salesHistory)
@@ -7519,6 +6097,7 @@ export class DatabaseStorage implements IStorage {
   // Read-only hint for the SaleDialog / MasterNikasiDialog "next CS bill #"
   // preview. Mirrors the MAX+1 rule used by assignBillNumber and
   // createMasterNikasi at submit time.
+
   async getNextColdStorageBillNumber(coldStorageId: string, entryYear: number): Promise<number> {
     // Read-only MAX(coldStorageBillNumber) + 1 over (cold_storage, STOCK
     // ENTRY year) — same algorithm the authoritative assigners
@@ -7545,6 +6124,7 @@ export class DatabaseStorage implements IStorage {
   // series (Task #354). Both series now reset per stock entry year, so the
   // Exit dialog's pre-fill has to be derived the same way the allocator
   // derives it instead of reading the legacy lifetime counter column.
+
   async getNextExitBillNumber(coldStorageId: string, entryYear: number): Promise<number> {
     const [maxRow] = await db.select({
       max: sql<number | null>`MAX(${exitHistory.billNumber})`,
@@ -7642,6 +6222,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Admin - Cold Storage Management
+
   async getAllColdStorages(): Promise<ColdStorage[]> {
     return await db.select().from(coldStorages);
   }
@@ -7756,6 +6337,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Cold Storage Users
+
   async getColdStorageUsers(coldStorageId: string): Promise<ColdStorageUser[]> {
     return await db.select()
       .from(coldStorageUsers)
@@ -7792,6 +6374,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Authentication
+
   async authenticateUser(mobileNumber: string, password: string): Promise<{ user: ColdStorageUser; coldStorage: ColdStorage; blocked?: string } | null> {
     const [user] = await db.select()
       .from(coldStorageUsers)
@@ -7828,6 +6411,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Session Management
+
   async createSession(token: string, userId: string, coldStorageId: string): Promise<UserSession> {
     const [session] = await db.insert(userSessions)
       .values({ id: token, userId, coldStorageId })
@@ -7853,6 +6437,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Export methods
+
   async getLotsForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<Lot[]> {
     return db.select()
       .from(lots)
@@ -8061,6 +6646,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Bag type label lookup
+
   async getBagTypeLabels(coldStorageId: string): Promise<{ label: string }[]> {
     const allLots = await db.select({
       bagTypeLabel: lots.bagTypeLabel,
@@ -8088,6 +6674,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Opening Balances
+
   async getOpeningBalance(coldStorageId: string, year: number): Promise<CashOpeningBalance | undefined> {
     const [balance] = await db.select()
       .from(cashOpeningBalances)
@@ -8128,6 +6715,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Opening Receivables
+
   async getOpeningReceivables(coldStorageId: string, year: number): Promise<OpeningReceivable[]> {
     return db.select()
       .from(openingReceivables)
@@ -8249,6 +6837,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Opening Payables
+
   async getOpeningPayables(coldStorageId: string, year: number): Promise<OpeningPayable[]> {
     return db.select()
       .from(openingPayables)
@@ -8281,6 +6870,7 @@ export class DatabaseStorage implements IStorage {
   // Combines dues from both sales_history (self-sales) and opening_receivables (farmer type)
   // Aggregates by farmer composite key (name + phone + village)
   // Uses LOWER/TRIM for case-insensitive, space-trimmed matching
+
   async getFarmersWithDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number }[]> {
     // Only include farmer's OWN dues: opening receivables + self-sales
     // Excludes regular sales to buyers (those are tracked on buyer side)
@@ -8328,6 +6918,7 @@ export class DatabaseStorage implements IStorage {
 
   // Get farmers with ALL dues (farmer-liable + buyer-liable)
   // Used for Discount mode where total dues matter
+
   async getFarmersWithAllDues(coldStorageId: string): Promise<{ farmerName: string; village: string; contactNumber: string; totalDue: number; farmerLiableDue: number; buyerLiableDue: number }[]> {
     const result = await db.execute(sql`
       WITH farmer_liable_dues AS (
@@ -8417,6 +7008,7 @@ export class DatabaseStorage implements IStorage {
   // Get buyer dues for a specific farmer (sorted by latest sale date)
   // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
   // Returns farmer's own dues (receivables + self-sales) as the first entry
+
   async getBuyerDuesForFarmer(coldStorageId: string, farmerName: string, village: string, contactNumber: string): Promise<{ buyerName: string; buyerLedgerId: string | null; totalDue: number; latestSaleDate: Date; isFarmerSelf?: boolean }[]> {
     // Format farmer's own entry name: "FarmerName - Phone - Village"
     const farmerSelfBuyerName = `${farmerName.trim()} - ${contactNumber.trim()} - ${village.trim()}`;
@@ -8529,6 +7121,7 @@ export class DatabaseStorage implements IStorage {
 
   // Create discount with FIFO allocation to reduce sales dues
   // For farmer self allocations: receivables first (by createdAt), then self-sales (by soldAt)
+
   async createDiscountWithFIFO(data: InsertDiscount): Promise<{ discount: Discount; salesUpdated: number }> {
     // Generate transaction ID unique per cold store
     const transactionId = await generateSequentialId('cash_flow', data.coldStorageId);
@@ -8836,6 +7429,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get all discounts for a cold storage
+
   async getDiscounts(coldStorageId: string): Promise<Discount[]> {
     return db.select()
       .from(discounts)
@@ -8844,6 +7438,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Reverse a discount (add back dues to sales and recompute FIFO for affected buyers)
+
   async reverseDiscount(discountId: string): Promise<{ success: boolean; message?: string }> {
     const [discount] = await db.select()
       .from(discounts)
@@ -8934,12 +7529,14 @@ export class DatabaseStorage implements IStorage {
   
   // Recompute farmer payments including both receipts AND discounts for self-sales
   // Uses farmer identity components (name, phone, village) for exact matching
+
   async recomputeFarmerPaymentsWithDiscounts(
     coldStorageId: string, 
     farmerLedgerId: string | null,
     farmerName: string, 
     contactNumber: string, 
     village: string
+
   ): Promise<{ receivablesUpdated: number; selfSalesUpdated: number }> {
     // Wipe stale per-sale application rows for this farmer's receipts so the
     // FIFO replay below can repopulate them deterministically.
@@ -9632,57 +8229,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get total discount allocated for a specific farmer+buyer combination
+
   async getDiscountForFarmerBuyer(
     coldStorageId: string, 
     farmerName: string, 
     village: string, 
     contactNumber: string, 
     buyerName: string
-  ): Promise<number> {
-    // Get all active (non-reversed) discounts for this farmer
-    // Uses LOWER/TRIM for case-insensitive, space-trimmed matching on composite key
-    const discountRows = await db.select()
-      .from(discounts)
-      .where(and(
-        eq(discounts.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${discounts.farmerName})) = LOWER(TRIM(${farmerName}))`,
-        sql`LOWER(TRIM(${discounts.village})) = LOWER(TRIM(${village}))`,
-        sql`TRIM(${discounts.contactNumber}) = TRIM(${contactNumber})`,
-        eq(discounts.isReversed, 0)
-      ));
-    
-    let totalDiscountForBuyer = 0;
-    const normalizedBuyer = buyerName.trim().toLowerCase();
-    
-    for (const discount of discountRows) {
-      try {
-        const allocations: { buyerName: string; amount: number }[] = JSON.parse(discount.buyerAllocations);
-        for (const allocation of allocations) {
-          // Match buyer name (case-insensitive)
-          if (allocation.buyerName.trim().toLowerCase() === normalizedBuyer) {
-            totalDiscountForBuyer += allocation.amount;
-          }
-        }
-      } catch {
-        // Skip invalid JSON
-      }
-    }
-    
-    return totalDiscountForBuyer;
-  }
 
-  async updateFarmerPaymentStatus(saleId: string, status: string, paidAt: string | null): Promise<SalesHistory | undefined> {
-    const [updated] = await db.update(salesHistory)
-      .set({ farmerPaymentStatus: status, farmerPaidAt: paidAt })
-      .where(eq(salesHistory.id, saleId))
-      .returning();
-    return updated;
-  }
-
-  async updateSalesHistoryFarmerDetails(
-    lotId: string,
-    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string; farmerLedgerId?: string; farmerId?: string },
-    oldFarmerDetails: { farmerName: string; village: string; contactNumber: string }
   ): Promise<number> {
     // Filter out undefined values for farmer detail fields
     const filteredUpdates: Record<string, string> = {};
@@ -9734,6 +8288,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Bank Accounts
+
+  async updateFarmerPaymentStatus(saleId: string, status: string, paidAt: string | null): Promise<SalesHistory | undefined> {
+    const [updated] = await db.update(salesHistory)
+      .set({ farmerPaymentStatus: status, farmerPaidAt: paidAt })
+      .where(eq(salesHistory.id, saleId))
+      .returning();
+    return updated;
+  }
+
+  async updateSalesHistoryFarmerDetails(
+    lotId: string,
+    updates: { farmerName?: string; village?: string; tehsil?: string; district?: string; state?: string; contactNumber?: string; farmerLedgerId?: string; farmerId?: string },
+    oldFarmerDetails: { farmerName: string; village: string; contactNumber: string }
+
   async getBankAccounts(coldStorageId: string, year: number): Promise<BankAccount[]> {
     return await db.select()
       .from(bankAccounts)
@@ -10454,6 +9022,7 @@ export class DatabaseStorage implements IStorage {
     newPaidAmount: number,
     defaultPrincipal: number,
     paymentDate?: Date
+
   ): { latestPrincipal?: number; effectiveDate?: Date; previousEffectiveDate?: Date | null; previousLatestPrincipal?: number | null } | null {
     if (record.rateOfInterest <= 0) return null;
     const prevPrincipal = record.latestPrincipal ?? defaultPrincipal;
@@ -10482,6 +9051,7 @@ export class DatabaseStorage implements IStorage {
     effectiveDate: Date,
     annualRate: number,
     today: Date
+
   ): { finalAmount: number; latestPrincipal: number; effectiveDate: Date } {
     let curPrincipal = latestPrincipal;
     let curEffective = new Date(effectiveDate);
@@ -10522,6 +9092,7 @@ export class DatabaseStorage implements IStorage {
     annualRate: number,
     fromDate: Date,
     toDate: Date
+
   ): number {
     const startDate = new Date(fromDate);
     startDate.setHours(0, 0, 0, 0);
@@ -11003,6 +9574,7 @@ export class DatabaseStorage implements IStorage {
   // ============ FARMER LEDGER ============
 
   // Generate farmer composite key for deduplication
+
   private getFarmerCompositeKey(name: string, contactNumber: string, village: string): string {
     return `${name.trim().toLowerCase()}_${contactNumber.trim()}_${village.trim().toLowerCase()}`;
   }
@@ -11010,6 +9582,7 @@ export class DatabaseStorage implements IStorage {
   // Generate unique farmer ID in format FMYYYYMMDD1, FMYYYYMMDD2, etc.
   // Uses atomic dailyIdCounters table to prevent ID reuse even after merges/deletion
   // Safety: unique constraint on farmer_ledger.farmerId + retry logic ensures no duplicates
+
   async generateFarmerId(coldStorageId: string): Promise<string> {
     const now = new Date();
     const dateKey = now.getFullYear().toString() +
@@ -11039,6 +9612,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Sync farmers from all touchpoints: lots, receivables
+
   async syncFarmersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number; lotsLinked: number; receivablesLinked: number }> {
     let added = 0;
     let updated = 0;
@@ -11254,6 +9828,7 @@ export class DatabaseStorage implements IStorage {
 
   // Ensure farmer ledger entry exists - find by composite key or create new
   // Returns the farmerLedger.id (UUID) for linking to lots
+
   async ensureFarmerLedgerEntry(coldStorageId: string, farmerData: {
     name: string;
     contactNumber: string;
@@ -11262,6 +9837,7 @@ export class DatabaseStorage implements IStorage {
     district?: string;
     state?: string;
     entityType?: string;
+
   }, tx?: any): Promise<{
     id: string;
     farmerId: string;
@@ -11271,142 +9847,7 @@ export class DatabaseStorage implements IStorage {
     tehsil: string | null;
     district: string | null;
     state: string | null;
-  }> {
-    const exec = tx ?? db;
-    const key = this.getFarmerCompositeKey(farmerData.name, farmerData.contactNumber, farmerData.village);
-    
-    // Check if farmer already exists with this composite key
-    const existingFarmers = await exec.select()
-      .from(farmerLedger)
-      .where(and(
-        eq(farmerLedger.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${farmerLedger.name})) = ${farmerData.name.trim().toLowerCase()}`,
-        sql`TRIM(${farmerLedger.contactNumber}) = ${farmerData.contactNumber.trim()}`,
-        sql`LOWER(TRIM(${farmerLedger.village})) = ${farmerData.village.trim().toLowerCase()}`
-      ));
-    
-    if (existingFarmers.length > 0) {
-      // Farmer exists - optionally update missing fields
-      const existing = existingFarmers[0];
-      const updates: Partial<FarmerLedgerEntry> = {};
-      
-      if (!existing.tehsil && farmerData.tehsil) updates.tehsil = farmerData.tehsil.trim();
-      if (!existing.district && farmerData.district) updates.district = farmerData.district.trim();
-      if (!existing.state && farmerData.state) updates.state = farmerData.state.trim();
-      
-      if (Object.keys(updates).length > 0) {
-        await exec.update(farmerLedger)
-          .set(updates)
-          .where(eq(farmerLedger.id, existing.id));
-      }
-      
-      // Return canonical fields from the ledger row (post-update) so that
-      // every new touchpoint inserted by the caller (lots, sales, receipts)
-      // copies the SAME canonical text — preventing per-receipt drift in
-      // farmer_name / contact_number / village that would later split the
-      // farmer into multiple cards in the Stock Register grouping.
-      return {
-        id: existing.id,
-        farmerId: existing.farmerId,
-        name: existing.name,
-        contactNumber: existing.contactNumber,
-        village: existing.village,
-        tehsil: updates.tehsil ?? existing.tehsil,
-        district: updates.district ?? existing.district,
-        state: updates.state ?? existing.state,
-      };
-    }
-    
-    // Create new farmer ledger entry.
-    // When called inside a transaction, a unique-constraint violation aborts the
-    // entire transaction in Postgres — we cannot catch and retry inline. Instead
-    // we throw and let the caller re-run the whole transaction. When called
-    // outside a transaction, we keep the original in-line retry loop.
-    // Canonical (trimmed) field values written to the new ledger row;
-    // also returned to the caller so a brand-new farmer's first lot
-    // stores exactly the same trimmed text as the ledger row.
-    const canonicalName = farmerData.name.trim();
-    const canonicalContact = farmerData.contactNumber.trim();
-    const canonicalVillage = farmerData.village.trim();
-    const canonicalTehsil = farmerData.tehsil?.trim() || null;
-    const canonicalDistrict = farmerData.district?.trim() || null;
-    const canonicalState = farmerData.state?.trim() || null;
 
-    if (tx) {
-      const farmerId = await this.generateFarmerId(coldStorageId);
-      const newId = randomUUID();
-      await exec.insert(farmerLedger).values({
-        id: newId,
-        coldStorageId,
-        farmerId,
-        name: canonicalName,
-        contactNumber: canonicalContact,
-        village: canonicalVillage,
-        tehsil: canonicalTehsil,
-        district: canonicalDistrict,
-        state: canonicalState,
-        entityType: farmerData.entityType || "farmer",
-        isFlagged: 0,
-        isArchived: 0,
-      });
-      return {
-        id: newId,
-        farmerId,
-        name: canonicalName,
-        contactNumber: canonicalContact,
-        village: canonicalVillage,
-        tehsil: canonicalTehsil,
-        district: canonicalDistrict,
-        state: canonicalState,
-      };
-    }
-
-    const maxRetries = 3;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const farmerId = await this.generateFarmerId(coldStorageId);
-      const newId = randomUUID();
-      
-      try {
-        await db.insert(farmerLedger).values({
-          id: newId,
-          coldStorageId,
-          farmerId,
-          name: canonicalName,
-          contactNumber: canonicalContact,
-          village: canonicalVillage,
-          tehsil: canonicalTehsil,
-          district: canonicalDistrict,
-          state: canonicalState,
-          entityType: farmerData.entityType || "farmer",
-          isFlagged: 0,
-          isArchived: 0,
-        });
-        
-        return {
-          id: newId,
-          farmerId,
-          name: canonicalName,
-          contactNumber: canonicalContact,
-          village: canonicalVillage,
-          tehsil: canonicalTehsil,
-          district: canonicalDistrict,
-          state: canonicalState,
-        };
-      } catch (error: any) {
-        // Check if it's a unique constraint violation (PostgreSQL error code 23505)
-        // Constraint name: farmer_ledger_cs_fid_idx (composite unique on coldStorageId + farmerId)
-        if (error?.code === '23505' && (error?.constraint?.includes('farmer_id') || error?.constraint?.includes('cs_fid'))) {
-          console.log(`Farmer ID collision detected (attempt ${attempt + 1}/${maxRetries}), retrying...`);
-          continue; // Retry with a new ID
-        }
-        throw error; // Re-throw other errors
-      }
-    }
-    
-    throw new Error('Failed to generate unique farmer ID after multiple attempts');
-  }
-
-  // Create farmer manually — rejects if same name+contactNumber+village already exists
   async createManualFarmer(coldStorageId: string, farmerData: {
     name: string;
     contactNumber: string;
@@ -11417,55 +9858,50 @@ export class DatabaseStorage implements IStorage {
     entityType?: string;
     customColdChargeRate?: number | null;
     customHammaliRate?: number | null;
-  }): Promise<{ id: string; farmerId: string }> {
-    const [existing] = await db.select({ id: farmerLedger.id })
-      .from(farmerLedger)
+
+  }): Promise<{ id: string; buyerId: string }> {
+    // Reject if a buyer with this name already exists
+    const [existing] = await db.select({ id: buyerLedger.id })
+      .from(buyerLedger)
       .where(and(
-        eq(farmerLedger.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${farmerLedger.name})) = ${farmerData.name.trim().toLowerCase()}`,
-        sql`TRIM(${farmerLedger.contactNumber}) = ${farmerData.contactNumber.trim()}`,
-        sql`LOWER(TRIM(${farmerLedger.village})) = ${farmerData.village.trim().toLowerCase()}`
+        eq(buyerLedger.coldStorageId, coldStorageId),
+        sql`LOWER(TRIM(${buyerLedger.buyerName})) = ${buyerData.buyerName.trim().toLowerCase()}`
       ));
 
     if (existing) {
-      const err = new Error('A farmer with this name, contact number, and village already exists') as any;
-      err.code = 'DUPLICATE_FARMER';
+      const err = new Error('A buyer with this name already exists') as any;
+      err.code = 'DUPLICATE_NAME';
       throw err;
     }
 
     const maxRetries = 3;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const farmerId = await this.generateFarmerId(coldStorageId);
+      const buyerId = await this.generateBuyerId(coldStorageId);
       const newId = randomUUID();
       try {
-        await db.insert(farmerLedger).values({
+        await db.insert(buyerLedger).values({
           id: newId,
           coldStorageId,
-          farmerId,
-          name: farmerData.name.trim(),
-          contactNumber: farmerData.contactNumber.trim(),
-          village: farmerData.village.trim(),
-          tehsil: farmerData.tehsil?.trim() || null,
-          district: farmerData.district?.trim() || null,
-          state: farmerData.state?.trim() || null,
-          entityType: farmerData.entityType || "farmer",
-          customColdChargeRate: farmerData.customColdChargeRate ?? null,
-          customHammaliRate: farmerData.customHammaliRate ?? null,
+          buyerId,
+          buyerName: buyerData.buyerName.trim(),
+          address: buyerData.address?.trim() || null,
+          contactNumber: buyerData.contactNumber?.trim() || null,
           isFlagged: 0,
           isArchived: 0,
         });
-        return { id: newId, farmerId };
+        return { id: newId, buyerId };
       } catch (error: any) {
-        if (error?.code === '23505' && (error?.constraint?.includes('farmer_id') || error?.constraint?.includes('cs_fid'))) {
+        if (error?.code === '23505' && (error?.constraint?.includes('buyer_id') || error?.constraint?.includes('cs_bid'))) {
           continue;
         }
         throw error;
       }
     }
-    throw new Error('Failed to generate unique farmer ID after multiple attempts');
+    throw new Error('Failed to generate unique buyer ID after multiple attempts');
   }
 
-  // Get farmer ledger with calculated dues
+  // ==================== Assets ====================
+
   async getFarmerLedger(coldStorageId: string, includeArchived: boolean = false): Promise<{
     farmers: (FarmerLedgerEntry & {
       pyReceivables: number;
@@ -11486,176 +9922,6 @@ export class DatabaseStorage implements IStorage {
       loanDue: number;
       totalDue: number;
     };
-  }> {
-    // Get all farmers
-    let farmers: FarmerLedgerEntry[];
-    if (includeArchived) {
-      farmers = await db.select()
-        .from(farmerLedger)
-        .where(eq(farmerLedger.coldStorageId, coldStorageId))
-        .orderBy(farmerLedger.farmerId);
-    } else {
-      farmers = await db.select()
-        .from(farmerLedger)
-        .where(and(
-          eq(farmerLedger.coldStorageId, coldStorageId),
-          eq(farmerLedger.isArchived, 0)
-        ))
-        .orderBy(farmerLedger.farmerId);
-    }
-    
-    // Calculate dues for each farmer
-    const farmersWithDues = await Promise.all(farmers.map(async (farmer) => {
-      // PY Receivables - from opening receivables (farmer type)
-      // Match by farmerLedgerId (primary) or composite key (fallback for old records)
-      const pyReceivablesData = await db.select({
-        dueAmount: openingReceivables.dueAmount,
-        finalAmount: openingReceivables.finalAmount,
-        paidAmount: openingReceivables.paidAmount,
-      })
-        .from(openingReceivables)
-        .where(and(
-          eq(openingReceivables.coldStorageId, coldStorageId),
-          eq(openingReceivables.payerType, 'farmer'),
-          sql`(
-            (${openingReceivables.farmerLedgerId} IS NOT NULL AND ${openingReceivables.farmerLedgerId} = ${farmer.id})
-            OR (
-              ${openingReceivables.farmerLedgerId} IS NULL
-              AND LOWER(TRIM(${openingReceivables.farmerName})) = ${farmer.name.trim().toLowerCase()}
-              AND TRIM(${openingReceivables.contactNumber}) = ${farmer.contactNumber.trim()}
-              AND LOWER(TRIM(${openingReceivables.village})) = ${farmer.village.trim().toLowerCase()}
-            )
-          )`
-        ));
-      
-      const pyReceivables = pyReceivablesData.reduce((sum, r) => sum + ((r.finalAmount ?? r.dueAmount) - (r.paidAmount || 0)), 0);
-      
-      // Self Due - from self-sales (isSelfSale = 1) where farmer bought their own produce
-      // EXCLUDE self-sales that have been transferred to a buyer (those are now buyer dues)
-      // BUT INCLUDE if transfer was reversed (isTransferReversed = 1) - farmer owes again
-      // Match by farmerLedgerId (primary) or composite key (fallback for old records)
-      const selfSalesData = await db.select({
-        dueAmount: salesHistory.dueAmount,
-      })
-        .from(salesHistory)
-        .where(and(
-          eq(salesHistory.coldStorageId, coldStorageId),
-          eq(salesHistory.isSelfSale, 1),
-          sql`(
-            (${salesHistory.farmerLedgerId} IS NOT NULL AND ${salesHistory.farmerLedgerId} = ${farmer.id})
-            OR (
-              ${salesHistory.farmerLedgerId} IS NULL
-              AND LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}
-              AND TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}
-              AND LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}
-            )
-          )`,
-          sql`(
-            (${salesHistory.transferToBuyerName} IS NULL OR TRIM(${salesHistory.transferToBuyerName}) = '')
-            OR ${salesHistory.isTransferReversed} = 1
-          )`
-        ));
-      
-      const selfDue = selfSalesData.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
-      
-      // Merchant Due - comprises two components:
-      // 1. Cold storage charges from regular sales (buyer owes cold storage, which comes to farmer)
-      // 2. F2B transferred amounts (self-sale debt transferred to buyer)
-      
-      // Component 1: Cold storage charges from regular sales (NOT self-sales)
-      // Match by farmerLedgerId (primary) or composite key (fallback for old records)
-      const merchantSalesData = await db.select({
-        coldStorageCharge: salesHistory.coldStorageCharge,
-        paidAmount: salesHistory.paidAmount,
-        paymentStatus: salesHistory.paymentStatus,
-        adjReceivableSelfDueAmount: salesHistory.adjReceivableSelfDueAmount,
-      })
-        .from(salesHistory)
-        .where(and(
-          eq(salesHistory.coldStorageId, coldStorageId),
-          sql`(${salesHistory.isSelfSale} IS NULL OR ${salesHistory.isSelfSale} != 1)`,
-          sql`(
-            (${salesHistory.farmerLedgerId} IS NOT NULL AND ${salesHistory.farmerLedgerId} = ${farmer.id})
-            OR (
-              ${salesHistory.farmerLedgerId} IS NULL
-              AND LOWER(TRIM(${salesHistory.farmerName})) = ${farmer.name.trim().toLowerCase()}
-              AND TRIM(${salesHistory.contactNumber}) = ${farmer.contactNumber.trim()}
-              AND LOWER(TRIM(${salesHistory.village})) = ${farmer.village.trim().toLowerCase()}
-            )
-          )`,
-          sql`${salesHistory.paymentStatus} IN ('due', 'partial')`
-        ));
-      
-      const merchantSalesDue = merchantSalesData.reduce((sum, s) => {
-        const charge = s.coldStorageCharge || 0;
-        const paid = s.paidAmount || 0;
-        return sum + Math.max(0, charge - paid);
-      }, 0);
-      
-      const merchantDue = merchantSalesDue;
-
-      // Advance & Freight dues - from farmerAdvanceFreight table
-      const advFreightData = await db.select({
-        type: farmerAdvanceFreight.type,
-        finalAmount: farmerAdvanceFreight.finalAmount,
-        paidAmount: farmerAdvanceFreight.paidAmount,
-      })
-        .from(farmerAdvanceFreight)
-        .where(and(
-          eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
-          eq(farmerAdvanceFreight.farmerLedgerId, farmer.id),
-          eq(farmerAdvanceFreight.isReversed, 0)
-        ));
-
-      const advanceDue = advFreightData
-        .filter(r => r.type === 'advance')
-        .reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
-      const freightDue = advFreightData
-        .filter(r => r.type === 'freight')
-        .reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
-
-      const farmerLoanData = await db.select({
-        finalAmount: farmerLoan.finalAmount,
-        paidAmount: farmerLoan.paidAmount,
-      })
-        .from(farmerLoan)
-        .where(and(
-          eq(farmerLoan.coldStorageId, coldStorageId),
-          eq(farmerLoan.farmerLedgerId, farmer.id),
-          eq(farmerLoan.isReversed, 0)
-        ));
-
-      const loanDue = farmerLoanData
-        .reduce((sum, r) => sum + Math.max(0, (r.finalAmount || 0) - (r.paidAmount || 0)), 0);
-      
-      const totalDue = pyReceivables + selfDue + merchantDue + advanceDue + freightDue + loanDue;
-      
-      return {
-        ...farmer,
-        pyReceivables: roundAmount(pyReceivables),
-        selfDue: roundAmount(selfDue),
-        merchantDue: roundAmount(merchantDue),
-        advanceDue: roundAmount(advanceDue),
-        freightDue: roundAmount(freightDue),
-        loanDue: roundAmount(loanDue),
-        totalDue: roundAmount(totalDue),
-      };
-    }));
-    
-    // Calculate summary
-    const summary = {
-      totalFarmers: farmersWithDues.filter(f => f.isArchived === 0).length,
-      pyReceivables: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.pyReceivables, 0)),
-      selfDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.selfDue, 0)),
-      merchantDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.merchantDue, 0)),
-      advanceDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.advanceDue, 0)),
-      freightDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.freightDue, 0)),
-      loanDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.loanDue, 0)),
-      totalDue: roundAmount(farmersWithDues.reduce((sum, f) => sum + f.totalDue, 0)),
-    };
-    
-    return { farmers: farmersWithDues, summary };
-  }
 
   async getFarmerDuesByLedgerId(farmerLedgerId: string, coldStorageId: string): Promise<{ pyReceivables: number; selfDue: number; merchantDue: number; advanceDue: number; freightDue: number; loanDue: number; totalDue: number }> {
     const zero = { pyReceivables: 0, selfDue: 0, merchantDue: 0, advanceDue: 0, freightDue: 0, loanDue: 0, totalDue: 0 };
@@ -11769,6 +10035,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Check if an edit would result in a merge
+
   async checkPotentialMerge(id: string, updates: Partial<FarmerLedgerEntry>): Promise<{
     willMerge: boolean;
     targetFarmer?: FarmerLedgerEntry;
@@ -11776,87 +10043,13 @@ export class DatabaseStorage implements IStorage {
     receivablesCount: number;
     salesCount: number;
     totalDues: number;
-  }> {
-    const [farmer] = await db.select()
-      .from(farmerLedger)
-      .where(eq(farmerLedger.id, id));
-    
-    if (!farmer) {
-      return { willMerge: false, lotsCount: 0, receivablesCount: 0, salesCount: 0, totalDues: 0 };
-    }
-    
-    const newName = updates.name || farmer.name;
-    const newContact = updates.contactNumber || farmer.contactNumber;
-    const newVillage = updates.village || farmer.village;
-    const newKey = this.getFarmerCompositeKey(newName, newContact, newVillage);
-    const oldKey = this.getFarmerCompositeKey(farmer.name, farmer.contactNumber, farmer.village);
-    
-    if (newKey === oldKey) {
-      return { willMerge: false, lotsCount: 0, receivablesCount: 0, salesCount: 0, totalDues: 0 };
-    }
-    
-    const existing = await db.select()
-      .from(farmerLedger)
-      .where(and(
-        eq(farmerLedger.coldStorageId, farmer.coldStorageId),
-        sql`LOWER(TRIM(${farmerLedger.name})) = ${newName.trim().toLowerCase()}`,
-        sql`TRIM(${farmerLedger.contactNumber}) = ${newContact.trim()}`,
-        sql`LOWER(TRIM(${farmerLedger.village})) = ${newVillage.trim().toLowerCase()}`,
-        sql`${farmerLedger.id} != ${id}`
-      ));
-    
-    if (existing.length === 0) {
-      return { willMerge: false, lotsCount: 0, receivablesCount: 0, salesCount: 0, totalDues: 0 };
-    }
-    
-    const existingFarmer = existing[0];
-    
-    // Determine which one will be merged (higher farmerId gets merged into lower)
-    const mergedId = farmer.farmerId < existingFarmer.farmerId ? existingFarmer.id : farmer.id;
-    const targetFarmer = farmer.farmerId < existingFarmer.farmerId ? farmer : existingFarmer;
-    
-    // Count records and dues from the farmer that will be merged
-    const mergedLots = await db.select()
-      .from(lots)
-      .where(eq(lots.farmerLedgerId, mergedId));
-    
-    const mergedReceivables = await db.select()
-      .from(openingReceivables)
-      .where(eq(openingReceivables.farmerLedgerId, mergedId));
-    
-    const mergedSales = await db.select()
-      .from(salesHistory)
-      .where(eq(salesHistory.farmerLedgerId, mergedId));
-    
-    let totalDues = 0;
-    for (const lot of mergedLots) {
-      totalDues += lot.totalDueCharge || 0;
-    }
-    for (const rec of mergedReceivables) {
-      totalDues += rec.dueAmount || 0;
-    }
-    for (const sale of mergedSales) {
-      if (sale.isSelfSale) {
-        totalDues += sale.dueAmount || 0;
-      }
-    }
-    
-    return {
-      willMerge: true,
-      targetFarmer,
-      lotsCount: mergedLots.length,
-      receivablesCount: mergedReceivables.length,
-      salesCount: mergedSales.length,
-      totalDues,
-    };
-  }
 
-  // Update farmer in ledger with merge handling
   async updateFarmerLedger(
     id: string,
     updates: Partial<FarmerLedgerEntry>,
     modifiedBy: string,
     confirmMerge: boolean = false
+
   ): Promise<{ farmer: FarmerLedgerEntry | undefined; merged: boolean; mergedFromId?: string; needsConfirmation?: boolean }> {
     // Get the farmer being updated
     const [farmer] = await db.select()
@@ -12149,91 +10342,11 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Propagate farmer details from farmer_ledger to all linked touchpoints
+
   private async propagateFarmerDetailsToTouchpoints(
     farmerLedgerId: string,
     farmer: FarmerLedgerEntry
-  ): Promise<void> {
-    const farmerDetails = {
-      farmerName: farmer.name,
-      contactNumber: farmer.contactNumber,
-      village: farmer.village,
-      tehsil: farmer.tehsil || '',
-      district: farmer.district || '',
-      state: farmer.state || '',
-    };
-    
-    // Update all linked lots
-    await db.update(lots)
-      .set(farmerDetails)
-      .where(eq(lots.farmerLedgerId, farmerLedgerId));
-    
-    // Update all linked opening receivables (farmer receivables)
-    await db.update(openingReceivables)
-      .set({
-        farmerName: farmer.name,
-        contactNumber: farmer.contactNumber,
-        village: farmer.village,
-        tehsil: farmer.tehsil || '',
-        district: farmer.district || '',
-        state: farmer.state || '',
-      })
-      .where(eq(openingReceivables.farmerLedgerId, farmerLedgerId));
-    
-    // Update all linked sales history
-    await db.update(salesHistory)
-      .set(farmerDetails)
-      .where(eq(salesHistory.farmerLedgerId, farmerLedgerId));
-    
-    // Update buyerName on farmer-type cash receipts (stored as "FarmerName (Village)")
-    const farmerDisplayName = `${farmer.name} (${farmer.village})`;
-    await db.update(cashReceipts)
-      .set({ buyerName: farmerDisplayName })
-      .where(eq(cashReceipts.farmerLedgerId, farmerLedgerId));
 
-    // Update discounts — top-level fields + self-allocation buyerName in JSON
-    const farmerDiscountRecords = await db.select()
-      .from(discounts)
-      .where(eq(discounts.farmerLedgerId, farmerLedgerId));
-    const newSelfBuyerName = `${farmer.name.trim()} - ${farmer.contactNumber.trim()} - ${farmer.village.trim()}`;
-    for (const d of farmerDiscountRecords) {
-      const oldSelfBuyerName = `${d.farmerName.trim()} - ${d.contactNumber.trim()} - ${d.village.trim()}`;
-      let updatedAllocations = d.buyerAllocations;
-      try {
-        const allocations = JSON.parse(d.buyerAllocations || '[]');
-        const updated = allocations.map((a: { buyerName?: string; isFarmerSelf?: boolean; amount?: number }) => {
-          if (a.isFarmerSelf || (a.buyerName || '').trim().toLowerCase() === oldSelfBuyerName.toLowerCase()) {
-            return { ...a, buyerName: newSelfBuyerName };
-          }
-          return a;
-        });
-        updatedAllocations = JSON.stringify(updated);
-      } catch (e) {
-        console.warn(`[propagateFarmerDetails] Failed to parse buyerAllocations for discount ${d.id}:`, e);
-      }
-      await db.update(discounts)
-        .set({
-          farmerName: farmer.name,
-          contactNumber: farmer.contactNumber,
-          village: farmer.village,
-          buyerAllocations: updatedAllocations,
-        })
-        .where(eq(discounts.id, d.id));
-    }
-  }
-
-  // One-shot cleanup: re-sync the denormalised farmer text fields on every
-  // touchpoint (lots, sales_history, opening_receivables, cash_receipts,
-  // discounts) from the canonical farmer_ledger row they point to via
-  // farmer_ledger_id. Used to repair pre-fix data where the same farmer
-  // had drifting farmer_name / contact_number / village text across
-  // separate receipts (whitespace, NBSP, casing, "+91" prefix) and was
-  // therefore rendered as multiple cards in the Stock Register.
-  //
-  // SAFETY: this method NEVER mutates farmer_ledger_id linkage. It only
-  // copies text fields from farmer_ledger to its already-linked rows.
-  // Touchpoints with NULL farmer_ledger_id (legacy lots) are untouched —
-  // the Stock Register's normalized fallback grouping handles them on
-  // the read path.
   async resyncTouchpointsFromFarmerLedger(coldStorageId: string): Promise<{ farmersScanned: number }> {
     const farmers = await db.select()
       .from(farmerLedger)
@@ -12245,6 +10358,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Archive a farmer
+
   async archiveFarmerLedger(id: string, modifiedBy: string): Promise<boolean> {
     const [farmer] = await db.update(farmerLedger)
       .set({
@@ -12270,6 +10384,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Reinstate an archived farmer
+
   async reinstateFarmerLedger(id: string, modifiedBy: string): Promise<boolean> {
     const [farmer] = await db.update(farmerLedger)
       .set({
@@ -12295,6 +10410,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Toggle farmer flag
+
   async toggleFarmerFlag(id: string, modifiedBy: string): Promise<FarmerLedgerEntry | undefined> {
     const [farmer] = await db.select()
       .from(farmerLedger)
@@ -12323,6 +10439,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get edit history for a farmer
+
   async getFarmerLedgerEditHistory(farmerLedgerId: string): Promise<FarmerLedgerEditHistoryEntry[]> {
     return await db.select()
       .from(farmerLedgerEditHistory)
@@ -12333,11 +10450,13 @@ export class DatabaseStorage implements IStorage {
   // ==================== BUYER LEDGER METHODS ====================
 
   // Helper to get buyer name normalized key (just name, case-insensitive, trimmed)
+
   private getBuyerCompositeKey(buyerName: string): string {
     return buyerName.trim().toLowerCase();
   }
 
   // Generate unique buyer ID: BYYYYYMMDD1, BYYYYYMMDD2, etc.
+
   async generateBuyerId(coldStorageId: string): Promise<string> {
     const today = new Date();
     const datePrefix = `BY${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
@@ -12363,6 +10482,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get buyer ledger with calculated dues
+
   async getBuyerLedger(coldStorageId: string, includeArchived: boolean = false): Promise<{
     buyers: (BuyerLedgerEntry & {
       pyReceivables: number;
@@ -12383,137 +10503,6 @@ export class DatabaseStorage implements IStorage {
       buyerExtras: number;
       netDue: number;
     };
-  }> {
-    // Get all buyers
-    let buyersQuery = db.select().from(buyerLedger)
-      .where(eq(buyerLedger.coldStorageId, coldStorageId));
-    
-    if (!includeArchived) {
-      buyersQuery = db.select().from(buyerLedger)
-        .where(and(
-          eq(buyerLedger.coldStorageId, coldStorageId),
-          eq(buyerLedger.isArchived, 0)
-        ));
-    }
-    
-    const buyers = await buyersQuery;
-    
-    // Get buyer receivables from openingReceivables where payerType is 'cold_merchant'
-    const buyerReceivables = await db.select()
-      .from(openingReceivables)
-      .where(and(
-        eq(openingReceivables.coldStorageId, coldStorageId),
-        eq(openingReceivables.payerType, 'cold_merchant')
-      ));
-
-    // Get merchant advances (non-reversed)
-    const allMerchantAdvances = await db.select()
-      .from(merchantAdvance)
-      .where(and(
-        eq(merchantAdvance.coldStorageId, coldStorageId),
-        eq(merchantAdvance.isReversed, 0)
-      ));
-    
-    // Get sales history to calculate sales dues (non-self-sales, including transferred)
-    const allSales = await db.select()
-      .from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        eq(salesHistory.isSelfSale, 0)
-      ));
-    
-    // Get all sales with active transfers (for tracking transfer amounts)
-    // This includes both regular and self-sale transfers
-    const allTransferredSales = await db.select()
-      .from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        sql`${salesHistory.transferToBuyerName} IS NOT NULL AND TRIM(${salesHistory.transferToBuyerName}) != ''`,
-        sql`(${salesHistory.isTransferReversed} IS NULL OR ${salesHistory.isTransferReversed} = 0)`
-      ));
-    
-    // Calculate dues for each buyer
-    const buyersWithDues = buyers.map(buyer => {
-      const buyerNameLower = buyer.buyerName.trim().toLowerCase();
-      
-      // Helper: Match by buyerLedgerId (primary) or buyerName (fallback for old records)
-      const matchesBuyer = (record: { buyerLedgerId?: string | null; buyerName?: string | null }) => {
-        // Primary: Match by ledger ID if both have it
-        if (record.buyerLedgerId && buyer.id) {
-          return record.buyerLedgerId === buyer.id;
-        }
-        // Fallback: Match by name (for old records without ledger ID)
-        return record.buyerName?.trim().toLowerCase() === buyerNameLower;
-      };
-      
-      // PY Receivables: Sum of opening receivables for this buyer
-      // For cold_merchant type, the buyer name is stored in buyerName field
-      const pyReceivables = buyerReceivables
-        .filter(r => matchesBuyer(r))
-        .reduce((sum, r) => sum + ((r.finalAmount ?? r.dueAmount) - (r.paidAmount || 0)), 0);
-
-      // Merchant Advance Due: Sum of unpaid merchant advances for this buyer
-      const advanceDue = allMerchantAdvances
-        .filter(ma => ma.buyerLedgerId === buyer.id)
-        .reduce((sum, ma) => sum + ((ma.finalAmount || 0) - (ma.paidAmount || 0)), 0);
-      
-      // Sales Due: Sum of unpaid sales to this buyer (including transferred sales)
-      // Transfer Out offsets these in netDue calculation
-      const buyerSales = allSales
-        .filter(s => matchesBuyer(s));
-      
-      // dueAmount already represents the remaining unpaid amount (updated when payments are made)
-      // adjReceivableSelfDueAmount: farmer dues adjusted through this sale, also owed by buyer
-      const salesDue = buyerSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
-      
-      // Buyer Extras: Use extraDueToMerchant (the FIFO-maintained remaining due), NOT the
-      // sub-fields (extraDueHammaliMerchant etc.) which are set once at sale time and never
-      // reduced by payments. extraDueToMerchant is correctly decremented by recomputeBuyerPayments.
-      const buyerExtras = buyerSales.reduce((sum, s) => sum + (s.extraDueToMerchant || 0), 0);
-      
-      // Transfer In from buyer-to-buyer transfers (salesHistory with transferToBuyerName)
-      const buyerTransferIn = allTransferredSales
-        .filter(s => s.transferToBuyerName!.trim().toLowerCase() === buyerNameLower)
-        .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
-      
-      // Transfer Out: When this buyer is the source (buyerName/buyerLedgerId matches, and isSelfSale=0)
-      const buyerTransferOut = allTransferredSales
-        .filter(s => matchesBuyer(s) && s.isSelfSale === 0)
-        .reduce((sum, s) => sum + (s.dueAmount || 0), 0);
-      
-      const dueTransferIn = buyerTransferIn - buyerTransferOut;
-      const dueTransferOut = 0;
-      
-      // Net Due = Receivables + Sales Due + Transfer (net)
-      // salesDue includes transferred sales; net transfer offsets sender's transferred amount
-      const netDue = roundAmount(pyReceivables + advanceDue + salesDue + buyerExtras + dueTransferIn);
-      
-      return {
-        ...buyer,
-        pyReceivables: roundAmount(pyReceivables),
-        advanceDue: roundAmount(advanceDue),
-        dueTransferOut: roundAmount(dueTransferOut),
-        dueTransferIn: roundAmount(dueTransferIn),
-        salesDue: roundAmount(salesDue),
-        buyerExtras: roundAmount(buyerExtras),
-        netDue,
-      };
-    });
-    
-    // Calculate summary
-    const summary = {
-      totalBuyers: buyersWithDues.length,
-      pyReceivables: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.pyReceivables, 0)),
-      advanceDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.advanceDue, 0)),
-      dueTransferOut: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.dueTransferOut, 0)),
-      dueTransferIn: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.dueTransferIn, 0)),
-      salesDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.salesDue, 0)),
-      buyerExtras: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.buyerExtras, 0)),
-      netDue: roundAmount(buyersWithDues.reduce((sum, b) => sum + b.netDue, 0)),
-    };
-    
-    return { buyers: buyersWithDues, summary };
-  }
 
   async getBuyerTransactions(buyerLedgerId: string, coldStorageId: string, fyStartYear: number): Promise<{
     openingBalance: number;
@@ -12525,464 +10514,6 @@ export class DatabaseStorage implements IStorage {
       refId?: string;
       meta?: Record<string, string>;
     }[];
-  }> {
-    const fyStart = new Date(fyStartYear, 3, 1);
-    const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59, 999);
-
-    const buyer = await db.select().from(buyerLedger)
-      .where(and(eq(buyerLedger.id, buyerLedgerId), eq(buyerLedger.coldStorageId, coldStorageId)))
-      .then(rows => rows[0]);
-    if (!buyer) return { openingBalance: 0, transactions: [] };
-    const buyerNameLower = buyer.buyerName.trim().toLowerCase();
-
-    const matchesBuyer = (record: { buyerLedgerId?: string | null; buyerName?: string | null }) => {
-      if (record.buyerLedgerId && buyer.id) return record.buyerLedgerId === buyer.id;
-      return record.buyerName?.trim().toLowerCase() === buyerNameLower;
-    };
-
-    const allSales = await db.select().from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        eq(salesHistory.isSelfSale, 0)
-      ));
-
-    const allReceipts = await db.select().from(cashReceipts)
-      .where(and(
-        eq(cashReceipts.coldStorageId, coldStorageId),
-        eq(cashReceipts.isReversed, 0)
-      ));
-
-    const allBankAccounts = await db.select().from(bankAccounts)
-      .where(eq(bankAccounts.coldStorageId, coldStorageId));
-    const accountMap = new Map(allBankAccounts.map(a => [a.id, a.accountName]));
-
-    const allReceivables = await db.select().from(openingReceivables)
-      .where(and(
-        eq(openingReceivables.coldStorageId, coldStorageId),
-        eq(openingReceivables.payerType, 'cold_merchant')
-      ));
-
-    const allAdvances = await db.select().from(merchantAdvance)
-      .where(and(
-        eq(merchantAdvance.coldStorageId, coldStorageId),
-        eq(merchantAdvance.isReversed, 0)
-      ));
-
-    const allDiscounts = await db.select().from(discounts)
-      .where(and(
-        eq(discounts.coldStorageId, coldStorageId),
-        eq(discounts.isReversed, 0)
-      ));
-
-    const allTransferredSales = await db.select().from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        sql`${salesHistory.transferToBuyerName} IS NOT NULL AND TRIM(${salesHistory.transferToBuyerName}) != ''`,
-        sql`(${salesHistory.isTransferReversed} IS NULL OR ${salesHistory.isTransferReversed} = 0)`
-      ));
-
-    const buyerSales = allSales.filter(s => matchesBuyer(s));
-    const buyerReceipts = allReceipts.filter(r =>
-      (r.payerType === 'cold_merchant' || r.payerType === 'cold_merchant_advance') && matchesBuyer(r)
-    );
-    const buyerReceivables = allReceivables.filter(r => matchesBuyer(r));
-    const buyerAdvances = allAdvances.filter(ma => ma.buyerLedgerId === buyer.id);
-    const transfersIn = allTransferredSales.filter(s =>
-      s.transferToBuyerName?.trim().toLowerCase() === buyerNameLower
-    );
-    const transfersOut = allTransferredSales.filter(s =>
-      matchesBuyer(s) && s.isSelfSale === 0
-    );
-
-    const saleDebitAmount = (s: typeof allSales[0]) => {
-      return (s.coldStorageCharge || 0) + (s.extraDueToMerchantOriginal || 0);
-    };
-
-    let openingBalance = 0;
-
-    const priorReceivables = buyerReceivables.filter(r => {
-      return r.createdAt < fyStart;
-    });
-    openingBalance += priorReceivables.reduce((sum, r) => sum + (r.finalAmount ?? r.dueAmount), 0);
-
-    const priorSales = buyerSales.filter(s => s.soldAt < fyStart);
-    openingBalance += priorSales.reduce((sum, s) => sum + saleDebitAmount(s), 0);
-
-    const priorReceipts = buyerReceipts.filter(r => r.receivedAt < fyStart);
-    openingBalance -= priorReceipts.reduce((sum, r) => sum + r.amount, 0);
-
-    const priorTransfersIn = transfersIn.filter(s => {
-      const tDate = s.transferDate || s.soldAt;
-      return tDate < fyStart;
-    });
-    openingBalance += priorTransfersIn.reduce((sum, s) => sum + (s.transferAmount || s.dueAmount || 0), 0);
-
-    const priorTransfersOut = transfersOut.filter(s => {
-      const tDate = s.transferDate || s.soldAt;
-      return tDate < fyStart;
-    });
-    openingBalance -= priorTransfersOut.reduce((sum, s) => sum + (s.transferAmount || s.dueAmount || 0), 0);
-
-    const priorAdvances = buyerAdvances.filter(ma => (ma.originalEffectiveDate || ma.effectiveDate) < fyStart);
-    openingBalance += priorAdvances.reduce((sum, ma) => sum + (ma.finalAmount || ma.amount), 0);
-
-    const priorDiscounts = allDiscounts.filter(d => {
-      if (d.discountDate >= fyStart) return false;
-      try {
-        const allocations = JSON.parse(d.buyerAllocations || '[]');
-        return allocations.some((a: { buyerName?: string }) =>
-          a.buyerName?.trim().toLowerCase() === buyerNameLower
-        );
-      } catch { return false; }
-    });
-    for (const d of priorDiscounts) {
-      const allocations = JSON.parse(d.buyerAllocations || '[]');
-      const buyerAlloc = allocations.find((a: { buyerName?: string }) =>
-        a.buyerName?.trim().toLowerCase() === buyerNameLower
-      );
-      if (buyerAlloc) openingBalance -= buyerAlloc.amount || 0;
-    }
-
-    type TxnEntry = { type: string; date: string; debit: number; credit: number; refId?: string; meta?: Record<string, string>; sortDate: Date; sortOrder: number };
-    const transactions: TxnEntry[] = [];
-
-    const fyReceivables = buyerReceivables.filter(r => r.createdAt >= fyStart && r.createdAt <= fyEnd);
-    for (const r of fyReceivables) {
-      const amt = (r.finalAmount ?? r.dueAmount);
-      const principalAmt = roundAmount(r.dueAmount);
-      const meta: Record<string, string> = {};
-      if (r.remarks) meta.remarks = r.remarks;
-      if (r.rateOfInterest > 0) {
-        const totalDebit = roundAmount(amt);
-        const interestAmt = roundAmount(totalDebit - principalAmt);
-        transactions.push({
-          type: 'py_receivable',
-          date: `${fyStartYear}-04-01`,
-          meta: Object.keys(meta).length > 0 ? { ...meta } : undefined,
-          debit: principalAmt,
-          credit: 0,
-          refId: r.id,
-          sortDate: fyStart,
-          sortOrder: 1,
-        });
-        if (interestAmt > 0) {
-          const intMeta: Record<string, string> = {
-            advanceAmount: String(roundAmount(r.dueAmount)),
-            principal: String(roundAmount(r.latestPrincipal ?? r.dueAmount)),
-            rateOfInterest: String(r.rateOfInterest),
-            effectiveDate: r.effectiveDate ? toISTDateString(new Date(r.effectiveDate)) : '',
-            outstandingDue: String(roundAmount(Math.max(0, amt - (r.paidAmount || 0)))),
-          };
-          transactions.push({
-            type: 'py_receivable_interest',
-            date: `${fyStartYear}-04-01`,
-            meta: intMeta,
-            debit: interestAmt,
-            credit: 0,
-            refId: r.id,
-            sortDate: fyStart,
-            sortOrder: 1,
-          });
-        }
-      } else {
-        transactions.push({
-          type: 'py_receivable',
-          date: `${fyStartYear}-04-01`,
-          meta: Object.keys(meta).length > 0 ? meta : undefined,
-          debit: principalAmt,
-          credit: 0,
-          refId: r.id,
-          sortDate: fyStart,
-          sortOrder: 1,
-        });
-      }
-    }
-
-    const fySales = buyerSales.filter(s => s.soldAt >= fyStart && s.soldAt <= fyEnd);
-    for (const s of fySales) {
-      const combined = roundAmount((s.coldStorageCharge || 0) + (s.extraDueToMerchantOriginal || 0));
-      const coldCharge = roundAmount(s.coldStorageCharge || 0);
-      const rawExtras = s.extraDueToMerchantOriginal || 0;
-      const extrasCharge = rawExtras > 0 ? roundAmount(combined - coldCharge) : 0;
-      const saleMeta = {
-        lotNo: String(s.lotNo),
-        farmerName: s.farmerName,
-        bags: String(s.quantitySold),
-        marka: s.marka || '',
-        coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
-        deliveryType: s.deliveryType || '',
-      };
-      transactions.push({
-        type: 'sale',
-        date: toISTDateString(s.soldAt),
-        meta: saleMeta,
-        debit: coldCharge,
-        credit: 0,
-        refId: s.id,
-        sortDate: s.soldAt,
-        sortOrder: 3,
-      });
-      if (rawExtras > 0) {
-        transactions.push({
-          type: 'buyer_extras',
-          date: toISTDateString(s.soldAt),
-          meta: { ...saleMeta },
-          debit: extrasCharge,
-          credit: 0,
-          refId: s.id,
-          sortDate: s.soldAt,
-          sortOrder: 3,
-        });
-      }
-    }
-
-    const advancePaymentMetaMap = new Map<string, Record<string, string>>();
-    {
-      const advanceMap = new Map(buyerAdvances.map(ma => [ma.id, ma]));
-      const advanceIds = buyerAdvances.map(ma => ma.id);
-      const paymentEvents = advanceIds.length > 0
-        ? await db.select().from(merchantAdvanceEvents)
-            .where(and(
-              inArray(merchantAdvanceEvents.merchantAdvanceId, advanceIds),
-              eq(merchantAdvanceEvents.eventType, 'payment')
-            ))
-        : [];
-      const eventsByReceiptId = new Map<string, typeof paymentEvents>();
-      for (const evt of paymentEvents) {
-        if (!evt.receiptId) continue;
-        const arr = eventsByReceiptId.get(evt.receiptId) || [];
-        arr.push(evt);
-        eventsByReceiptId.set(evt.receiptId, arr);
-      }
-
-      const totalFinalAll = buyerAdvances.reduce((s, ma) => s + (ma.finalAmount || ma.amount), 0);
-      const allAdvanceReceipts = buyerReceipts
-        .filter(r => r.payerType === 'cold_merchant_advance' && !r.isReversed)
-        .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
-      let cumulativePaid = 0;
-      for (const r of allAdvanceReceipts) {
-        cumulativePaid += r.amount;
-        const outstandingAfter = roundAmount(Math.max(0, totalFinalAll - cumulativePaid));
-        const meta: Record<string, string> = { outstandingDue: String(outstandingAfter) };
-
-        const receiptEvents = eventsByReceiptId.get(r.id);
-        if (receiptEvents && receiptEvents.length > 0) {
-          if (receiptEvents.length === 1) {
-            const evt = receiptEvents[0];
-            meta.advanceAmount = String(roundAmount(evt.amount));
-            meta.principal = String(roundAmount(evt.latestPrincipalBefore ?? evt.amount));
-            meta.rateOfInterest = String(evt.rateOfInterest);
-            meta.effectiveDate = evt.effectiveDateBefore ? toISTDateString(evt.effectiveDateBefore) : '';
-            meta.outstandingDue = String(roundAmount(Math.max(0, (evt.finalAmountBefore ?? evt.amount) - (evt.paidAmountBefore ?? 0))));
-          } else {
-            const details = receiptEvents.map(evt => {
-              const parts = [`₹${roundAmount(evt.amount)}`];
-              if (evt.rateOfInterest > 0) parts.push(`${evt.rateOfInterest}%`);
-              return parts.join('@');
-            });
-            meta.advanceDetails = details.join(' + ');
-            meta.advanceAmount = String(roundAmount(receiptEvents.reduce((s, evt) => s + evt.amount, 0)));
-            meta.outstandingDue = String(roundAmount(Math.max(0, receiptEvents.reduce((s, evt) => s + (evt.finalAmountBefore ?? evt.amount) - (evt.paidAmountBefore ?? 0), 0))));
-          }
-        } else {
-          let appliedIds: string[] = [];
-          try { appliedIds = r.appliedAdvanceIds ? JSON.parse(r.appliedAdvanceIds) : []; } catch {}
-          const matchedAdvances = appliedIds.map(id => advanceMap.get(id)).filter((ma): ma is NonNullable<typeof ma> => ma != null);
-          if (matchedAdvances.length === 1) {
-            const ma = matchedAdvances[0];
-            meta.advanceAmount = String(roundAmount(ma.amount));
-            meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
-            meta.rateOfInterest = String(ma.rateOfInterest);
-            meta.effectiveDate = toISTDateString(ma.effectiveDate);
-            meta.outstandingDue = String(roundAmount(Math.max(0, (ma.finalAmount || ma.amount) - (ma.paidAmount || 0))));
-          } else if (matchedAdvances.length > 1) {
-            const details = matchedAdvances.map(ma => {
-              const parts = [`₹${roundAmount(ma.amount)}`];
-              if (ma.rateOfInterest > 0) parts.push(`${ma.rateOfInterest}%`);
-              return parts.join('@');
-            });
-            meta.advanceDetails = details.join(' + ');
-            meta.advanceAmount = String(roundAmount(matchedAdvances.reduce((s, ma) => s + ma.amount, 0)));
-            meta.outstandingDue = String(roundAmount(Math.max(0, matchedAdvances.reduce((s, ma) => s + (ma.finalAmount || ma.amount) - (ma.paidAmount || 0), 0))));
-          } else {
-            const withInterest = buyerAdvances.filter(ma => ma.rateOfInterest > 0);
-            if (withInterest.length === 1) {
-              const ma = withInterest[0];
-              meta.advanceAmount = String(roundAmount(ma.amount));
-              meta.principal = String(roundAmount(ma.latestPrincipal ?? ma.amount));
-              meta.rateOfInterest = String(ma.rateOfInterest);
-              meta.effectiveDate = toISTDateString(ma.effectiveDate);
-            } else if (withInterest.length > 1) {
-              const details = withInterest.map(ma => {
-                const parts = [`₹${roundAmount(ma.amount)}`];
-                if (ma.rateOfInterest > 0) parts.push(`${ma.rateOfInterest}%`);
-                return parts.join('@');
-              });
-              meta.advanceDetails = details.join(' + ');
-              meta.advanceAmount = String(roundAmount(withInterest.reduce((s, ma) => s + ma.amount, 0)));
-            }
-          }
-        }
-        advancePaymentMetaMap.set(r.id, meta);
-      }
-    }
-
-    const saleByIdForReceipts = new Map(allSales.map(s => [s.id, s]));
-    const fyReceipts = buyerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
-    for (const r of fyReceipts) {
-      const isCmAdvance = r.payerType === 'cold_merchant_advance';
-      const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
-      const receiptMeta: Record<string, string> = { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName };
-      if (isCmAdvance) {
-        const advMeta = advancePaymentMetaMap.get(r.id);
-        if (advMeta) Object.assign(receiptMeta, advMeta);
-      }
-      if (r.appliesToSaleId) {
-        const appliedSale = saleByIdForReceipts.get(r.appliesToSaleId);
-        if (appliedSale) {
-          receiptMeta.appliedLotNo = String(appliedSale.lotNo);
-          if (appliedSale.marka && appliedSale.marka.trim()) receiptMeta.appliedMarka = appliedSale.marka;
-          if (appliedSale.coldStorageBillNumber != null) receiptMeta.appliedColdBillNo = String(appliedSale.coldStorageBillNumber);
-          if (appliedSale.farmerName && appliedSale.farmerName.trim()) receiptMeta.appliedFarmerName = appliedSale.farmerName;
-        }
-      }
-      // Task #309 — surface dueType so the detailed ledger can tag
-      // Merchant Extras receipts distinctly from regular cold-charge payments.
-      if (r.dueType) receiptMeta.dueType = r.dueType;
-      transactions.push({
-        type: isCmAdvance ? 'cm_advance_payment' : 'payment',
-        date: toISTDateString(r.receivedAt),
-        meta: receiptMeta,
-        debit: 0,
-        credit: roundAmount(r.amount),
-        refId: r.id,
-        sortDate: r.receivedAt,
-        sortOrder: 5,
-      });
-    }
-
-    const fyTransfersIn = transfersIn.filter(s => {
-      const tDate = s.transferDate || s.soldAt;
-      return tDate >= fyStart && tDate <= fyEnd;
-    });
-    for (const s of fyTransfersIn) {
-      const tDate = s.transferDate || s.soldAt;
-      const amt = s.transferAmount || s.dueAmount || 0;
-      transactions.push({
-        type: 'transfer_in',
-        date: toISTDateString(tDate),
-        meta: { fromBuyer: s.buyerName || '?', transactionId: s.transferTransactionId || '' },
-        debit: roundAmount(amt),
-        credit: 0,
-        refId: s.id,
-        sortDate: tDate,
-        sortOrder: 4,
-      });
-    }
-
-    const fyTransfersOut = transfersOut.filter(s => {
-      const tDate = s.transferDate || s.soldAt;
-      return tDate >= fyStart && tDate <= fyEnd;
-    });
-    for (const s of fyTransfersOut) {
-      const tDate = s.transferDate || s.soldAt;
-      const amt = s.transferAmount || s.dueAmount || 0;
-      transactions.push({
-        type: 'transfer_out',
-        date: toISTDateString(tDate),
-        meta: { toBuyer: s.transferToBuyerName || '?', transactionId: s.transferTransactionId || '' },
-        debit: 0,
-        credit: roundAmount(amt),
-        refId: s.id,
-        sortDate: tDate,
-        sortOrder: 4,
-      });
-    }
-
-    const fyAdvances = buyerAdvances.filter(ma => {
-      const origDate = ma.originalEffectiveDate || ma.effectiveDate;
-      return origDate >= fyStart && origDate <= fyEnd;
-    });
-    for (const ma of fyAdvances) {
-      const principalAmt = roundAmount(ma.amount);
-      const totalAmt = roundAmount(ma.finalAmount || ma.amount);
-      const origDate = ma.originalEffectiveDate || ma.effectiveDate;
-      const advDateStr = toISTDateString(origDate);
-      transactions.push({
-        type: 'advance',
-        date: advDateStr,
-        meta: { amount: String(principalAmt) },
-        debit: principalAmt,
-        credit: 0,
-        refId: ma.id,
-        sortDate: origDate,
-        sortOrder: 4,
-      });
-      if (ma.rateOfInterest > 0) {
-        const interestAmt = roundAmount(totalAmt - principalAmt);
-        if (interestAmt > 0) {
-          const intMeta: Record<string, string> = {
-            advanceAmount: String(roundAmount(ma.amount)),
-            principal: String(roundAmount(ma.latestPrincipal ?? ma.amount)),
-            rateOfInterest: String(ma.rateOfInterest),
-            effectiveDate: advDateStr,
-            outstandingDue: String(roundAmount(Math.max(0, totalAmt - (ma.paidAmount || 0)))),
-          };
-          transactions.push({
-            type: 'advance_interest',
-            date: advDateStr,
-            meta: intMeta,
-            debit: interestAmt,
-            credit: 0,
-            refId: ma.id,
-            sortDate: origDate,
-            sortOrder: 4,
-          });
-        }
-      }
-    }
-
-    const fyDiscounts = allDiscounts.filter(d => {
-      if (d.discountDate < fyStart || d.discountDate > fyEnd) return false;
-      try {
-        const allocations = JSON.parse(d.buyerAllocations || '[]');
-        return allocations.some((a: { buyerName?: string }) =>
-          a.buyerName?.trim().toLowerCase() === buyerNameLower
-        );
-      } catch { return false; }
-    });
-    for (const d of fyDiscounts) {
-      const allocations = JSON.parse(d.buyerAllocations || '[]');
-      const buyerAlloc = allocations.find((a: { buyerName?: string }) =>
-        a.buyerName?.trim().toLowerCase() === buyerNameLower
-      );
-      if (buyerAlloc) {
-        transactions.push({
-          type: 'discount',
-          date: toISTDateString(d.discountDate),
-          meta: { transactionId: d.transactionId || '', farmerName: d.farmerName },
-          debit: 0,
-          credit: roundAmount(buyerAlloc.amount || 0),
-          refId: d.id,
-          sortDate: d.discountDate,
-          sortOrder: 5,
-        });
-      }
-    }
-
-    transactions.sort((a, b) => {
-      const dayA = a.date;
-      const dayB = b.date;
-      if (dayA < dayB) return -1;
-      if (dayA > dayB) return 1;
-      return a.sortOrder - b.sortOrder;
-    });
-
-    return {
-      openingBalance: roundAmount(openingBalance),
-      transactions: transactions.map(({ sortDate, sortOrder, ...rest }) => rest),
-    };
-  }
 
   async getFarmerTransactions(farmerLedgerId: string, coldStorageId: string, fyStartYear: number): Promise<{
     openingBalance: number;
@@ -12994,456 +10525,7 @@ export class DatabaseStorage implements IStorage {
       refId?: string;
       meta?: Record<string, string>;
     }[];
-  }> {
-    const fyStart = new Date(fyStartYear, 3, 1);
-    const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59, 999);
 
-    const farmer = await db.select().from(farmerLedger)
-      .where(and(eq(farmerLedger.id, farmerLedgerId), eq(farmerLedger.coldStorageId, coldStorageId)))
-      .then(rows => rows[0]);
-    if (!farmer) return { openingBalance: 0, transactions: [] };
-
-    const matchesFarmer = (record: { farmerLedgerId?: string | null; farmerName?: string | null; contactNumber?: string | null; village?: string | null }) => {
-      if (record.farmerLedgerId) return record.farmerLedgerId === farmer.id;
-      return (
-        record.farmerName?.trim().toLowerCase() === farmer.name.trim().toLowerCase() &&
-        record.contactNumber?.trim() === farmer.contactNumber.trim() &&
-        record.village?.trim().toLowerCase() === farmer.village.trim().toLowerCase()
-      );
-    };
-
-    const farmerSelfBuyerName = `${farmer.name.trim()} - ${farmer.contactNumber.trim()} - ${farmer.village.trim()}`;
-
-    const allReceivables = await db.select().from(openingReceivables)
-      .where(and(
-        eq(openingReceivables.coldStorageId, coldStorageId),
-        eq(openingReceivables.payerType, 'farmer')
-      ));
-
-    const allAdvFreight = await db.select().from(farmerAdvanceFreight)
-      .where(and(
-        eq(farmerAdvanceFreight.coldStorageId, coldStorageId),
-        eq(farmerAdvanceFreight.isReversed, 0)
-      ));
-
-    const allSelfSales = await db.select().from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        eq(salesHistory.isSelfSale, 1)
-      ));
-
-    const allReceipts = await db.select().from(cashReceipts)
-      .where(and(
-        eq(cashReceipts.coldStorageId, coldStorageId),
-        eq(cashReceipts.payerType, 'farmer'),
-        eq(cashReceipts.isReversed, 0)
-      ));
-
-    const allBankAccounts = await db.select().from(bankAccounts)
-      .where(eq(bankAccounts.coldStorageId, coldStorageId));
-    const accountMap = new Map(allBankAccounts.map(a => [a.id, a.accountName]));
-
-    const allDiscounts = await db.select().from(discounts)
-      .where(and(
-        eq(discounts.coldStorageId, coldStorageId),
-        eq(discounts.isReversed, 0)
-      ));
-
-    const allAdjSales = await db.select().from(salesHistory)
-      .where(and(
-        eq(salesHistory.coldStorageId, coldStorageId),
-        sql`(COALESCE(is_self_sale, 0) != 1)`,
-        sql`COALESCE(adj_receivable_self_due_amount, 0) > 0`,
-      ));
-
-    const allFarmerLoans = await db.select().from(farmerLoan)
-      .where(and(
-        eq(farmerLoan.coldStorageId, coldStorageId),
-        eq(farmerLoan.isReversed, 0)
-      ));
-
-    const allFarmerLoanEventRows = allFarmerLoans.length > 0
-      ? await db.select().from(farmerLoanEvents)
-          .where(sql`${farmerLoanEvents.farmerLoanId} IN (${sql.join(allFarmerLoans.map(fl => sql`${fl.id}`), sql`, `)})`)
-          .orderBy(farmerLoanEvents.eventDate)
-      : [];
-    const loanEventsMap = new Map<string, FarmerLoanEvent[]>();
-    for (const ev of allFarmerLoanEventRows) {
-      if (!loanEventsMap.has(ev.farmerLoanId)) loanEventsMap.set(ev.farmerLoanId, []);
-      loanEventsMap.get(ev.farmerLoanId)!.push(ev);
-    }
-
-    const allFarmerLoanReceipts = await db.select().from(cashReceipts)
-      .where(and(
-        eq(cashReceipts.coldStorageId, coldStorageId),
-        eq(cashReceipts.payerType, 'farmer_loan'),
-        eq(cashReceipts.isReversed, 0)
-      ));
-
-    const farmerReceivables = allReceivables.filter(r => matchesFarmer(r));
-    const farmerAdvFreight = allAdvFreight.filter(af => af.farmerLedgerId === farmer.id);
-    const farmerSelfSales = allSelfSales.filter(s => {
-      if (!matchesFarmer(s)) return false;
-      if (s.transferToBuyerName && s.transferToBuyerName.trim() !== '' && (s.isTransferReversed === null || s.isTransferReversed === 0)) return false;
-      return true;
-    });
-    const farmerReceipts = allReceipts.filter(r => matchesFarmer(r));
-
-    const getSelfAllocAmount = (d: typeof allDiscounts[0]): number => {
-      try {
-        const allocations = JSON.parse(d.buyerAllocations || '[]');
-        const discountSelfName = `${d.farmerName.trim()} - ${d.contactNumber.trim()} - ${d.village.trim()}`.toLowerCase();
-        const selfAlloc = allocations.find((a: { buyerName?: string; isFarmerSelf?: boolean }) => {
-          if (a.isFarmerSelf) return true;
-          const allocName = (a.buyerName || '').trim().toLowerCase();
-          return allocName === farmerSelfBuyerName.toLowerCase() || allocName === discountSelfName;
-        });
-        return selfAlloc ? (selfAlloc.amount || 0) : 0;
-      } catch { return 0; }
-    };
-
-    const farmerDiscounts = allDiscounts.filter(d => {
-      if (!matchesFarmer(d)) return false;
-      return getSelfAllocAmount(d) > 0;
-    });
-
-    const farmerAdjSales = allAdjSales.filter(s => matchesFarmer(s));
-
-    const farmerLoans = allFarmerLoans.filter(fl => fl.farmerLedgerId === farmer.id);
-    const farmerLoanRcpts = allFarmerLoanReceipts.filter(r => r.buyerLedgerId === farmer.id);
-
-    let openingBalance = 0;
-
-    const priorReceivables = farmerReceivables.filter(r => r.createdAt < fyStart);
-    openingBalance += priorReceivables.reduce((sum, r) => sum + (r.finalAmount ?? r.dueAmount), 0);
-
-    const priorAdvFreight = farmerAdvFreight.filter(af => af.effectiveDate < fyStart);
-    openingBalance += priorAdvFreight.reduce((sum, af) => sum + (af.finalAmount || af.amount), 0);
-
-    const priorSelfSales = farmerSelfSales.filter(s => s.soldAt < fyStart);
-    openingBalance += priorSelfSales.reduce((sum, s) => sum + (s.coldStorageCharge || 0), 0);
-
-    const priorFarmerLoans = farmerLoans.filter(fl => (fl.originalEffectiveDate || fl.effectiveDate) < fyStart);
-    openingBalance += priorFarmerLoans.reduce((sum, fl) => sum + (fl.finalAmount || fl.amount), 0);
-
-    const priorReceipts = farmerReceipts.filter(r => r.receivedAt < fyStart);
-    openingBalance -= priorReceipts.reduce((sum, r) => sum + r.amount, 0);
-
-    const priorFarmerLoanRcpts = farmerLoanRcpts.filter(r => r.receivedAt < fyStart);
-    openingBalance -= priorFarmerLoanRcpts.reduce((sum, r) => sum + r.amount, 0);
-
-    const priorDiscounts = farmerDiscounts.filter(d => d.discountDate < fyStart);
-    for (const d of priorDiscounts) {
-      openingBalance -= getSelfAllocAmount(d);
-    }
-
-    const priorAdjSales = farmerAdjSales.filter(s => s.soldAt < fyStart);
-    openingBalance -= priorAdjSales.reduce((sum, s) => sum + (s.adjReceivableSelfDueAmount || 0), 0);
-
-    type TxnEntry = { type: string; date: string; debit: number; credit: number; refId?: string; meta?: Record<string, string>; sortDate: Date; sortOrder: number };
-    const transactions: TxnEntry[] = [];
-
-    const fyReceivables = farmerReceivables.filter(r => r.createdAt >= fyStart && r.createdAt <= fyEnd);
-    for (const r of fyReceivables) {
-      const amt = r.finalAmount ?? r.dueAmount;
-      transactions.push({
-        type: 'py_receivable',
-        date: `${fyStartYear}-04-01`,
-        meta: r.remarks ? { remarks: r.remarks } : undefined,
-        debit: roundAmount(amt),
-        credit: 0,
-        refId: r.id,
-        sortDate: fyStart,
-        sortOrder: 1,
-      });
-    }
-
-    const fyAdvFreight = farmerAdvFreight.filter(af => af.effectiveDate >= fyStart && af.effectiveDate <= fyEnd);
-    for (const af of fyAdvFreight) {
-      transactions.push({
-        type: af.type === 'freight' ? 'freight' : 'advance',
-        date: toISTDateString(af.effectiveDate),
-        meta: { amount: String(roundAmount(af.finalAmount || af.amount)) },
-        debit: roundAmount(af.finalAmount || af.amount),
-        credit: 0,
-        refId: af.id,
-        sortDate: af.effectiveDate,
-        sortOrder: 3,
-      });
-    }
-
-    const fySelfSales = farmerSelfSales.filter(s => s.soldAt >= fyStart && s.soldAt <= fyEnd);
-    for (const s of fySelfSales) {
-      transactions.push({
-        type: 'self_sale',
-        date: toISTDateString(s.soldAt),
-        meta: {
-          lotNo: String(s.lotNo),
-          buyerName: s.buyerName || '',
-          bags: String(s.quantitySold),
-          marka: s.marka || '',
-          coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
-          deliveryType: s.deliveryType || '',
-        },
-        debit: roundAmount(s.coldStorageCharge || 0),
-        credit: 0,
-        refId: s.id,
-        sortDate: s.soldAt,
-        sortOrder: 3,
-      });
-    }
-
-    const fyFarmerLoans = farmerLoans.filter(fl => {
-      const origDate = fl.originalEffectiveDate || fl.effectiveDate;
-      return origDate >= fyStart && origDate <= fyEnd;
-    });
-    for (const fl of fyFarmerLoans) {
-      const events = loanEventsMap.get(fl.id) || [];
-      const creationEvent = events.find(e => e.eventType === 'creation');
-      const interestAmount = roundAmount((fl.finalAmount || fl.amount) - fl.amount);
-
-      transactions.push({
-        type: 'farmer_loan',
-        date: toISTDateString(fl.originalEffectiveDate || fl.effectiveDate),
-        meta: {
-          amount: String(roundAmount(fl.amount)),
-          principal: String(roundAmount(fl.amount)),
-          rateOfInterest: String(fl.rateOfInterest || 0),
-          eventType: creationEvent ? 'creation' : 'disbursement',
-        },
-        debit: roundAmount(fl.amount),
-        credit: 0,
-        refId: fl.id,
-        sortDate: fl.originalEffectiveDate || fl.effectiveDate,
-        sortOrder: 3,
-      });
-
-      if (interestAmount > 0) {
-        const originDate = fl.originalEffectiveDate || fl.effectiveDate;
-        transactions.push({
-          type: 'farmer_loan_interest',
-          date: toISTDateString(originDate),
-          meta: {
-            loanAmount:     String(roundAmount(fl.amount)),
-            principal:      String(roundAmount(fl.latestPrincipal ?? fl.amount)),
-            interest:       String(interestAmount),
-            rateOfInterest: String(fl.rateOfInterest || 0),
-            effectiveDate:  toISTDateString(fl.originalEffectiveDate || fl.effectiveDate),
-            outstandingDue: String(roundAmount(Math.max(0, (fl.finalAmount || fl.amount) - (fl.paidAmount || 0)))),
-            loanId:         fl.id,
-          },
-          debit: interestAmount,
-          credit: 0,
-          refId: fl.id,
-          sortDate: originDate,
-          sortOrder: 4,
-        });
-      }
-
-      const compoundingEvents = events.filter(e => e.eventType === 'annual_compounding' && e.eventDate >= fyStart && e.eventDate <= fyEnd);
-      for (const ce of compoundingEvents) {
-        const compoundedAmt = roundAmount(ce.interestCompounded || 0);
-        if (compoundedAmt > 0) {
-          transactions.push({
-            type: 'farmer_loan_interest',
-            date: toISTDateString(ce.eventDate),
-            meta: {
-              interest: String(compoundedAmt),
-              rateOfInterest: String(ce.rateOfInterest || 0),
-              eventType: 'annual_compounding',
-              loanId: fl.id,
-            },
-            debit: compoundedAmt,
-            credit: 0,
-            refId: ce.id,
-            sortDate: ce.eventDate,
-            sortOrder: 4,
-          });
-        }
-      }
-    }
-
-    const loanPaymentMetaMap = new Map<string, Record<string, string>>();
-    {
-      const loanMap = new Map(farmerLoans.map(fl => [fl.id, fl]));
-      const loanIds = farmerLoans.map(fl => fl.id);
-      const paymentEvents = loanIds.length > 0
-        ? await db.select().from(farmerLoanEvents)
-            .where(and(
-              inArray(farmerLoanEvents.farmerLoanId, loanIds),
-              eq(farmerLoanEvents.eventType, 'payment')
-            ))
-        : [];
-      const eventsByReceiptId = new Map<string, typeof paymentEvents>();
-      for (const evt of paymentEvents) {
-        if (!evt.receiptId) continue;
-        const arr = eventsByReceiptId.get(evt.receiptId) || [];
-        arr.push(evt);
-        eventsByReceiptId.set(evt.receiptId, arr);
-      }
-
-      const totalFinalAll = farmerLoans.reduce((s, fl) => s + (fl.finalAmount || fl.amount), 0);
-      const allLoanReceipts = [...farmerLoanRcpts].sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
-      let cumulativePaid = 0;
-      for (const r of allLoanReceipts) {
-        cumulativePaid += r.amount;
-        const outstandingAfter = roundAmount(Math.max(0, totalFinalAll - cumulativePaid));
-        const meta: Record<string, string> = { outstandingDue: String(outstandingAfter) };
-
-        const receiptEvents = eventsByReceiptId.get(r.id);
-        if (receiptEvents && receiptEvents.length > 0) {
-          if (receiptEvents.length === 1) {
-            const evt = receiptEvents[0];
-            meta.loanAmount    = String(roundAmount(evt.amount));
-            meta.principal     = String(roundAmount(evt.latestPrincipalBefore ?? evt.amount));
-            meta.rateOfInterest = String(evt.rateOfInterest);
-            meta.effectiveDate = evt.effectiveDateBefore ? toISTDateString(evt.effectiveDateBefore) : '';
-            meta.outstandingDue = String(roundAmount(Math.max(0, (evt.finalAmountBefore ?? evt.amount) - (evt.paidAmountBefore ?? 0))));
-          } else {
-            const details = receiptEvents.map(evt => {
-              const parts = [`₹${roundAmount(evt.amount)}`];
-              if (evt.rateOfInterest > 0) parts.push(`${evt.rateOfInterest}%`);
-              return parts.join('@');
-            });
-            meta.loanDetails   = details.join(' + ');
-            meta.loanAmount    = String(roundAmount(receiptEvents.reduce((s, evt) => s + evt.amount, 0)));
-            meta.outstandingDue = String(roundAmount(Math.max(0, receiptEvents.reduce((s, evt) => s + (evt.finalAmountBefore ?? evt.amount) - (evt.paidAmountBefore ?? 0), 0))));
-          }
-        } else {
-          let appliedIds: string[] = [];
-          try { appliedIds = r.appliedAdvanceIds ? JSON.parse(r.appliedAdvanceIds) : []; } catch {}
-          const matchedLoans = appliedIds.map(id => loanMap.get(id)).filter((fl): fl is NonNullable<typeof fl> => fl != null);
-          if (matchedLoans.length === 1) {
-            const fl = matchedLoans[0];
-            meta.loanAmount    = String(roundAmount(fl.amount));
-            meta.principal     = String(roundAmount(fl.latestPrincipal ?? fl.amount));
-            meta.rateOfInterest = String(fl.rateOfInterest);
-            meta.effectiveDate = toISTDateString(fl.originalEffectiveDate || fl.effectiveDate);
-            meta.outstandingDue = String(roundAmount(Math.max(0, (fl.finalAmount || fl.amount) - (fl.paidAmount || 0))));
-          } else if (matchedLoans.length > 1) {
-            const details = matchedLoans.map(fl => {
-              const parts = [`₹${roundAmount(fl.amount)}`];
-              if (fl.rateOfInterest > 0) parts.push(`${fl.rateOfInterest}%`);
-              return parts.join('@');
-            });
-            meta.loanDetails   = details.join(' + ');
-            meta.loanAmount    = String(roundAmount(matchedLoans.reduce((s, fl) => s + fl.amount, 0)));
-            meta.outstandingDue = String(roundAmount(Math.max(0, matchedLoans.reduce((s, fl) => s + (fl.finalAmount || fl.amount) - (fl.paidAmount || 0), 0))));
-          }
-        }
-        loanPaymentMetaMap.set(r.id, meta);
-      }
-    }
-
-    const loanSelfSaleByIdForReceipts = new Map(allSelfSales.map(s => [s.id, s]));
-    const fyFarmerLoanRcpts = farmerLoanRcpts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
-    for (const r of fyFarmerLoanRcpts) {
-      const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
-      const loanMeta = loanPaymentMetaMap.get(r.id);
-      const payMeta: Record<string, string> = { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName };
-      if (loanMeta) Object.assign(payMeta, loanMeta);
-      if (r.appliesToSaleId) {
-        const appliedSale = loanSelfSaleByIdForReceipts.get(r.appliesToSaleId);
-        if (appliedSale) {
-          payMeta.appliedLotNo = String(appliedSale.lotNo);
-          if (appliedSale.marka && appliedSale.marka.trim()) payMeta.appliedMarka = appliedSale.marka;
-          if (appliedSale.coldStorageBillNumber != null) payMeta.appliedColdBillNo = String(appliedSale.coldStorageBillNumber);
-          const saleBuyer = (appliedSale.buyerName || '').trim();
-          if (saleBuyer && saleBuyer.toLowerCase() !== farmerSelfBuyerName.toLowerCase()) {
-            payMeta.appliedBuyerName = saleBuyer;
-          }
-        }
-      }
-      transactions.push({
-        type: 'farmer_loan_payment',
-        date: toISTDateString(r.receivedAt),
-        meta: payMeta,
-        debit: 0,
-        credit: roundAmount(r.amount),
-        refId: r.id,
-        sortDate: r.receivedAt,
-        sortOrder: 5,
-      });
-    }
-
-    const selfSaleByIdForReceipts = new Map(allSelfSales.map(s => [s.id, s]));
-    const fyReceipts = farmerReceipts.filter(r => r.receivedAt >= fyStart && r.receivedAt <= fyEnd);
-    for (const r of fyReceipts) {
-      const acctName = r.accountId ? (accountMap.get(r.accountId) || '') : '';
-      const receiptMeta: Record<string, string> = { transactionId: r.transactionId || '', mode: r.receiptType || 'cash', accountName: acctName };
-      if (r.appliesToSaleId) {
-        const appliedSale = selfSaleByIdForReceipts.get(r.appliesToSaleId);
-        if (appliedSale) {
-          receiptMeta.appliedLotNo = String(appliedSale.lotNo);
-          if (appliedSale.marka && appliedSale.marka.trim()) receiptMeta.appliedMarka = appliedSale.marka;
-          if (appliedSale.coldStorageBillNumber != null) receiptMeta.appliedColdBillNo = String(appliedSale.coldStorageBillNumber);
-          const saleBuyer = (appliedSale.buyerName || '').trim();
-          if (saleBuyer && saleBuyer.toLowerCase() !== farmerSelfBuyerName.toLowerCase()) {
-            receiptMeta.appliedBuyerName = saleBuyer;
-          }
-        }
-      }
-      transactions.push({
-        type: 'payment',
-        date: toISTDateString(r.receivedAt),
-        meta: receiptMeta,
-        debit: 0,
-        credit: roundAmount(r.amount),
-        refId: r.id,
-        sortDate: r.receivedAt,
-        sortOrder: 5,
-      });
-    }
-
-    const fyDiscounts = farmerDiscounts.filter(d => d.discountDate >= fyStart && d.discountDate <= fyEnd);
-    for (const d of fyDiscounts) {
-      const selfAmt = getSelfAllocAmount(d);
-      transactions.push({
-        type: 'discount',
-        date: toISTDateString(d.discountDate),
-        meta: { transactionId: d.transactionId || '' },
-        debit: 0,
-        credit: roundAmount(selfAmt),
-        refId: d.id,
-        sortDate: d.discountDate,
-        sortOrder: 5,
-      });
-    }
-
-    const fyAdjSales = farmerAdjSales.filter(s => s.soldAt >= fyStart && s.soldAt <= fyEnd);
-    for (const s of fyAdjSales) {
-      transactions.push({
-        type: 'sale_adj',
-        date: toISTDateString(s.soldAt),
-        meta: {
-          lotNo: String(s.lotNo),
-          buyerName: s.buyerName || '',
-          marka: s.marka || '',
-          coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
-        },
-        debit: 0,
-        credit: roundAmount(s.adjReceivableSelfDueAmount || 0),
-        refId: s.id,
-        sortDate: s.soldAt,
-        sortOrder: 4,
-      });
-    }
-
-    transactions.sort((a, b) => {
-      const dayA = a.date;
-      const dayB = b.date;
-      if (dayA < dayB) return -1;
-      if (dayA > dayB) return 1;
-      return a.sortOrder - b.sortOrder;
-    });
-
-    return {
-      openingBalance: roundAmount(openingBalance),
-      transactions: transactions.map(({ sortDate, sortOrder, ...rest }) => rest),
-    };
-  }
-
-  // Sync buyers from touchpoints (sales history, opening receivables)
   async syncBuyersFromTouchpoints(coldStorageId: string): Promise<{ added: number; updated: number }> {
     let added = 0;
     let updated = 0;
@@ -13549,318 +10631,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Check potential merge before updating buyer
+
   async checkBuyerPotentialMerge(id: string, updates: Partial<BuyerLedgerEntry>): Promise<{
     willMerge: boolean;
     targetBuyer?: BuyerLedgerEntry;
     salesCount: number;
     transfersCount: number;
     totalDues: number;
-  }> {
-    const [currentBuyer] = await db.select()
-      .from(buyerLedger)
-      .where(eq(buyerLedger.id, id));
-    
-    if (!currentBuyer) {
-      return { willMerge: false, salesCount: 0, transfersCount: 0, totalDues: 0 };
-    }
-    
-    const newName = updates.buyerName || currentBuyer.buyerName;
-    const newKey = this.getBuyerCompositeKey(newName);
-    const currentKey = this.getBuyerCompositeKey(currentBuyer.buyerName);
-    
-    // Check if new key matches a different buyer
-    if (newKey !== currentKey) {
-      const [existingBuyer] = await db.select()
-        .from(buyerLedger)
-        .where(and(
-          eq(buyerLedger.coldStorageId, currentBuyer.coldStorageId),
-          sql`LOWER(TRIM(${buyerLedger.buyerName})) = ${newName.trim().toLowerCase()}`,
-          sql`${buyerLedger.id} != ${id}`
-        ));
-      
-      if (existingBuyer) {
-        // Count records that would be merged
-        const buyerNameLower = currentBuyer.buyerName.trim().toLowerCase();
-        
-        const salesCount = await db.select({ count: sql<number>`count(*)::int` })
-          .from(salesHistory)
-          .where(and(
-            eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
-            sql`LOWER(TRIM(${salesHistory.buyerName})) = ${buyerNameLower}`
-          ));
-        
-        const transfersCount = [{ count: 0 }];
-        
-        // Get dues for the current buyer
-        const ledgerData = await this.getBuyerLedger(currentBuyer.coldStorageId, true);
-        const currentBuyerData = ledgerData.buyers.find(b => b.id === id);
-        const totalDues = currentBuyerData?.netDue || 0;
-        
-        return {
-          willMerge: true,
-          targetBuyer: existingBuyer,
-          salesCount: salesCount[0]?.count || 0,
-          transfersCount: transfersCount[0]?.count || 0,
-          totalDues,
-        };
-      }
-    }
-    
-    return { willMerge: false, salesCount: 0, transfersCount: 0, totalDues: 0 };
-  }
 
-  // Update buyer ledger entry with potential merge
   async updateBuyerLedger(id: string, updates: Partial<BuyerLedgerEntry>, modifiedBy: string, confirmMerge: boolean = false): Promise<{
     buyer: BuyerLedgerEntry | undefined;
     merged: boolean;
     mergedFromId?: string;
     needsConfirmation?: boolean;
-  }> {
-    const [currentBuyer] = await db.select()
-      .from(buyerLedger)
-      .where(eq(buyerLedger.id, id));
-    
-    if (!currentBuyer) {
-      return { buyer: undefined, merged: false };
-    }
-    
-    const mergeCheck = await this.checkBuyerPotentialMerge(id, updates);
-    
-    if (mergeCheck.willMerge) {
-      if (!confirmMerge) {
-        return { buyer: undefined, merged: false, needsConfirmation: true };
-      }
-      
-      // Perform merge - transfer all records to target buyer and archive current
-      const targetBuyer = mergeCheck.targetBuyer!;
-      const buyerNameLower = currentBuyer.buyerName.trim().toLowerCase();
-      
-      // Transfer sales history to target buyer (by buyerLedgerId)
-      await db.update(salesHistory)
-        .set({ 
-          buyerName: targetBuyer.buyerName,
-          buyerLedgerId: targetBuyer.id,
-          buyerId: targetBuyer.buyerId,
-        })
-        .where(and(
-          eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
-          eq(salesHistory.buyerLedgerId, currentBuyer.id)
-        ));
-      
-      // Also transfer legacy sales (no buyerLedgerId) matched by name
-      await db.update(salesHistory)
-        .set({ 
-          buyerName: targetBuyer.buyerName,
-          buyerLedgerId: targetBuyer.id,
-          buyerId: targetBuyer.buyerId,
-        })
-        .where(and(
-          eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
-          isNull(salesHistory.buyerLedgerId),
-          sql`LOWER(TRIM(${salesHistory.buyerName})) = ${buyerNameLower}`
-        ));
-      
-      // Transfer cash receipts to target buyer (by buyerLedgerId)
-      await db.update(cashReceipts)
-        .set({
-          buyerName: targetBuyer.buyerName,
-          buyerLedgerId: targetBuyer.id,
-          buyerId: targetBuyer.buyerId,
-        })
-        .where(and(
-          eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
-          eq(cashReceipts.buyerLedgerId, currentBuyer.id)
-        ));
-      
-      // Also transfer legacy cash receipts (no buyerLedgerId) matched by name
-      await db.update(cashReceipts)
-        .set({
-          buyerName: targetBuyer.buyerName,
-          buyerLedgerId: targetBuyer.id,
-          buyerId: targetBuyer.buyerId,
-        })
-        .where(and(
-          eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
-          isNull(cashReceipts.buyerLedgerId),
-          sql`LOWER(TRIM(${cashReceipts.buyerName})) = ${buyerNameLower}`
-        ));
-      
-      // Transfer opening receivables to target buyer (by buyerLedgerId)
-      await db.update(openingReceivables)
-        .set({
-          buyerName: targetBuyer.buyerName,
-          buyerLedgerId: targetBuyer.id,
-          buyerId: targetBuyer.buyerId,
-        })
-        .where(and(
-          eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
-          eq(openingReceivables.buyerLedgerId, currentBuyer.id)
-        ));
-      
-      // Also transfer legacy opening receivables (no buyerLedgerId) matched by name
-      await db.update(openingReceivables)
-        .set({
-          buyerName: targetBuyer.buyerName,
-          buyerLedgerId: targetBuyer.id,
-          buyerId: targetBuyer.buyerId,
-        })
-        .where(and(
-          eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
-          isNull(openingReceivables.buyerLedgerId),
-          sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${buyerNameLower}`
-        ));
-      
-      // Transfer merchant advances to target buyer
-      await db.update(merchantAdvance)
-        .set({
-          buyerLedgerId: targetBuyer.id,
-          buyerId: targetBuyer.buyerId,
-        })
-        .where(and(
-          eq(merchantAdvance.coldStorageId, currentBuyer.coldStorageId),
-          eq(merchantAdvance.buyerLedgerId, currentBuyer.id)
-        ));
-      
-      // Archive the current buyer
-      await db.update(buyerLedger)
-        .set({
-          isArchived: 1,
-          archivedAt: new Date(),
-        })
-        .where(eq(buyerLedger.id, id));
-      
-      // Record merge history
-      await db.insert(buyerLedgerEditHistory).values({
-        id: randomUUID(),
-        buyerLedgerId: targetBuyer.id,
-        coldStorageId: currentBuyer.coldStorageId,
-        editType: 'merge',
-        mergedFromId: id,
-        mergedFromBuyerId: currentBuyer.buyerId,
-        mergedSalesCount: mergeCheck.salesCount,
-        mergedTransfersCount: mergeCheck.transfersCount,
-        mergedTotalDues: String(mergeCheck.totalDues),
-        modifiedBy,
-      });
 
-      // Task #312 — the merge above rewrote both sales_history.buyer_ledger_id
-      // AND cash_receipts.buyer_ledger_id from source → target. The cold-side
-      // recompute is name-keyed and is handled by the route layer, but the
-      // extras-side FIFO is ledger-keyed and would otherwise see the
-      // pre-merge partition. Replay the TARGET ledger's extras now so newly
-      // adopted receipts redistribute across the combined sales pool. The
-      // source ledger has no remaining extras rows after the rewrite, so
-      // no replay is needed there (and the source is archived in the next
-      // block).
-      await this.recomputeBuyerExtras(targetBuyer.id, currentBuyer.coldStorageId);
-
-      return { buyer: targetBuyer, merged: true, mergedFromId: currentBuyer.buyerId };
-    }
-    
-    // Regular update (no merge)
-    const beforeValues = JSON.stringify({
-      buyerName: currentBuyer.buyerName,
-      address: currentBuyer.address,
-      contactNumber: currentBuyer.contactNumber,
-    });
-    
-    const [updated] = await db.update(buyerLedger)
-      .set({
-        buyerName: updates.buyerName?.trim() || currentBuyer.buyerName,
-        address: updates.address?.trim() || currentBuyer.address,
-        contactNumber: updates.contactNumber?.trim() || currentBuyer.contactNumber,
-      })
-      .where(eq(buyerLedger.id, id))
-      .returning();
-    
-    const afterValues = JSON.stringify({
-      buyerName: updated.buyerName,
-      address: updated.address,
-      contactNumber: updated.contactNumber,
-    });
-    
-    // Only create edit history entry if there are actual changes
-    if (beforeValues !== afterValues) {
-      await db.insert(buyerLedgerEditHistory).values({
-        id: randomUUID(),
-        buyerLedgerId: id,
-        coldStorageId: currentBuyer.coldStorageId,
-        editType: 'edit',
-        beforeValues,
-        afterValues,
-        modifiedBy,
-      });
-      
-      // Propagate buyer name changes to all related tables
-      if (currentBuyer.buyerName !== updated.buyerName) {
-        const oldNameLower = currentBuyer.buyerName.trim().toLowerCase();
-        
-        await db.update(salesHistory)
-          .set({ buyerName: updated.buyerName })
-          .where(and(
-            eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
-            eq(salesHistory.buyerLedgerId, id)
-          ));
-        
-        await db.update(cashReceipts)
-          .set({ buyerName: updated.buyerName })
-          .where(and(
-            eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
-            eq(cashReceipts.buyerLedgerId, id)
-          ));
-        
-        await db.update(openingReceivables)
-          .set({ buyerName: updated.buyerName })
-          .where(and(
-            eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
-            eq(openingReceivables.buyerLedgerId, id)
-          ));
-        
-        // Also update salesHistory where buyerName matches but buyerLedgerId might be null (legacy)
-        await db.update(salesHistory)
-          .set({ buyerName: updated.buyerName })
-          .where(and(
-            eq(salesHistory.coldStorageId, currentBuyer.coldStorageId),
-            isNull(salesHistory.buyerLedgerId),
-            sql`LOWER(TRIM(${salesHistory.buyerName})) = ${oldNameLower}`
-          ));
-        
-        // Also update cashReceipts where buyerLedgerId might be null (legacy)
-        await db.update(cashReceipts)
-          .set({ buyerName: updated.buyerName })
-          .where(and(
-            eq(cashReceipts.coldStorageId, currentBuyer.coldStorageId),
-            isNull(cashReceipts.buyerLedgerId),
-            sql`LOWER(TRIM(${cashReceipts.buyerName})) = ${oldNameLower}`
-          ));
-        
-        // Also update openingReceivables where buyerLedgerId might be null (legacy)
-        await db.update(openingReceivables)
-          .set({ buyerName: updated.buyerName })
-          .where(and(
-            eq(openingReceivables.coldStorageId, currentBuyer.coldStorageId),
-            isNull(openingReceivables.buyerLedgerId),
-            sql`LOWER(TRIM(${openingReceivables.buyerName})) = ${oldNameLower}`
-          ));
-
-        // Task #312 — buyer rename is one of the six extras-affecting events.
-        // Although the ledger-keyed FIFO does not depend on the buyer_name
-        // text, the legacy buyer_name columns are propagated above so that
-        // pre-rename rows now carry the new buyer_name. Re-replay extras for
-        // this ledger to keep the trigger matrix uniform across all six
-        // events and to converge any legacy rows whose buyer_ledger_id was
-        // just rewritten by the isNull-buyer_ledger_id fallback updates
-        // above (those updates only touch buyer_name, but a future
-        // adjacent change could extend them to ledger ID; this hook keeps
-        // the extras side honest either way).
-        await this.recomputeBuyerExtras(id, currentBuyer.coldStorageId);
-      }
-    }
-    
-    return { buyer: updated, merged: false };
-  }
-
-  // Archive a buyer
   async archiveBuyerLedger(id: string, modifiedBy: string): Promise<boolean> {
     const [buyer] = await db.update(buyerLedger)
       .set({
@@ -13886,6 +10670,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Reinstate an archived buyer
+
   async reinstateBuyerLedger(id: string, modifiedBy: string): Promise<boolean> {
     const [buyer] = await db.update(buyerLedger)
       .set({
@@ -13911,6 +10696,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Toggle buyer flag
+
   async toggleBuyerFlag(id: string, modifiedBy: string): Promise<BuyerLedgerEntry | undefined> {
     const [buyer] = await db.select()
       .from(buyerLedger)
@@ -13939,6 +10725,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get edit history for a buyer
+
   async getBuyerLedgerEditHistory(buyerLedgerId: string): Promise<BuyerLedgerEditHistoryEntry[]> {
     return await db.select()
       .from(buyerLedgerEditHistory)
@@ -13947,116 +10734,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Ensure buyer ledger entry exists - find by name or create new
+
   async ensureBuyerLedgerEntry(coldStorageId: string, buyerData: {
     buyerName: string;
     address?: string;
     contactNumber?: string;
-  }): Promise<{ id: string; buyerId: string }> {
-    const key = this.getBuyerCompositeKey(buyerData.buyerName);
-    
-    // Check if buyer already exists with this name
-    const [existingBuyer] = await db.select()
-      .from(buyerLedger)
-      .where(and(
-        eq(buyerLedger.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${buyerLedger.buyerName})) = ${buyerData.buyerName.trim().toLowerCase()}`
-      ));
-    
-    if (existingBuyer) {
-      // Buyer exists - optionally update missing fields
-      const updates: Partial<BuyerLedgerEntry> = {};
-      
-      if (!existingBuyer.address && buyerData.address) updates.address = buyerData.address.trim();
-      if (!existingBuyer.contactNumber && buyerData.contactNumber) updates.contactNumber = buyerData.contactNumber.trim();
-      
-      if (Object.keys(updates).length > 0) {
-        await db.update(buyerLedger)
-          .set(updates)
-          .where(eq(buyerLedger.id, existingBuyer.id));
-      }
-      
-      return { id: existingBuyer.id, buyerId: existingBuyer.buyerId };
-    }
-    
-    // Create new buyer ledger entry with retry logic for unique constraint violations
-    const maxRetries = 3;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const buyerId = await this.generateBuyerId(coldStorageId);
-      const newId = randomUUID();
-      
-      try {
-        await db.insert(buyerLedger).values({
-          id: newId,
-          coldStorageId,
-          buyerId,
-          buyerName: buyerData.buyerName.trim(),
-          address: buyerData.address?.trim() || null,
-          contactNumber: buyerData.contactNumber?.trim() || null,
-          isFlagged: 0,
-          isArchived: 0,
-        });
-        
-        return { id: newId, buyerId };
-      } catch (error: any) {
-        // Check if it's a unique constraint violation
-        if (error?.code === '23505' && (error?.constraint?.includes('buyer_id') || error?.constraint?.includes('cs_bid'))) {
-          console.log(`Buyer ID collision detected (attempt ${attempt + 1}/${maxRetries}), retrying...`);
-          continue;
-        }
-        throw error;
-      }
-    }
-    
-    throw new Error('Failed to generate unique buyer ID after multiple attempts');
-  }
 
-  // Create buyer manually — rejects if name already exists (unlike ensureBuyerLedgerEntry)
   async createManualBuyer(coldStorageId: string, buyerData: {
     buyerName: string;
     address?: string;
     contactNumber?: string;
-  }): Promise<{ id: string; buyerId: string }> {
-    // Reject if a buyer with this name already exists
-    const [existing] = await db.select({ id: buyerLedger.id })
-      .from(buyerLedger)
-      .where(and(
-        eq(buyerLedger.coldStorageId, coldStorageId),
-        sql`LOWER(TRIM(${buyerLedger.buyerName})) = ${buyerData.buyerName.trim().toLowerCase()}`
-      ));
-
-    if (existing) {
-      const err = new Error('A buyer with this name already exists') as any;
-      err.code = 'DUPLICATE_NAME';
-      throw err;
-    }
-
-    const maxRetries = 3;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const buyerId = await this.generateBuyerId(coldStorageId);
-      const newId = randomUUID();
-      try {
-        await db.insert(buyerLedger).values({
-          id: newId,
-          coldStorageId,
-          buyerId,
-          buyerName: buyerData.buyerName.trim(),
-          address: buyerData.address?.trim() || null,
-          contactNumber: buyerData.contactNumber?.trim() || null,
-          isFlagged: 0,
-          isArchived: 0,
-        });
-        return { id: newId, buyerId };
-      } catch (error: any) {
-        if (error?.code === '23505' && (error?.constraint?.includes('buyer_id') || error?.constraint?.includes('cs_bid'))) {
-          continue;
-        }
-        throw error;
-      }
-    }
-    throw new Error('Failed to generate unique buyer ID after multiple attempts');
-  }
-
-  // ==================== Assets ====================
 
   async getAssets(coldStorageId: string): Promise<Asset[]> {
     return await db.select().from(assets)

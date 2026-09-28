@@ -57,6 +57,10 @@ args = "roundoff-attribution"
 task = "workflow.run"
 args = "manual-payment-roundoff"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "nikasi-balance-post-exit"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -153,6 +157,17 @@ args = "tsx scripts/check-manual-payment-roundoff.mts"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "nikasi-balance-post-exit"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "tsx scripts/check-nikasi-balance-post-exit.mts"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [agent]
 integrations = ["javascript_database:1.0.0"]

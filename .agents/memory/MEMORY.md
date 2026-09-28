@@ -3,3 +3,4 @@
 - [Snapshot tables vs db:push](snapshot-tables-dbpush.md) — date-suffixed heal/snapshot backup tables aren't in schema; drizzle tablesFilter excludes `*_YYYY_MM_DD` so db:push won't hang trying to drop them.
 - [Bill number series scoping](bill-number-series-scoping.md) — both bill series are MAX+1 per (cold storage, STOCK ENTRY year), computed in SQL; no unique index backs them, so every allocation path must agree.
 - [Cold merchant advance-received](cold-merchant-advance-received.md) — merchant prepayments modeled as plain cold_merchant/cold_charges receipts + marker column (no new payer/due type) so existing FIFO auto-drains them; sale creation is a guarded recompute trigger.
+- [Nikasi Balance timestamp consistency](nikasi-balance-timestamp-consistency.md) — paired rows created in one tx and compared by timestamp must share one explicit app-side `new Date()`, never mix `defaultNow()` with app-side `new Date()`.
