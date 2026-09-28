@@ -130,6 +130,18 @@ function FarmerDetailedLedger({
     return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
   }, [t, formatCurrency, formatDateDDMMYYYY]);
 
+  // Value-only Delivery Type label (no "Delivery Type" prefix) reused from
+  // the same option keys used in the Sale/Master Nikasi dropdowns.
+  const deliveryTypeLabel = useCallback((code: string): string => {
+    switch (code) {
+      case "gate": return t("gateCut");
+      case "gateWeighing": return t("gateCutWeighing");
+      case "bilty": return t("biltyCut");
+      case "biltyWeighing": return t("biltyCutWeighing");
+      default: return "";
+    }
+  }, [t]);
+
   const appliedSaleSuffix = useCallback((m: Record<string, string>) => {
     if (!m.appliedLotNo) return '';
     const parts: string[] = [`${t("lotHash")}${m.appliedLotNo}`];
@@ -151,6 +163,8 @@ function FarmerDetailedLedger({
         if (m.coldBillNo) parts.push(`${t("coldBillNo")}: ${m.coldBillNo}`);
         parts.push(m.buyerName);
         parts.push(`${m.bags} ${t("bagsLabel")}`);
+        // Delivery Type value only — no label — appended when set.
+        if (m.deliveryType) parts.push(deliveryTypeLabel(m.deliveryType));
         return parts.join(', ');
       }
       case 'farmer_loan': return `${t("farmerLoan")} - ${t("principal")} ${formatCurrency(Number(m.principal || m.amount || 0))}${Number(m.rateOfInterest || 0) > 0 ? ` @ ${m.rateOfInterest}%` : ''}`;

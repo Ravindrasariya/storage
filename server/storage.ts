@@ -12587,6 +12587,7 @@ export class DatabaseStorage implements IStorage {
         bags: String(s.quantitySold),
         marka: s.marka || '',
         coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
+        deliveryType: s.deliveryType || '',
       };
       transactions.push({
         type: 'sale',
@@ -13059,6 +13060,7 @@ export class DatabaseStorage implements IStorage {
           bags: String(s.quantitySold),
           marka: s.marka || '',
           coldBillNo: s.coldStorageBillNumber != null ? String(s.coldStorageBillNumber) : '',
+          deliveryType: s.deliveryType || '',
         },
         debit: roundAmount(s.coldStorageCharge || 0),
         credit: 0,
