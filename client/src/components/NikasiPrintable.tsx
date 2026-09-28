@@ -55,6 +55,7 @@ export const nikasiPrintStyles = `
   table.lots th { background: #f3f3f3; }
   table.lots td.lft, table.lots th.lft { text-align: left; }
   table.lots tr.tot td { font-weight: bold; background: #f8f8f8; }
+  .delivery-type { margin-top: 8px; font-size: 13px; }
   .signature { margin-top: 14px; text-align: right; font-size: 12px; }
   .signature-line { border-top: 1px solid #000; width: 200px; margin-left: auto; padding-top: 4px; }
   .footer { text-align: center; margin-top: 8px; font-size: 10px; color: #666; }
@@ -123,11 +124,6 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
       </div>
       <div className="party" data-testid="text-nikasi-buyer">
         <strong>{t("buyer") || "Buyer"} / खरीदार:</strong> {buyerDisplay}
-        {data.deliveryType && (
-          <span data-testid="text-nikasi-delivery-type">
-            &nbsp;|&nbsp;<strong>{deliveryTypeLabel(data.deliveryType, t)}</strong>
-          </span>
-        )}
       </div>
       <table className="lots">
         <thead>
@@ -172,6 +168,11 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
           )}
         </tbody>
       </table>
+      {data.deliveryType && (
+        <div className="delivery-type" data-testid="text-nikasi-delivery-type">
+          <strong>{t("deliveryType") || "Delivery Type"}:</strong> {deliveryTypeLabel(data.deliveryType, t)}
+        </div>
+      )}
       <div className="signature">
         <div className="signature-line">{t("authorisedSignatory") || "Authorised Signatory"}</div>
       </div>
