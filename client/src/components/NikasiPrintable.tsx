@@ -129,7 +129,13 @@ export function NikasiPrintable({ data, coldStorage, partyRowLabel, t }: NikasiP
               <td className="lft">{s.lotNo}</td>
               <td className="lft">{s.marka || "—"}</td>
               <td><strong>{s.bagsExited}</strong></td>
-              <td>{s.bagType === "wafer" ? "Wafer" : "Seed"}</td>
+              <td>
+                {s.bagType?.toLowerCase() === "wafer"
+                  ? t("wafer")
+                  : s.bagType?.toLowerCase() === "ration"
+                  ? t("ration")
+                  : t("seed")}
+              </td>
               <td>{s.chamberName}</td>
               <td>{s.floor}</td>
               <td>{s.position}</td>
