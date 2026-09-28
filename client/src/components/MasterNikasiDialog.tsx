@@ -79,6 +79,9 @@ interface MasterNikasiResult {
   // (Task #256 — auto-skip path). Non-null otherwise.
   sharedColdStorageBillNumber: number | null;
   exitDate: string;
+  // Task #395 — Delivery Type shared across the whole batch; null when
+  // left blank. Echoed back so the print block can render it directly.
+  deliveryType?: "gate" | "gateWeighing" | "bilty" | "biltyWeighing" | null;
   sales: Array<{
     saleId: string;
     lotId: string;
@@ -235,6 +238,12 @@ export function MasterNikasiDialog({
   // by re-opening the sub-dialog with the message highlighted.
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
+  // Task #395 — Delivery Type shared across the whole batch (mirrors the
+  // single-sale dialog's per-sale field, but Master Nikasi has one value
+  // for every row it creates). Blank/"" means "not selected" and persists
+  // as NULL, matching every pre-existing Master Nikasi batch.
+  const [deliveryType, setDeliveryType] = useState<"" | "gate" | "gateWeighing" | "bilty" | "biltyWeighing">("");
+
   // Reset state whenever dialog opens. Both shared bill # inputs start
   // empty and are populated by the follow-up effects below, once the
   // entry-year-scoped hints arrive.
@@ -264,6 +273,7 @@ export function MasterNikasiDialog({
       setAttachedPayment(null);
       setPaymentDialogOpen(false);
       setPaymentError(null);
+      setDeliveryType("");
     }
   }, [open, lots]);
 
@@ -494,6 +504,23 @@ export function MasterNikasiDialog({
   const totalExitBags = rowTotals.reduce((s, r) => s + r.exitBags, 0);
   const totalSoldBags = rowTotals.reduce((s, r) => s + r.soldBags, 0);
 
+  // Task #395 — Gate Cut isn't valid once any row in the batch carries
+  // Extra Hammali/Bag, Grading/Bag, or a Grading amount, so both Gate Cut
+  // options are disabled in that case. Checked directly against the raw
+  // row strings (not rowTotals) so a typed value counts even before it
+  // resolves to a positive computed charge.
+  const anyExtraChargesInBatch = rows.some(r =>
+    (Number(r.extraHammaliPerBag) || 0) > 0 ||
+    (Number(r.gradingPerBag) || 0) > 0 ||
+    (Number(r.gradingCharges) || 0) > 0
+  );
+  const isGateLikeSelected = deliveryType === "gate" || deliveryType === "gateWeighing";
+  useEffect(() => {
+    if (anyExtraChargesInBatch && isGateLikeSelected) {
+      setDeliveryType("");
+    }
+  }, [anyExtraChargesInBatch, isGateLikeSelected]);
+
   const updateRow = (key: string, patch: Partial<RowState>) => {
     setRows(prev => prev.map(r => (r.rowKey === key ? { ...r, ...patch } : r)));
   };
@@ -656,6 +683,9 @@ export function MasterNikasiDialog({
         sharedExitBillNumber: sharedExitBill,
         sharedColdStorageBillNumber: sharedCsBill,
         rows: cleaned,
+        // Task #395 — shared Delivery Type for the whole batch; omitted
+        // when left blank so every created sale's delivery_type stays NULL.
+        ...(deliveryType ? { deliveryType } : {}),
         ...(paymentToSend ? { payment: paymentToSend } : {}),
       });
       return (await res.json()) as MasterNikasiResult;
@@ -1345,6 +1375,8 @@ export function MasterNikasiDialog({
                     contactNumber: result.farmer.contactNumber,
                   },
                   buyerName: result.buyer?.buyerName ?? null,
+                  // Task #395 — shared Delivery Type for the whole batch.
+                  deliveryType: result.deliveryType ?? null,
                   sales: result.sales.map(s => ({
                     saleId: s.saleId,
                     lotNo: s.lotNo,
@@ -1411,30 +1443,60 @@ export function MasterNikasiDialog({
           );
         })()}
 
-        <DialogFooter className="gap-2 sm:justify-between">
+        {/* Task #395 — footer wrapped in items-start (mobile) / items-center
+            (sm+) so the Add Payment button no longer stretches full-width
+            in the flex-col-reverse mobile layout (it was spanning edge to
+            edge instead of sizing to its own content). */}
+        <DialogFooter className="gap-2 items-start sm:items-center sm:justify-between">
           {!result && (
-            <Button
-              type="button"
-              variant={paymentError ? "destructive" : attachedPayment ? "default" : "outline"}
-              onClick={() => { setPaymentDialogOpen(true); }}
-              disabled={validRowCount === 0 || grandTotal <= 0 || submitMutation.isPending}
-              className={paymentError ? "bg-red-600 hover:bg-red-700 text-white" : attachedPayment ? "bg-green-600 hover:bg-green-700 text-white" : ""}
-              data-testid="button-mn-open-payment"
-            >
-              {attachedPayment ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4 mr-1" />
-                  {t("paymentAttached")} ₹{fmt(((attachedPayment.amount || 0) + (attachedPayment.roundOff || 0)))}
-                </>
-              ) : (
-                <>
-                  <IndianRupee className="h-4 w-4 mr-1" />
-                  {t("addPayment")}
-                </>
-              )}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant={paymentError ? "destructive" : attachedPayment ? "default" : "outline"}
+                onClick={() => { setPaymentDialogOpen(true); }}
+                disabled={validRowCount === 0 || grandTotal <= 0 || submitMutation.isPending}
+                className={paymentError ? "bg-red-600 hover:bg-red-700 text-white" : attachedPayment ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                data-testid="button-mn-open-payment"
+              >
+                {attachedPayment ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                    {t("paymentAttached")} ₹{fmt(((attachedPayment.amount || 0) + (attachedPayment.roundOff || 0)))}
+                  </>
+                ) : (
+                  <>
+                    <IndianRupee className="h-4 w-4 mr-1" />
+                    {t("addPayment")}
+                  </>
+                )}
+              </Button>
+
+              {/* Task #395 — batch-wide Delivery Type. Defaults to blank
+                  ("-"); Gate Cut options are disabled once any row carries
+                  Extra Hammali/Bag, Grading/Bag, or a Grading amount. */}
+              <Select
+                value={deliveryType === "" ? "__none__" : deliveryType}
+                onValueChange={(value) => setDeliveryType(value === "__none__" ? "" : (value as typeof deliveryType))}
+                disabled={!!result || submitMutation.isPending}
+              >
+                <SelectTrigger className="h-9 w-[180px]" data-testid="select-mn-delivery-type">
+                  <SelectValue placeholder="-" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">-</SelectItem>
+                  <SelectItem value="gate" disabled={anyExtraChargesInBatch} className={anyExtraChargesInBatch ? "opacity-50" : ""}>
+                    {t("gateCut")}
+                  </SelectItem>
+                  <SelectItem value="gateWeighing" disabled={anyExtraChargesInBatch} className={anyExtraChargesInBatch ? "opacity-50" : ""}>
+                    {t("gateCutWeighing")}
+                  </SelectItem>
+                  <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
+                  <SelectItem value="biltyWeighing">{t("biltyCutWeighing")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           )}
-          <div className="flex gap-2 ml-auto">
+          <div className="flex gap-2 ml-auto sm:ml-0">
             <Button
               variant="outline"
               onClick={() => onOpenChange(false)}

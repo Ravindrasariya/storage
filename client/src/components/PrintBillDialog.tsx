@@ -690,6 +690,14 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
               <span className="info-label">खरीदार:</span>
               <span className="info-value" data-testid="text-batch-buyer-deduction">{batchBuyerName}</span>
             </div>
+            {(siblings[0] as any).deliveryType && (
+              <div className="info-row">
+                <span className="info-label">डिलीवरी प्रकार:</span>
+                <span className="info-value" data-testid="text-batch-delivery-type-deduction">
+                  <strong>{deliveryTypeLabel((siblings[0] as any).deliveryType)}</strong>
+                </span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="section">
@@ -1081,6 +1089,14 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
               <span className="info-label">खरीदार:</span>
               <span className="info-value" data-testid="text-batch-buyer-sales">{batchBuyerName}</span>
             </div>
+            {(siblings[0] as any).deliveryType && (
+              <div className="info-row">
+                <span className="info-label">डिलीवरी प्रकार:</span>
+                <span className="info-value" data-testid="text-batch-delivery-type-sales">
+                  <strong>{deliveryTypeLabel((siblings[0] as any).deliveryType)}</strong>
+                </span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="section">

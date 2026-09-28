@@ -2805,6 +2805,10 @@ export class DatabaseStorage implements IStorage {
     // (mirrors sharedExitBillNumber). When null/omitted, server takes
     // MAX(coldStorageBillNumber)+1 over (cold storage, year(soldAt)).
     sharedColdStorageBillNumber?: number | null;
+    // Task #395 — Delivery Type shared across every sale created by this
+    // batch. Null/omitted leaves delivery_type NULL on every row
+    // (legacy behavior, and the only option before this task).
+    deliveryType?: "gate" | "gateWeighing" | "bilty" | "biltyWeighing" | null;
     // Optional inline payment captured in the MN dialog. When provided, the
     // server allocates `amount + roundOff` top-to-bottom across the newly
     // created sales (one cashReceipts row per touched sale, FIFO-excluded so
@@ -2853,6 +2857,9 @@ export class DatabaseStorage implements IStorage {
     // rule documented in createMasterNikasi (Task #256).
     sharedColdStorageBillNumber: number | null;
     exitDate: Date;
+    // Task #395 — echoed back so the client can render it on the Master
+    // Nikasi receipt print without re-fetching; null when left blank.
+    deliveryType: "gate" | "gateWeighing" | "bilty" | "biltyWeighing" | null;
     sales: Array<{
       saleId: string;
       lotId: string;
@@ -2948,6 +2955,8 @@ export class DatabaseStorage implements IStorage {
 
     const userSharedExitBill = args.sharedExitBillNumber ?? null;
     const userSharedCsBill = args.sharedColdStorageBillNumber ?? null;
+    // Task #395 — shared Delivery Type for the whole batch.
+    const deliveryType = args.deliveryType ?? null;
 
     const masterNikasiResult = await db.transaction(async (tx) => {
       // Lock the cold-storage row up front. This serializes all bill-#
@@ -3313,6 +3322,9 @@ export class DatabaseStorage implements IStorage {
           buyerId: buyerRecord?.buyerId ?? null,
           soldAt: saleDate,
           createdAt: new Date(),
+          // Task #395 — shared Delivery Type for the whole batch; NULL
+          // when the operator left it blank.
+          deliveryType: deliveryType ?? null,
         } as InsertSalesHistory).returning();
 
         // Single shared CS bill # — resolved once before the row loop.
@@ -3453,6 +3465,7 @@ export class DatabaseStorage implements IStorage {
         sharedExitBillNumber,
         sharedColdStorageBillNumber,
         exitDate,
+        deliveryType,
         sales: createdSales,
         farmer: {
           farmerName: farmerRecord.farmerName,

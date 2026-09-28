@@ -1877,6 +1877,11 @@ export async function registerRoutes(
     // is intentionally written with NULL CS bill # on every row
     // (Task #256). Operator can also type a positive integer to override.
     sharedColdStorageBillNumber: z.number().int().positive().nullable().optional(),
+    // Task #395 — Delivery Type selected for the whole batch (mirrors the
+    // single-sale dialog's per-sale field). Shared across every row in
+    // this Master Nikasi submission; omitted/blank leaves every created
+    // sale's delivery_type NULL, matching legacy behavior.
+    deliveryType: z.enum(["gate", "gateWeighing", "bilty", "biltyWeighing"]).optional(),
     rows: z.array(z.object({
       lotId: z.string().min(1),
       exitBags: z.number().int().min(1),
@@ -2004,6 +2009,9 @@ export async function registerRoutes(
         exitDate,
         sharedExitBillNumber: body.sharedExitBillNumber ?? null,
         sharedColdStorageBillNumber: body.sharedColdStorageBillNumber ?? null,
+        // Task #395 — shared Delivery Type for the whole batch; null when
+        // the operator left it blank.
+        deliveryType: body.deliveryType ?? null,
         payment: parsedPayment,
         rows: body.rows.map(r => ({
           lotId: r.lotId,
