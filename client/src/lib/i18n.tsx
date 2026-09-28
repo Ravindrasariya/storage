@@ -401,7 +401,9 @@ const translations: Translations = {
   noFarmerDues: { en: "No farmer dues found", hi: "किसान पर कोई बकाया नहीं" },
   deliveryType: { en: "Delivery Type", hi: "डिलीवरी प्रकार" },
   biltyCut: { en: "Bilty Cut", hi: "बिल्टी कट" },
+  biltyCutWeighing: { en: "Bilty Cut + Weighing", hi: "बिल्टी कट + तौल" },
   gateCut: { en: "Gate Cut", hi: "गेट कट" },
+  gateCutWeighing: { en: "Gate Cut + Weighing", hi: "गेट कट + तौल" },
   extraHammaliPerBag: { en: "Extra Hammali/bag", hi: "अतिरिक्त हमाली/बैग" },
   // Task #300 — Grading/Bag input shown alongside Total Grading in
   // New Sale (Bilty), Edit Sale, and Master Nikasi. Audit/data-entry

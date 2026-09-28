@@ -44,7 +44,14 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   const [customPaidAmount, setCustomPaidAmount] = useState<string>("");
   const [editPosition, setEditPosition] = useState<string>("");
   const [kataCharges, setKataCharges] = useState<string>("");
-  const [deliveryType, setDeliveryType] = useState<"gate" | "bilty">("gate");
+  // Task #392 — Gate Cut / Bilty Cut each split into a plain variant and a
+  // "+ Weighing" variant, purely for the operator's record-keeping about
+  // whether the lot was weighed. Calculations are unchanged: both gate*
+  // variants behave like the old "gate", both bilty* variants behave like
+  // the old "bilty". isBiltyLike() below is the single place that decides
+  // this grouping so every branch stays in sync automatically.
+  const [deliveryType, setDeliveryType] = useState<"gate" | "gateWeighing" | "bilty" | "biltyWeighing">("gate");
+  const isBiltyLike = (dt: typeof deliveryType) => dt === "bilty" || dt === "biltyWeighing";
   const [extraHammaliPerBag, setExtraHammaliPerBag] = useState<string>("");
   // Task #300 — operator-entered per-bag grading rate. Audit/data-entry only;
   // typing here auto-fills totalGradingCharges (perBag × current sold qty)
@@ -331,8 +338,8 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       }
     }
     const kata = parseFloat(kataCharges) || 0;
-    const extraHammali = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
-    const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
+    const extraHammali = isBiltyLike(deliveryType) ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
+    const grading = isBiltyLike(deliveryType) ? (parseFloat(totalGradingCharges) || 0) : 0;
     return baseCharge + kata + extraHammali + grading;
   };
 
@@ -368,8 +375,8 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
     const totalCharge = baseChargeTotal + adjAmountForSale;
 
     const kata = parseFloat(kataCharges) || 0;
-    const extraHammaliTotal = deliveryType === "bilty" ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
-    const grading = deliveryType === "bilty" ? (parseFloat(totalGradingCharges) || 0) : 0;
+    const extraHammaliTotal = isBiltyLike(deliveryType) ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
+    const grading = isBiltyLike(deliveryType) ? (parseFloat(totalGradingCharges) || 0) : 0;
 
     let paidAmount: number | undefined;
     let dueAmount: number | undefined;
@@ -789,18 +796,20 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
 
             <div className="space-y-2">
               <Label>{t("deliveryType")}</Label>
-              <Select value={deliveryType} onValueChange={(value: "gate" | "bilty") => setDeliveryType(value)}>
+              <Select value={deliveryType} onValueChange={(value: "gate" | "gateWeighing" | "bilty" | "biltyWeighing") => setDeliveryType(value)}>
                 <SelectTrigger data-testid="select-partial-delivery-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="gate">{t("gateCut")}</SelectItem>
+                  <SelectItem value="gateWeighing">{t("gateCutWeighing")}</SelectItem>
                   <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
+                  <SelectItem value="biltyWeighing">{t("biltyCutWeighing")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {deliveryType === "bilty" && (
+            {isBiltyLike(deliveryType) && (
               <div className="space-y-4 p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20">
                 <div className="space-y-2">
                   <Label>{t("extraHammaliPerBag")}</Label>
@@ -921,10 +930,10 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
                       {(parseFloat(kataCharges) || 0) > 0 && (
                         <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
                       )}
-                      {deliveryType === "bilty" && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
+                      {isBiltyLike(deliveryType) && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
                         <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /> ({partialQuantity} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
                       )}
-                      {deliveryType === "bilty" && (parseFloat(totalGradingCharges) || 0) > 0 && (
+                      {isBiltyLike(deliveryType) && (parseFloat(totalGradingCharges) || 0) > 0 && (
                         <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
                       )}
                       {!isSelfBuyer && (parseFloat(adjAmount) || 0) > 0 && (
