@@ -12,7 +12,7 @@
  * that exit's row is expected to satisfy `createdAt <= asOf` by definition
  * (it's a self-comparison).
  *
- * That invariant broke for Master Nikasi specifically: createMasterNikasi
+  * That invariant broke for Master Nikasi specifically: createMasterNikasi
  * stamped the new sales_history row's `createdAt` with an app-side
  * `new Date()` call, while the sibling exit_history row relied on the
  * column's DB-side `defaultNow()`. Postgres's `now()` is pinned to the
@@ -25,16 +25,17 @@
  * were counted as fully unsold on the receipt printed immediately after
  * (Balance = full lot size, not lot size minus the just-exited bags).
  *
- * The fix stamps both the sales_history and exit_history rows created for
- * the same Master Nikasi row with ONE explicit app-side timestamp, so they
- * can never disagree. This script guards against a future change
- * reintroducing two independently-generated instants for the pair.
+  * New Master Nikasi rows share a DB transaction-start timestamp. Existing
+  * rows written before that fix still have the skew, so the balance query
+  * must also recognize a sale as existing when its exit exists by the cutoff.
  *
  * What this script asserts (over real HTTP routes against a real DB):
  *   1. POST /api/farmers/master-nikasi (single-row batch): the balance
  *      resolved via POST /api/lots/balances, using the response's own
  *      exitCreatedAt as asOf, subtracts the just-exited bags.
- *   2. Single-lot exit flow (POST /api/sales-history/:id/exits, called
+  *   2. Reprints of pre-fix Master Nikasi exits, including a fully-exited
+  *      24-bag lot, deduct the current exit despite the legacy clock skew.
+  *   3. Single-lot exit flow (POST /api/sales-history/:id/exits, called
  *      twice on the same sale): each freshly-created exit's own createdAt
  *      as asOf resolves a balance that includes ALL exits up to and
  *      including itself.
@@ -169,7 +170,7 @@ async function main(): Promise<void> {
     if (!mnRes.ok) {
       fail(`Test 1 FAIL — master-nikasi request failed: ${mnRes.status} ${await mnRes.text()}`);
     } else {
-      const mnData = await mnRes.json() as { sales: Array<{ lotId: string; exitCreatedAt: string }> };
+      const mnData = await mnRes.json() as { sharedExitBillNumber: number; sales: Array<{ lotId: string; exitCreatedAt: string }> };
       const row = mnData.sales.find(s => s.lotId === lotMnId);
       if (!row) {
         fail(`Test 1 FAIL — master-nikasi response missing sale row for lot`);
@@ -189,6 +190,96 @@ async function main(): Promise<void> {
           );
         } else {
           console.log("Test 1 (Master Nikasi fresh-print balance): ok — 60 (just-exited bags subtracted)");
+        }
+
+        // Simulate an already-stored Master Nikasi from before Task #405:
+        // its JS-stamped sale was created milliseconds AFTER its tx-start
+        // DB-stamped exit. Reprinting must still count that exit even though
+        // the sale's creation timestamp lies after the receipt's cutoff.
+        await pool.query(
+          `UPDATE sales_history SET created_at = (
+             SELECT e.created_at + interval '60 milliseconds'
+             FROM exit_history e WHERE e.sales_history_id = sales_history.id
+             LIMIT 1
+           ) WHERE cold_storage_id = $1 AND lot_id = $2`,
+          [csId, lotMnId],
+        );
+        const legacyExitRes = await fetch(`${baseUrl}/api/exits/by-bill/${mnData.sharedExitBillNumber}?exitId=${encodeURIComponent((await pool.query(
+          `SELECT id FROM exit_history WHERE cold_storage_id = $1 AND lot_id = $2 LIMIT 1`,
+          [csId, lotMnId],
+        )).rows[0].id)}`, { headers: authHeaders });
+        if (!legacyExitRes.ok) {
+          fail(`Test 1b FAIL — reprint lookup failed: ${legacyExitRes.status} ${await legacyExitRes.text()}`);
+        } else {
+          const legacyData = await legacyExitRes.json() as { exits: Array<{ lotId: string; createdAt: string }> };
+          const legacyExit = legacyData.exits.find(e => e.lotId === lotMnId);
+          if (!legacyExit) {
+            fail("Test 1b FAIL — reprint lookup omitted the legacy exit");
+          } else {
+            const legacyBalanceRes = await fetch(`${baseUrl}/api/lots/balances`, {
+              method: "POST", headers: authHeaders,
+              body: JSON.stringify({ items: [{ lotId: lotMnId, asOf: legacyExit.createdAt }] }),
+            });
+            const legacyBalance = await legacyBalanceRes.json() as Record<string, number>;
+            if (legacyBalance[lotMnId] !== 60) {
+              fail(`Test 1b FAIL — reprinted pre-fix Master Nikasi should show 60 (100 - 40), got ${legacyBalance[lotMnId]}`);
+            } else {
+              console.log("Test 1b (legacy Master Nikasi reprint balance): ok — 60");
+            }
+          }
+        }
+      }
+    }
+
+    // A fully-exited 24-bag lot matches the originally reported symptom:
+    // before the legacy-row fix its printed balance incorrectly stayed 24.
+    const lotFullId = `${RUN_ID}_lot_full`;
+    await pool.query(
+      `INSERT INTO lots (
+         id, cold_storage_id, farmer_name, village, tehsil, district, state,
+         contact_number, lot_no, size, remaining_size, chamber_id, floor,
+         position, type, bag_type, quality, potato_size, assaying_type,
+         up_for_sale, sale_status, base_cold_charges_billed, farmer_ledger_id
+       ) VALUES ($1, $2, 'Smoke Farmer', 'V', 'T', 'D', 'S', '9999999999', 'LFULL', 24, 24, $3, 0,
+         'P1', 'seed', 'seed', 'good', 'large', 'self', 0, 'unsold', 0, $4)`,
+      [lotFullId, csId, chamberId, farmerLedgerId],
+    );
+    const fullRes = await fetch(`${baseUrl}/api/farmers/master-nikasi`, {
+      method: "POST", headers: authHeaders,
+      body: JSON.stringify({
+        farmerLedgerId,
+        exitDate: new Date().toISOString().slice(0, 10),
+        rows: [{
+          lotId: lotFullId, exitBags: 24, soldBags: 24, chargeBasis: "actual",
+          kataCharges: 0, extraHammaliPerBag: 0, gradingCharges: 0,
+        }],
+      }),
+    });
+    if (!fullRes.ok) {
+      fail(`Test 1c FAIL — full-lot Master Nikasi request failed: ${fullRes.status} ${await fullRes.text()}`);
+    } else {
+      const fullData = await fullRes.json() as { sales: Array<{ lotId: string; exitCreatedAt: string }> };
+      const fullRow = fullData.sales.find(s => s.lotId === lotFullId);
+      if (!fullRow) {
+        fail("Test 1c FAIL — full-lot Master Nikasi response missing sale");
+      } else {
+        await pool.query(
+          `UPDATE sales_history SET created_at = (
+             SELECT e.created_at + interval '60 milliseconds'
+             FROM exit_history e WHERE e.sales_history_id = sales_history.id
+             LIMIT 1
+           ) WHERE cold_storage_id = $1 AND lot_id = $2`,
+          [csId, lotFullId],
+        );
+        const fullBalRes = await fetch(`${baseUrl}/api/lots/balances`, {
+          method: "POST", headers: authHeaders,
+          body: JSON.stringify({ items: [{ lotId: lotFullId, asOf: fullRow.exitCreatedAt }] }),
+        });
+        const fullBalance = await fullBalRes.json() as Record<string, number>;
+        if (fullBalance[lotFullId] !== 0) {
+          fail(`Test 1c FAIL — fully-exited legacy 24-bag lot should have Balance 0, got ${fullBalance[lotFullId]}`);
+        } else {
+          console.log("Test 1c (fully-exited legacy Master Nikasi): ok — 0");
         }
       }
     }

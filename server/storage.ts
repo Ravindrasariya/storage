@@ -4162,8 +4162,17 @@ export class DatabaseStorage implements IStorage {
       const size = lotSizeById.get(lotId);
       if (size == null) continue;
       const asOfMs = asOf.getTime();
+      // Older Master Nikasi rows can have sale.createdAt AFTER their own
+      // exit.createdAt: the sale was JS-stamped mid-transaction while the
+      // exit used Postgres transaction-start NOW(). An exit that already
+      // exists at T proves its parent sale existed at T, even if those
+      // historical timestamps disagree. Include that sale so its exited
+      // bags are deducted on both fresh prints and reprints.
       const salesAsOf = (salesByLot.get(lotId) ?? [])
-        .filter(s => s.createdAt != null && new Date(s.createdAt).getTime() <= asOfMs);
+        .filter(s =>
+          (s.createdAt != null && new Date(s.createdAt).getTime() <= asOfMs) ||
+          (exitsBySale.get(s.id) ?? []).some(e => new Date(e.createdAt).getTime() <= asOfMs)
+        );
 
       const soldAsOf = salesAsOf.reduce((sum, s) => sum + (s.quantitySold || 0), 0);
       const unsold = size - soldAsOf;

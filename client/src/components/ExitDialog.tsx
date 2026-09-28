@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -90,12 +91,16 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: Array.from(deduped, ([lotId, asOf]) => ({ lotId, asOf })) }),
       });
+      if (!res.ok) throw new Error(`Balance lookup failed (${res.status})`);
       const json = await res.json() as Record<string, number>;
-      setLotBalances(prev => ({ ...prev, ...json }));
+      // Single-exit printing reads printRef.innerHTML immediately after this
+      // promise settles. Commit the fetched value to the hidden receipt DOM
+      // synchronously, rather than hoping a 50ms timeout flushes React state.
+      flushSync(() => setLotBalances(json));
       return json;
-    } catch {
-      // Non-fatal — the receipt shows "—" for any lot whose balance
-      // couldn't be resolved rather than blocking the print.
+    } catch (error) {
+      flushSync(() => setLotBalances({}));
+      toast({ title: t("error"), description: error instanceof Error ? error.message : "Balance lookup failed", variant: "destructive" });
       return {};
     }
   };

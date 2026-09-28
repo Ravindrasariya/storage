@@ -1,6 +1,6 @@
 ---
 name: Nikasi Balance timestamp consistency
-description: A sale row and its own exit_history row must share one explicit app-side createdAt, not defaultNow()+new Date(), or point-in-time balance queries misfire.
+description: Keep paired creation timestamps consistent, and account for historical sale/exit clock skew when reprinting.
 ---
 
 Point-in-time queries that filter `... WHERE createdAt <= asOf` and expect a
@@ -24,6 +24,18 @@ fully un-exited on the receipt printed immediately after.
 
 **How to apply:** When two rows created in the same transaction must be
 comparable by timestamp (especially when one's timestamp is later used as a
-cutoff to look the other one up), capture ONE `new Date()` in app code
-before either insert and pass it explicitly to both — don't mix
+cutoff to look the other one up), use the same clock for both: either DB
+defaults within one transaction or one explicit app timestamp. Don't mix
 `defaultNow()` with app-side `new Date()` for timestamps that must agree.
+
+Historical receipts must remain correct even after fixing future inserts.
+An active exit existing by the cutoff proves its parent sale existed by
+that cutoff, regardless of the parent's inconsistent timestamp.
+
+**Why:** Historical paired rows with the exit timestamp earlier than the
+sale timestamp remained in the database after the insert fix. Fresh-entry
+tests alone missed the reprint failure.
+
+**How to apply:** Include legacy-skew fixtures in balance regression tests;
+do not rely only on newly created records or rewrite historical timestamps
+to hide the inconsistency.
