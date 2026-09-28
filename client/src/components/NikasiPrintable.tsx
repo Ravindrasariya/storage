@@ -65,7 +65,7 @@ export const nikasiPrintStyles = `
   .header h3 { font-size: 18px; margin: 6px 0 0; }
   .meta { display: flex; justify-content: space-between; font-size: 17px; margin: 6px 0; }
   .party { font-size: 17px; margin-bottom: 6px; }
-  table.lots { width: 100%; border-collapse: collapse; font-size: 17px; margin-top: 8px; table-layout: fixed; }
+  table.lots { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; table-layout: fixed; }
   table.lots th, table.lots td { border: 1px solid #000; padding: 3px 4px; text-align: center; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; }
   table.lots th { background: #f3f3f3; }
   table.lots td.lft, table.lots th.lft { text-align: left; }
