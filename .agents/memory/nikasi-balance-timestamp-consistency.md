@@ -1,6 +1,6 @@
 ---
 name: Nikasi Balance timestamp consistency
-description: Keep paired creation timestamps consistent, and account for historical sale/exit clock skew when reprinting.
+description: Sale and exit creation use PostgreSQL clock_timestamp() defaults; handle historical skew when reprinting.
 ---
 
 Point-in-time queries that filter `... WHERE createdAt <= asOf` and expect a
@@ -22,11 +22,13 @@ values can disagree even though both were "created together."
 createdAt) excluded the very sale just created, making its bags show as
 fully un-exited on the receipt printed immediately after.
 
-**How to apply:** When two rows created in the same transaction must be
-comparable by timestamp (especially when one's timestamp is later used as a
-cutoff to look the other one up), use the same clock for both: either DB
-defaults within one transaction or one explicit app timestamp. Don't mix
-`defaultNow()` with app-side `new Date()` for timestamps that must agree.
+**How to apply:** `sales_history.created_at` and `exit_history.created_at`
+now default to PostgreSQL `clock_timestamp()`, which is evaluated at INSERT
+even inside a long transaction. Let the DB assign both timestamps; do not
+provide JS-side overrides or revert either default to transaction-start
+`NOW()`. The Master Nikasi sale is inserted before its exit, so the exit's
+true creation timestamp is no earlier than the sale's. Operator-editable
+`sold_at` and `exit_date` are business dates, not these creation timestamps.
 
 Historical receipts must remain correct even after fixing future inserts.
 An active exit existing by the cutoff proves its parent sale existed by

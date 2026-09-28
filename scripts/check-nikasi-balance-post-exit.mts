@@ -25,9 +25,10 @@
  * were counted as fully unsold on the receipt printed immediately after
  * (Balance = full lot size, not lot size minus the just-exited bags).
  *
-  * New Master Nikasi rows share a DB transaction-start timestamp. Existing
-  * rows written before that fix still have the skew, so the balance query
-  * must also recognize a sale as existing when its exit exists by the cutoff.
+  * New sales and exits now use PostgreSQL clock_timestamp() evaluated at
+  * INSERT instead of mixing application time with transaction-start time.
+  * Existing rows written before that fix still have the skew, so the balance
+  * query also recognizes a sale when its exit exists by the cutoff.
  *
  * What this script asserts (over real HTTP routes against a real DB):
  *   1. POST /api/farmers/master-nikasi (single-row batch): the balance
@@ -135,6 +136,21 @@ async function main(): Promise<void> {
       [farmerLedgerId, csId, `FMNB${Date.now()}`],
     );
 
+    // Both defaults must be wall-clock insertion time, not transaction-start
+    // NOW(). This catches drift when a schema push resets either column.
+    for (const table of ["sales_history", "exit_history"]) {
+      const { rows } = await pool.query<{ expression: string }>(
+        `SELECT pg_get_expr(d.adbin, d.adrelid) AS expression
+         FROM pg_attrdef d
+         JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+         WHERE d.adrelid = $1::regclass AND a.attname = 'created_at'`,
+        [table],
+      );
+      if (!/^clock_timestamp\(\)$/i.test(rows[0]?.expression ?? "")) {
+        fail(`Timestamp default FAIL — ${table}.created_at must default to clock_timestamp(), got ${rows[0]?.expression ?? "none"}`);
+      }
+    }
+
     // ------------------------------------------------------------------
     // Test 1: Master Nikasi batch (createMasterNikasi) — the bug's origin.
     // ------------------------------------------------------------------
@@ -181,6 +197,15 @@ async function main(): Promise<void> {
           body: JSON.stringify({ items: [{ lotId: lotMnId, asOf: row.exitCreatedAt }] }),
         });
         const balances = await balRes.json() as Record<string, number>;
+        const { rows: stamped } = await pool.query<{ sale_time: Date; exit_time: Date }>(
+          `SELECT s.created_at AS sale_time, e.created_at AS exit_time
+           FROM sales_history s JOIN exit_history e ON e.sales_history_id = s.id
+           WHERE s.cold_storage_id = $1 AND s.lot_id = $2`,
+          [csId, lotMnId],
+        );
+        if (!stamped[0] || stamped[0].sale_time.getTime() > stamped[0].exit_time.getTime()) {
+          fail("Test 1 FAIL — new Master Nikasi exit timestamp precedes its parent sale");
+        }
         if (balances[lotMnId] !== 60) {
           fail(
             `Test 1 FAIL — Master Nikasi Balance right after exit should be 60 (100 - 40 just-exited), ` +
@@ -301,25 +326,55 @@ async function main(): Promise<void> {
          'P1', 'seed', 'seed', 'good', 'large', 'self', 0, 'unsold', 1)`,
       [lotSingleId, csId, chamberId],
     );
-    await pool.query(
-      `INSERT INTO sales_history (
-         id, cold_storage_id, lot_id, farmer_name, village, tehsil, district, state,
-         contact_number, lot_no, chamber_name, floor, position, potato_type, bag_type,
-         quality, original_lot_size, sale_type, quantity_sold, price_per_bag,
-         cold_charge, hammali, cold_storage_charge, payment_status, paid_amount,
-         paid_cash, paid_account, discount_allocated, due_amount, sale_year, sold_at,
-         buyer_name, is_self_sale
-       ) VALUES ($1, $2, $3, 'F', 'V', 'T', 'D', 'S', '9999999999', 'LS1', 'C', 0, 'P1', 'X', 'seed',
-         'good', 100, 'full', 50, 100, 10, 5, 1000, 'unpaid', 0, 0, 0, 0, 1000, 2026, now(),
-         'Buyer1', 0)`,
-      [saleSingleId, csId, lotSingleId],
-    );
+    // An open transaction deliberately waits before creating the sale. With
+    // DEFAULT NOW(), its created_at would still equal transaction start.
+    const delayedClient = await pool.connect();
+    try {
+      await delayedClient.query("BEGIN");
+      const { rows: [start] } = await delayedClient.query<{ start_time: Date }>(
+        "SELECT transaction_timestamp() AS start_time",
+      );
+      await delayedClient.query("SELECT pg_sleep(0.08)");
+      await delayedClient.query(
+        `INSERT INTO sales_history (
+           id, cold_storage_id, lot_id, farmer_name, village, tehsil, district, state,
+           contact_number, lot_no, chamber_name, floor, position, potato_type, bag_type,
+           quality, original_lot_size, sale_type, quantity_sold, price_per_bag,
+           cold_charge, hammali, cold_storage_charge, payment_status, paid_amount,
+           paid_cash, paid_account, discount_allocated, due_amount, sale_year, sold_at,
+           buyer_name, is_self_sale
+         ) VALUES ($1, $2, $3, 'F', 'V', 'T', 'D', 'S', '9999999999', 'LS1', 'C', 0, 'P1', 'X', 'seed',
+           'good', 100, 'full', 50, 100, 10, 5, 1000, 'unpaid', 0, 0, 0, 0, 1000, 2026, now(),
+           'Buyer1', 0)`,
+        [saleSingleId, csId, lotSingleId],
+      );
+      const { rows: [stampedSale] } = await delayedClient.query<{ created_at: Date }>(
+        "SELECT created_at FROM sales_history WHERE id = $1", [saleSingleId],
+      );
+      if (stampedSale.created_at.getTime() - start.start_time.getTime() < 60) {
+        fail("Test 2 FAIL — sale.created_at reflects transaction start, not actual insert time");
+      }
+      await delayedClient.query("COMMIT");
+    } catch (error) {
+      await delayedClient.query("ROLLBACK");
+      throw error;
+    } finally {
+      delayedClient.release();
+    }
 
     const exit1Res = await fetch(`${baseUrl}/api/sales-history/${saleSingleId}/exits`, {
       method: "POST", headers: authHeaders,
       body: JSON.stringify({ bagsExited: 20, billNumber: 101 }),
     });
-    const exit1 = await exit1Res.json() as { createdAt: string };
+    const exit1 = await exit1Res.json() as { id: string; createdAt: string };
+    const { rows: [singlePair] } = await pool.query<{ sale_time: Date; exit_time: Date }>(
+      `SELECT s.created_at AS sale_time, e.created_at AS exit_time
+       FROM sales_history s JOIN exit_history e ON e.sales_history_id = s.id
+       WHERE e.id = $1`, [exit1.id],
+    );
+    if (!singlePair || singlePair.sale_time.getTime() > singlePair.exit_time.getTime()) {
+      fail("Test 2 FAIL — single exit timestamp precedes parent sale");
+    }
     const bal1Res = await fetch(`${baseUrl}/api/lots/balances`, {
       method: "POST", headers: authHeaders,
       body: JSON.stringify({ items: [{ lotId: lotSingleId, asOf: exit1.createdAt }] }),

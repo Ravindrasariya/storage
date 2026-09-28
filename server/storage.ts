@@ -1978,7 +1978,6 @@ export class DatabaseStorage implements IStorage {
       const [sale] = await tx.insert(salesHistory).values({
         ...data,
         id,
-        createdAt: new Date(),
         paidCash: seedCash,
         paidAccount: seedAccount,
         extraDueToMerchantOriginal: seedExtraDueOriginal,
@@ -3337,17 +3336,8 @@ export class DatabaseStorage implements IStorage {
           buyerLedgerId: buyerRecord?.id ?? null,
           buyerId: buyerRecord?.buyerId ?? null,
           soldAt: saleDate,
-          // Task #405 — deliberately omit createdAt so the column's
-          // DB-side defaultNow() fires instead of a JS-side `new Date()`.
-          // Postgres's NOW() is fixed at TRANSACTION START, so a JS
-          // `new Date()` evaluated partway through this tx is always
-          // *later* than the exit_history row's NOW()-derived createdAt
-          // inserted further down in the same transaction. That skew
-          // made getLotBalances' `sale.createdAt <= exit.createdAt`
-          // filter wrongly exclude the sale (and its own exit) from the
-          // point-in-time Balance, showing the full lot size instead of
-          // the correct remainder. Letting both rows share the same
-          // transaction-start NOW() keeps them consistently orderable.
+          // Creation time comes from PostgreSQL clock_timestamp() at insert;
+          // the later exit insert uses the same clock (not JS or tx-start NOW()).
           // Task #395 — shared Delivery Type for the whole batch; NULL
           // when the operator left it blank.
           deliveryType: deliveryType ?? null,

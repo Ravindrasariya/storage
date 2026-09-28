@@ -26,6 +26,15 @@ interface Migration {
 
 const MIGRATIONS: Migration[] = [
   {
+    name: "2026-09-29_sale_exit_insertion_time_defaults",
+    up: async () => {
+      // Changing column defaults affects future inserts only. Keep historical
+      // timestamps intact; getLotBalances handles previously mismatched rows.
+      await db.execute(sql`ALTER TABLE sales_history ALTER COLUMN created_at SET DEFAULT clock_timestamp()`);
+      await db.execute(sql`ALTER TABLE exit_history ALTER COLUMN created_at SET DEFAULT clock_timestamp()`);
+    },
+  },
+  {
     name: "2026-07-12_add_cash_receipts_is_advance_payment",
     up: async () => {
       // Task #333 — additive NOT NULL column with default 0. Marks a
