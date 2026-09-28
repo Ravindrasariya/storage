@@ -100,6 +100,9 @@ interface MasterNikasiResult {
     chamberName: string;
     floor: number;
     position: string;
+    // Task #403 — this exit row's true created timestamp, used as the
+    // `asOf` cutoff for resolving its point-in-time Balance.
+    exitCreatedAt: string;
   }>;
   farmer: {
     farmerName: string;
@@ -699,11 +702,21 @@ export function MasterNikasiDialog({
       // directly, so the Balance state must already reflect the fetched
       // values by the time that DOM renders, or the receipt would print
       // with a stale/blank Balance.
-      const lotIds = Array.from(new Set(data.sales.map(s => s.lotId).filter(Boolean)));
+      // Task #403 — use each row's own exit_history.createdAt (returned by
+      // the server) as its asOf cutoff, not client-side "now": the batch
+      // transaction's actual timestamp can differ from the browser's clock,
+      // and a same-day morning batch must still resolve correctly.
+      const items = data.sales
+        .filter(s => s.lotId && s.exitCreatedAt)
+        .map(s => ({ lotId: s.lotId, asOf: s.exitCreatedAt }));
       let balances: Record<string, number> = {};
-      if (lotIds.length > 0) {
+      if (items.length > 0) {
         try {
-          const res = await authFetch(`/api/lots/balances?lotIds=${encodeURIComponent(lotIds.join(","))}`);
+          const res = await authFetch("/api/lots/balances", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items }),
+          });
           balances = await res.json();
         } catch {
           // Non-fatal — receipt shows "—" for any unresolved lot.

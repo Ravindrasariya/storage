@@ -1095,18 +1095,30 @@ export async function registerRoutes(
   // Task #401 — per-lot Balance (Remaining + Sold-but-not-exited) for the
   // Nikasi receipt's Balance column. Batched by lotIds so a multi-lot
   // Master Nikasi print resolves everything in one request.
-  app.get("/api/lots/balances", requireAuth, async (req: AuthenticatedRequest, res) => {
+  // Task #403 — Balance is point-in-time, keyed on each exit's own created
+  // timestamp, so the caller supplies one (lotId, asOf) pair per lot rather
+  // than a bare list of lotIds. POST body: { items: [{ lotId, asOf }] }
+  // where asOf is an ISO timestamp string.
+  app.post("/api/lots/balances", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const coldStorageId = getColdStorageId(req);
-      const raw = (req.query.lotIds as string) || "";
-      const lotIds = raw.split(",").map(s => s.trim()).filter(Boolean);
-      if (lotIds.length === 0) return res.json({});
-      if (lotIds.length > 1000) {
-        return res.status(400).json({ error: "Too many lotIds (max 1000)" });
+      const body = z.object({
+        items: z.array(z.object({
+          lotId: z.string().min(1),
+          asOf: z.string().min(1),
+        })).max(1000),
+      }).parse(req.body);
+      if (body.items.length === 0) return res.json({});
+      const requests = body.items.map(item => ({ lotId: item.lotId, asOf: new Date(item.asOf) }));
+      if (requests.some(r => Number.isNaN(r.asOf.getTime()))) {
+        return res.status(400).json({ error: "Invalid asOf timestamp" });
       }
-      const balances = await storage.getLotBalances(coldStorageId, lotIds);
+      const balances = await storage.getLotBalances(coldStorageId, requests);
       res.json(balances);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation error", details: error.errors });
+      }
       console.error("lot balances error:", error);
       res.status(500).json({ error: "Failed to fetch lot balances" });
     }

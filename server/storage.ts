@@ -346,6 +346,10 @@ export interface IStorage {
   getExitsByBillNumber(coldStorageId: string, billNumber: number, entryYear: number): Promise<Array<{
     exitId: string;
     exitDate: Date;
+    // Task #403 — the exit's true row-creation instant, used as the `asOf`
+    // cutoff when resolving this row's Balance on reprint (NOT exitDate,
+    // which the operator can freely back-date).
+    createdAt: Date;
     billNumber: number;
     bagsExited: number;
     isReversed: number;
@@ -404,7 +408,14 @@ export interface IStorage {
     affectedSaleIds: string[];
     effectiveBillNumber: number | null;
   }>;
-  getLotBalances(coldStorageId: string, lotIds: string[]): Promise<Record<string, number>>;
+  // Task #403 — Balance is a point-in-time figure keyed on each exit's own
+  // created timestamp: (lot's original size − bags sold at-or-before that
+  // timestamp) + sum over sales created at-or-before that timestamp of
+  // (quantitySold − bags exited from it at-or-before that timestamp,
+  // counting the exit in question itself). Each request pins its own
+  // `asOf`, so a batch of lots each reprinted for a different exit's
+  // timestamp resolves correctly in one call.
+  getLotBalances(coldStorageId: string, requests: Array<{ lotId: string; asOf: Date }>): Promise<Record<string, number>>;
   getSalesWithExitsByLotIds(coldStorageId: string, lotIds: string[]): Promise<Record<string, Array<{
     saleId: string;
     soldAt: Date;
@@ -2880,6 +2891,9 @@ export class DatabaseStorage implements IStorage {
       chamberName: string;
       floor: number;
       position: string;
+      // Task #403 — this row's exit_history.createdAt, used by the caller
+      // to resolve the point-in-time Nikasi Balance for this exit.
+      exitCreatedAt: Date;
     }>;
     farmer: {
       farmerName: string;
@@ -3345,7 +3359,10 @@ export class DatabaseStorage implements IStorage {
         }
 
         // Create exit_history row sharing the master bill number / date.
-        await tx.insert(exitHistory).values({
+        // Task #403 — capture this row's true creation instant so the
+        // caller can resolve the point-in-time Nikasi Balance using the
+        // exit's own createdAt instead of guessing with client-side "now".
+        const [insertedExit] = await tx.insert(exitHistory).values({
           id: randomUUID(),
           salesHistoryId: saleId,
           lotId: lot.id,
@@ -3353,7 +3370,7 @@ export class DatabaseStorage implements IStorage {
           bagsExited: row.exitBags,
           billNumber: sharedExitBillNumber,
           exitDate,
-        } as InsertExitHistory);
+        } as InsertExitHistory).returning({ createdAt: exitHistory.createdAt });
 
         // Denormalize exit summary onto the sale row (single exit per sale here).
         const dd = String(exitDate.getDate()).padStart(2, "0");
@@ -3384,6 +3401,7 @@ export class DatabaseStorage implements IStorage {
           chamberName: chamber?.name || "Unknown",
           floor: lot.floor,
           position: lot.position,
+          exitCreatedAt: insertedExit.createdAt,
         });
       }
 
@@ -3664,6 +3682,7 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select({
       exitId: exitHistory.id,
       exitDate: exitHistory.exitDate,
+      createdAt: exitHistory.createdAt,
       billNumber: exitHistory.billNumber,
       bagsExited: exitHistory.bagsExited,
       isReversed: exitHistory.isReversed,
@@ -4066,49 +4085,88 @@ export class DatabaseStorage implements IStorage {
   // aggregation used by the Stock Register summary tile (routes.ts
   // /api/lots/summary) but scoped to a specific set of lots instead of a
   // filtered search, so print flows can resolve it on demand.
-  async getLotBalances(coldStorageId: string, lotIds: string[]): Promise<Record<string, number>> {
+  async getLotBalances(
+    coldStorageId: string,
+    requests: Array<{ lotId: string; asOf: Date }>,
+  ): Promise<Record<string, number>> {
     const result: Record<string, number> = {};
-    if (lotIds.length === 0) return result;
+    if (requests.length === 0) return result;
 
+    const lotIds = Array.from(new Set(requests.map(r => r.lotId)));
+
+    // Original lot size — "unsold" is derived from this, not remainingSize,
+    // because remainingSize reflects TODAY's state while unsold-as-of-T must
+    // only count sales that existed at or before the target exit's timestamp.
     const lotRows = await db.select({
       id: lots.id,
-      remainingSize: lots.remainingSize,
+      size: lots.size,
     })
       .from(lots)
       .where(and(eq(lots.coldStorageId, coldStorageId), inArray(lots.id, lotIds)));
+    const lotSizeById = new Map(lotRows.map(l => [l.id, l.size]));
 
-    const soldByLot = new Map<string, number>();
     const saleRows = await db.select({
+      id: salesHistory.id,
       lotId: salesHistory.lotId,
+      // Task #403 — sale "existence as of T" must use createdAt (the
+      // true, immutable row-creation instant), not soldAt: soldAt is
+      // operator-editable (Master Nikasi stamps it from the chosen exit
+      // date at noon IST, and it can be edited later), so keying on it
+      // could wrongly exclude/include a sale relative to an exit's real
+      // creation time.
+      createdAt: salesHistory.createdAt,
       quantitySold: salesHistory.quantitySold,
     })
       .from(salesHistory)
       .where(and(eq(salesHistory.coldStorageId, coldStorageId), inArray(salesHistory.lotId, lotIds)));
-    for (const row of saleRows) {
-      soldByLot.set(row.lotId, (soldByLot.get(row.lotId) || 0) + (row.quantitySold || 0));
+
+    const salesByLot = new Map<string, typeof saleRows>();
+    for (const s of saleRows) {
+      const arr = salesByLot.get(s.lotId) ?? [];
+      arr.push(s);
+      salesByLot.set(s.lotId, arr);
     }
 
-    const exitedByLot = new Map<string, number>();
-    const exitRows = await db.select({
-      lotId: exitHistory.lotId,
-      totalExited: sql<number>`COALESCE(SUM(${exitHistory.bagsExited}), 0)`.as("total_exited"),
-    })
-      .from(exitHistory)
-      .where(and(
-        eq(exitHistory.coldStorageId, coldStorageId),
-        inArray(exitHistory.lotId, lotIds),
-        eq(exitHistory.isReversed, 0),
-      ))
-      .groupBy(exitHistory.lotId);
+    const saleIds = saleRows.map(s => s.id);
+    const exitRows = saleIds.length > 0
+      ? await db.select({
+          salesHistoryId: exitHistory.salesHistoryId,
+          bagsExited: exitHistory.bagsExited,
+          createdAt: exitHistory.createdAt,
+        })
+          .from(exitHistory)
+          .where(and(
+            eq(exitHistory.coldStorageId, coldStorageId),
+            inArray(exitHistory.salesHistoryId, saleIds),
+            eq(exitHistory.isReversed, 0),
+          ))
+      : [];
+    const exitsBySale = new Map<string, Array<{ bagsExited: number; createdAt: Date }>>();
     for (const row of exitRows) {
-      exitedByLot.set(row.lotId, Number(row.totalExited) || 0);
+      const arr = exitsBySale.get(row.salesHistoryId) ?? [];
+      arr.push({ bagsExited: row.bagsExited, createdAt: row.createdAt });
+      exitsBySale.set(row.salesHistoryId, arr);
     }
 
-    for (const lot of lotRows) {
-      const soldForLot = soldByLot.get(lot.id) || 0;
-      const exitedForLot = exitedByLot.get(lot.id) || 0;
-      const soldNotExited = Math.max(0, soldForLot - exitedForLot);
-      result[lot.id] = lot.remainingSize + soldNotExited;
+    for (const { lotId, asOf } of requests) {
+      const size = lotSizeById.get(lotId);
+      if (size == null) continue;
+      const asOfMs = asOf.getTime();
+      const salesAsOf = (salesByLot.get(lotId) ?? [])
+        .filter(s => s.createdAt != null && new Date(s.createdAt).getTime() <= asOfMs);
+
+      const soldAsOf = salesAsOf.reduce((sum, s) => sum + (s.quantitySold || 0), 0);
+      const unsold = size - soldAsOf;
+
+      let nonExited = 0;
+      for (const s of salesAsOf) {
+        const exits = exitsBySale.get(s.id) ?? [];
+        const exitedAsOf = exits
+          .filter(e => new Date(e.createdAt).getTime() <= asOfMs)
+          .reduce((sum, e) => sum + (e.bagsExited || 0), 0);
+        nonExited += Math.max(0, (s.quantitySold || 0) - exitedAsOf);
+      }
+      result[lotId] = unsold + nonExited;
     }
     return result;
   }

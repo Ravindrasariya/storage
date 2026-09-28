@@ -18,6 +18,9 @@ import { EditExitDialog } from "@/components/EditExitDialog";
 type BatchExitRow = {
   exitId: string;
   exitDate: string;
+  // Task #403 — this exit's true row-creation instant, used as the `asOf`
+  // cutoff when resolving this row's Balance on reprint.
+  createdAt: string;
   billNumber: number;
   bagsExited: number;
   isReversed: number;
@@ -70,11 +73,23 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
   // right before printing, for the receipt's Balance column.
   const [lotBalances, setLotBalances] = useState<Record<string, number>>({});
 
-  const fetchLotBalances = async (lotIds: string[]): Promise<Record<string, number>> => {
-    const unique = Array.from(new Set(lotIds.filter(Boolean)));
-    if (unique.length === 0) return {};
+  // Task #403 — Balance is point-in-time, keyed on each exit's own created
+  // timestamp, so every (lotId) here must be paired with the `asOf`
+  // timestamp of the specific exit being printed/reprinted.
+  const fetchLotBalances = async (items: Array<{ lotId: string; asOf: Date | string }>): Promise<Record<string, number>> => {
+    const deduped = new Map<string, string>();
+    for (const item of items) {
+      if (!item.lotId) continue;
+      const iso = typeof item.asOf === "string" ? item.asOf : item.asOf.toISOString();
+      deduped.set(item.lotId, iso);
+    }
+    if (deduped.size === 0) return {};
     try {
-      const res = await authFetch(`/api/lots/balances?lotIds=${encodeURIComponent(unique.join(","))}`);
+      const res = await authFetch("/api/lots/balances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: Array.from(deduped, ([lotId, asOf]) => ({ lotId, asOf })) }),
+      });
       const json = await res.json() as Record<string, number>;
       setLotBalances(prev => ({ ...prev, ...json }));
       return json;
@@ -177,7 +192,9 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
     if (pendingPrint && lastExit) {
       let cancelled = false;
       (async () => {
-        if (sale?.lotId) await fetchLotBalances([sale.lotId]);
+        if (sale?.lotId && lastExit.createdAt) {
+          await fetchLotBalances([{ lotId: sale.lotId, asOf: lastExit.createdAt }]);
+        }
         if (cancelled) return;
         setTimeout(() => {
           if (cancelled) return;
@@ -288,7 +305,7 @@ export function ExitDialog({ sale, open, onOpenChange }: ExitDialogProps) {
           (a, b) => new Date(a.exitDate).getTime() - new Date(b.exitDate).getTime(),
         );
         const first = sortedByDate[0];
-        const balances = await fetchLotBalances(siblings.map(s => s.lotId));
+        const balances = await fetchLotBalances(siblings.map(s => ({ lotId: s.lotId, asOf: s.createdAt })));
         setBatchData({
           sharedExitBillNumber: exit.billNumber,
           exitDate: first.exitDate,
