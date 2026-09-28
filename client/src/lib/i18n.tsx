@@ -206,6 +206,7 @@ const translations: Translations = {
   sortByLotNo: { en: "Receipt Number", hi: "रसीद नंबर" },
   sortByChargeDue: { en: "Charge Due (High to Low)", hi: "बकाया शुल्क (अधिक से कम)" },
   sortByRemainingBags: { en: "Remaining Bags (High to Low)", hi: "शेष बोरी (अधिक से कम)" },
+  sortByName: { en: "Name (A-Z)", hi: "नाम (A-Z)" },
   coldChargesDue: { en: "Cold Charges Due", hi: "कोल्ड स्टोरेज शुल्क बाकी" },
   coldChargesPaid: { en: "Cold Charges Paid", hi: "कोल्ड स्टोरेज शुल्क भुगतान" },
   dueType: { en: "Due Type", hi: "बकाया प्रकार" },

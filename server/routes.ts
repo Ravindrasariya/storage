@@ -489,26 +489,34 @@ export async function registerRoutes(
       // Uses the same canonical `farmerGroupKey` as the client.
       if (req.query.groupBy === "farmer") {
         // Bucket lots by canonical farmer key, preserving the already-applied
-        // sort order (lotNo asc, by default) within each bucket. Groups
-        // themselves are ordered alphabetically by farmer name so cards read
-        // top-to-bottom A→Z regardless of receipt numbers, with a stable
-        // tie-breaker (village, then original list position) for farmers
-        // that share an exact name.
-        const groupMap = new Map<string, { farmerName: string; village: string; firstIdx: number; items: typeof lots }>();
+        // sort order (lotNo asc) within each bucket. We track each group's
+        // min lotNo (for the default ordering) and farmer name/village (for
+        // the "Name (A-Z)" ordering) so groups can be ordered either way
+        // BEFORE the group offset/limit slice below — pagination must see
+        // the fully-ordered group list, or a farmer landing on a later page
+        // would sort incorrectly relative to farmers already loaded.
+        const groupMap = new Map<string, { minLotNo: number; firstIdx: number; farmerName: string; village: string; items: typeof lots }>();
         lots.forEach((lot, idx) => {
           const key = farmerGroupKey(lot);
+          const lotNoNum = parseInt(lot.lotNo, 10) || Number.MAX_SAFE_INTEGER;
           const existing = groupMap.get(key);
           if (existing) {
             existing.items.push(lot);
+            if (lotNoNum < existing.minLotNo) existing.minLotNo = lotNoNum;
           } else {
-            groupMap.set(key, { farmerName: lot.farmerName || "", village: lot.village || "", firstIdx: idx, items: [lot] });
+            groupMap.set(key, { minLotNo: lotNoNum, firstIdx: idx, farmerName: lot.farmerName || "", village: lot.village || "", items: [lot] });
           }
         });
+        const groupSortByName = req.query.groupSort === "name";
         const groups = Array.from(groupMap.values()).sort((a, b) => {
-          const nameCmp = a.farmerName.localeCompare(b.farmerName, undefined, { sensitivity: "base" });
-          if (nameCmp !== 0) return nameCmp;
-          const villageCmp = a.village.localeCompare(b.village, undefined, { sensitivity: "base" });
-          if (villageCmp !== 0) return villageCmp;
+          if (groupSortByName) {
+            const nameCmp = a.farmerName.localeCompare(b.farmerName, undefined, { sensitivity: "base" });
+            if (nameCmp !== 0) return nameCmp;
+            const villageCmp = a.village.localeCompare(b.village, undefined, { sensitivity: "base" });
+            if (villageCmp !== 0) return villageCmp;
+            return a.firstIdx - b.firstIdx;
+          }
+          if (a.minLotNo !== b.minLotNo) return a.minLotNo - b.minLotNo;
           return a.firstIdx - b.firstIdx;
         });
         const totalGroups = groups.length;

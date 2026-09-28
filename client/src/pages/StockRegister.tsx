@@ -126,7 +126,7 @@ export default function StockRegister() {
   const [searchResults, setSearchResults] = useState<Lot[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [sortBy, setSortBy] = useState<"lotNo" | "chargeDue" | "remainingBags">("lotNo");
+  const [sortBy, setSortBy] = useState<"lotNo" | "chargeDue" | "remainingBags" | "farmerName">("lotNo");
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
@@ -312,10 +312,15 @@ export default function StockRegister() {
     const params = new URLSearchParams();
     params.set("sort", "lotNo");
     params.set("groupBy", "farmer");
+    // Card order must be resolved server-side BEFORE the group offset/limit
+    // slice, or a farmer landing on a later page would sort incorrectly
+    // relative to farmers already loaded on earlier pages. Rows *within*
+    // each card stay Receipt #-ordered regardless (see `sort=lotNo` above).
+    if (sortBy === "farmerName") params.set("groupSort", "name");
     if (chamberFilter !== "all") params.set("chamber", chamberFilter);
     if (floorFilter !== "all") params.set("floor", floorFilter);
     return params.toString();
-  }, [chamberFilter, floorFilter]);
+  }, [chamberFilter, floorFilter, sortBy]);
 
   // Reset paging state immediately when the base filter changes so a
   // stale "loadMoreLots" cannot fire with the previous filter's
@@ -332,7 +337,7 @@ export default function StockRegister() {
   // by canonical farmer key so each returned page contains only COMPLETE
   // farmer groups — no partial cards at the boundary.
   const { data: initialLotsData, isLoading: isLoadingInitial } = useQuery<{ lots: Lot[], totalCount: number, totalGroups: number, returnedGroups: number, nextGroupOffset: number }>({
-    queryKey: ["/api/lots", { sort: "lotNo", groupBy: "farmer", groupLimit: GROUP_PAGE_SIZE, groupOffset: 0, chamber: chamberFilter, floor: floorFilter }],
+    queryKey: ["/api/lots", { sort: "lotNo", groupBy: "farmer", groupSort: sortBy === "farmerName" ? "name" : undefined, groupLimit: GROUP_PAGE_SIZE, groupOffset: 0, chamber: chamberFilter, floor: floorFilter }],
     queryFn: async () => {
       const response = await authFetch(`/api/lots?${lotsFilterParams}&groupLimit=${GROUP_PAGE_SIZE}&groupOffset=0`);
       if (!response.ok) throw new Error("Failed to fetch initial lots");
@@ -1228,6 +1233,15 @@ export default function StockRegister() {
       } else {
         farmerGroups[groupIndex[k]].items.push(item);
       }
+    }
+
+    // Mirror the "Name (A-Z)" card ordering in the printed/exported view too.
+    if (sortBy === "farmerName") {
+      farmerGroups.sort((a, b) => {
+        const nameCmp = a.farmerName.localeCompare(b.farmerName, undefined, { sensitivity: "base" });
+        if (nameCmp !== 0) return nameCmp;
+        return a.village.localeCompare(b.village, undefined, { sensitivity: "base" });
+      });
     }
 
     const escapeHtml = (s: unknown) => String(s ?? "")
@@ -2138,7 +2152,7 @@ export default function StockRegister() {
             </div>
             <div className="flex items-center gap-1.5 sm:border-l sm:pl-2">
               <Label className="text-sm text-muted-foreground whitespace-nowrap">{t("sortBy")}:</Label>
-              <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags")}>
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as "lotNo" | "chargeDue" | "remainingBags" | "farmerName")}>
                 <SelectTrigger className="w-36" data-testid="select-sort-by">
                   <SelectValue />
                 </SelectTrigger>
@@ -2146,6 +2160,7 @@ export default function StockRegister() {
                   <SelectItem value="lotNo" data-testid="select-sort-lotno">{t("sortByLotNo")}</SelectItem>
                   <SelectItem value="chargeDue" data-testid="select-sort-chargedue">{t("sortByChargeDue")}</SelectItem>
                   <SelectItem value="remainingBags" data-testid="select-sort-remainingbags">{t("sortByRemainingBags")}</SelectItem>
+                  <SelectItem value="farmerName" data-testid="select-sort-farmername">{t("sortByName")}</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -2502,16 +2517,20 @@ export default function StockRegister() {
             }
           }
 
-          // Order farmer cards alphabetically by name (A→Z) rather than by
-          // encounter order (which follows the selected row sort, e.g. lot
-          // number). Rows *within* each card still follow `sortedLots` above.
-          // Tie-break by village, then keep original relative order for an
-          // exact name+village match.
-          farmerGroups.sort((a, b) => {
-            const nameCmp = a.farmerName.localeCompare(b.farmerName, undefined, { sensitivity: "base" });
-            if (nameCmp !== 0) return nameCmp;
-            return a.village.localeCompare(b.village, undefined, { sensitivity: "base" });
-          });
+          // When "Name (A-Z)" is selected, order farmer cards alphabetically
+          // by name instead of the default encounter order (which follows
+          // whichever row-level lots were sorted by first lot-number so far).
+          // Rows *within* each card still follow `sortedLots` above, which
+          // falls back to lot-number order for the "farmerName" case too —
+          // so receipts inside a card stay Receipt #-ordered. Tie-break by
+          // village for two farmers sharing an exact name.
+          if (sortBy === "farmerName") {
+            farmerGroups.sort((a, b) => {
+              const nameCmp = a.farmerName.localeCompare(b.farmerName, undefined, { sensitivity: "base" });
+              if (nameCmp !== 0) return nameCmp;
+              return a.village.localeCompare(b.village, undefined, { sensitivity: "base" });
+            });
+          }
 
           // No need to hide the last group: the server's `groupBy=farmer`
           // option guarantees that the farmer at the page boundary is fully
