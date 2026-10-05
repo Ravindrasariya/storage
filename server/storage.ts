@@ -505,7 +505,7 @@ export interface IStorage {
   updateSessionLastAccess(token: string): Promise<void>;
   // Export
   getLotsForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<Lot[]>;
-  getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date, filters?: { year?: string; farmerName?: string; village?: string; contactNumber?: string; buyerName?: string; paymentStatus?: string }): Promise<SalesHistory[]>;
+  getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date, filters?: { year?: string; months?: number[]; days?: number[]; bagType?: string; coldStorageBillNumber?: number; farmerName?: string; village?: string; contactNumber?: string; buyerName?: string; paymentStatus?: string }): Promise<SalesHistory[]>;
   getCashDataForExport(coldStorageId: string, fromDate: Date, toDate: Date): Promise<{ receipts: CashReceipt[]; expenses: Expense[]; transfers: CashTransfer[] }>;
   // Farmer lookup for auto-complete
   getFarmerRecords(coldStorageId: string, year?: number, includeArchived?: boolean): Promise<{ farmerName: string; village: string; tehsil: string; district: string; state: string; contactNumber: string; farmerLedgerId: string; farmerId: string; entityType: string; customColdChargeRate: number | null; customHammaliRate: number | null }[]>;
@@ -7865,31 +7865,41 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(lots.createdAt));
   }
 
-  async getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date, filters?: { year?: string; farmerName?: string; village?: string; contactNumber?: string; buyerName?: string; paymentStatus?: string }): Promise<SalesHistory[]> {
+  async getSalesForExport(coldStorageId: string, fromDate: Date, toDate: Date, filters?: { year?: string; months?: number[]; days?: number[]; bagType?: string; coldStorageBillNumber?: number; farmerName?: string; village?: string; contactNumber?: string; buyerName?: string; paymentStatus?: string }): Promise<SalesHistory[]> {
     const conditions: SQL[] = [eq(salesHistory.coldStorageId, coldStorageId)];
     
     // If year filter is provided and not "all", filter by year instead of date range
     if (filters?.year && filters.year !== "all") {
       const yearNum = parseInt(filters.year, 10);
-      const yearStart = new Date(yearNum, 0, 1);
-      const yearEnd = new Date(yearNum, 11, 31, 23, 59, 59, 999);
-      conditions.push(gte(salesHistory.soldAt, yearStart));
-      conditions.push(lte(salesHistory.soldAt, yearEnd));
+      conditions.push(eq(salesHistory.saleYear, yearNum));
     } else {
       // Use date range filter
       conditions.push(gte(salesHistory.soldAt, fromDate));
       conditions.push(lte(salesHistory.soldAt, toDate));
     }
     
-    // Apply optional filters
+    // Match the register's local calendar filters in the cold store's IST timezone.
+    if (filters?.months?.length) {
+      conditions.push(inArray(sql<number>`extract(month from ${salesHistory.soldAt} AT TIME ZONE 'Asia/Kolkata')`, filters.months));
+    }
+    if (filters?.days?.length) {
+      conditions.push(inArray(sql<number>`extract(day from ${salesHistory.soldAt} AT TIME ZONE 'Asia/Kolkata')`, filters.days));
+    }
+    if (filters?.bagType && filters.bagType !== "all") {
+      conditions.push(sql`lower(${salesHistory.bagType}) = ${filters.bagType.toLowerCase()}`);
+    }
+    if (filters?.coldStorageBillNumber != null) {
+      conditions.push(eq(salesHistory.coldStorageBillNumber, filters.coldStorageBillNumber));
+    }
+    // Apply the same text/status matching as the register.
     if (filters?.farmerName) {
-      conditions.push(ilike(salesHistory.farmerName, `%${filters.farmerName}%`));
+      conditions.push(sql`lower(trim(${salesHistory.farmerName})) LIKE ${`%${filters.farmerName.trim().toLowerCase()}%`}`);
     }
     if (filters?.village) {
-      conditions.push(eq(salesHistory.village, filters.village));
+      conditions.push(sql`lower(trim(${salesHistory.village})) = ${filters.village.trim().toLowerCase()}`);
     }
     if (filters?.contactNumber) {
-      conditions.push(eq(salesHistory.contactNumber, filters.contactNumber));
+      conditions.push(sql`trim(${salesHistory.contactNumber}) LIKE ${`%${filters.contactNumber.trim()}%`}`);
     }
     if (filters?.buyerName) {
       const _b = filters.buyerName.trim();
@@ -7901,13 +7911,8 @@ export class DatabaseStorage implements IStorage {
         );
       }
     }
-    if (filters?.paymentStatus) {
-      if (filters.paymentStatus === "paid") {
-        conditions.push(eq(salesHistory.paymentStatus, "paid"));
-      } else if (filters.paymentStatus === "due") {
-        const dueCondition = or(eq(salesHistory.paymentStatus, "due"), eq(salesHistory.paymentStatus, "partial"));
-        if (dueCondition) conditions.push(dueCondition);
-      }
+    if (filters?.paymentStatus && filters.paymentStatus !== "all") {
+      conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     
     return db.select()

@@ -5,6 +5,7 @@ import { authFetch, apiRequest, queryClient, invalidateSaleSideEffects } from "@
 import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -214,7 +215,7 @@ export default function SalesHistoryPage() {
     }
   };
 
-  const handleExportSales = async () => {
+  const handleExportSales = async (exportType: "overall" | "kata") => {
     setIsExporting(true);
     try {
       const downloadToken = await getDownloadToken();
@@ -246,6 +247,7 @@ export default function SalesHistoryPage() {
       params.append("toDate", toDate);
       params.append("language", language);
       params.append("downloadToken", downloadToken);
+      params.append("exportType", exportType);
       
       // Add filter parameters
       if (yearFilter && yearFilter !== "all") params.append("year", yearFilter);
@@ -255,13 +257,33 @@ export default function SalesHistoryPage() {
       if (selectedFarmerMobile) params.append("contactNumber", selectedFarmerMobile);
       if (buyerFilter) params.append("buyerName", buyerFilter);
       if (paymentFilter && paymentFilter !== "all") params.append("paymentStatus", paymentFilter);
+      if (selectedMonths.length) params.append("months", selectedMonths.join(","));
+      if (selectedDays.length) params.append("days", selectedDays.join(","));
+      if (typeFilter && typeFilter !== "all") params.append("bagType", typeFilter);
+      if (coldBillFilter.trim()) params.append("coldStorageBillNumber", coldBillFilter.trim());
       
       const url = `/api/export/sales?${params.toString()}`;
-      window.open(url, "_blank");
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`CSV download failed (${response.status})`);
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1]
+        || `sales${exportType === "kata" ? "_kata" : ""}_${fromDate}_to_${toDate}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
       
       toast({
         title: language === "hi" ? "डाउनलोड शुरू" : "Download Started",
         description: language === "hi" ? "बिक्री इतिहास" : "Sales History",
+      });
+    } catch (error) {
+      toast({
+        title: language === "hi" ? "डाउनलोड विफल" : "Download Failed",
+        description: error instanceof Error ? error.message : "Please try again",
+        variant: "destructive",
       });
     } finally {
       setIsExporting(false);
@@ -671,19 +693,32 @@ export default function SalesHistoryPage() {
               >
                 <Printer className="h-4 w-4" />
               </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleExportSales}
-                disabled={isExporting}
-                data-testid="button-export-sales"
-              >
-                {isExporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled={isExporting}
+                    data-testid="button-export-sales"
+                    aria-label={language === "hi" ? "CSV डाउनलोड" : "Download CSV"}
+                    title={language === "hi" ? "CSV डाउनलोड" : "Download CSV"}
+                  >
+                    {isExporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem disabled={isExporting} onSelect={() => void handleExportSales("overall")} data-testid="menu-export-sales-overall">
+                    Overall
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={isExporting} onSelect={() => void handleExportSales("kata")} data-testid="menu-export-sales-kata">
+                    Kata
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </CardHeader>

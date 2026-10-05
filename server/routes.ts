@@ -6144,6 +6144,19 @@ export async function registerRoutes(
     try {
       const coldStorageId = getColdStorageId(req);
       const { fromDate, toDate, language } = exportQuerySchema.parse(req.query);
+      const exportType = z.enum(["overall", "kata"]).default("overall").parse(req.query.exportType);
+      const parseSelection = (value: unknown, max: number) => {
+        if (value == null || value === "") return [];
+        return z.array(z.coerce.number().int().min(1).max(max)).parse(
+          z.string().parse(value).split(","),
+        );
+      };
+      const months = parseSelection(req.query.months, 12);
+      const days = parseSelection(req.query.days, 31);
+      const bagType = z.string().optional().parse(req.query.bagType);
+      const coldStorageBillNumber = req.query.coldStorageBillNumber == null
+        ? undefined
+        : z.coerce.number().int().positive().parse(req.query.coldStorageBillNumber);
       
       // Parse additional optional filter parameters
       const year = req.query.year as string | undefined;
@@ -6164,7 +6177,27 @@ export async function registerRoutes(
         contactNumber,
         buyerName,
         paymentStatus,
+        months,
+        days,
+        bagType,
+        coldStorageBillNumber,
       });
+
+      if (exportType === "kata") {
+        const headers = ["Sale Date", "Receipt #", "CS Bill #", "Exit Bill #", "Farmer Name", "Village", "Kata Charges"];
+        const rows = sales.map(sale => [
+          formatDateForExport(sale.soldAt),
+          sale.lotNo,
+          sale.coldStorageBillNumber ?? "",
+          sale.exitBillNumbers || "",
+          sale.farmerName,
+          sale.village,
+          sale.kataCharges ?? 0,
+        ].map(escapeCSV).join(","));
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="sales_kata_${fromDate}_to_${toDate}.csv"`);
+        return res.send("\uFEFF" + [headers.join(","), ...rows].join("\n"));
+      }
 
       // "Potato Type" = wafer/seed/Ration classification, "Bag Type" = custom label (bagTypeLabel)
       const headers = language === "hi"
