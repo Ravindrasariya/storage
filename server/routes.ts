@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
+import { SaleBuyerAdjustmentError } from "./sale-edit-errors";
 import { db } from "./db";
 import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema, exitHistory } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
@@ -2811,6 +2812,11 @@ export async function registerRoutes(
         }
         const wantSelf = validatedData.isSelfSale === 1 || validatedData.buyerLedgerId === null;
         if (wantSelf) {
+          if (currentSale.isSelfSale !== 1 &&
+              ((currentSale.adjReceivableSelfDueAmount ?? 0) > 0 ||
+               (validatedData.adjReceivableSelfDueAmount ?? 0) > 0)) {
+            return res.status(400).json({ error: new SaleBuyerAdjustmentError().message, field: "buyerLedgerId" });
+          }
           buyerOverrides = { buyerName: null, buyerId: null, buyerLedgerId: null, isSelfSale: 1 };
         } else {
           const ledgerId = validatedData.buyerLedgerId;
@@ -2980,6 +2986,9 @@ export async function registerRoutes(
       
       res.json(updated);
     } catch (error) {
+      if (error instanceof SaleBuyerAdjustmentError) {
+        return res.status(400).json({ error: error.message, field: "buyerLedgerId" });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid update data", details: error.errors });
       }

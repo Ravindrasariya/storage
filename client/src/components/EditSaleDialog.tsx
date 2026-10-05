@@ -157,6 +157,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const chargesWithoutAdj = calculateEditableTotal();
   const adjAmountValue = isNonSelfSale ? (parseFloat(editAdjAmount) || 0) : 0;
   const totalCharge = chargesWithoutAdj + adjAmountValue;
+  const adjustmentBlocksSelfBuyer = (sale?.adjReceivableSelfDueAmount ?? 0) > 0
+    || adjAmountValue > 0;
 
   const { data: editHistory = [] } = useQuery<SaleEditHistory[]>({
     queryKey: ["/api/sales-history", sale?.id, "edit-history"],
@@ -555,6 +557,17 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
 
   const handleSave = async (opts: { confirmedClear?: boolean } = {}) => {
     if (!sale) return;
+    const originalBuyerSelection = sale.isSelfSale === 1
+      ? SELF_BUYER
+      : (sale.buyerLedgerId || buyers.find(b =>
+          b.buyerName.trim().toLowerCase() === (sale.buyerName ?? "").trim().toLowerCase(),
+        )?.id || SELF_BUYER);
+    // Before CS bill/date cascades too: an invalid buyer edit must not
+    // partially save other fields.
+    if (selectedBuyerLedgerId === SELF_BUYER && originalBuyerSelection !== SELF_BUYER && adjustmentBlocksSelfBuyer) {
+      setBuyerError(t("selfBuyerBlockedByAdjustment"));
+      return;
+    }
 
     // CS Bill # / Sale Date dirty-check is independent of the inline
     // editor's open state — the operator may have collapsed the inline
@@ -795,7 +808,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     // Task #278 — buyer reassignment. Only send when the picker selection
     // actually differs from the row's current owner; the server treats
     // missing fields as "don't touch" and skips the dual FIFO recompute.
-    const currentSel = sale.isSelfSale === 1 ? SELF_BUYER : (sale.buyerLedgerId || SELF_BUYER);
+    const currentSel = originalBuyerSelection;
     if (selectedBuyerLedgerId !== currentSel) {
       if (selectedBuyerLedgerId === SELF_BUYER) {
         updates.isSelfSale = 1;
@@ -1117,7 +1130,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         <CommandGroup>
                           <CommandItem
                             value={SELF_BUYER}
+                            disabled={adjustmentBlocksSelfBuyer}
                             onSelect={() => {
+                              if (adjustmentBlocksSelfBuyer) return;
                               setSelectedBuyerLedgerId(SELF_BUYER);
                               setBuyerComboboxOpen(false);
                               setBuyerSearchQuery("");
@@ -1158,6 +1173,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                 </Popover>
                 {buyerError && (
                   <p className="text-xs text-destructive" data-testid="error-edit-sale-buyer">{buyerError}</p>
+                )}
+                {adjustmentBlocksSelfBuyer && (
+                  <p className="text-xs text-muted-foreground" data-testid="hint-edit-sale-buyer-adjustment">
+                    {t("selfBuyerBlockedByAdjustment")}
+                  </p>
                 )}
                 {transferBlocksBuyerChange && (
                   <p className="text-xs text-muted-foreground" data-testid="hint-edit-sale-buyer-transfer">

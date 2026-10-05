@@ -4,3 +4,4 @@
 - [Bill number series scoping](bill-number-series-scoping.md) — both bill series are MAX+1 per (cold storage, STOCK ENTRY year), computed in SQL; no unique index backs them, so every allocation path must agree.
 - [Cold merchant advance-received](cold-merchant-advance-received.md) — merchant prepayments modeled as plain cold_merchant/cold_charges receipts + marker column (no new payer/due type) so existing FIFO auto-drains them; sale creation is a guarded recompute trigger.
 - [Nikasi Balance timestamps](nikasi-balance-timestamp-consistency.md) — sale/exit createdAt defaults use PostgreSQL insertion-time clock_timestamp(); preserve historical-skew reprint compatibility.
+- [Self sale adjustments](self-sale-adjustment-rule.md) — an adjusted merchant sale cannot be reassigned to Self; preserve adjustments rather than silently clearing them.

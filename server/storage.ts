@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { eq, and, or, like, ilike, desc, asc, sql, gte, lte, inArray, isNull, type SQL } from "drizzle-orm";
 import { db } from "./db";
+import { SaleBuyerAdjustmentError } from "./sale-edit-errors";
 import {
   coldStorages,
   coldStorageUsers,
@@ -2413,6 +2414,28 @@ export class DatabaseStorage implements IStorage {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) return undefined;
 
+    const blocksSelfBuyer = (row: SalesHistory) =>
+      updates.isSelfSale === 1 && row.isSelfSale !== 1 &&
+      ((row.adjReceivableSelfDueAmount ?? 0) > 0 || (updates.adjReceivableSelfDueAmount ?? 0) > 0);
+    // A positive adjustment edit must also not land on a sale concurrently
+    // changed to Self. Unrelated edits of legacy rows remain unaffected.
+    const blocksPositiveAdjustment = (row: SalesHistory) =>
+      (updates.adjReceivableSelfDueAmount ?? 0) > 0 &&
+      (updates.isSelfSale ?? row.isSelfSale) === 1;
+    if (blocksSelfBuyer(sale) || blocksPositiveAdjustment(sale)) {
+      throw new SaleBuyerAdjustmentError();
+    }
+    const adjustmentGuards: SQL[] = [];
+    if (updates.isSelfSale === 1) {
+      adjustmentGuards.push(sql`NOT (
+        COALESCE(${salesHistory.isSelfSale}, 0) <> 1
+        AND COALESCE(${salesHistory.adjReceivableSelfDueAmount}, 0) > 0
+      )`);
+    }
+    if ((updates.adjReceivableSelfDueAmount ?? 0) > 0 && updates.isSelfSale !== 0) {
+      adjustmentGuards.push(sql`COALESCE(${salesHistory.isSelfSale}, 0) <> 1`);
+    }
+
     const updateData: Record<string, unknown> = {};
     
     if (updates.buyerName !== undefined) {
@@ -2546,9 +2569,17 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(salesHistory.id, saleId),
         sql`NOT (${saleHasRecordedPaymentSql()})`,
+        ...adjustmentGuards,
       ))
       .returning();
     if (!updated) {
+      // The UPDATE rechecks adjustment state on the locked row version, so
+      // a stale dialog/request cannot race a newly committed adjustment.
+      const [latest] = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId));
+      if (!latest) return undefined;
+      if (blocksSelfBuyer(latest) || blocksPositiveAdjustment(latest)) {
+        throw new SaleBuyerAdjustmentError();
+      }
       throw new Error(
         `A payment already exists for Lot ${sale.lotNo}. Reverse the payment first, then make your changes here.`,
       );
