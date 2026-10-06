@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { DateFilterBar, dateMatchesFilter } from "@/components/DateFilterBar";
+import { ReceiptColdBills } from "@/components/ReceiptColdBills";
 import type { CashReceiptWithBillNumbers as BaseCashReceipt, Expense as BaseExpense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
 
 type Expense = BaseExpense & { advanceRateOfInterest?: number; advanceEffectiveDate?: string | null };
@@ -5412,7 +5413,7 @@ export default function CashManagement() {
                           </div>
                         </div>
                         {/* Row 2: Date + Payment Mode + Due After */}
-                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <span>{format(new Date(transaction.timestamp), "dd/MM/yyyy")}</span>
                           {transaction.type !== "transfer" && transaction.type !== "buyerTransfer" && transaction.type !== "discount" && (
                             <Badge variant="outline" className="text-xs py-0 h-5">
@@ -5459,6 +5460,14 @@ export default function CashManagement() {
                             </Badge>
                           )}
                         </div>
+                        {transaction.type === "inflow" && (
+                          <ReceiptColdBills
+                            receipt={transaction.data}
+                            label={t("csBillNumber")}
+                            variant="card"
+                            testId={`text-cash-flow-cs-bills-${transaction.data.id}`}
+                          />
+                        )}
                       </div>
                     );
                   })}
@@ -5471,7 +5480,7 @@ export default function CashManagement() {
 
       {/* Transaction Detail Dialog */}
       <Dialog open={!!selectedTransaction} onOpenChange={(open) => !open && setSelectedTransaction(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {selectedTransaction?.type === "inflow" ? (
@@ -5558,6 +5567,12 @@ export default function CashManagement() {
                       <span className="text-muted-foreground">{t("buyerName")}:</span>
                       <span className="font-medium">{(selectedTransaction.data as CashReceipt).buyerName}</span>
                     </div>
+                    <ReceiptColdBills
+                      receipt={selectedTransaction.data}
+                      label={t("csBillNumber")}
+                      variant="detail"
+                      testId="text-payment-detail-cs-bills"
+                    />
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("amount")}:</span>
                       <span className="font-bold text-green-600">₹{selectedTransaction.data.amount.toLocaleString()}</span>
