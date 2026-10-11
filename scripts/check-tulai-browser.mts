@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { chromium, type Browser } from "playwright";
 import { auth, cleanup, farmerId, id, lot, pool, setup, token } from "./tulai-fixtures.mts";
 import { checkTulaiSubmissions } from "./tulai-browser-submissions.mts";
+import { checkNikasiLayout } from "./nikasi-browser-layout.mts";
 const execFileAsync = promisify(execFile);
 const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
 let browser: Browser | undefined;
@@ -145,6 +146,8 @@ try {
   const restored = await api(`/api/sales-history/${editSaleId}`, undefined, "GET");
   assert.equal(restored.tulaiCharges, 50);
   assert.equal(restored.coldStorageCharge, 740);
+  await checkNikasiLayout(page, mount, { farmerName: "Tulai Farmer", village: "Tulai Village",
+    contactNumber: "0000000000", farmerLedgerId: farmerId, lots });
   await mount("MasterNikasiDialog", { farmerName: "Tulai Farmer", village: "Tulai Village",
     contactNumber: "0000000000", farmerLedgerId: farmerId, lots });
   assert.equal(await page.locator('[data-testid="input-mn-tulai-0"]').count(), 1);

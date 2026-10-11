@@ -9,3 +9,4 @@
 - [Tulai business rule](tulai-business-rule.md) — optional manual-weighing charge payable to Himmal; null means zero; preserve machine-weighing Kata income unchanged.
 - [Browser validation ordering](browser-validation-ordering.md) — keep development-browser checks out of post-merge setup because the app is restarted only after setup finishes.
 - [Synthetic fixture safety](synthetic-fixture-safety.md) — development mode alone cannot authorize database writes; remote test targets require a separately verified boundary.
+- [Master Nikasi layout](nikasi-layout.md) — keep long headers on one line; narrow Receipt #/Marka and reclaim unused trailing space instead of wrapping labels.

@@ -1083,8 +1083,8 @@ export function MasterNikasiDialog({
             {t("duplicateLotData")} "{duplicateKey.replace("::", " / ")}". {t("fixDuplicateLot")}
           </p>
         ) : (
-          <div className="min-w-0 w-full overflow-x-auto border border-blue-700 rounded-md">
-            <table className="w-full text-xs min-w-[1200px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_th]:whitespace-normal [&_th]:px-1 [&_td]:border [&_td]:border-border [&_td]:px-1">
+          <div className="min-w-0 w-full overflow-x-auto border border-blue-700 rounded-md" data-testid="table-mn-scroll">
+            <table className="w-full text-xs border-collapse [&_th]:border [&_th]:border-blue-700 [&_th]:whitespace-nowrap [&_th]:px-1 [&_td]:border [&_td]:border-border [&_td]:px-1" data-testid="table-mn">
               <thead className="bg-blue-700 text-white">
                 <tr>
                   <th className="p-2 text-left">{t("receiptNo")}</th>
@@ -1100,7 +1100,7 @@ export function MasterNikasiDialog({
                   <th className="p-2 text-right">{t("gradingPerBagShort")}</th>
                   <th className="p-2 text-right">{t("gradingChargesShort")}</th>
                   <th className="p-2 text-right">{t("totalChargesShort")}</th>
-                  <th className="p-2 w-10"></th>
+                  <th className="p-2 w-px"></th>
                 </tr>
               </thead>
               <tbody>
@@ -1141,7 +1141,7 @@ export function MasterNikasiDialog({
 
                   return (
                     <tr key={r.rowKey} data-testid={`row-mn-${idx}`}>
-                      <td className="p-2 w-[110px]">
+                      <td className="p-2 w-[84px]">
                         <ReceiptCombobox
                           idx={idx}
                           value={r.lotNo}
@@ -1183,7 +1183,7 @@ export function MasterNikasiDialog({
                           clearLabel={t("clear") || "Clear"}
                         />
                       </td>
-                      <td className="p-2 w-[130px]">
+                      <td className="p-2 w-[104px]">
                         <Select
                           value={r.marka || undefined}
                           onValueChange={(newMarkaSel) => {
@@ -1257,7 +1257,7 @@ export function MasterNikasiDialog({
                           }
                         />
                       </td>
-                      <td className="p-2 w-[150px]">
+                      <td className="p-2 w-[136px]">
                         {/* Per-row charge basis: mirrors the partial-sale
                             dialog. Disabled (and forced to "actual") when
                             the lot's base cold charges have already been
