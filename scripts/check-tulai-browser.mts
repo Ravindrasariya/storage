@@ -3,11 +3,38 @@
 // Requires playwright and the Replit Chromium binary. PDFs stay in /tmp.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { chromium } from "playwright";
+import { chromium, type Browser } from "playwright";
 import { auth, cleanup, farmerId, id, lot, pool, setup, token } from "./tulai-fixtures.mts";
 const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
-const browser = await chromium.launch({ executablePath: "/repl/tools/bin/chromium", args: ["--no-sandbox"] });
+let browser: Browser | undefined;
+let fixturesStarted = false;
 try {
+  assert.match(process.env.REPLIT_DEV_DOMAIN ?? "", /^[a-z0-9.-]+\.replit\.dev$/i,
+    "Browser validation requires a Replit development domain, not a published app");
+  // The Project workflow launches this gate alongside the application.
+  // Wait for Vite to serve current source before creating any fixture data.
+  const deadline = Date.now() + 60_000;
+  let ready = false;
+  while (Date.now() < deadline) {
+    try {
+      const source = await fetch(`${base}/src/lib/queryClient.ts`, {
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (source.ok && (await source.text()).includes("QueryClient")) {
+        ready = true;
+        break;
+      }
+    } catch {
+      // Cold starts can briefly refuse connections or return proxy errors.
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  assert.ok(ready, "Development app was not ready within 60 seconds; start npm run dev and rerun browser validation");
+  browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || "/repl/tools/bin/chromium",
+    args: ["--no-sandbox"],
+  });
+  fixturesStarted = true;
   await setup();
   const lotId = await lot("UI");
   const editLotId = await lot("Edit");
@@ -171,6 +198,10 @@ try {
   assert.deepEqual(browserErrors, [], "No browser runtime errors in tested components");
   console.log("Tulai browser checks passed: actual sale/edit/Master Nikasi desktop/mobile layouts, latest Tulai edit restoration, and both real print/shared PDF paths with four bottom payment entries.");
 } finally {
-  await browser.close();
-  await cleanup();
+  try {
+    await browser?.close();
+  } finally {
+    if (fixturesStarted) await cleanup();
+    else await pool.end();
+  }
 }

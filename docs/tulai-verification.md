@@ -1,5 +1,52 @@
 # Tulai implementation and verification
 
+## Automatic validation gates
+
+The registered validations are independent, mandatory checks:
+
+| Validation | Command | Blocks success on |
+| --- | --- | --- |
+| `tulai` | `NODE_ENV=development npm run test:tulai` | Wrong sale/batch totals, unpaid labour, payout/reversal handling or P&L accrual/double-counting |
+| `sales-csv-choices` | `NODE_ENV=development npm run test:sales-csv-choices` | Non-adjacent Kata/Tulai columns, header/row misalignment, incorrect amounts, filters or tenant leakage |
+| `tulai-browser` | `NODE_ENV=development npm run test:tulai-browser` | Broken real-component interactions, unpaid bracket refresh, missing bottom print payment entries, or either individual receipt exceeding one page in A4 print or shared PDF |
+
+`scripts/post-merge.sh` also runs the first two commands after schema setup.
+Its fail-fast behavior propagates assertion, setup and cleanup failures; checks
+are not optional and failures are not swallowed. Existing bill-number/race
+checks remain unchanged and are not registered or invoked a second time here.
+The browser gate is separate from post-merge setup because workflow
+reconciliation starts/restarts the app only after setup finishes.
+
+### Browser prerequisites and fixture safety
+
+- Install project dependencies with `npm install` (Playwright is already a
+  project dependency).
+- Start the `Start application` development workflow (`npm run dev`) and wait
+  until it serves the Vite app on port 5000. Browser validation requires
+  `REPLIT_DEV_DOMAIN` ending in `.replit.dev` and verifies a development source
+  module is available before creating fixtures. It waits up to 60 seconds for
+  readiness, so the Project workflow can start the app and gate together on a
+  cold start. It does not launch a second app.
+- Chromium defaults to `/repl/tools/bin/chromium` in Replit. On another supported
+  development runner, install it with `npx playwright install chromium` and set
+  `CHROMIUM_EXECUTABLE_PATH` to that installed executable. Missing Playwright,
+  Chromium or a running dev app is a failed check, never a skipped success.
+- All three commands require `NODE_ENV=development` and are restricted to this
+  Replit workspace's **local Helium development database**: host `helium`,
+  database `heliumdb`, default/5432 port. Remote hosts, other databases,
+  connection query overrides (anything except supported `sslmode` values),
+  published deployment mode and missing development-domain context are rejected
+  before opening connections. Setting `NODE_ENV=development` alone cannot
+  authorize a remote/production target. Never supply a production database.
+  An external development database requires a separately reviewed safety
+  boundary; there is deliberately no environment-variable bypass.
+- Tests create unique synthetic tenants, operators, authenticated sessions,
+  sales and expenses, using normal authenticated APIs. Cleanup runs in
+  `finally` and removes only that run's fixture IDs. No real login credentials,
+  auth bypass or production data are needed.
+- Run the commands above to reproduce each gate. Browser screenshots and
+  PDFs are written only to `/tmp`; they are not committed or deployed.
+
 ## Impact checklist
 - Optional nullable Tulai follows Kata in the shared sale model, create/edit/batch payloads, state, calculations, audit history, bill rows and exports.
 - Individual Sale uses a Kata/Tulai row; Edit Sale uses Kata/Tulai/Extra Hammali; Master Nikasi has an adjacent column, adjusted total spans, compact widths and mobile scrolling.

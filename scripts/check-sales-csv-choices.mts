@@ -5,7 +5,9 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import pg from "pg";
+import { requireDevelopmentFixtures } from "./require-development-fixtures.mts";
 
+requireDevelopmentFixtures();
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const id = `__csv_choices_${Date.now()}_${process.pid}`;
 const auth = { "x-auth-token": `${id}_session` };
@@ -96,7 +98,11 @@ try {
   assert.equal(overall.filename, 'attachment; filename="sales_2000-01-01_to_2099-12-31.csv"');
   const full = parseCSV(overall.text);
   assert.equal(full[0].length, 45);
+  assert.equal(full[0][24], "Kata Charges");
   assert.equal(full[0][25], "Tulai Charges");
+  for (const row of full.slice(1)) {
+    assert.equal(row.length, full[0].length, "Overall CSV rows must align with headers");
+  }
   const kata = await download("kata");
   assert.match(kata.filename!, /sales_kata_/);
   const slim = parseCSV(kata.text);
@@ -164,5 +170,6 @@ try {
   await pool.query("DELETE FROM cold_storages WHERE id = ANY($1)", [[id, `${id}_other`]]);
   await new Promise<void>(resolve => server.close(() => resolve()));
   await pool.end();
+  const { pool: appPool } = await import("../server/db.ts");
+  await appPool.end();
 }
-process.exit(0);

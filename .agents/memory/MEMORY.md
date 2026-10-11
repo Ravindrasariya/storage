@@ -7,3 +7,5 @@
 - [Self sale adjustments](self-sale-adjustment-rule.md) — an adjusted merchant sale cannot be reassigned to Self; preserve adjustments rather than silently clearing them.
 - [Kata scope](kata-scope.md) — remember only sale-level Kata charges and their associated impacts; exclude standalone Kata collections from remembered scope.
 - [Tulai business rule](tulai-business-rule.md) — optional manual-weighing charge payable to Himmal; null means zero; preserve machine-weighing Kata income unchanged.
+- [Browser validation ordering](browser-validation-ordering.md) — keep development-browser checks out of post-merge setup because the app is restarted only after setup finishes.
+- [Synthetic fixture safety](synthetic-fixture-safety.md) — development mode alone cannot authorize database writes; remote test targets require a separately verified boundary.

@@ -8,6 +8,9 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "test:tulai": "tsx scripts/check-tulai.mts",
+    "test:sales-csv-choices": "tsx scripts/check-sales-csv-choices.mts",
+    "test:tulai-browser": "tsx scripts/check-tulai-browser.mts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

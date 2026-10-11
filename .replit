@@ -61,6 +61,18 @@ args = "manual-payment-roundoff"
 task = "workflow.run"
 args = "nikasi-balance-post-exit"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "tulai"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "sales-csv-choices"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "tulai-browser"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -165,6 +177,39 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "tsx scripts/check-nikasi-balance-post-exit.mts"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "tulai"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "NODE_ENV=development npm run test:tulai"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "sales-csv-choices"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "NODE_ENV=development npm run test:sales-csv-choices"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "tulai-browser"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "NODE_ENV=development npm run test:tulai-browser"
 
 [workflows.workflow.metadata]
 isValidation = true

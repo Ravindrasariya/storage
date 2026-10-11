@@ -1,5 +1,7 @@
 // Synthetic development-only fixtures shared by Tulai API and browser checks.
 import pg from "pg";
+import { requireDevelopmentFixtures } from "./require-development-fixtures.mts";
+requireDevelopmentFixtures();
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 export const id = `__tulai_${Date.now()}_${process.pid}`;
 export const token = `${id}_session`;

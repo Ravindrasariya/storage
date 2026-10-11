@@ -33,6 +33,11 @@ node scripts/check-sale-invalidation.mjs
 # sales-history, exits-summary, and CSV-export paths.
 tsx scripts/check-self-buyer-filter.mts
 
+# Development-only HTTP/DB guardrails. Failures must abort post-merge setup.
+# Browser receipt validation runs separately, after the dev workflow is serving.
+NODE_ENV=development npm run test:tulai
+NODE_ENV=development npm run test:sales-csv-choices
+
 # Idempotent backfills (marka snapshot + exit-info denormalisation), batched
 # into a single psql round-trip.
 if [ -n "$DATABASE_URL" ]; then
