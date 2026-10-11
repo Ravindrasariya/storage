@@ -11,6 +11,8 @@ Accrue the matching Tulai labour expense when it is billed. Provide a separate T
 
 Always keep Tulai columns and variables immediately after Kata so the parallel is easy to follow. Include Tulai Charges in the Kata CSV, immediately after Kata Charges.
 
+Offer a single "Kata + Tulai" sales CSV choice instead of separate Kata and Tulai choices.
+
 Use only तुलाई as the Hindi label, without the bracketed description.
 
 In individual sale forms, the English label should be "Tulai (Manual Weighing)".

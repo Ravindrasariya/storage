@@ -250,6 +250,24 @@ try {
     console.log(`${type}: A4 print = ${printPages} page; shared PDF = ${sharedPages} page`);
   }
   await page.evaluate(() => (window as any).tulaiRoot.unmount());
+  for (const language of ["en", "hi"]) {
+    await page.evaluate(language => localStorage.setItem("language", language), language);
+    await page.goto(`${base}/sales-history`, { waitUntil: "networkidle" });
+    await page.getByTestId("button-export-sales").click();
+    assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["Overall", "Kata + Tulai"],
+      "Sales downloads must offer one combined Kata/Tulai option, alongside Overall");
+    assert.equal(await page.getByTestId("menu-export-sales-tulai").count(), 0);
+    await page.screenshot({ path: `/tmp/sales-csv-menu-${language}.png` });
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByTestId("menu-export-sales-kata").click();
+    const csvDownload = await downloadPromise;
+    assert.match(csvDownload.suggestedFilename(), /^sales_kata_/);
+    const csvPath = await csvDownload.path();
+    assert.ok(csvPath);
+    const csv = await readFile(csvPath, "utf8");
+    assert.ok(csv.split("\n")[0].endsWith("Kata Charges,Tulai Charges"),
+      "Combined download must include both adjacent charge columns");
+  }
   await page.evaluate(() => localStorage.setItem("language", "hi"));
   await page.goto(`${base}/cash-management`, { waitUntil: "networkidle" });
   await page.locator('[data-testid="tab-expense"]').click();

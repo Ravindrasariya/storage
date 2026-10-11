@@ -215,7 +215,7 @@ export default function SalesHistoryPage() {
     }
   };
 
-  const handleExportSales = async (exportType: "overall" | "kata" | "tulai") => {
+  const handleExportSales = async (exportType: "overall" | "kata") => {
     setIsExporting(true);
     try {
       const downloadToken = await getDownloadToken();
@@ -269,7 +269,7 @@ export default function SalesHistoryPage() {
       const link = document.createElement("a");
       link.href = blobUrl;
       link.download = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1]
-        || `sales${exportType === "kata" ? "_kata" : exportType === "tulai" ? "_tulai" : ""}_${fromDate}_to_${toDate}.csv`;
+        || `sales${exportType === "kata" ? "_kata" : ""}_${fromDate}_to_${toDate}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -715,10 +715,7 @@ export default function SalesHistoryPage() {
                     Overall
                   </DropdownMenuItem>
                   <DropdownMenuItem disabled={isExporting} onSelect={() => void handleExportSales("kata")} data-testid="menu-export-sales-kata">
-                    Kata
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled={isExporting} onSelect={() => void handleExportSales("tulai")} data-testid="menu-export-sales-tulai">
-                    Tulai
+                    Kata + Tulai
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
