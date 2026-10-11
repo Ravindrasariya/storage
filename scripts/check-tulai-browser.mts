@@ -189,7 +189,8 @@ try {
   await page.screenshot({ path: "/tmp/tulai-mn-mobile.png" });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.evaluate(() => localStorage.setItem("language", "hi"));
+  // Receipts stay in Hindi even when the operator's app language is English.
+  await page.evaluate(() => localStorage.setItem("language", "en"));
   for (const type of ["deduction", "sales"]) {
     await mount("PrintBillDialog", { sale });
     await page.evaluate(() => {
@@ -249,6 +250,7 @@ try {
     console.log(`${type}: A4 print = ${printPages} page; shared PDF = ${sharedPages} page`);
   }
   await page.evaluate(() => (window as any).tulaiRoot.unmount());
+  await page.evaluate(() => localStorage.setItem("language", "hi"));
   await page.goto(`${base}/cash-management`, { waitUntil: "networkidle" });
   await page.locator('[data-testid="tab-expense"]').click();
   await page.locator('[data-testid="btn-revenue-expense"]').click();

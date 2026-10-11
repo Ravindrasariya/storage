@@ -15,6 +15,8 @@ Use only तुलाई as the Hindi label, without the bracketed description.
 
 In individual sale forms, the English label should be "Tulai (Manual Weighing)".
 
+On Cold Storage and Sales receipts, always label Tulai as तुलाई like the other Hindi charge rows, regardless of the app language.
+
 The user's receipt requirement covers both actual A4 printing and the generated/shared PDF: keep both individual bill types on one page, retaining existing bottom payment entries. Longer batch/history outputs must not lose rows to force a single page.
 
 **Why:** The user stated these business rules and explained that Tulai is currently managed through workarounds.

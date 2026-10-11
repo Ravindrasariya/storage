@@ -799,7 +799,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
                   <td className="amount">{agg.kata > 0 ? formatAmount(agg.kata) : "-"}</td>
                 </tr>
                 <tr>
-                  <td>{t("tulaiCharges")}</td>
+                  <td>तुलाई</td>
                   <td className="amount">{agg.tulai > 0 ? formatAmount(agg.tulai) : "-"}</td>
                 </tr>
                 <tr>
@@ -875,7 +875,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
                   <td className="amount">{(sale.kataCharges || 0) > 0 ? formatAmount(sale.kataCharges || 0) : "-"}</td>
                 </tr>
                 <tr>
-                  <td>{t("tulaiCharges")}</td>
+                  <td>तुलाई</td>
                   <td className="amount">{(sale.tulaiCharges || 0) > 0 ? formatAmount(sale.tulaiCharges || 0) : "-"}</td>
                 </tr>
                 <tr>
@@ -1284,7 +1284,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
               <td className="amount">{dispKata > 0 ? formatAmount(dispKata) : "-"}</td>
             </tr>
             <tr>
-              <td>{t("tulaiCharges")}</td>
+              <td>तुलाई</td>
               <td className="amount">{dispTulai > 0 ? formatAmount(dispTulai) : "-"}</td>
             </tr>
             <tr>
