@@ -401,6 +401,7 @@ export const translations: Translations = {
   // Additional Charges
   kataCharges: { en: "Kata (Weighing) Charges", hi: "काटा (तौल) शुल्क" },
   tulaiCharges: { en: "Tulai", hi: "तुलाई" },
+  saleTulaiManualWeighing: { en: "Tulai (Manual Weighing)", hi: "तुलाई" },
   restoreTulaiEdit: { en: "Restore previous Tulai", hi: "पिछली तुलाई बहाल करें" },
   tulaiAmountInvalid: { en: "Tulai amount must be a finite, non-negative number.", hi: "तुलाई राशि शून्य या उससे अधिक होनी चाहिए।" },
   adjReceivableSelfDueAmount: { en: "Adj Receivable & Self Due", hi: "बकाया व स्वयं बिक्री समायोजन" },

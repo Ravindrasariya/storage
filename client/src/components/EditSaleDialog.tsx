@@ -1313,7 +1313,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                       </div>
                     </div>
                     <div className="space-y-1 sm:col-span-2">
-                      <Label className="text-xs">{t("tulaiCharges")}</Label>
+                      <Label className="text-xs">{t("saleTulaiManualWeighing")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
                         <Input type="number" min={0} step="0.01" value={editTulaiCharges}
@@ -1335,7 +1335,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 col-start-1 sm:col-start-auto sm:col-span-3">
                       <Label className="text-xs">{t("gradingPerBag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1385,7 +1385,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         return null;
                       })()}
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 sm:col-span-3">
                       <Label className="text-xs">{t("totalGradingCharges")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />

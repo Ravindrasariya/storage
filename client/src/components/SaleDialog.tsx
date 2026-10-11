@@ -785,7 +785,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
               />
             </div>
             <div className="space-y-2">
-              <Label>{t("tulaiCharges")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+              <Label>{t("saleTulaiManualWeighing")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
               <Input type="number" min={0} step="0.01" value={tulaiCharges}
                 onChange={(e) => setTulaiCharges(e.target.value)} placeholder="0"
                 data-testid="input-partial-tulai-charges" />

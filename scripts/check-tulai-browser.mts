@@ -131,6 +131,8 @@ try {
   }
   await mount("SaleDialog", { lot: lotInfo });
   assert.equal(await page.locator('[data-testid="input-partial-tulai-charges"]').count(), 1);
+  assert.equal(await page.getByText("Tulai (Manual Weighing)", { exact: false }).count(), 1,
+    "Individual sale must explain Tulai without relabelling other surfaces");
   const kata = await page.locator('[data-testid="input-partial-kata-charges"]').boundingBox();
   const tulai = await page.locator('[data-testid="input-partial-tulai-charges"]').boundingBox();
   assert.ok(kata && tulai && Math.abs(kata.y - tulai.y) < 2 && kata.x < tulai.x, "Sale Kata/Tulai must share a row");
@@ -141,6 +143,35 @@ try {
   await page.screenshot({ path: "/tmp/tulai-sale-mobile.png" });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await mount("EditSaleDialog", { sale: editSale });
+  await page.getByRole("button", { name: /^Cold Storage Charges/ }).click();
+  await page.getByTestId("input-edit-grading-per-bag").waitFor({ state: "visible" });
+  assert.equal(await page.getByText("Tulai (Manual Weighing)", { exact: true }).count(), 1);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+    await page.waitForTimeout(250);
+    const perBag = page.getByTestId("input-edit-grading-per-bag");
+    await perBag.scrollIntoViewIfNeeded();
+    const grading = await perBag.evaluate(input => {
+      const first = input.parentElement!.parentElement!;
+      const grid = first.parentElement!;
+      const total = grid.querySelector('[data-testid="input-edit-grading-charges"]')!.parentElement!.parentElement!;
+      const a = first.getBoundingClientRect(), b = total.getBoundingClientRect();
+      const tulai = grid.querySelector('[data-testid="input-edit-tulai-charges"]')!.getBoundingClientRect();
+      return { left: a.x, right: b.right, top: a.y, otherTop: b.y,
+        firstWidth: a.width, secondWidth: b.width, gridLeft: grid.getBoundingClientRect().left,
+        gridRight: grid.getBoundingClientRect().right, tulaiBottom: tulai.bottom };
+    });
+    assert.ok(Math.abs(grading.top - grading.otherTop) < 2, `Grading fields must share one row at ${width}px`);
+    assert.ok(Math.abs(grading.firstWidth - grading.secondWidth) < 2, "Grading fields must have equal widths");
+    assert.ok(Math.abs(grading.left - grading.gridLeft) < 2 &&
+      Math.abs(grading.right - grading.gridRight) < 2, "Grading row must cover the full charge grid");
+    assert.ok(grading.top >= grading.tulaiBottom, "Grading row must be below the Tulai charge row");
+    await page.screenshot({ path: `/tmp/tulai-edit-grading-${width}.png` });
+  }
+  await page.getByTestId("input-edit-grading-per-bag").fill("2");
+  assert.equal(await page.getByTestId("input-edit-grading-charges").inputValue(), "20",
+    "Layout correction must preserve per-bag grading auto-fill");
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('[data-testid="button-restore-tulai-edit"]').click();
   await page.waitForTimeout(700);
   const restored = await api(`/api/sales-history/${editSaleId}`, undefined, "GET");
