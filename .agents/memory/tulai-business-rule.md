@@ -7,6 +7,8 @@ Tulai is manual weighing done by Himmal and is collected to be paid to Himmal. K
 
 Tulai is an optional sale charge; null means zero. The user wants the same downstream billing and calculation impacts as sale-level Kata, without changing Kata or anything associated with it.
 
+Accrue the matching Tulai labour expense when it is billed. Provide a separate Tulai expense item, with the total unpaid amount in brackets, payable through the Cash Revenue Expense tab.
+
 **Why:** The user stated these business rules and explained that Tulai is currently managed through workarounds.
 
-**How to apply:** Keep Tulai separate from Kata. Include its sale-charge effects throughout the relevant calculations and outputs, but do not assume it has Kata's income-only accounting treatment. Standalone Kata collections remain outside this feature's scope.
+**How to apply:** Keep Tulai separate from Kata. Include its sale-charge effects throughout the relevant calculations and outputs. Recognise Tulai labour cost at billing time and do not count its cash payout again as a P&L expense. Standalone Kata collections remain outside this feature's scope.
