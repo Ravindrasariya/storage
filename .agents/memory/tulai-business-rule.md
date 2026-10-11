@@ -11,6 +11,8 @@ Accrue the matching Tulai labour expense when it is billed. Provide a separate T
 
 Always keep Tulai columns and variables immediately after Kata so the parallel is easy to follow. Include Tulai Charges in the Kata CSV, immediately after Kata Charges.
 
+Use only तुलाई as the Hindi label, without the bracketed description.
+
 **Why:** The user stated these business rules and explained that Tulai is currently managed through workarounds.
 
 **How to apply:** Keep Tulai separate from Kata. Include its sale-charge effects throughout the relevant calculations and outputs. Recognise Tulai labour cost at billing time and do not count its cash payout again as a P&L expense. Standalone Kata collections remain outside this feature's scope.
