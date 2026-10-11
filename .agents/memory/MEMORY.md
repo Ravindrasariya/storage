@@ -6,3 +6,4 @@
 - [Nikasi Balance timestamps](nikasi-balance-timestamp-consistency.md) — sale/exit createdAt defaults use PostgreSQL insertion-time clock_timestamp(); preserve historical-skew reprint compatibility.
 - [Self sale adjustments](self-sale-adjustment-rule.md) — an adjusted merchant sale cannot be reassigned to Self; preserve adjustments rather than silently clearing them.
 - [Kata scope](kata-scope.md) — remember only sale-level Kata charges and their associated impacts; exclude standalone Kata collections from remembered scope.
+- [Tulai business rule](tulai-business-rule.md) — optional manual-weighing charge payable to Himmal; null means zero; preserve machine-weighing Kata income unchanged.
