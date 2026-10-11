@@ -896,7 +896,22 @@ export default function CashManagement() {
   });
 
   const createExpenseMutation = useMutation({
-    mutationFn: async (data: { expenseType: string; receiverName?: string; paymentMode: string; accountId?: string; amount: number; paidAt: string; remarks?: string }) => {
+    mutationFn: async (data: {
+      expenseType: string;
+      expenseClass: "revenue" | "advance";
+      receiverName?: string;
+      paymentMode: string;
+      accountId?: string;
+      amount: number;
+      paidAt: string;
+      remarks?: string;
+      farmerLedgerId?: string;
+      farmerId?: string;
+      buyerLedgerId?: string;
+      buyerId?: string;
+      rateOfInterest?: number;
+      effectiveDate?: string;
+    }) => {
       const response = await apiRequest("POST", "/api/expenses", data);
       return response.json();
     },

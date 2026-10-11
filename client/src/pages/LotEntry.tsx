@@ -514,7 +514,13 @@ export default function LotEntry() {
 
 
   const createBatchLotsMutation = useMutation({
-    mutationFn: async (data: { farmer: FarmerData; lots: LotData[]; bagTypeCategory: "wafer" | "rationSeed"; manualLotNo?: number }) => {
+    mutationFn: async (data: {
+      farmer: FarmerData & { entityType: "farmer" | "company" };
+      lots: LotData[];
+      bagTypeCategory: "wafer" | "rationSeed";
+      entryDate: string;
+      manualLotNo?: number;
+    }) => {
       const response = await apiRequest("POST", "/api/lots/batch", data);
       return response.json();
     },

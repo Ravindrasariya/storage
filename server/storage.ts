@@ -107,7 +107,7 @@ import {
   type QualityStats,
   type PaymentStats,
   type MerchantStats,
-  type ExitRegisterResponse,
+  type ExitRegisterResponse as SerializedExitRegisterResponse,
 } from "@shared/schema";
 
 // Entity type prefixes for sequential IDs
@@ -203,6 +203,13 @@ const EXIT_ENTRY_YEAR_SQL = sql<number>`extract(year from COALESCE((SELECT ${sal
 // Example: LT202601251, LT202601252, ... LT20260125100
 // For cold-storage-scoped entities (cash_flow, buyer, farmer), coldStorageId is required
 // initialCounter allows seeding the counter on first use (e.g., to continue from existing max after migration)
+// Storage returns PostgreSQL dates; Express serializes them to the shared wire shape.
+type ExitRegisterResponse = Omit<SerializedExitRegisterResponse, "rows"> & {
+  rows: Array<Omit<SerializedExitRegisterResponse["rows"][number], "exitDate"> & {
+    exitDate: Date;
+  }>;
+};
+
 export async function generateSequentialId(entityType: EntityType, coldStorageId?: string, initialCounter?: number): Promise<string> {
   if (COLD_STORAGE_SCOPED_ENTITIES.includes(entityType) && !coldStorageId) {
     throw new Error(`coldStorageId is required for ${entityType} entity type`);
@@ -3178,6 +3185,7 @@ export class DatabaseStorage implements IStorage {
         chamberName: string;
         floor: number;
         position: string;
+        exitCreatedAt: Date;
       }> = [];
 
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
@@ -3389,7 +3397,7 @@ export class DatabaseStorage implements IStorage {
           // Task #395 — shared Delivery Type for the whole batch; NULL
           // when the operator left it blank.
           deliveryType: deliveryType ?? null,
-        } as InsertSalesHistory).returning();
+        }).returning();
 
         // Single shared CS bill # — resolved once before the row loop.
         // Writing the same value to every row in this batch is what
@@ -3418,7 +3426,7 @@ export class DatabaseStorage implements IStorage {
           bagsExited: row.exitBags,
           billNumber: sharedExitBillNumber,
           exitDate,
-        } as InsertExitHistory).returning({ createdAt: exitHistory.createdAt });
+        }).returning({ createdAt: exitHistory.createdAt });
 
         // Denormalize exit summary onto the sale row (single exit per sale here).
         const dd = String(exitDate.getDate()).padStart(2, "0");
@@ -4324,55 +4332,7 @@ export class DatabaseStorage implements IStorage {
       bagType?: string;
       coldStorageBillNumber?: number;
     }
-  ): Promise<{
-    rows: Array<{
-      exitId: string;
-      exitDate: Date;
-      billNumber: number;
-      bagsExited: number;
-      saleId: string;
-      farmerName: string;
-      village: string;
-      contactNumber: string;
-      lotNo: string;
-      marka: string | null;
-      coldStorageBillNumber: number | null;
-      potatoType: string;
-      buyerName: string | null;
-      transferToBuyerName: string | null;
-      isTransferReversed: number;
-      isSelfSale: number;
-      paymentStatus: string;
-      paymentMode: string | null;
-      quantitySold: number;
-      coldStorageCharge: number;
-      paidAmount: number;
-      paidCash: number;
-      paidAccount: number;
-      discountAllocated: number;
-      adjPyReceivables: number;
-      adjAdvance: number;
-      adjFreight: number;
-      adjSelfDue: number;
-      dueAmount: number;
-      coldChargeShare: number;
-      paidShare: number;
-      dueShare: number;
-      discountShare: number;
-    }>;
-    summary: {
-      totalBagsExited: number;
-      farmers: number;
-      exitsWithDue: number;
-      coldChargesTotal: number;
-      cashReceived: number;
-      accountReceived: number;
-      discountReceived: number;
-      roundOffReceived: number;
-      receivableAdjReceived: number;
-      amountDue: number;
-    };
-  }> {
+  ): Promise<ExitRegisterResponse> {
     const where: SQL[] = [
       eq(exitHistory.coldStorageId, coldStorageId),
       eq(exitHistory.isReversed, 0),
@@ -11184,7 +11144,7 @@ export class DatabaseStorage implements IStorage {
           const farmerId = await this.generateFarmerId(coldStorageId);
           const newId = randomUUID();
           try {
-            await db.insert(farmerLedger).values({
+            const [createdFarmer] = await db.insert(farmerLedger).values({
               id: newId,
               coldStorageId,
               farmerId,
@@ -11196,23 +11156,9 @@ export class DatabaseStorage implements IStorage {
               state: farmerData.state || null,
               isFlagged: 0,
               isArchived: 0,
-            });
+            }).returning();
             // Add to existingKeys so we can use it for backfilling
-            existingKeys.set(key, {
-              id: newId,
-              coldStorageId,
-              farmerId,
-              name: farmerData.name,
-              contactNumber: farmerData.contactNumber,
-              village: farmerData.village,
-              tehsil: farmerData.tehsil || null,
-              district: farmerData.district || null,
-              state: farmerData.state || null,
-              isFlagged: 0,
-              isArchived: 0,
-              archivedAt: null,
-              createdAt: new Date(),
-            });
+            existingKeys.set(key, createdFarmer);
             added++;
             created = true;
           } catch (error: any) {

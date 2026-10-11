@@ -22,7 +22,31 @@
 - Synthetic fixtures were cleaned up; production data was not accessed.
 
 ## Existing limitations and coverage boundaries
-- `npm run check` still reports unrelated pre-existing type errors. Baseline had 15 diagnostics; the post-change check had 14, with no new Tulai-specific diagnostic identified. Existing duplicate translation, payload typing, compiler-target and historical storage/interface issues remain outside this change.
+- `npm run check` now reports only the existing duplicate `allMonths` translation key (`TS1117`, `client/src/lib/i18n.tsx:767`). The Tulai post-change baseline had 14 diagnostics; the type-feedback restoration below removed the in-scope payload, compiler-target and storage/interface errors. Duplicate translation cleanup remains a separate task.
 - Receipt pagination checks use representative four-payment individual receipts, not unlimited histories. Batch/history output is intentionally allowed to span pages.
 - Existing buyer reassignment, discount and transfer mechanisms were reviewed for use of the composite sale total; every possible combined lifecycle permutation was not separately driven through a browser.
 - Browser checks require Playwright and the Replit Chromium binary. PDFs/screenshots generated for verification are kept in `/tmp`, not committed.
+
+## Type-feedback restoration verification
+- CashManagement expense payload types include the submitted expense class and farmer/merchant advance fields. LotEntry batch payload types include farmer/company entity type and the already-submitted entry date. StockRegister name-search state is explicitly a string, so search tokens infer correctly.
+- TypeScript targets ES2015, the minimum target supporting the existing Set/Map iteration. No route logic, accounting calculations, database schema or translation keys were changed.
+- Master Nikasi inserts now use Drizzle's inferred insert types instead of insert-schema assertions that omitted required IDs. Its local sales result includes the existing `exitCreatedAt` field.
+- Exit-register storage uses the shared response fields with a database `Date` for `exitDate`; the shared HTTP response retains its serialized string date. Farmer synchronization caches the returned inserted row, including database-default entity type, custom-rate fields and timestamps, rather than constructing an incomplete row.
+- `npm run check` exited 2 with exactly one diagnostic: the excluded duplicate translation key noted above.
+- `npm run build` passed. Non-fatal warnings remain for the same duplicate translation key, outdated Browserslist data, a PostCSS plugin's missing `from` option and large bundle chunks; these were not changed in this type-fix scope.
+- All of these existing regressions exited 0 against synthetic development fixtures:
+  - `node scripts/check-sale-invalidation.mjs`
+  - `npx tsx scripts/check-tulai.mts`
+  - `npx tsx scripts/check-null-cs-bill-coexist.mts`
+  - `npx tsx scripts/check-remaining-bags-filter.mts`
+  - `npx tsx scripts/check-self-buyer-filter.mts`
+  - `npx tsx scripts/check-entry-year-bill-scoping.mts`
+  - `npx tsx scripts/check-sale-edit-payment-block.mts`
+  - `npx tsx scripts/check-roundoff-attribution.mts`
+  - `npx tsx scripts/check-manual-payment-roundoff.mts`
+  - `npx tsx scripts/check-nikasi-balance-post-exit.mts`
+  - `npx tsx scripts/check-cash-flow-cs-bills.mts`
+  - `npx tsx scripts/check-self-buyer-adjustment-block.mts`
+  - `node scripts/check-base-cold-charges-cas.mjs`
+- Expected rejection logs for overpayment and mixed-entry-year Master Nikasi requests were part of passing negative tests, not unexpected failures.
+- The application workflow restarted successfully and served on port 5000 with all migrations already applied. A preview screenshot confirmed the login page renders; signed-in UI was not visually reverified for this type-only change.

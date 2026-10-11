@@ -97,7 +97,7 @@ export default function StockRegister() {
       ? savedState.searchType
       : "farmerName"
   );
-  const [farmerNameQuery, setFarmerNameQuery] = useState(savedState?.farmerNameQuery || "");
+  const [farmerNameQuery, setFarmerNameQuery] = useState<string>(savedState?.farmerNameQuery || "");
   const [selectedFarmerVillage, setSelectedFarmerVillage] = useState(savedState?.selectedFarmerVillage || "");
   const [selectedFarmerMobile, setSelectedFarmerMobile] = useState(savedState?.selectedFarmerMobile || "");
   const [searchQuery, setSearchQuery] = useState(savedState?.searchQuery || "");
