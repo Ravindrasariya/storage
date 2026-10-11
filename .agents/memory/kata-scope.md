@@ -5,7 +5,7 @@ description: User-requested scope for remembered Kata context in this project.
 
 Remember only Kata charges on sales, their impacts, and everything associated with them. Exclude standalone Kata collections from the remembered scope.
 
-The user wants one more similar sale charge with exactly the same impacts as sale-level Kata. When adding it, do not change Kata or anything associated with Kata.
+The user wants one more similar sale charge with exactly the same impacts as sale-level Kata. Preserve existing Kata charge values and behaviour when adding it; the user's explicit Tulai additions are covered in the Tulai business rule.
 
 **Why:** The user asked.
 
