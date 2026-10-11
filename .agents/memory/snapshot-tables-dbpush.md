@@ -5,6 +5,8 @@ description: Why date-suffixed backup tables exist, and why db:push must not try
 
 # Heal/snapshot backup tables vs db:push
 
+The user wants to add new columns on the Hostinger production VPS without running `db:push`, preserving the tables created for backlogs. Prefer targeted additive migrations; do not delete those tables.
+
 One-time "heal" migrations in `server/migrations.ts` create date-suffixed backup
 tables (e.g. `cold_charges_heal_snapshot_2026_05_29`,
 `extras_drain_heal_snapshot_2026_05_29`) as safety snapshots before mutating data.
