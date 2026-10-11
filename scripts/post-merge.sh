@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
+node scripts/check-package-urls.mjs
 npm install
+# Check the final lockfile too: package tools can rewrite resolved URLs.
+node scripts/check-package-urls.mjs
 
 # Tasks #219 + #220 — Convert bare `timestamp` columns to `timestamptz` BEFORE
 # the drizzle push, so drizzle's auto-generated ALTER does not fall back to a
