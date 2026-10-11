@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { format } from "date-fns";
 import { chromium, type Browser } from "playwright";
 import { auth, cleanup, farmerId, id, lot, pool, setup, token } from "./tulai-fixtures.mts";
+import { checkTulaiSubmissions } from "./tulai-browser-submissions.mts";
 const execFileAsync = promisify(execFile);
 const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
 let browser: Browser | undefined;
@@ -236,8 +237,13 @@ try {
   await page.keyboard.press("Escape");
   await api(`/api/expenses/${recorded.id}/reverse`, {});
   assert.equal((await api("/api/analytics/payments", undefined, "GET")).tulaiDue, 100);
+  // Keep new-submission fixtures after the existing payout checks so their
+  // independently known unpaid totals remain unchanged.
+  await page.evaluate(() => localStorage.setItem("language", "en"));
+  await page.goto(base, { waitUntil: "networkidle" });
+  await checkTulaiSubmissions(page, mount, api);
   assert.deepEqual(browserErrors, [], "No browser runtime errors in tested components");
-  console.log("Tulai browser checks passed: actual sale/edit/Master Nikasi desktop/mobile layouts, latest Tulai edit restoration, and both real print/shared PDF paths with four bottom payment entries.");
+  console.log("Tulai browser checks passed: real new-sale and Master Nikasi submissions, decimal/blank/zero persistence, totals and validation, sale/edit/Master Nikasi desktop/mobile layouts, latest Tulai edit restoration, and both real print/shared PDF paths with four bottom payment entries.");
 } finally {
   try {
     await browser?.close();
