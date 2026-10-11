@@ -64,6 +64,7 @@ interface RowState {
   // flips the lot's baseColdChargesBilled flag on submit.
   chargeBasis: "actual" | "totalRemaining";
   kataCharges: string;
+  tulaiCharges: string;
   extraHammaliPerBag: string;
   gradingCharges: string;
   // Task #300 — operator-typed per-bag grading rate. Persisted only when
@@ -90,6 +91,7 @@ interface MasterNikasiResult {
     bagsExited: number;
     baseColdCharge: number;
     kataCharges: number;
+    tulaiCharges: number;
     extraHammaliPerBag: number;
     extraHammali: number;
     gradingCharges: number;
@@ -136,6 +138,7 @@ const newRow = (lotNo = "", marka = ""): RowState => ({
   soldBags: "",
   chargeBasis: "actual",
   kataCharges: "",
+  tulaiCharges: "",
   extraHammaliPerBag: "",
   gradingCharges: "",
   gradingPerBag: "",
@@ -501,10 +504,11 @@ export function MasterNikasiDialog({
     const lwc = resolveLot(r.lotNo, r.marka);
     const base = calcBaseCharge(lwc, soldBags, r.chargeBasis);
     const kata = Number(r.kataCharges) || 0;
+    const tulai = Number(r.tulaiCharges) || 0;
     const extraPerBag = Number(r.extraHammaliPerBag) || 0;
     const extra = extraPerBag * soldBags;
     const grading = Number(r.gradingCharges) || 0;
-    return { base, kata, extra, extraPerBag, grading, total: base + kata + extra + grading, exitBags, soldBags };
+    return { base, kata, tulai, extra, extraPerBag, grading, total: base + kata + tulai + extra + grading, exitBags, soldBags };
   });
   const grandTotal = rowTotals.reduce((s, r) => s + r.total, 0);
   const totalExitBags = rowTotals.reduce((s, r) => s + r.exitBags, 0);
@@ -565,6 +569,7 @@ export function MasterNikasiDialog({
         soldBags: number;
         chargeBasis: "actual" | "totalRemaining";
         kataCharges: number;
+        tulaiCharges: number;
         extraHammaliPerBag: number;
         gradingCharges: number;
         // Task #300 — undefined when the operator left it blank so the
@@ -577,6 +582,11 @@ export function MasterNikasiDialog({
         if (!r.lotNo || !r.marka || !Number.isFinite(bags) || bags <= 0) continue;
         const lwc = resolveLot(r.lotNo, r.marka);
         if (!lwc) throw new Error(`No lot matches Receipt ${r.lotNo} / Marka ${r.marka}`);
+        const tulaiText = r.tulaiCharges.trim();
+        const tulaiNum = tulaiText === "" ? 0 : Number(tulaiText);
+        if (!Number.isFinite(tulaiNum) || tulaiNum < 0) {
+          throw new Error(`${t("tulaiCharges")}: ${t("tulaiAmountInvalid")}`);
+        }
 
         // Sold defaults to exit ONLY when the cell is truly blank (the
         // auto-bump in updateExitBags normally keeps it populated, but
@@ -615,6 +625,7 @@ export function MasterNikasiDialog({
           // whatever the operator picked.
           chargeBasis: r.chargeBasis,
           kataCharges: Number(r.kataCharges) || 0,
+          tulaiCharges: tulaiNum,
           extraHammaliPerBag: Number(r.extraHammaliPerBag) || 0,
           gradingCharges: Number(r.gradingCharges) || 0,
           gradingPerBag: (() => {
@@ -728,6 +739,8 @@ export function MasterNikasiDialog({
       // cash-flow, buyer-ledger, farmer-ledger, bank-accounts — covering
       // the inline-payment side effects too.
       invalidateSaleSideEffects(queryClient);
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers"] });
       // Refresh the cold-storage record so subsequent dialogs re-read it.
       // The bill # pre-fills themselves no longer come from stored counters
@@ -810,7 +823,7 @@ export function MasterNikasiDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] xl:max-w-7xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] xl:max-w-7xl max-h-[92vh] overflow-y-auto [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PackageMinus className="h-5 w-5" />
@@ -826,7 +839,7 @@ export function MasterNikasiDialog({
           <span className="text-xs text-muted-foreground">
             {village} · <span className="font-mono">{contactNumber}</span>
           </span>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex w-full flex-wrap items-center gap-3 sm:w-auto">
             {/* Buyer picker — Self by default. Selecting a real buyer routes
                 the whole nikasi to that buyer (regular sale, due tracked under
                 cold_merchant). Locked label "Buyer Name" matches SaleDialog. */}
@@ -1070,8 +1083,8 @@ export function MasterNikasiDialog({
             {t("duplicateLotData")} "{duplicateKey.replace("::", " / ")}". {t("fixDuplicateLot")}
           </p>
         ) : (
-          <div className="overflow-x-auto border border-blue-700 rounded-md">
-            <table className="w-full text-xs min-w-[1240px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_th]:whitespace-nowrap [&_td]:border [&_td]:border-border">
+          <div className="min-w-0 w-full overflow-x-auto border border-blue-700 rounded-md">
+            <table className="w-full text-xs min-w-[1200px] border-collapse [&_th]:border [&_th]:border-blue-700 [&_th]:whitespace-normal [&_th]:px-1 [&_td]:border [&_td]:border-border [&_td]:px-1">
               <thead className="bg-blue-700 text-white">
                 <tr>
                   <th className="p-2 text-left">{t("receiptNo")}</th>
@@ -1082,6 +1095,7 @@ export function MasterNikasiDialog({
                   <th className="p-2 text-left">{t("chargeBasis")}</th>
                   <th className="p-2 text-right">{t("baseColdCharge")}</th>
                   <th className="p-2 text-right">{t("kataChargesShort")}</th>
+                  <th className="p-2 text-right">{t("tulaiChargesShort")}</th>
                   <th className="p-2 text-right">{t("extraHammaliPerBagShort") || `${t("extraHammaliShort")}/Bag`}</th>
                   <th className="p-2 text-right">{t("gradingPerBagShort")}</th>
                   <th className="p-2 text-right">{t("gradingChargesShort")}</th>
@@ -1297,6 +1311,12 @@ export function MasterNikasiDialog({
                         />
                       </td>
                       <td className="p-2">
+                        <Input type="number" min={0} step="0.01" value={r.tulaiCharges}
+                          onChange={(e) => updateRow(r.rowKey, { tulaiCharges: e.target.value })}
+                          disabled={!!result || !r.lotNo || !r.marka}
+                          className="h-8 w-14 text-right" data-testid={`input-mn-tulai-${idx}`} />
+                      </td>
+                      <td className="p-2">
                         <Input
                           type="number"
                           min={0}
@@ -1367,8 +1387,8 @@ export function MasterNikasiDialog({
                   <td className="p-2" colSpan={3}>{t("total") || "Total"}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-bags">{totalExitBags}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-sold">{totalSoldBags}</td>
-                  {/* colSpan covers [chargeBasis, base, kata, extra, gradingPerBag, grading] */}
-                  <td className="p-2" colSpan={6}></td>
+                  {/* colSpan covers [chargeBasis, base, kata, tulai, extra, gradingPerBag, grading] */}
+                  <td className="p-2" colSpan={7}></td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-grand-total">{fmt(grandTotal)}</td>
                   <td></td>
                 </tr>

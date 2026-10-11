@@ -17,7 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { toast, useToast } from "@/hooks/use-toast";
 import type { SalesHistory, SalesHistoryWithLastPayment, ExitRegisterResponse, ExitRegisterRow } from "@shared/schema";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { calculateTotalColdCharges } from "@shared/schema";
@@ -215,7 +215,7 @@ export default function SalesHistoryPage() {
     }
   };
 
-  const handleExportSales = async (exportType: "overall" | "kata") => {
+  const handleExportSales = async (exportType: "overall" | "kata" | "tulai") => {
     setIsExporting(true);
     try {
       const downloadToken = await getDownloadToken();
@@ -269,7 +269,7 @@ export default function SalesHistoryPage() {
       const link = document.createElement("a");
       link.href = blobUrl;
       link.download = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1]
-        || `sales${exportType === "kata" ? "_kata" : ""}_${fromDate}_to_${toDate}.csv`;
+        || `sales${exportType === "kata" ? "_kata" : exportType === "tulai" ? "_tulai" : ""}_${fromDate}_to_${toDate}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -716,6 +716,9 @@ export default function SalesHistoryPage() {
                   </DropdownMenuItem>
                   <DropdownMenuItem disabled={isExporting} onSelect={() => void handleExportSales("kata")} data-testid="menu-export-sales-kata">
                     Kata
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={isExporting} onSelect={() => void handleExportSales("tulai")} data-testid="menu-export-sales-tulai">
+                    Tulai
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1264,12 +1267,12 @@ function calculateNetPayableToFarmer(sale: SalesHistory): number {
       hammaliAmount = (sale.hammali || 0) * bagsToUse;
     }
   } else {
-    const extrasInner = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+    const extrasInner = (sale.kataCharges || 0) + (sale.tulaiCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
     coldChargeAmount = (sale.coldStorageCharge || 0) - extrasInner - (sale.adjReceivableSelfDueAmount || 0);
     hammaliAmount = 0;
   }
 
-  const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+  const extras = (sale.kataCharges || 0) + (sale.tulaiCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
   const adjAmount = sale.adjReceivableSelfDueAmount || 0;
   const discountAllocated = sale.discountAllocated || 0;
   const totalCharges = coldChargeAmount + hammaliAmount + extras + adjAmount;

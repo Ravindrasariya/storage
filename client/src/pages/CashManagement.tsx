@@ -1929,6 +1929,7 @@ export default function CashManagement() {
     switch (type) {
       case "salary": return t("salary");
       case "hammali": return t("hammali");
+      case "tulai": return t("tulaiCharges");
       case "grading_charges": return t("gradingCharges");
       case "general_expenses": return t("generalExpenses");
       case "cost_of_goods_sold": return t("costOfGoodsSold");
@@ -3461,6 +3462,7 @@ export default function CashManagement() {
                     <SelectItem value="general_expenses">{t("generalExpenses")}</SelectItem>
                     <SelectItem value="grading_charges">{t("gradingCharges")}</SelectItem>
                     <SelectItem value="hammali">{t("hammali")}</SelectItem>
+                    <SelectItem value="tulai">{t("tulaiCharges")}</SelectItem>
                     <SelectItem value="insurance">{t("insurance")}</SelectItem>
                     <SelectItem value="interest_on_loan">{t("interestOnLoan")}</SelectItem>
                     <SelectItem value="loan_principal">{t("loanPrincipal")}</SelectItem>
@@ -4732,6 +4734,9 @@ export default function CashManagement() {
                       </SelectItem>
                       <SelectItem value="hammali">
                         {t("hammali")} {paymentStats?.hammaliDue ? `(₹${paymentStats.hammaliDue.toLocaleString("en-IN")})` : ""}
+                      </SelectItem>
+                      <SelectItem value="tulai">
+                        {t("tulaiCharges")} (₹{Number(paymentStats?.tulaiDue || 0).toLocaleString("en-IN")})
                       </SelectItem>
                       <SelectItem value="insurance">{t("insurance")}</SelectItem>
                       <SelectItem value="interest_on_loan">{t("interestOnLoan")}</SelectItem>

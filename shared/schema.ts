@@ -159,6 +159,7 @@ export const salesHistory = pgTable("sales_history", {
   hammali: real("hammali"), // Hammali charge component per bag
   coldStorageCharge: real("cold_storage_charge").notNull(), // Total charge for this sale
   kataCharges: real("kata_charges").default(0), // Kata (weighing) charges
+  tulaiCharges: real("tulai_charges"), // Optional manual weighing, payable to labour; null means zero.
   extraHammali: real("extra_hammali").default(0), // Extra hammali per bag * quantity (for bilty)
   gradingCharges: real("grading_charges").default(0), // Grading charges (for bilty)
   // Task #300 — Optional per-bag grading rate the operator typed at create/edit time.
@@ -1157,9 +1158,11 @@ export interface PaymentStats {
   dueCount: number;
   // Gross totals (for Analytics display)
   totalHammali: number;
+  totalTulaiCharges: number;
   totalGradingCharges: number;
   // Net amounts after expenses (for Cash Management expense dropdowns)
   hammaliDue: number;
+  tulaiDue: number;
   gradingDue: number;
   // Receivable dues from Farmer and Buyer ledgers
   totalReceivableDue: number;
@@ -1187,6 +1190,7 @@ export interface MerchantStats {
 export function calculateTotalColdCharges(sale: {
   coldStorageCharge: number;
   kataCharges?: number | null;
+  tulaiCharges?: number | null;
   extraHammali?: number | null;
   gradingCharges?: number | null;
 }): number {

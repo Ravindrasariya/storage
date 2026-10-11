@@ -400,6 +400,9 @@ export const translations: Translations = {
 
   // Additional Charges
   kataCharges: { en: "Kata (Weighing) Charges", hi: "काटा (तौल) शुल्क" },
+  tulaiCharges: { en: "Tulai", hi: "तुलाई" },
+  restoreTulaiEdit: { en: "Restore previous Tulai", hi: "पिछली तुलाई बहाल करें" },
+  tulaiAmountInvalid: { en: "Tulai amount must be a finite, non-negative number.", hi: "तुलाई राशि शून्य या उससे अधिक होनी चाहिए।" },
   adjReceivableSelfDueAmount: { en: "Adj Receivable & Self Due", hi: "बकाया व स्वयं बिक्री समायोजन" },
   maxAdjAmount: { en: "Max", hi: "अधिकतम" },
   noFarmerDues: { en: "No farmer dues found", hi: "किसान पर कोई बकाया नहीं" },
@@ -490,6 +493,7 @@ export const translations: Translations = {
   remainingBagsShort: { en: "# Remaining", hi: "शेष" },
   baseColdCharge: { en: "Base Cold Charge", hi: "आधार शीत शुल्क" },
   kataChargesShort: { en: "Kata", hi: "काटा" },
+  tulaiChargesShort: { en: "Tulai", hi: "तुलाई" },
   extraHammaliShort: { en: "Extra Hammali / Bag", hi: "अतिरिक्त हम्माली / बोरी" },
   extraHammaliPerBagShort: { en: "Extra Hammali / Bag", hi: "अतिरिक्त हम्माली / बोरी" },
   soldBags: { en: "Sold Bags", hi: "बेची बोरी" },

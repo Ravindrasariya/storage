@@ -1,0 +1,176 @@
+#!/usr/bin/env tsx
+// Uses real components and synthetic authenticated development fixtures.
+// Requires playwright and the Replit Chromium binary. PDFs stay in /tmp.
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { chromium } from "playwright";
+import { auth, cleanup, farmerId, id, lot, pool, setup, token } from "./tulai-fixtures.mts";
+const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+const browser = await chromium.launch({ executablePath: "/repl/tools/bin/chromium", args: ["--no-sandbox"] });
+try {
+  await setup();
+  const lotId = await lot("UI");
+  const editLotId = await lot("Edit");
+  const rawLot = (await pool.query(`SELECT * FROM lots WHERE id=$1`, [lotId])).rows[0];
+  async function api(path: string, body?: object, method = "POST") {
+    const response = await fetch(base + path, {
+      headers: auth, method, ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    assert.ok(response.ok, `${path}: ${await response.clone().text()}`);
+    return response.json();
+  }
+  const body = { quantitySold: 10, pricePerBag: 60, paymentStatus: "due", paidAmount: 0,
+    kataCharges: 20, tulaiCharges: 50, extraHammali: 30, gradingCharges: 40,
+    isSelfSale: true, soldAt: "2016-06-15", pricePerKg: 20, netWeight: 500 };
+  await api(`/api/lots/${lotId}/partial-sale`, body);
+  await api(`/api/lots/${editLotId}/partial-sale`, body);
+  const saleId = (await pool.query(`SELECT id FROM sales_history WHERE lot_id=$1`, [lotId])).rows[0].id;
+  const editSaleId = (await pool.query(`SELECT id FROM sales_history WHERE lot_id=$1`, [editLotId])).rows[0].id;
+  for (let n = 0; n < 4; n++) {
+    await api(`/api/sales/${saleId}/manual-payment`, {
+      receiptType: "cash", amount: 50, receivedAt: `2016-06-${16 + n}`,
+    });
+  }
+  await api(`/api/sales-history/${editSaleId}`, { tulaiCharges: 80 }, "PATCH");
+  const sale = await api(`/api/sales-history/${saleId}`, undefined, "GET");
+  const editSale = await api(`/api/sales-history/${editSaleId}`, undefined, "GET");
+  const lotList = await api("/api/lots", undefined, "GET");
+  const lots = lotList.lots.map((lot: any) => ({
+    lot, lotPaidCharge: lot.totalPaidCharge ?? 0, lotDueCharge: lot.totalDueCharge ?? 0,
+    expectedColdCharge: lot.remainingSize * 60,
+  }));
+  const lotInfo = await api(`/api/lots/${lotId}/sale-info`, undefined, "GET");
+  assert.ok(lotInfo, "Fixture lot must be visible to the authenticated operator");
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+  // tsx's keepNames transform injects this helper into serialized callbacks.
+  await context.addInitScript("window.__name = (fn) => fn;");
+  await context.addInitScript(value => localStorage.setItem("cold_store_auth_token", value), token);
+  const page = await context.newPage();
+  const browserErrors: string[] = [];
+  page.on("pageerror", error => browserErrors.push(error.message));
+  await page.goto(base, { waitUntil: "networkidle" });
+  // Mount the actual source component, not a mock. Providers use the normal
+  // session token and APIs; no auth middleware is removed or bypassed.
+  async function mount(component: string, props: object) {
+    await page.evaluate(async ({ component, props }) => {
+      const dependency = (name: string) => {
+        const loaded = performance.getEntriesByType("resource")
+          .find(entry => entry.name.includes(`/deps/${name}?`) || entry.name.endsWith(`/deps/${name}`));
+        if (!loaded) throw new Error(`Application did not load ${name}`);
+        return loaded.name;
+      };
+      const React = (await import(dependency("react.js"))).default;
+      const ReactDOM = await import(dependency("react-dom_client.js"));
+      const createRoot = ReactDOM.createRoot ?? ReactDOM.default.createRoot;
+      const { QueryClientProvider } = await import(dependency("@tanstack_react-query.js"));
+      const { queryClient } = await import("/src/lib/queryClient.ts");
+      const { I18nProvider } = await import("/src/lib/i18n.tsx");
+      const { AuthProvider } = await import("/src/lib/auth.tsx");
+      const module = await import(`/src/components/${component}.tsx`);
+      const win = window as any;
+      if (win.tulaiRoot) win.tulaiRoot.unmount();
+      let container = document.getElementById("tulai-check");
+      if (!container) {
+        container = document.createElement("div"); container.id = "tulai-check";
+        document.body.appendChild(container);
+      }
+      win.tulaiRoot = createRoot(container);
+      const h = React.createElement;
+      win.tulaiRoot.render(h(QueryClientProvider, { client: queryClient },
+        h(I18nProvider, null, h(AuthProvider, null,
+          h(module[component], { ...props, open: true, onOpenChange: () => {} })))));
+    }, { component, props });
+    await page.waitForTimeout(450);
+  }
+  await mount("SaleDialog", { lot: lotInfo });
+  assert.equal(await page.locator('[data-testid="input-partial-tulai-charges"]').count(), 1);
+  const kata = await page.locator('[data-testid="input-partial-kata-charges"]').boundingBox();
+  const tulai = await page.locator('[data-testid="input-partial-tulai-charges"]').boundingBox();
+  assert.ok(kata && tulai && Math.abs(kata.y - tulai.y) < 2 && kata.x < tulai.x, "Sale Kata/Tulai must share a row");
+  await page.locator('[data-testid="input-partial-tulai-charges"]').fill("50");
+  await page.screenshot({ path: "/tmp/tulai-sale-desktop.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('[data-testid="input-partial-tulai-charges"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "/tmp/tulai-sale-mobile.png" });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await mount("EditSaleDialog", { sale: editSale });
+  await page.locator('[data-testid="button-restore-tulai-edit"]').click();
+  await page.waitForTimeout(700);
+  const restored = await api(`/api/sales-history/${editSaleId}`, undefined, "GET");
+  assert.equal(restored.tulaiCharges, 50);
+  assert.equal(restored.coldStorageCharge, 740);
+  await mount("MasterNikasiDialog", { farmerName: "Tulai Farmer", village: "Tulai Village",
+    contactNumber: "0000000000", farmerLedgerId: farmerId, lots });
+  assert.equal(await page.locator('[data-testid="input-mn-tulai-0"]').count(), 1);
+  await page.screenshot({ path: "/tmp/tulai-mn-desktop.png" });
+  const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  assert.equal(desktopOverflow, false, "Master Nikasi must not overflow the document");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "/tmp/tulai-mn-mobile.png" });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.evaluate(() => localStorage.setItem("language", "hi"));
+  for (const type of ["deduction", "sales"]) {
+    await mount("PrintBillDialog", { sale });
+    await page.evaluate(() => {
+      const win = window as any;
+      win.tulaiPrintHtml = "";
+      win.open = () => ({
+        document: { write: (html: string) => { win.tulaiPrintHtml = html; }, close() {} },
+        focus() {}, print() {}, close() {},
+      });
+    });
+    await page.locator(`[data-testid="button-${type}-bill-print"]`).click();
+    await page.waitForFunction(() => Boolean((window as any).tulaiPrintHtml));
+    const html = await page.evaluate(() => (window as any).tulaiPrintHtml as string);
+    assert.ok(html.includes("तुलाई"));
+    if (type === "deduction") {
+      for (const payment of sale.payments) assert.ok(html.includes(`row-payment-${payment.receiptId}`), "Every bottom payment entry must be retained");
+    }
+    const printPage = await context.newPage();
+    await printPage.setContent(html, { waitUntil: "networkidle" });
+    const pdfPath = `/tmp/tulai-${type}-print.pdf`;
+    await printPage.pdf({ path: pdfPath, preferCSSPageSize: true, printBackground: true });
+    const printPages = ((await readFile(pdfPath)).toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
+    assert.equal(printPages, 1, `${type} actual A4 print page count`);
+    await printPage.screenshot({ path: `/tmp/tulai-${type}-bill.png`, fullPage: true });
+    await printPage.close();
+    await mount("PrintBillDialog", { sale });
+    const downloaded = page.waitForEvent("download");
+    await page.locator(`[data-testid="button-${type}-bill-share"]`).click();
+    const download = await downloaded;
+    const sharedPath = `/tmp/tulai-${type}-shared.pdf`;
+    await download.saveAs(sharedPath);
+    const sharedPages = ((await readFile(sharedPath)).toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
+    assert.equal(sharedPages, 1, `${type} actual generated/shared PDF page count`);
+    console.log(`${type}: A4 print = ${printPages} page; shared PDF = ${sharedPages} page`);
+  }
+  await page.evaluate(() => (window as any).tulaiRoot.unmount());
+  await page.goto(`${base}/cash-management`, { waitUntil: "networkidle" });
+  await page.locator('[data-testid="tab-expense"]').click();
+  await page.locator('[data-testid="btn-revenue-expense"]').click();
+  await page.locator('[data-testid="select-expense-type"]').click();
+  const tulaiOption = page.getByRole("option", { name: /तुलाई/ });
+  assert.match(await tulaiOption.innerText(), /₹100/);
+  await tulaiOption.click();
+  await page.locator('[data-testid="input-expense-receiver"]').fill("Himmal");
+  await page.locator('[data-testid="input-expense-amount"]').fill("20");
+  await page.locator('[data-testid="button-record-expense"]').click();
+  await page.waitForTimeout(650);
+  const unpaid = await api("/api/analytics/payments", undefined, "GET");
+  assert.equal(unpaid.tulaiDue, 80);
+  const recorded = (await pool.query(`SELECT * FROM expenses WHERE cold_storage_id=$1
+    AND expense_type='tulai' AND is_reversed=0`, [id])).rows[0];
+  assert.equal(recorded.amount, 20);
+  await page.locator('[data-testid="select-expense-type"]').click();
+  assert.match(await page.getByRole("option", { name: /तुलाई/ }).innerText(), /₹80/,
+    "The unpaid bracket must refresh after the payout");
+  await page.keyboard.press("Escape");
+  await api(`/api/expenses/${recorded.id}/reverse`, {});
+  assert.equal((await api("/api/analytics/payments", undefined, "GET")).tulaiDue, 100);
+  assert.deepEqual(browserErrors, [], "No browser runtime errors in tested components");
+  console.log("Tulai browser checks passed: actual sale/edit/Master Nikasi desktop/mobile layouts, latest Tulai edit restoration, and both real print/shared PDF paths with four bottom payment entries.");
+} finally {
+  await browser.close();
+  await cleanup();
+}

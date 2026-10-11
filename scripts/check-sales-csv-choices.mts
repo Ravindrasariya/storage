@@ -11,7 +11,7 @@ const id = `__csv_choices_${Date.now()}_${process.pid}`;
 const auth = { "x-auth-token": `${id}_session` };
 const farmer = 'किसान, "राम"\nजी';
 const village = ' गाँव, "A" ';
-const kataHeaders = ["Sale Date", "Receipt #", "CS Bill #", "Exit Bill #", "Farmer Name", "Village", "Kata Charges"];
+const kataHeaders = ["Sale Date", "Receipt #", "CS Bill #", "Exit Bill #", "Farmer Name", "Village", "Kata Charges", "Tulai Charges"];
 
 function parseCSV(csv: string): string[][] {
   const rows: string[][] = [];
@@ -63,13 +63,14 @@ try {
        contact_number,lot_no,chamber_name,floor,position,potato_type,bag_type,
        quality,original_lot_size,sale_type,quantity_sold,price_per_bag,
        cold_storage_charge,payment_status,sale_year,sold_at,cold_storage_bill_number,
-       kata_charges,is_self_sale,buyer_name,transfer_to_buyer_name,is_transfer_reversed,exit_bill_numbers)
+       kata_charges,tulai_charges,is_self_sale,buyer_name,transfer_to_buyer_name,is_transfer_reversed,exit_bill_numbers)
       VALUES ($1,$2,$3,$4,$5,'T','D','S','0001230000',$6,'C',0,'P','X',$7,
-        'good',100,'partial',20,10,200,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        'good',100,'partial',20,10,200,$8,$9,$10,$11,$12,$18,$13,$14,$15,$16,$17)`,
     [`${id}_${receipt}`, id, `${id}_lot`, receipt === "B" ? "Other Farmer" : farmer,
       receipt === "B" ? "Other Village" : village, receipt, type, status,
       Number(date.slice(0, 4)), date, bill, kata, self, self ? null : "Merchant",
-      transfer, reversed, receipt === "A" ? "101, 102" : null]);
+      transfer, reversed, receipt === "A" ? "101, 102" : null,
+      receipt === "A" ? 17.5 : receipt === "B" ? null : 0]);
   }
   // A second tenant's matching sale must never leak into downloads.
   // Copy via explicit fields to avoid relying on column order.
@@ -94,20 +95,26 @@ try {
   assert.equal(overall.text, oldDefault.text, "Explicit Overall must preserve default CSV bytes");
   assert.equal(overall.filename, 'attachment; filename="sales_2000-01-01_to_2099-12-31.csv"');
   const full = parseCSV(overall.text);
-  assert.equal(full[0].length, 44);
+  assert.equal(full[0].length, 45);
+  assert.equal(full[0][25], "Tulai Charges");
   const kata = await download("kata");
   assert.match(kata.filename!, /sales_kata_/);
   const slim = parseCSV(kata.text);
   assert.deepEqual(slim[0], kataHeaders);
   assert.equal(slim.length, 5, "One row per sale, not per exit, tenant scoped");
   const a = slim.find(row => row[1] === "A")!;
-  assert.deepEqual(a.slice(1), ["A", "11", "101, 102", farmer, village, "75"]);
+  assert.deepEqual(a.slice(1), ["A", "11", "101, 102", farmer, village, "75", "17.5"]);
   assert.deepEqual(slim.find(row => row[1] === "B")!.slice(2, 4), ["", ""]);
   assert.equal(slim.find(row => row[1] === "B")![6], "0");
+  assert.equal(slim.find(row => row[1] === "B")![7], "0");
+  const tulai = parseCSV((await download("tulai")).text);
+  assert.equal(tulai[0][6], "Tulai Charges");
+  assert.equal(tulai.find(row => row[1] === "A")![6], "17.5");
+  assert.equal(tulai.find(row => row[1] === "B")![6], "0");
   assert.deepEqual(parseCSV((await download("kata", {}, "hi")).text)[0], kataHeaders);
   for (const row of slim.slice(1)) {
     const original = full.find(r => r[2] === row[1])!;
-    assert.deepEqual(row, [0, 2, 3, 5, 7, 9, 24].map(i => original[i]), "Kata values match Overall projection");
+    assert.deepEqual(row, [0, 2, 3, 5, 7, 9, 24, 25].map(i => original[i]), "Kata and Tulai values match Overall projection");
   }
 
   const cases: Array<[Record<string, string>, string[]]> = [
@@ -131,9 +138,9 @@ try {
     [{ months: "12" }, []],
   ];
   for (const [filters, expected] of cases) {
-    for (const type of ["overall", "kata"]) {
+    for (const type of ["overall", "kata", "tulai"]) {
       const rows = parseCSV((await download(type, filters)).text);
-      const receipts = rows.slice(1).map(row => row[type === "kata" ? 1 : 2]).sort();
+      const receipts = rows.slice(1).map(row => row[type === "overall" ? 2 : 1]).sort();
       assert.deepEqual(receipts, expected, `${type}: ${JSON.stringify(filters)}`);
     }
   }
@@ -149,7 +156,7 @@ try {
   const tokenURL = `${base}/api/export/sales?fromDate=2000-01-01&toDate=2099-12-31&exportType=kata&downloadToken=${downloadToken}`;
   assert.equal((await fetch(tokenURL)).status, 200);
   assert.equal((await fetch(tokenURL)).status, 401);
-  console.log(`Sales CSV choices passed: exact headers/projection, Overall compatibility, ${cases.length} filter cases for both exports, tenant isolation, token auth, and CSV escaping.`);
+  console.log(`Sales CSV choices passed: adjacent Kata/Tulai headers and positive/null values, Overall compatibility, ${cases.length} filter cases for all three exports, tenant isolation, token auth, and CSV escaping.`);
 } finally {
   await pool.query("DELETE FROM sales_history WHERE cold_storage_id = ANY($1)", [[id, `${id}_other`]]);
   await pool.query("DELETE FROM user_sessions WHERE cold_storage_id=$1", [id]);

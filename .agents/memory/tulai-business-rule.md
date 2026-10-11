@@ -13,6 +13,8 @@ Always keep Tulai columns and variables immediately after Kata so the parallel i
 
 Use only तुलाई as the Hindi label, without the bracketed description.
 
+The user's receipt requirement covers both actual A4 printing and the generated/shared PDF: keep both individual bill types on one page, retaining existing bottom payment entries. Longer batch/history outputs must not lose rows to force a single page.
+
 **Why:** The user stated these business rules and explained that Tulai is currently managed through workarounds.
 
 **How to apply:** Keep Tulai separate from Kata. Include its sale-charge effects throughout the relevant calculations and outputs. Recognise Tulai labour cost at billing time and do not count its cash payout again as a P&L expense. Standalone Kata collections remain outside this feature's scope.

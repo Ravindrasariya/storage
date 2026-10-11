@@ -38,19 +38,20 @@ const BILL_PRINT_STYLES = `
   .bill-header h2 { margin: 0; font-size: 16px; color: #666; }
   .two-column { display: flex; gap: 24px; margin-bottom: 12px; }
   .two-column > div { flex: 1; }
-  .section { margin-bottom: 12px; }
+  .section { margin-bottom: 9px; }
   .section-title { font-weight: bold; font-size: 14px; border-bottom: 1px solid #ccc; padding-bottom: 3px; margin-bottom: 6px; }
-  .info-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+  .info-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; }
   .info-label { font-weight: 500; color: #555; }
   .info-value { text-align: right; }
   .charges-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
-  .charges-table th, .charges-table td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+  .charges-table th, .charges-table td { border: 1px solid #ccc; padding: 4px 7px; text-align: left; }
   .charges-table th { background: #f5f5f5; font-weight: bold; }
   .charges-table .amount { text-align: right; white-space: nowrap; }
   .total-row { font-weight: bold; background: #e8f4e8; }
   .total-row.income { background: #e8f0ff; }
   .total-row.net-income { background: #d4f4d4; font-size: 15px; }
-  .payment-status { margin-top: 14px; padding: 10px; background: #d4edda; color: #155724; border-radius: 4px; text-align: center; font-weight: bold; font-size: 14px; }
+  .payment-status { margin-top: 10px; padding: 7px; background: #d4edda; color: #155724; border-radius: 4px; text-align: center; font-weight: bold; font-size: 13px; }
+  @media print { body { font-size: 12px; line-height: 1.25; } .section { margin-bottom: 7px; } .charges-table { margin-top: 5px; font-size: 12px; } }
   .footer-note { margin-top: 16px; padding-top: 8px; border-top: 1px dashed #ccc; text-align: center; font-size: 11px; color: #666; font-style: italic; }
   .branding { margin-top: 10px; text-align: center; font-size: 12px; }
   .krashu { color: #16a34a; font-weight: 600; }
@@ -446,13 +447,13 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
     }
   } else {
     // Fallback: use stored coldStorageCharge minus extras and adj amount (coldStorageCharge includes both)
-    const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+    const extras = (sale.kataCharges || 0) + (sale.tulaiCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
     coldChargeAmount = (sale.coldStorageCharge || 0) - extras - (sale.adjReceivableSelfDueAmount || 0);
     hammaliAmount = 0;
   }
 
   // Calculate total cold charges from recalculated values
-  const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+  const extras = (sale.kataCharges || 0) + (sale.tulaiCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
   const adjAmount = sale.adjReceivableSelfDueAmount || 0;
   const adjPy = sale.adjPyReceivables || 0;
   const adjFreightAmt = sale.adjFreight || 0;
@@ -496,14 +497,14 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
         sHammali = (s.hammali || 0) * sBagsToUse;
       }
     } else {
-      const sExtras = (s.kataCharges || 0) + (s.extraHammali || 0) + (s.gradingCharges || 0);
+      const sExtras = (s.kataCharges || 0) + (s.tulaiCharges || 0) + (s.extraHammali || 0) + (s.gradingCharges || 0);
       sCold = (s.coldStorageCharge || 0) - sExtras - (s.adjReceivableSelfDueAmount || 0);
     }
     return { coldChargeAmount: sCold, hammaliAmount: sHammali };
   };
 
   const agg = (() => {
-    let bags = 0, cold = 0, hammali = 0, kata = 0, extraHam = 0, grading = 0;
+    let bags = 0, cold = 0, hammali = 0, kata = 0, tulai = 0, extraHam = 0, grading = 0;
     let adjA = 0, adjP = 0, adjF = 0, adjAd = 0, adjS = 0;
     let discount = 0, paid = 0, due = 0, income = 0;
     let cashPaid = 0, accountPaid = 0;
@@ -516,6 +517,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
       cold += c.coldChargeAmount;
       hammali += c.hammaliAmount;
       kata += s.kataCharges || 0;
+      tulai += s.tulaiCharges || 0;
       extraHam += s.extraHammali || 0;
       grading += s.gradingCharges || 0;
       adjA += s.adjReceivableSelfDueAmount || 0;
@@ -548,7 +550,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
       }
     }
     merged.sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime());
-    const extras = kata + extraHam + grading;
+    const extras = kata + tulai + extraHam + grading;
     const totalCharges = cold + hammali + extras + adjA;
     const netColdBill = Math.max(0, totalCharges - discount);
     const adjBreakdown = adjP + adjF + adjAd + adjS;
@@ -562,7 +564,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
     else status = "due";
     const netPayable = income - netColdBill;
     return {
-      bags, cold, hammali, kata, extraHam, grading,
+      bags, cold, hammali, kata, tulai, extraHam, grading,
       adj: adjA, adjP, adjF, adjAd, adjS, hasAdjBreakdown,
       discount, paid, due, income, netPayable,
       extras, totalCharges, netColdBill, actualCashPaid,
@@ -797,6 +799,10 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
                   <td className="amount">{agg.kata > 0 ? formatAmount(agg.kata) : "-"}</td>
                 </tr>
                 <tr>
+                  <td>{t("tulaiCharges")}</td>
+                  <td className="amount">{agg.tulai > 0 ? formatAmount(agg.tulai) : "-"}</td>
+                </tr>
+                <tr>
                   <td>अतिरिक्त हम्माली</td>
                   <td className="amount">{agg.extraHam > 0 ? formatAmount(agg.extraHam) : "-"}</td>
                 </tr>
@@ -867,6 +873,10 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
                 <tr>
                   <td>काटा (तौल शुल्क)</td>
                   <td className="amount">{(sale.kataCharges || 0) > 0 ? formatAmount(sale.kataCharges || 0) : "-"}</td>
+                </tr>
+                <tr>
+                  <td>{t("tulaiCharges")}</td>
+                  <td className="amount">{(sale.tulaiCharges || 0) > 0 ? formatAmount(sale.tulaiCharges || 0) : "-"}</td>
                 </tr>
                 <tr>
                   <td>अतिरिक्त हम्माली</td>
@@ -1035,6 +1045,7 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
     const dispCold = isBatch ? agg.cold : coldChargeAmount;
     const dispHammali = isBatch ? agg.hammali : hammaliAmount;
     const dispKata = isBatch ? agg.kata : (sale.kataCharges || 0);
+    const dispTulai = isBatch ? agg.tulai : (sale.tulaiCharges || 0);
     const dispExtraHam = isBatch ? agg.extraHam : (sale.extraHammali || 0);
     const dispGrading = isBatch ? agg.grading : (sale.gradingCharges || 0);
     const dispHasAdjBreakdown = isBatch ? agg.hasAdjBreakdown : hasAdjBreakdown;
@@ -1271,6 +1282,10 @@ export function PrintBillDialog({ sale, open, onOpenChange, autoBillType }: Prin
             <tr>
               <td>काटा (तौल शुल्क)</td>
               <td className="amount">{dispKata > 0 ? formatAmount(dispKata) : "-"}</td>
+            </tr>
+            <tr>
+              <td>{t("tulaiCharges")}</td>
+              <td className="amount">{dispTulai > 0 ? formatAmount(dispTulai) : "-"}</td>
             </tr>
             <tr>
               <td>अतिरिक्त हम्माली</td>

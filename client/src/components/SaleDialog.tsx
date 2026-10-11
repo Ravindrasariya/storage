@@ -44,6 +44,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   const [customPaidAmount, setCustomPaidAmount] = useState<string>("");
   const [editPosition, setEditPosition] = useState<string>("");
   const [kataCharges, setKataCharges] = useState<string>("");
+  const [tulaiCharges, setTulaiCharges] = useState<string>("");
   // Task #392 — Gate Cut / Bilty Cut each split into a plain variant and a
   // "+ Weighing" variant, purely for the operator's record-keeping about
   // whether the lot was weighed. Calculations are unchanged: both gate*
@@ -141,6 +142,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       setPricePerKg("");
       setCustomPaidAmount("");
       setKataCharges("");
+      setTulaiCharges("");
       setDeliveryType("gate");
       setExtraHammaliPerBag("");
       setGradingPerBag("");
@@ -169,6 +171,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       setCustomPaidAmount("");
       setEditPosition("");
       setKataCharges("");
+      setTulaiCharges("");
       setDeliveryType("gate");
       setExtraHammaliPerBag("");
       setGradingPerBag("");
@@ -221,11 +224,12 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   }, [open, lot?.id, lot?.baseColdChargesBilled, coldStorageBillEdited, nextCsBillData?.nextBillNumber, nextCsBillFetching]);
 
   const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; extraHammali?: number; gradingCharges?: number; gradingPerBag?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt, deliveryType });
+    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; tulaiCharges?: number; extraHammali?: number; gradingCharges?: number; gradingPerBag?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt, deliveryType });
     },
     onSuccess: () => {
       invalidateSaleSideEffects(queryClient);
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
@@ -338,9 +342,10 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       }
     }
     const kata = parseFloat(kataCharges) || 0;
+    const tulai = parseFloat(tulaiCharges) || 0;
     const extraHammali = isBiltyLike(deliveryType) ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
     const grading = isBiltyLike(deliveryType) ? (parseFloat(totalGradingCharges) || 0) : 0;
-    return baseCharge + kata + extraHammali + grading;
+    return baseCharge + kata + tulai + extraHammali + grading;
   };
 
   const handleConfirmSale = () => {
@@ -361,6 +366,12 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       });
       return;
     }
+    const tulaiRaw = tulaiCharges.trim();
+    const parsedTulai = tulaiRaw === "" ? 0 : Number(tulaiRaw);
+    if (!Number.isFinite(parsedTulai) || parsedTulai < 0) {
+      toast({ title: t("error"), description: t("tulaiAmountInvalid"), variant: "destructive" });
+      return;
+    }
 
     const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
     const actualQty = partialQuantity;
@@ -375,6 +386,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
     const totalCharge = baseChargeTotal + adjAmountForSale;
 
     const kata = parseFloat(kataCharges) || 0;
+    const tulai = parsedTulai;
     const extraHammaliTotal = isBiltyLike(deliveryType) ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
     const grading = isBiltyLike(deliveryType) ? (parseFloat(totalGradingCharges) || 0) : 0;
 
@@ -408,6 +420,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       dueAmount,
       position: editPosition || undefined,
       kataCharges: kata > 0 ? kata : undefined,
+      tulaiCharges: tulai,
       extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
       gradingCharges: grading > 0 ? grading : undefined,
       // Task #300 — persist the per-bag rate ONLY when the operator
@@ -759,6 +772,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
               />
             </div>
 
+            <div className="grid grid-cols-2 items-end gap-3">
             <div className="space-y-2">
               <Label>{t("kataCharges")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
               <Input
@@ -769,6 +783,13 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
                 placeholder="0"
                 data-testid="input-partial-kata-charges"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("tulaiCharges")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
+              <Input type="number" min={0} step="0.01" value={tulaiCharges}
+                onChange={(e) => setTulaiCharges(e.target.value)} placeholder="0"
+                data-testid="input-partial-tulai-charges" />
+            </div>
             </div>
 
             <div className="space-y-2">
@@ -929,6 +950,9 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
                       )}
                       {(parseFloat(kataCharges) || 0) > 0 && (
                         <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
+                      )}
+                      {(parseFloat(tulaiCharges) || 0) > 0 && (
+                        <div>+ {t("tulaiCharges")}: <Currency amount={parseFloat(tulaiCharges)} /></div>
                       )}
                       {isBiltyLike(deliveryType) && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
                         <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /> ({partialQuantity} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>

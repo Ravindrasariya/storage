@@ -55,6 +55,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [editColdCharge, setEditColdCharge] = useState("");
   const [editHammali, setEditHammali] = useState("");
   const [editKataCharges, setEditKataCharges] = useState("");
+  const [editTulaiCharges, setEditTulaiCharges] = useState("");
   const [editExtraHammali, setEditExtraHammali] = useState("");
   const [editGradingCharges, setEditGradingCharges] = useState("");
   // Task #300 — operator-entered per-bag grading rate. Blank for legacy
@@ -141,12 +142,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     if (!sale) return 0;
     const baseCharge = calculateBaseCharge();
     const kata = getEditableChargeValue(editKataCharges, sale.kataCharges || 0);
+    const tulai = editTulaiCharges.trim() === "" ? 0 : getEditableChargeValue(editTulaiCharges, 0);
     // extraHammali is now stored as per-bag rate in state, multiply by quantitySold for total
     const extraHammaliPerBag = getEditableChargeValue(editExtraHammali, 0);
     const extraHammaliTotal = extraHammaliPerBag * (sale.quantitySold || 0);
     const grading = getEditableChargeValue(editGradingCharges, sale.gradingCharges || 0);
     
-    return baseCharge + kata + extraHammaliTotal + grading;
+    return baseCharge + kata + tulai + extraHammaliTotal + grading;
   };
   
   // Get the calculated base charge for display
@@ -214,6 +216,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       coldCharge: t("coldStorageCharge"),
       hammali: t("hammali"),
       kataCharges: t("kataCharges"),
+      tulaiCharges: t("tulaiCharges"),
       extraHammali: t("extraHammaliPerBag"),
       gradingCharges: t("totalGradingCharges"),
       gradingPerBag: t("gradingPerBag"),
@@ -233,7 +236,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       return value === "cash" ? t("cash") : t("account");
     }
     if (field === "paidAmount" || field === "dueAmount" || field === "pricePerKg" || field === "netWeight" ||
-        field === "coldCharge" || field === "hammali" || field === "kataCharges" || 
+        field === "coldCharge" || field === "hammali" || field === "kataCharges" || field === "tulaiCharges" ||
         field === "extraHammali" || field === "gradingCharges" || field === "gradingPerBag" || field === "coldStorageCharge") {
       return `₹${formatCurrency(parseFloat(value))}`;
     }
@@ -260,6 +263,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       setEditColdCharge(sale.coldCharge?.toString() || "0");
       setEditHammali(sale.hammali?.toString() || "0");
       setEditKataCharges(sale.kataCharges?.toString() || "0");
+      setEditTulaiCharges(sale.tulaiCharges != null ? String(sale.tulaiCharges) : "0");
       // Convert total extraHammali to per-bag rate for consistency with sales entry
       const perBagExtraHammali = sale.quantitySold && sale.quantitySold > 0 
         ? (sale.extraHammali || 0) / sale.quantitySold 
@@ -407,6 +411,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       // Cascade touches every sibling sale row sharing the bill # — fan
       // out invalidations to every sale-aware view so the UI matches.
       invalidateSaleSideEffects(queryClient);
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history/cs-bill-batch"] });
     },
@@ -425,6 +430,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
       coldCharge?: number;
       hammali?: number;
       kataCharges?: number;
+      tulaiCharges?: number;
       extraHammali?: number;
       gradingCharges?: number;
       coldStorageCharge?: number;
@@ -445,6 +451,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     onSuccess: () => {
       toast({ title: t("success"), description: t("saleUpdated"), variant: "success" });
       invalidateSaleSideEffects(queryClient);
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale?.id, "edit-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
@@ -489,6 +496,24 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     },
   });
 
+  // Restore only the latest Tulai edit through the normal, payment-guarded
+  // edit path. The server adjusts the composite total and replays FIFO.
+  const restoreTulaiMutation = useMutation({
+    mutationFn: async (oldValue: string | null) => {
+      const amount = oldValue === null || oldValue === "" ? 0 : Number(oldValue);
+      if (!Number.isFinite(amount) || amount < 0) throw new Error(t("tulaiAmountInvalid"));
+      await apiRequest("PATCH", `/api/sales-history/${sale!.id}`, { tulaiCharges: amount });
+    },
+    onSuccess: () => {
+      invalidateSaleSideEffects(queryClient);
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-history", sale!.id, "edit-history"] });
+      queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith("/api/reports/") });
+      onOpenChange(false);
+    },
+    onError: (error: Error) => toast({ title: t("error"), description: error.message, variant: "destructive" }),
+  });
+
   const reverseMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", `/api/sales-history/${sale!.id}/reverse`);
@@ -501,6 +526,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     onSuccess: () => {
       toast({ title: t("success"), description: t("saleReversed"), variant: "success" });
       invalidateSaleSideEffects(queryClient);
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
@@ -739,6 +765,13 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     if (newKataCharges !== (sale.kataCharges || 0)) {
       updates.kataCharges = newKataCharges;
     }
+    const tulaiText = editTulaiCharges.trim();
+    const newTulaiCharges = tulaiText === "" ? 0 : Number(tulaiText);
+    if (!Number.isFinite(newTulaiCharges) || newTulaiCharges < 0) {
+      toast({ title: t("error"), description: t("tulaiAmountInvalid"), variant: "destructive" });
+      return;
+    }
+    if (newTulaiCharges !== (sale.tulaiCharges || 0)) updates.tulaiCharges = newTulaiCharges;
 
     // extraHammali in state is per-bag rate, convert to total for API
     const newExtraHammaliPerBag = getEditableChargeValue(editExtraHammali, 0);
@@ -802,7 +835,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     // Trigger recalculation if any charge-related field changed or if calculated total differs from stored value
     const originalTotal = sale.coldStorageCharge || 0;
     const chargeFieldsChanged = Object.keys(updates).some(key => 
-      ['coldCharge', 'hammali', 'kataCharges', 'extraHammali', 'gradingCharges', 'netWeight', 'adjReceivableSelfDueAmount'].includes(key)
+      ['coldCharge', 'hammali', 'kataCharges', 'tulaiCharges', 'extraHammali', 'gradingCharges', 'netWeight', 'adjReceivableSelfDueAmount'].includes(key)
     ) || Math.abs(totalCharge - originalTotal) > 0.01;
     
     // Task #278 — buyer reassignment. Only send when the picker selection
@@ -1234,8 +1267,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+                    <div className="space-y-1 sm:col-span-3">
                       <Label className="text-xs">{t("coldStorageCharge")}/{isQuintalBased ? t("quintal") : t("bag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1250,7 +1283,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 sm:col-span-3">
                       <Label className="text-xs">{t("hammali")}/{t("bag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1265,7 +1298,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 sm:col-span-2">
                       <Label className="text-xs">{t("kataCharges")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1279,7 +1312,16 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label className="text-xs">{t("tulaiCharges")}</Label>
+                      <div className="flex items-center gap-1">
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
+                        <Input type="number" min={0} step="0.01" value={editTulaiCharges}
+                          onChange={(e) => setEditTulaiCharges(e.target.value)} className="h-8"
+                          data-testid="input-edit-tulai-charges" />
+                      </div>
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
                       <Label className="text-xs">{t("extraHammaliPerBag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1473,10 +1515,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     )}
                     {(() => {
                       const kataVal = getEditableChargeValue(editKataCharges, 0);
+                      const tulaiVal = getEditableChargeValue(editTulaiCharges, 0);
                       const extraHammaliPerBag = getEditableChargeValue(editExtraHammali, 0);
                       const extraHammaliTotal = extraHammaliPerBag * (sale.quantitySold || 0);
                       const gradingVal = getEditableChargeValue(editGradingCharges, 0);
-                      const surchargesTotal = kataVal + extraHammaliTotal + gradingVal;
+                      const surchargesTotal = kataVal + tulaiVal + extraHammaliTotal + gradingVal;
                       return surchargesTotal > 0 ? (
                         <div className="flex justify-between">
                           <span>+ {t("surcharges")}</span>
@@ -1607,6 +1650,15 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         {formatValue(entry.fieldChanged, entry.newValue)}
                       </span>
                     </div>
+                    {entry.fieldChanged === "tulaiCharges" &&
+                      entry.id === editHistory.find(item => item.fieldChanged === "tulaiCharges")?.id && (
+                        <Button type="button" variant="outline" size="sm" className="mt-2"
+                          disabled={restoreTulaiMutation.isPending}
+                          data-testid="button-restore-tulai-edit"
+                          onClick={() => restoreTulaiMutation.mutate(entry.oldValue)}>
+                          {t("restoreTulaiEdit")}
+                        </Button>
+                      )}
                   </div>
                 ))}
               </div>

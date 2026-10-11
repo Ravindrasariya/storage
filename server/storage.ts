@@ -1569,6 +1569,7 @@ export class DatabaseStorage implements IStorage {
     let totalPaid = 0;
     let totalDue = 0;
     let totalHammali = 0;
+    let totalTulaiCharges = 0;
     let totalGradingCharges = 0;
     let totalExtraDueToMerchant = 0;
     let totalAdjSelfDue = 0;
@@ -1587,7 +1588,7 @@ export class DatabaseStorage implements IStorage {
       if (sale.baseHammaliAmount != null) {
         baseHammali = sale.baseHammaliAmount;
       } else {
-        const extras = (sale.kataCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
+        const extras = (sale.kataCharges || 0) + (sale.tulaiCharges || 0) + (sale.extraHammali || 0) + (sale.gradingCharges || 0);
         const baseChargesTotal = Math.max(0, (sale.coldStorageCharge || 0) - extras - (sale.adjReceivableSelfDueAmount || 0));
         if (sale.coldCharge && sale.hammali) {
           const totalRate = sale.coldCharge + sale.hammali;
@@ -1601,6 +1602,7 @@ export class DatabaseStorage implements IStorage {
       
       // Total hammali = base hammali + extra hammali (bilty cut) + hammali to merchant
       totalHammali += baseHammali + (sale.extraHammali || 0) + (sale.extraDueHammaliMerchant || 0);
+      totalTulaiCharges += sale.tulaiCharges ?? 0;
       totalGradingCharges += (sale.gradingCharges || 0) + (sale.extraDueGradingMerchant || 0);
       
       // Track extraDueToMerchant (remaining due, already reduced by FIFO payments)
@@ -1653,6 +1655,7 @@ export class DatabaseStorage implements IStorage {
     
     // Sum expenses by type, optionally filtered by year
     let hammaliExpensesPaid = 0;
+    let tulaiExpensesPaid = 0;
     let gradingExpensesPaid = 0;
     
     for (const expense of allExpenses) {
@@ -1665,6 +1668,8 @@ export class DatabaseStorage implements IStorage {
       
       if (expense.expenseType === "hammali") {
         hammaliExpensesPaid += expense.amount;
+      } else if (expense.expenseType === "tulai" && expense.expenseClass === "revenue") {
+        tulaiExpensesPaid += expense.amount;
       } else if (expense.expenseType === "grading_charges") {
         gradingExpensesPaid += expense.amount;
       }
@@ -1672,6 +1677,7 @@ export class DatabaseStorage implements IStorage {
     
     // Reduce totals by amounts already paid (show remaining due)
     const hammaliDue = Math.max(0, totalHammali - hammaliExpensesPaid);
+    const tulaiDue = Math.max(0, totalTulaiCharges - tulaiExpensesPaid);
     const gradingDue = Math.max(0, totalGradingCharges - gradingExpensesPaid);
     
     // Calculate Total Receivable Due from Farmer and Buyer ledgers
@@ -1732,8 +1738,10 @@ export class DatabaseStorage implements IStorage {
       paidCount,
       dueCount,
       totalHammali,
+      totalTulaiCharges,
       totalGradingCharges,
       hammaliDue,
+      tulaiDue,
       gradingDue,
       totalReceivableDue,
       farmerReceivableDue,
@@ -2398,6 +2406,7 @@ export class DatabaseStorage implements IStorage {
     coldCharge?: number;
     hammali?: number;
     kataCharges?: number;
+    tulaiCharges?: number;
     extraHammali?: number;
     gradingCharges?: number;
     // Task #300 — operator-entered per-bag grading rate; null clears, undefined leaves untouched.
@@ -2504,6 +2513,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.kataCharges !== undefined) {
       updateData.kataCharges = updates.kataCharges;
+    }
+    if (updates.tulaiCharges !== undefined) {
+      updateData.tulaiCharges = updates.tulaiCharges;
     }
     if (updates.extraHammali !== undefined) {
       updateData.extraHammali = updates.extraHammali;
@@ -2888,6 +2900,7 @@ export class DatabaseStorage implements IStorage {
       // is forced back to "actual" defensively.
       chargeBasis?: "actual" | "totalRemaining";
       kataCharges: number;
+      tulaiCharges?: number;
       extraHammaliPerBag: number;
       gradingCharges: number;
       // Task #300 — operator-typed per-bag grading rate (audit only).
@@ -2911,6 +2924,7 @@ export class DatabaseStorage implements IStorage {
       bagsExited: number;
       baseColdCharge: number;
       kataCharges: number;
+      tulaiCharges: number;
       extraHammaliPerBag: number;
       extraHammali: number;
       gradingCharges: number;
@@ -3153,6 +3167,7 @@ export class DatabaseStorage implements IStorage {
         bagsExited: number;
         baseColdCharge: number;
         kataCharges: number;
+        tulaiCharges: number;
         extraHammaliPerBag: number;
         extraHammali: number;
         gradingCharges: number;
@@ -3245,10 +3260,11 @@ export class DatabaseStorage implements IStorage {
         }
 
         const kata = row.kataCharges || 0;
+        const tulai = row.tulaiCharges ?? 0;
         const extraPerBag = row.extraHammaliPerBag || 0;
         const extraTotal = extraPerBag * soldBags;
         const grading = row.gradingCharges || 0;
-        const totalChargeForLot = storageCharge + kata + extraTotal + grading;
+        const totalChargeForLot = storageCharge + kata + tulai + extraTotal + grading;
 
         // Atomic, race-safe stock decrement: WHERE clause asserts current
         // remainingSize is sufficient. If any concurrent write reduced stock
@@ -3337,6 +3353,7 @@ export class DatabaseStorage implements IStorage {
           hammali: hammaliRate,
           coldStorageCharge: totalChargeForLot,
           kataCharges: kata,
+          tulaiCharges: tulai,
           extraHammali: extraTotal,
           gradingCharges: grading,
           // Task #300 — only persist when the operator typed a finite number;
@@ -3422,6 +3439,7 @@ export class DatabaseStorage implements IStorage {
           bagsExited: row.exitBags,
           baseColdCharge: storageCharge,
           kataCharges: kata,
+          tulaiCharges: tulai,
           extraHammaliPerBag: extraPerBag,
           extraHammali: extraTotal,
           gradingCharges: grading,

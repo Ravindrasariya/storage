@@ -26,6 +26,13 @@ interface Migration {
 
 const MIGRATIONS: Migration[] = [
   {
+    name: "2026-10-11_add_sales_history_tulai_charges",
+    up: async () => {
+      // Additive only: existing sales retain NULL (zero charge).
+      await db.execute(sql`ALTER TABLE sales_history ADD COLUMN IF NOT EXISTS tulai_charges REAL`);
+    },
+  },
+  {
     name: "2026-09-29_sale_exit_insertion_time_defaults",
     up: async () => {
       // Changing column defaults affects future inserts only. Keep historical

@@ -43,6 +43,7 @@ const EXPENSE_TYPE_LABELS: Record<string, { en: string; hi: string }> = {
   electricity_charges: { en: "Electricity/Power Charges", hi: "बिजली शुल्क" },
   chemical_spray_charges: { en: "Chemical Spray Charges", hi: "रासायनिक स्प्रे शुल्क" },
   hammali_billed: { en: "Hammali", hi: "हम्माली" },
+  tulai_billed: { en: "Tulai", hi: "तुलाई" },
   extra_hammali_billed: { en: "Extra Hammali", hi: "अतिरिक्त हम्माली" },
   grading_billed: { en: "Grading", hi: "ग्रेडिंग" },
   merchant_extras_billed: { en: "Merchant Extras", hi: "व्यापारी अतिरिक्त" },
