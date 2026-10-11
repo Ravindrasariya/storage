@@ -31,6 +31,7 @@ export async function checkNikasiLayout(page: Page, mount: Mount, props: { lots:
         whitespace: getComputedStyle(header).whiteSpace,
         width: header.clientWidth,
         contentWidth: header.scrollWidth,
+        center: text.x + text.width / 2,
       };
     });
     return {
@@ -39,6 +40,10 @@ export async function checkNikasiLayout(page: Page, mount: Mount, props: { lots:
       receiptWidth: row.children[0].getBoundingClientRect().width,
       markaWidth: row.children[1].getBoundingClientRect().width,
       actionWidth: row.lastElementChild!.getBoundingClientRect().width,
+      chargeInputCenters: [7, 8].map(index => {
+        const input = row.children[index].querySelector("input")!.getBoundingClientRect();
+        return input.x + input.width / 2;
+      }),
     };
   });
   const checkHeaders = (metrics: Awaited<ReturnType<typeof measure>>) => {
@@ -52,6 +57,10 @@ export async function checkNikasiLayout(page: Page, mount: Mount, props: { lots:
     assert.ok(metrics.receiptWidth <= 100, "Receipt picker must use a compact column");
     assert.ok(metrics.markaWidth <= 110, "Marka picker must use a compact column");
     assert.ok(metrics.actionWidth <= 40, "Do not waste labelled-column space on the trailing action cell");
+    for (const [offset, column] of [7, 8].entries()) {
+      assert.ok(Math.abs(metrics.headers[column].center - metrics.chargeInputCenters[offset]) <= 1,
+        `${metrics.headers[column].label}: heading must be centered over its input`);
+    }
   };
   for (const language of ["en", "hi"]) {
     await page.evaluate(language => localStorage.setItem("language", language), language);

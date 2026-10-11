@@ -1094,8 +1094,8 @@ export function MasterNikasiDialog({
                   <th className="p-2 text-right">{t("soldBags") || "Sold Bags"}</th>
                   <th className="p-2 text-left">{t("chargeBasis")}</th>
                   <th className="p-2 text-right">{t("baseColdCharge")}</th>
-                  <th className="p-2 text-right">{t("kataChargesShort")}</th>
-                  <th className="p-2 text-right">{t("tulaiChargesShort")}</th>
+                  <th className="p-2 text-center">{t("kataChargesShort")}</th>
+                  <th className="p-2 text-center">{t("tulaiChargesShort")}</th>
                   <th className="p-2 text-right">{t("extraHammaliPerBagShort") || `${t("extraHammaliShort")}/Bag`}</th>
                   <th className="p-2 text-right">{t("gradingPerBagShort")}</th>
                   <th className="p-2 text-right">{t("gradingChargesShort")}</th>
@@ -1306,7 +1306,7 @@ export function MasterNikasiDialog({
                           value={r.kataCharges}
                           onChange={(e) => updateRow(r.rowKey, { kataCharges: e.target.value })}
                           disabled={!!result || !r.lotNo || !r.marka}
-                          className="h-8 w-14 text-right"
+                          className="mx-auto h-8 w-14 text-right"
                           data-testid={`input-mn-kata-${idx}`}
                         />
                       </td>
@@ -1314,7 +1314,7 @@ export function MasterNikasiDialog({
                         <Input type="number" min={0} step="0.01" value={r.tulaiCharges}
                           onChange={(e) => updateRow(r.rowKey, { tulaiCharges: e.target.value })}
                           disabled={!!result || !r.lotNo || !r.marka}
-                          className="h-8 w-14 text-right" data-testid={`input-mn-tulai-${idx}`} />
+                          className="mx-auto h-8 w-14 text-right" data-testid={`input-mn-tulai-${idx}`} />
                       </td>
                       <td className="p-2">
                         <Input
