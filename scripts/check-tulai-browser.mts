@@ -1,10 +1,15 @@
 #!/usr/bin/env tsx
 // Uses real components and synthetic authenticated development fixtures.
-// Requires playwright and the Replit Chromium binary. PDFs stay in /tmp.
+// Requires playwright, Replit Chromium, pdftoppm and tesseract (English OCR).
+// PDFs, rendered images and OCR diagnostics stay in /tmp.
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { format } from "date-fns";
 import { chromium, type Browser } from "playwright";
 import { auth, cleanup, farmerId, id, lot, pool, setup, token } from "./tulai-fixtures.mts";
+const execFileAsync = promisify(execFile);
 const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
 let browser: Browser | undefined;
 let fixturesStarted = false;
@@ -53,13 +58,26 @@ try {
   await api(`/api/lots/${editLotId}/partial-sale`, body);
   const saleId = (await pool.query(`SELECT id FROM sales_history WHERE lot_id=$1`, [lotId])).rows[0].id;
   const editSaleId = (await pool.query(`SELECT id FROM sales_history WHERE lot_id=$1`, [editLotId])).rows[0].id;
-  for (let n = 0; n < 4; n++) {
+  // Distinct date/amount pairs distinguish every bottom row from summary
+  // totals and from the other payments; all four leave the bill partial.
+  const expectedPayments = [51, 62, 73, 84].map((amount, n) => ({
+    amount, receivedAt: `2016-06-${16 + n}`,
+  }));
+  for (const payment of expectedPayments) {
     await api(`/api/sales/${saleId}/manual-payment`, {
-      receiptType: "cash", amount: 50, receivedAt: `2016-06-${16 + n}`,
+      receiptType: "cash", ...payment,
     });
   }
   await api(`/api/sales-history/${editSaleId}`, { tulaiCharges: 80 }, "PATCH");
   const sale = await api(`/api/sales-history/${saleId}`, undefined, "GET");
+  assert.equal(sale.paymentStatus, "partial", "Fixture must show the bottom payment timeline");
+  assert.equal(sale.payments.length, expectedPayments.length, "Fixture must return every payment");
+  for (const expected of expectedPayments) {
+    assert.ok(sale.payments.some((payment: any) =>
+      payment.amount === expected.amount &&
+      format(new Date(payment.receivedAt), "dd/MM/yyyy") === format(new Date(expected.receivedAt), "dd/MM/yyyy")),
+    `Fixture payment missing: ${expected.receivedAt}, amount ${expected.amount}`);
+  }
   const editSale = await api(`/api/sales-history/${editSaleId}`, undefined, "GET");
   const lotList = await api("/api/lots", undefined, "GET");
   const lots = lotList.lots.map((lot: any) => ({
@@ -170,6 +188,29 @@ try {
     await download.saveAs(sharedPath);
     const sharedPages = ((await readFile(sharedPath)).toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
     assert.equal(sharedPages, 1, `${type} actual generated/shared PDF page count`);
+    if (type === "deduction") {
+      // shareReceiptAsPdf embeds a canvas image, not searchable PDF text.
+      // Read the saved download itself: DOM markers or a one-page count
+      // alone cannot prove that its bottom payment rows survived rendering.
+      const imagePrefix = "/tmp/tulai-deduction-shared";
+      await execFileAsync("pdftoppm", ["-f", "1", "-singlefile", "-r", "300",
+        "-png", sharedPath, imagePrefix]);
+      const { stdout: ocr } = await execFileAsync("tesseract", [
+        `${imagePrefix}.png`, "stdout", "-l", "eng", "--psm", "6",
+      ]);
+      await writeFile(`${imagePrefix}-ocr.txt`, ocr);
+      const lines = ocr.split(/\r?\n/).map(line => line.replace(/\s+/g, " ").trim());
+      for (const payment of expectedPayments) {
+        const date = format(new Date(payment.receivedAt), "dd/MM/yyyy");
+        // Match both fields on the SAME line, including numeric boundaries:
+        // a matching total elsewhere cannot hide a missing payment amount.
+        const row = new RegExp(`(?:^|\\D)${date}\\s*:?.*\\b${payment.amount}(?:\\.00)?\\s*$`);
+        assert.ok(lines.some(line => row.test(line)),
+          `Downloaded Cold Storage Bill PDF is missing payment ${date}, amount ${payment.amount}. ` +
+          `See ${imagePrefix}.png and ${imagePrefix}-ocr.txt`);
+      }
+      console.log(`deduction: all ${expectedPayments.length} payment date/amount pairs found in downloaded PDF`);
+    }
     console.log(`${type}: A4 print = ${printPages} page; shared PDF = ${sharedPages} page`);
   }
   await page.evaluate(() => (window as any).tulaiRoot.unmount());
