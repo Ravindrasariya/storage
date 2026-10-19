@@ -11,3 +11,4 @@
 - [Synthetic fixture safety](synthetic-fixture-safety.md) — development mode alone cannot authorize database writes; remote test targets require a separately verified boundary.
 - [Master Nikasi layout](nikasi-layout.md) — keep long headers on one line; narrow Receipt #/Marka and reclaim unused trailing space instead of wrapping labels.
 - [VPS package portability](vps-package-portability.md) — verify lockfile tarball URLs are public before Hostinger deployment; a registry flag alone does not replace explicit internal URLs.
+- [Sale remark rules](sale-remark-rules.md) — Master Nikasi remarks copy once into independent sales; payment-recorded sales retain the full edit lock, including remarks.
