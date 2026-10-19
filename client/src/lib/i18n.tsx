@@ -97,6 +97,9 @@ export const translations: Translations = {
   reducingSugar: { en: "Reducing Sugar", hi: "रिड्यूसिंग शुगर" },
   dm: { en: "DM (Dry Matter)", hi: "डीएम (सूखा पदार्थ)" },
   remarks: { en: "Remarks", hi: "टिप्पणियाँ" },
+  saleRemarkPlaceholder: { en: "Optional remark (up to 500 characters)", hi: "वैकल्पिक टिप्पणी (अधिकतम 500 अक्षर)" },
+  saleRemarkInvalid: { en: "Enter a single-line remark of at most 500 characters.", hi: "अधिकतम 500 अक्षरों की एक पंक्ति में टिप्पणी दर्ज करें।" },
+  restoreRemarkEdit: { en: "Restore previous remark", hi: "पिछली टिप्पणी बहाल करें" },
   submit: { en: "Submit", hi: "जमा करें" },
   
   // Entry-time deductions

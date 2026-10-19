@@ -172,6 +172,7 @@ export const salesHistory = pgTable("sales_history", {
   netWeight: real("net_weight"), // Optional net weight of the lot in kg
   buyerName: text("buyer_name"),
   pricePerKg: real("price_per_kg"), // Selling price per kg
+  remarks: text("remarks"), // Independent sale note; Master Nikasi copies once at creation.
   // Payment tracking
   paymentStatus: text("payment_status").notNull(), // 'paid', 'due', or 'partial'
   paymentMode: text("payment_mode"), // 'cash' or 'account' (only when paid/partial)

@@ -2400,6 +2400,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateSalesHistory(saleId: string, updates: {
+    remarks?: string | null;
     buyerName?: string | null;
     buyerId?: string | null;
     buyerLedgerId?: string | null;
@@ -2453,7 +2454,8 @@ export class DatabaseStorage implements IStorage {
     }
 
     const updateData: Record<string, unknown> = {};
-    
+    if (updates.remarks !== undefined) updateData.remarks = updates.remarks;
+
     if (updates.buyerName !== undefined) {
       updateData.buyerName = updates.buyerName || null;
     }
@@ -2858,6 +2860,7 @@ export class DatabaseStorage implements IStorage {
   // Master Nikasi — bulk self-sale + exit for one farmer/company. All rows
   // share a single freshly-allocated exit bill number and exit date.
   async createMasterNikasi(args: {
+    remarks?: string | null;
     coldStorageId: string;
     farmerLedgerId: string;
     buyerLedgerId?: string | null;
@@ -3397,6 +3400,7 @@ export class DatabaseStorage implements IStorage {
           // Task #395 — shared Delivery Type for the whole batch; NULL
           // when the operator left it blank.
           deliveryType: deliveryType ?? null,
+          remarks: args.remarks ?? null,
         }).returning();
 
         // Single shared CS bill # — resolved once before the row loop.

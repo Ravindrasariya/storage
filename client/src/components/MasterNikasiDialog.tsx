@@ -16,6 +16,8 @@ import { format } from "date-fns";
 import type { ColdStorage, BuyerLedgerEntry, BankAccount } from "@shared/schema";
 import type { LotWithCharges } from "@/components/FarmerLotGroup";
 import { NikasiPrintable, printNikasiReceipt } from "@/components/NikasiPrintable";
+import { SaleRemarkInput } from "@/components/SaleRemarkInput";
+import { saleRemarkSchema } from "@shared/sale-remarks";
 
 // Special sentinel for the "Self" option in the buyer picker. Selecting it
 // (or leaving the field empty) keeps the legacy self-sale behavior — due
@@ -252,11 +254,13 @@ export function MasterNikasiDialog({
   // for every row it creates). Blank/"" means "not selected" and persists
   // as NULL, matching every pre-existing Master Nikasi batch.
   const [deliveryType, setDeliveryType] = useState<"" | "gate" | "gateWeighing" | "bilty" | "biltyWeighing">("");
+  const [remarks, setRemarks] = useState("");
 
   // Reset state whenever dialog opens. Both shared bill # inputs start
   // empty and are populated by the follow-up effects below, once the
   // entry-year-scoped hints arrive.
   useEffect(() => {
+    setRemarks("");
     if (open) {
       setExitDate(todayIst());
       const only = lots.length === 1 ? lots[0].lot : null;
@@ -284,7 +288,8 @@ export function MasterNikasiDialog({
       setPaymentError(null);
       setDeliveryType("");
     }
-  }, [open, lots]);
+    // Live lot-query refreshes must not erase unsaved entries.
+  }, [open, farmerLedgerId]);
 
   // Index lots by (lotNo, marka) so a row can resolve its database lot id
   // from the user-facing identity. Per the operator workflow, the same
@@ -561,6 +566,8 @@ export function MasterNikasiDialog({
 
   const submitMutation = useMutation({
     mutationFn: async () => {
+      const parsedRemark = saleRemarkSchema.safeParse(remarks);
+      if (!parsedRemark.success) throw new Error(t("saleRemarkInvalid"));
       setBuyerError(null);
       if (!farmerLedgerId) throw new Error("Missing farmer ledger");
       const cleaned: Array<{
@@ -700,6 +707,7 @@ export function MasterNikasiDialog({
         sharedExitBillNumber: sharedExitBill,
         sharedColdStorageBillNumber: sharedCsBill,
         rows: cleaned,
+        remarks: parsedRemark.data,
         // Task #395 — shared Delivery Type for the whole batch; omitted
         // when left blank so every created sale's delivery_type stays NULL.
         ...(deliveryType ? { deliveryType } : {}),
@@ -1495,6 +1503,8 @@ export function MasterNikasiDialog({
             </div>
           );
         })()}
+
+        {!result && <SaleRemarkInput id="input-mn-remarks" value={remarks} onChange={setRemarks} />}
 
         {/* Task #395 — footer wrapped in items-start (mobile) / items-center
             (sm+) so the Add Payment button no longer stretches full-width

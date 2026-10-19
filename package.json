@@ -14,6 +14,8 @@
     "test:tulai": "tsx scripts/check-tulai.mts",
     "test:sales-csv-choices": "tsx scripts/check-sales-csv-choices.mts",
     "test:tulai-browser": "tsx scripts/check-tulai-browser.mts",
+    "test:sale-remarks": "tsx scripts/check-sale-remarks.mts",
+    "test:sale-remarks-browser": "tsx scripts/check-sale-remarks-browser.mts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

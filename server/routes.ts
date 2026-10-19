@@ -6,6 +6,7 @@ import { SaleBuyerAdjustmentError } from "./sale-edit-errors";
 import { db } from "./db";
 import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema, exitHistory } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
+import { saleRemarkSchema } from "@shared/sale-remarks";
 import { sql, eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 
@@ -1467,6 +1468,10 @@ export async function registerRoutes(
 
       const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt: soldAtInput, deliveryType } = req.body;
       const parsedTulai = z.number().finite().min(0).nullable().optional().safeParse(tulaiCharges === "" ? 0 : tulaiCharges);
+      const parsedRemark = saleRemarkSchema.safeParse(req.body.remarks);
+      if (!parsedRemark.success) {
+        return res.status(400).json({ error: "Remarks must be a single line of at most 500 characters", field: "remarks" });
+      }
       if (!parsedTulai.success) {
         return res.status(400).json({ error: "Tulai must be a finite non-negative amount", field: "tulaiCharges" });
       }
@@ -1757,6 +1762,7 @@ export async function registerRoutes(
         coldStorageCharge: totalChargeForLot, // Total charge including all extras (base + kata + extraHammali + grading)
         kataCharges: kataCharges || 0,
         tulaiCharges: parsedTulai.data ?? null,
+        remarks: parsedRemark.data ?? null,
         extraHammali: extraHammali || 0,
         gradingCharges: gradingCharges || 0,
         // Task #300 — persist per-bag grading only when the operator typed
@@ -1902,6 +1908,7 @@ export async function registerRoutes(
   // row becomes its own sale_history + exit_history pair, but every exit
   // shares a single freshly allocated bill number and exit date.
   const masterNikasiSchema = z.object({
+    remarks: saleRemarkSchema,
     farmerLedgerId: z.string().min(1),
     // Optional buyer the bulk exit is billed to. When omitted/null, the
     // legacy self-sale path is used (due tracked under the farmer).
@@ -2052,6 +2059,7 @@ export async function registerRoutes(
         // Task #395 — shared Delivery Type for the whole batch; null when
         // the operator left it blank.
         deliveryType: body.deliveryType ?? null,
+        remarks: body.remarks ?? null,
         payment: parsedPayment,
         rows: body.rows.map(r => ({
           lotId: r.lotId,
@@ -2689,6 +2697,7 @@ export async function registerRoutes(
   });
 
   const updateSalesHistorySchema = z.object({
+    remarks: saleRemarkSchema,
     // Task #278 — `buyerName` is intentionally NOT accepted here.
     // Owner identity is changed only through `{ isSelfSale, buyerLedgerId }`
     // and `buyerName` / `buyerId` are derived server-side from the chosen
@@ -2880,7 +2889,7 @@ export async function registerRoutes(
       // the dedicated owner-change audit row below covers Self ↔ Buyer
       // reassignments with proper human labels.
       if (currentSale) {
-        const fieldsToTrack = ['pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'tulaiCharges', 'extraHammali', 'gradingCharges', 'gradingPerBag', 'coldStorageCharge', 'extraDueToMerchant', 'extraDueHammaliMerchant', 'extraDueGradingMerchant', 'extraDueOtherMerchant'] as const;
+        const fieldsToTrack = ['remarks', 'pricePerKg', 'paymentStatus', 'paidAmount', 'dueAmount', 'paymentMode', 'netWeight', 'coldCharge', 'hammali', 'kataCharges', 'tulaiCharges', 'extraHammali', 'gradingCharges', 'gradingPerBag', 'coldStorageCharge', 'extraDueToMerchant', 'extraDueHammaliMerchant', 'extraDueGradingMerchant', 'extraDueOtherMerchant'] as const;
         for (const field of fieldsToTrack) {
           if (validatedData[field as keyof typeof validatedData] !== undefined || field === 'coldStorageCharge') {
             const oldValue = currentSale[field as keyof typeof currentSale];

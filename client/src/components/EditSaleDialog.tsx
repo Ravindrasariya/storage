@@ -17,7 +17,9 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
 import { Pencil, Save, X, RotateCcw, History, ChevronDown, ChevronUp, ChevronsUpDown, Check } from "lucide-react";
 import { format } from "date-fns";
-import type { SalesHistory, SaleEditHistory, BuyerLedgerEntry } from "@shared/schema";
+import type { SalesHistory, SalePayment, SaleEditHistory, BuyerLedgerEntry } from "@shared/schema";
+import { SaleRemarkInput } from "@/components/SaleRemarkInput";
+import { saleRemarkSchema } from "@shared/sale-remarks";
 
 // Sentinel value for the Self option in the buyer picker. Anything else
 // is a real buyer ledger entry id. Mirrors MasterNikasiDialog so the
@@ -32,7 +34,7 @@ import { Currency, formatCurrency } from "@/components/Currency";
 type CsBillSibling = SalesHistory;
 
 interface EditSaleDialogProps {
-  sale: SalesHistory | null;
+  sale: (SalesHistory & { payments?: SalePayment[] }) | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -45,6 +47,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const [buyerName, setBuyerName] = useState("");
   const [pricePerKg, setPricePerKg] = useState("");
   const [netWeight, setNetWeight] = useState("");
+  const [remarks, setRemarks] = useState("");
   const [newPaymentStatus, setNewPaymentStatus] = useState<"paid" | "due" | "partial">("paid");
   const [customAmount, setCustomAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
@@ -203,10 +206,16 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   const discountAllocated = sale?.discountAllocated || 0;
   // Actual cash paid = paidAmount - discountAllocated
   const actualCashPaid = Math.max(0, (sale?.paidAmount || 0) - discountAllocated);
+  // Mirror payment evidence, not the legacy paymentStatus flag alone.
+  // The server's guarded UPDATE remains authoritative for concurrent payments.
+  const remarksLocked = [sale?.paidAmount, sale?.paidCash, sale?.paidAccount, sale?.discountAllocated]
+    .some(value => (value ?? 0) > 0.005)
+    || !!sale?.payments?.some(payment => payment.amount > 0.005);
 
   const getFieldLabel = (field: string): string => {
     const labels: Record<string, string> = {
       buyerName: t("buyerName"),
+      remarks: t("remarks"),
       pricePerKg: t("pricePerKg"),
       paymentStatus: t("paymentStatus"),
       paidAmount: t("paidAmount"),
@@ -255,8 +264,9 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
   useEffect(() => {
     if (sale && open) {
       setBuyerName(sale.buyerName || "");
-      setPricePerKg(sale.pricePerKg ? sale.pricePerKg.toString() : "");
+      setPricePerKg(sale.pricePerKg != null ? sale.pricePerKg.toString() : "");
       setNetWeight(sale.netWeight ? sale.netWeight.toString() : "");
+      setRemarks(sale.remarks ?? "");
       setNewPaymentStatus(sale.paymentStatus as "paid" | "due" | "partial");
       setCustomAmount(sale.paidAmount?.toString() || "0");
       setPaymentMode(sale.paymentMode as "cash" | "account" || "cash");
@@ -419,6 +429,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
 
   const updateMutation = useMutation({
     mutationFn: async (data: {
+      remarks?: string | null;
       buyerLedgerId?: string | null;
       isSelfSale?: 0 | 1;
       pricePerKg?: number;
@@ -583,6 +594,11 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
 
   const handleSave = async (opts: { confirmedClear?: boolean } = {}) => {
     if (!sale) return;
+    const parsedRemark = saleRemarkSchema.safeParse(remarks);
+    if (!parsedRemark.success) {
+      toast({ title: t("error"), description: t("saleRemarkInvalid"), variant: "destructive" });
+      return;
+    }
     const originalBuyerSelection = sale.isSelfSale === 1
       ? SELF_BUYER
       : (sale.buyerLedgerId || buyers.find(b =>
@@ -713,9 +729,10 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
     }
 
     const updates: Record<string, unknown> = {};
+    if (parsedRemark.data !== (sale.remarks ?? null)) updates.remarks = parsedRemark.data;
 
     const newPriceKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
-    if (newPriceKg !== sale.pricePerKg) {
+    if (newPriceKg !== (sale.pricePerKg ?? undefined)) {
       updates.pricePerKg = newPriceKg || 0;
     }
 
@@ -834,9 +851,12 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
 
     // Trigger recalculation if any charge-related field changed or if calculated total differs from stored value
     const originalTotal = sale.coldStorageCharge || 0;
+    // A remark-only save must not "repair" historical calculation differences.
+    const remarkOnly = Object.keys(updates).length === 1 && updates.remarks !== undefined
+      && selectedBuyerLedgerId === originalBuyerSelection;
     const chargeFieldsChanged = Object.keys(updates).some(key => 
       ['coldCharge', 'hammali', 'kataCharges', 'tulaiCharges', 'extraHammali', 'gradingCharges', 'netWeight', 'adjReceivableSelfDueAmount'].includes(key)
-    ) || Math.abs(totalCharge - originalTotal) > 0.01;
+    ) || (!remarkOnly && Math.abs(totalCharge - originalTotal) > 0.01);
     
     // Task #278 — buyer reassignment. Only send when the picker selection
     // actually differs from the row's current owner; the server treats
@@ -1560,7 +1580,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
           </div>
 
           <div className="space-y-4">
-            <h4 className="font-medium">{t("paymentStatus")}</h4>
+            <SaleRemarkInput id="input-edit-remarks" value={remarks} onChange={setRemarks} disabled={remarksLocked} />
+            <h4 className="font-medium" data-testid="sale-payment-overview">{t("paymentStatus")}</h4>
             
             <div className="p-3 bg-muted/30 rounded-lg space-y-2">
               <div className="flex items-center gap-2">
@@ -1657,6 +1678,15 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                           data-testid="button-restore-tulai-edit"
                           onClick={() => restoreTulaiMutation.mutate(entry.oldValue)}>
                           {t("restoreTulaiEdit")}
+                        </Button>
+                      )}
+                    {entry.fieldChanged === "remarks" &&
+                      entry.id === editHistory.find(item => item.fieldChanged === "remarks")?.id && (
+                        <Button type="button" variant="outline" size="sm" className="mt-2"
+                          disabled={remarksLocked || updateMutation.isPending}
+                          data-testid="button-restore-remark-edit"
+                          onClick={() => updateMutation.mutate({ remarks: entry.oldValue })}>
+                          {t("restoreRemarkEdit")}
                         </Button>
                       )}
                   </div>

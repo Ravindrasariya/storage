@@ -26,6 +26,8 @@ import { useToast } from "@/hooks/use-toast";
 import type { SaleLotInfo, ColdStorage } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency } from "@/components/Currency";
+import { SaleRemarkInput } from "@/components/SaleRemarkInput";
+import { saleRemarkSchema } from "@shared/sale-remarks";
 
 interface SaleDialogProps {
   lot: SaleLotInfo | null;
@@ -62,6 +64,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
   const [totalGradingCharges, setTotalGradingCharges] = useState<string>("");
   const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
   const [netWeight, setNetWeight] = useState<string>("");
+  const [remarks, setRemarks] = useState("");
   const [editableColdCharge, setEditableColdCharge] = useState<string>("");
   const [editableHammali, setEditableHammali] = useState<string>("");
   const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
@@ -148,6 +151,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       setGradingPerBag("");
       setTotalGradingCharges("");
       setNetWeight("");
+      setRemarks("");
       setIsSelfBuyer(false);
       setAdjAmount("");
       setEditPosition(lot.position);
@@ -177,6 +181,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
       setGradingPerBag("");
       setTotalGradingCharges("");
       setNetWeight("");
+      setRemarks("");
       setIsSelfBuyer(false);
       setEditableColdCharge("");
       setEditableHammali("");
@@ -225,7 +230,7 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
 
   const partialSaleMutation = useMutation({
     mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; tulaiCharges?: number; extraHammali?: number; gradingCharges?: number; gradingPerBag?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt, deliveryType });
+      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt, deliveryType, remarks: saleRemarkSchema.parse(remarks) });
     },
     onSuccess: () => {
       invalidateSaleSideEffects(queryClient);
@@ -350,6 +355,10 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
 
   const handleConfirmSale = () => {
     if (!lot) return;
+    if (!saleRemarkSchema.safeParse(remarks).success) {
+      toast({ title: t("error"), description: t("saleRemarkInvalid"), variant: "destructive" });
+      return;
+    }
     if (!buyerName.trim()) {
       toast({
         title: t("error"),
@@ -920,6 +929,8 @@ export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialo
                 )}
               </div>
             )}
+
+            <SaleRemarkInput id="input-partial-remarks" value={remarks} onChange={setRemarks} />
 
             {partialQuantity > 0 && (
               <div className="p-4 rounded-lg bg-muted">

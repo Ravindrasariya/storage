@@ -26,6 +26,13 @@ interface Migration {
 
 const MIGRATIONS: Migration[] = [
   {
+    name: "2026-10-19_add_sales_history_remarks",
+    up: async () => {
+      // Additive only: historical sales stay NULL; no table deletion/backfill.
+      await db.execute(sql`ALTER TABLE sales_history ADD COLUMN IF NOT EXISTS remarks TEXT`);
+    },
+  },
+  {
     name: "2026-10-11_add_sales_history_tulai_charges",
     up: async () => {
       // Additive only: existing sales retain NULL (zero charge).
