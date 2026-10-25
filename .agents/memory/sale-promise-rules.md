@@ -15,6 +15,12 @@ Call the individual promise action and dialog “Sauda”, not Sale. Actual new 
 
 **How to apply:** Use Sauda/सौदा for this non-financial flow; preserve actual Sale History and Sale Edit terminology and behavior.
 
+Disconnect the old individual-sale backend wiring from Sauda. Submit's only purpose is to show the selected existing buyer's initials on Stock Register, supported only by isolated non-financial Sauda persistence.
+
+**Why:** The user explicitly instructed: “disconnect all backend wiring or tables impacted due to individual sale dialog” and that initials on Stock Register are “the only purpose” of this button.
+
+**How to apply:** Do not route Sauda through actual-sale creation with zero charges or hidden bills. Do not invoke stock/ledger/payment/FIFO/bill mutations or change existing buyer initials. Preserve shared actual-sale functions, existing tables, Master Nikasi, historical sales, and Sale Edit.
+
 The promise dialog has only bag quantity (maximum current remaining bags), existing buyer selection, Cancel, and Submit.
 
 **Why:** The user explicitly reduced the current dialog to these inputs and actions using screenshots.
