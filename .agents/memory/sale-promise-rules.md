@@ -1,6 +1,6 @@
 ---
 name: Non-financial sale promises
-description: User-defined distinction between individual-dialog promises and actual Master Nikasi sales.
+description: Sauda is the non-financial individual-dialog promise; actual new sales come only through Master Nikasi.
 ---
 
 The user wants the individual Sale dialog to record only a promise of a possible sale, using bag quantity and an existing Buyer Ledger buyer. Existing buyers only was explicitly selected; use their current saved initials.
@@ -8,6 +8,12 @@ The user wants the individual Sale dialog to record only a promise of a possible
 **Why:** The user described this as a discussion that the buyer may eventually buy the lot, not a completed sale.
 
 **How to apply:** Promises have no charges, bills, financial calculations, or Buyer/Farmer Ledger effects. Do not create buyer records as a side effect.
+
+Call the individual promise action and dialog “Sauda”, not Sale. Actual new sales come only through Master Nikasi.
+
+**Why:** The user requested: “rename it as "Sauda" instead of sale, now sale will come from master niaksi only”.
+
+**How to apply:** Use Sauda/सौदा for this non-financial flow; preserve actual Sale History and Sale Edit terminology and behavior.
 
 The promise dialog has only bag quantity (maximum current remaining bags), existing buyer selection, Cancel, and Submit.
 
