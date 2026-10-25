@@ -1,19 +1,19 @@
 ---
 name: Non-financial sale promises
-description: Sauda is the non-financial individual-dialog promise; actual new sales come only through Master Nikasi.
+description: Sauda stays non-financial and independent; the user now wants the original Individual Sale restored alongside it.
 ---
 
-The user wants the individual Sale dialog to record only a promise of a possible sale, using bag quantity and an existing Buyer Ledger buyer. Existing buyers only was explicitly selected; use their current saved initials.
+Sauda records only a promise of a possible sale, using bag quantity and an existing Buyer Ledger buyer. Existing buyers only was explicitly selected; use their current saved initials.
 
 **Why:** The user described this as a discussion that the buyer may eventually buy the lot, not a completed sale.
 
 **How to apply:** Promises have no charges, bills, financial calculations, or Buyer/Farmer Ledger effects. Do not create buyer records as a side effect.
 
-Call the individual promise action and dialog “Sauda”, not Sale. Actual new sales come only through Master Nikasi.
+Call the individual promise action and dialog “Sauda”, not Sale. The user now wants the original Individual Sale functionality restored “100% same” alongside Sauda, with Sauda kept as is.
 
-**Why:** The user requested: “rename it as "Sauda" instead of sale, now sale will come from master niaksi only”.
+**Why:** The later request to keep both flows supersedes the earlier instruction that actual sales come only through Master Nikasi.
 
-**How to apply:** Use Sauda/सौदा for this non-financial flow; preserve actual Sale History and Sale Edit terminology and behavior.
+**How to apply:** Keep separate Sale and Sauda actions, dialogs, state and backend mutations. Recover the original Individual Sale rather than redesigning it; preserve all current Sauda behavior and keep it independent of actual sales.
 
 Disconnect the old individual-sale backend wiring from Sauda. Submit's only purpose is to show the selected existing buyer's initials on Stock Register, supported only by isolated non-financial Sauda persistence.
 
