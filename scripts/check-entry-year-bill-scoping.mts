@@ -607,14 +607,23 @@ async function main(): Promise<void> {
     const lotNewSeason = await insertLot("newseason", ENTRY_B);
 
     const partialSale = async (lotId: string, soldAt: string, csBill: number) =>
-      fetch(`${baseUrl}/api/farmers/master-nikasi`, {
+      fetch(`${baseUrl}/api/lots/${lotId}/partial-sale`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
-          farmerLedgerId,
-          sharedColdStorageBillNumber: csBill,
-          exitDate: soldAt,
-          rows: [{ lotId, exitBags: 1 }],
+          quantitySold: 1,
+          pricePerBag: 0,
+          paymentStatus: "due",
+          paidAmount: 0,
+          dueAmount: 0,
+          position: "P1",
+          kataCharges: 0,
+          extraHammali: 0,
+          gradingCharges: 0,
+          chargeBasis: "actual",
+          isSelfSale: true,
+          coldStorageBillNumber: csBill,
+          soldAt,
         }),
       });
 

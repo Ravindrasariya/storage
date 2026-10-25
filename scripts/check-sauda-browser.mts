@@ -75,7 +75,7 @@ try {
       const h = React.createElement;
       const callbacks = {
         onOpenChange: () => { win.saudaClosed = true; }, onEdit: () => {},
-        onSale: () => {}, onExitSale: (saleId: string) => { win.lastExitSale = saleId; },
+        onSale: () => {}, onSauda: () => {}, onExitSale: (saleId: string) => { win.lastExitSale = saleId; },
         onEditSale: () => {}, onPrintSale: () => {},
       };
       win.saudaClosed = false;
@@ -84,7 +84,7 @@ try {
     }, { component, props });
     await page.waitForTimeout(350);
   }
-  await mount("SaleDialog", { lot: info });
+  await mount("SaudaDialog", { lot: info });
   await field("select-sauda-buyer").waitFor();
   const dialog = page.getByRole("dialog");
   assert.equal(await dialog.locator("input").count(), 1);
@@ -100,7 +100,7 @@ try {
   await page.getByRole("option", { name: "Sauda Existing A", exact: true }).click();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   assert.deepEqual(await api("/api/sauda"), [], "Cancel wrote a marker");
-  await mount("SaleDialog", { lot: info });
+  await mount("SaudaDialog", { lot: info });
   assert.equal(await field("input-sauda-quantity").inputValue(), "", "Cancel leaked into reopening");
   await field("input-sauda-quantity").fill("250");
   await field("select-sauda-buyer").click();
@@ -108,7 +108,7 @@ try {
   for (const [language, width] of [["en", 1440], ["hi", 390], ["hi", 320]] as const) {
     await page.evaluate(lang => localStorage.setItem("language", lang), language);
     await page.setViewportSize({ width, height: 900 });
-    await mount("SaleDialog", { lot: info });
+    await mount("SaudaDialog", { lot: info });
     await field("input-sauda-quantity").fill("250");
     await field("select-sauda-buyer").click();
     await page.getByRole("option", { name: "Sauda Existing A", exact: true }).click();
@@ -125,7 +125,7 @@ try {
   assert.deepEqual(writes[0].body, { quantity: 250, buyerLedgerId: buyerA });
   assert.ok(requests.every(r => !/partial-sale|next-cs-bill|farmer-dues|sale-info|cash-receipts|manual-payment/.test(r.path)),
     "Sauda called old financial/bill/payment wiring");
-  await mount("SaleDialog", { lot: info });
+  await mount("SaudaDialog", { lot: info });
   assert.equal(await field("input-sauda-quantity").inputValue(), "", "New Sauda must never seed an old entry");
   await field("input-sauda-quantity").fill("150");
   await field("select-sauda-buyer").click();
@@ -248,12 +248,63 @@ try {
   assert.ok(mobileBounds && mobileBounds.x >= 0 && mobileBounds.x + mobileBounds.width <= 390);
   await page.screenshot({ path: "/tmp/sauda-manual-delete-mobile.png" });
   await field(`button-cancel-delete-sauda-${recreated.id}`).click();
+  // Both real Stock Register actions coexist, with independent dialog state.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  assert.equal(await field(`button-sale-lot-${zeroLot}`).count(), 0,
+    "The original Sale action must retain its remaining-stock eligibility");
+  assert.equal(await field(`button-sauda-lot-${zeroLot}`).isVisible(), true);
+  const saudasBeforeIndividual = await api("/api/sauda");
+  const writesBeforeSaleCancel = requests.filter(r => r.method === "POST").length;
+  await field(`button-sale-lot-${markerLot}`).click();
+  await field("input-partial-quantity").waitFor();
+  assert.equal(await field("input-sauda-quantity").count(), 0, "Sale opened the Sauda form");
+  await field("input-partial-quantity").fill("12");
+  await field("input-partial-buyer-name").fill("Discarded sale draft");
+  await field("button-cancel-sale").click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  assert.equal(requests.filter(r => r.method === "POST").length, writesBeforeSaleCancel);
+  await field(`button-sauda-lot-${markerLot}`).click();
+  assert.equal(await field("input-sauda-quantity").inputValue(), "", "Sale draft leaked into Sauda");
+  assert.equal(await field("input-partial-quantity").count(), 0);
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  await field(`button-sale-lot-${markerLot}`).click();
+  assert.equal(await field("input-partial-quantity").inputValue(), "");
+  assert.equal(await field("input-partial-buyer-name").inputValue(), "");
+  await field("input-partial-quantity").fill("101");
+  assert.equal(await field("button-confirm-sale").isDisabled(), true);
+  await field("input-partial-quantity").fill("10");
+  await field("input-partial-buyer-name").fill("Sauda Existing A");
+  await field("input-partial-sale-date").fill("2016-06-15");
+  await field("input-partial-kata-charges").fill("20");
+  await field("input-partial-tulai-charges").fill("12.5");
+  await field("input-partial-remarks").fill("Restored original Individual Sale");
+  await page.screenshot({ path: "/tmp/restored-individual-sale-desktop.png" });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.screenshot({ path: "/tmp/restored-individual-sale-mobile.png" });
+  const actualSaleResponse = page.waitForResponse(r =>
+    new URL(r.url()).pathname === `/api/lots/${markerLot}/partial-sale` && r.request().method() === "POST");
+  await field("button-confirm-sale").click();
+  assert.equal((await actualSaleResponse).status(), 200);
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  await page.waitForFunction(lotId =>
+    document.querySelector(`[data-testid="cell-remaining-${lotId}"]`)?.textContent === "90", markerLot);
+  assert.deepEqual(await api("/api/sauda"), saudasBeforeIndividual, "Individual Sale must leave all Saudas unchanged");
+  const originalSale = (await pool.query(`SELECT * FROM sales_history WHERE lot_id=$1`, [markerLot])).rows;
+  assert.equal(originalSale.length, 1);
+  assert.equal(originalSale[0].quantity_sold, 10);
+  assert.equal(originalSale[0].cold_storage_charge, 632.5);
+  assert.equal(originalSale[0].remarks, "Restored original Individual Sale");
+  await field(`button-print-sale-${originalSale[0].id}`).waitFor();
+  await field(`button-exit-sale-${originalSale[0].id}`).waitFor();
+  await field(`sauda-entry-${duplicate.id}`).waitFor();
   // Viewers see markers, but no create or delete controls.
   await pool.query(`UPDATE cold_storage_users SET access_type='view' WHERE id=$1`, [`${id}_user`]);
   await page.reload({ waitUntil: "networkidle" });
   await field(`sauda-entry-${duplicate.id}`).waitFor();
   assert.equal(await page.locator('[data-testid^="button-delete-sauda-"]').count(), 0);
   assert.equal(await page.locator('[data-testid^="button-sauda-lot-"]').count(), 0);
+  assert.equal(await page.locator('[data-testid^="button-sale-lot-"]').count(), 0);
   assert.equal(requests.filter(r => r.method === "PATCH" && r.path.includes("/sauda")).length, 0);
   assert.deepEqual(errors, []);
   console.log("Sauda browser: actual register create/delete/recreate, confirmation/cancel/error retry, exact identity, no edits/caps, viewer restrictions, English/Hindi desktop/mobile, isolated writes, legacy controls and zero-unsold exits passed.");

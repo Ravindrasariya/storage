@@ -13,6 +13,9 @@ import { buyerInitialsSchema } from "@shared/buyer-initials";
 import { sql, eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 
+// Original Individual Sale delivery-type values; Sauda does not use them.
+const DELIVERY_TYPES = new Set(["gate", "gateWeighing", "bilty", "biltyWeighing"]);
+
 // Shared filter pipeline used by both /api/lots/search and /api/lots/summary
 // so both endpoints derive their result set from the EXACT same filters
 // applied to the EXACT same DB snapshot. This is the contract that lets
@@ -1474,7 +1477,316 @@ export async function registerRoutes(
   });
 
   app.post("/api/lots/:id/partial-sale", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
-    res.status(410).json({ error: "Individual sale creation has been retired. Use Master Nikasi to record an actual sale." });
+    // Restore the original Individual Sale path, independently of Sauda.
+    // Release a base-charge CAS claim only if sale insertion did not succeed.
+    let casClaimedForRevert = false;
+    let casClaimedLotId: string | null = null;
+    try {
+      const coldStorageId = getColdStorageId(req);
+      const lot = await storage.getLot(req.params.id);
+      if (!lot) {
+        return res.status(404).json({ error: "Lot not found" });
+      }
+      if (lot.coldStorageId !== coldStorageId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const { quantitySold, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt: soldAtInput, deliveryType } = req.body;
+      const parsedTulai = z.number().finite().min(0).nullable().optional().safeParse(tulaiCharges === "" ? 0 : tulaiCharges);
+      const parsedRemark = saleRemarkSchema.safeParse(req.body.remarks);
+      if (!parsedRemark.success) {
+        return res.status(400).json({ error: "Remarks must be a single line of at most 500 characters", field: "remarks" });
+      }
+      if (!parsedTulai.success) {
+        return res.status(400).json({ error: "Tulai must be a finite non-negative amount", field: "tulaiCharges" });
+      }
+
+      if (typeof quantitySold !== "number" || quantitySold <= 0) {
+        return res.status(400).json({ error: "Invalid quantity sold" });
+      }
+      if (quantitySold > lot.remainingSize) {
+        return res.status(400).json({ error: "Quantity exceeds remaining size" });
+      }
+
+      let saleDate: Date;
+      if (soldAtInput !== undefined && soldAtInput !== null && soldAtInput !== "") {
+        if (typeof soldAtInput !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(soldAtInput)) {
+          return res.status(400).json({
+            error: "Sale date must be in YYYY-MM-DD format",
+            field: "soldAt",
+          });
+        }
+        const parsed = new Date(`${soldAtInput}T12:00:00+05:30`);
+        if (isNaN(parsed.getTime())) {
+          return res.status(400).json({ error: "Invalid sale date", field: "soldAt" });
+        }
+        const istParts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(parsed);
+        if (istParts !== soldAtInput) {
+          return res.status(400).json({ error: "Sale date is not a real calendar date", field: "soldAt" });
+        }
+        if (parsed.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
+          return res.status(400).json({ error: "Sale date cannot be in the future", field: "soldAt" });
+        }
+        if (parsed.getFullYear() < 2015) {
+          return res.status(400).json({ error: "Sale date year is out of range (must be 2015 or later)", field: "soldAt" });
+        }
+        saleDate = parsed;
+      } else {
+        saleDate = new Date();
+      }
+
+      // Preserve original stock-entry-year bill numbering and blank handling.
+      if (coldStorageBillNumber !== undefined && coldStorageBillNumber !== null) {
+        if (typeof coldStorageBillNumber !== "number"
+            || !Number.isInteger(coldStorageBillNumber)
+            || coldStorageBillNumber <= 0) {
+          return res.status(400).json({
+            error: "Cold storage bill number must be a positive integer",
+            field: "coldStorageBillNumber",
+          });
+        }
+      }
+      if (typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0) {
+        const csYear = await storage.entryYearForLot(db, lot.id);
+        const dup = await storage.findColdStorageBillDuplicate(lot.coldStorageId, coldStorageBillNumber, csYear);
+        if (dup) {
+          const onDate = dup.soldAt ? new Date(dup.soldAt).toLocaleDateString("en-IN") : `${csYear}`;
+          return res.status(400).json({
+            error: `Cold Storage Bill # ${coldStorageBillNumber} already used on ${onDate}`,
+            field: "coldStorageBillNumber",
+          });
+        }
+      }
+
+      const previousData = {
+        remainingSize: lot.remainingSize,
+      };
+      const newRemainingSize = lot.remainingSize - quantitySold;
+      const isLotFullySold = newRemainingSize === 0;
+      const totalPrice = quantitySold * pricePerBag;
+      const coldStorage = await storage.getColdStorage(lot.coldStorageId);
+      const useWaferRates = lot.bagType === "wafer";
+
+      let farmerEntityType = "farmer";
+      let farmerCustomColdCharge: number | null = null;
+      let farmerCustomHammali: number | null = null;
+      if (lot.farmerLedgerId) {
+        const farmerRecords = await storage.getFarmerRecords(lot.coldStorageId, undefined, true);
+        const farmerRecord = farmerRecords.find(f => f.farmerLedgerId === lot.farmerLedgerId);
+        if (farmerRecord) {
+          farmerEntityType = farmerRecord.entityType || "farmer";
+          farmerCustomColdCharge = farmerRecord.customColdChargeRate;
+          farmerCustomHammali = farmerRecord.customHammaliRate;
+        }
+      }
+      const effectiveChargeUnit = farmerEntityType === "company" ? "quintal" : (coldStorage?.chargeUnit || "bag");
+      const defaultHammali = coldStorage ? (useWaferRates ? (coldStorage.waferHammali || 0) : (coldStorage.seedHammali || 0)) : 0;
+      const defaultColdCharge = coldStorage ? (useWaferRates ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0)) : 0;
+      const hammaliRate = customHammali !== undefined ? customHammali : (farmerCustomHammali ?? defaultHammali);
+      const coldChargeRate = customColdCharge !== undefined ? customColdCharge : (farmerCustomColdCharge ?? defaultColdCharge);
+      const rate = coldChargeRate + hammaliRate;
+
+      let baseAlreadyBilled = lot.baseColdChargesBilled === 1;
+      let effectiveChargeBasis: "actual" | "totalRemaining" =
+        chargeBasis === "totalRemaining" && !baseAlreadyBilled ? "totalRemaining" : "actual";
+      if (chargeBasis === "totalRemaining" && !baseAlreadyBilled) {
+        const claimed = await storage.claimBaseColdCharges(lot.id);
+        if (claimed) {
+          casClaimedForRevert = true;
+          casClaimedLotId = lot.id;
+        } else {
+          effectiveChargeBasis = "actual";
+          baseAlreadyBilled = true;
+        }
+      }
+      const chargeQuantity = effectiveChargeBasis === "totalRemaining" ? lot.remainingSize : quantitySold;
+      let storageCharge: number;
+      let baseHammaliAmount: number;
+      if (baseAlreadyBilled) {
+        storageCharge = 0;
+        baseHammaliAmount = 0;
+      } else if (effectiveChargeUnit === "quintal") {
+        const coldChargeQuintal = (lot.netWeight && lot.size > 0) ? (lot.netWeight * chargeQuantity * coldChargeRate) / (lot.size * 100) : 0;
+        const hammaliPerBag = hammaliRate * chargeQuantity;
+        storageCharge = coldChargeQuintal + hammaliPerBag;
+        baseHammaliAmount = hammaliPerBag;
+      } else {
+        storageCharge = chargeQuantity * rate;
+        baseHammaliAmount = hammaliRate * chargeQuantity;
+      }
+
+      const kata = kataCharges || 0;
+      const tulai = parsedTulai.data ?? 0;
+      const extraHammaliTotal = extraHammali || 0;
+      const grading = gradingCharges || 0;
+      const adjAmount = (!isSelfSale && adjReceivableSelfDueAmount > 0) ? adjReceivableSelfDueAmount : 0;
+      const totalChargeForLot = storageCharge + kata + tulai + extraHammaliTotal + grading + adjAmount;
+      const updateData: {
+        remainingSize: number;
+        totalPaidCharge?: number;
+        totalDueCharge?: number;
+        baseColdChargesBilled?: number;
+        saleStatus?: string;
+        paymentStatus?: string;
+        saleCharge?: number;
+        soldAt?: Date;
+        upForSale?: number;
+      } = {
+        remainingSize: newRemainingSize,
+      };
+      if (isLotFullySold) {
+        updateData.saleStatus = "sold";
+        updateData.paymentStatus = paymentStatus;
+        updateData.saleCharge = storageCharge;
+        updateData.soldAt = saleDate;
+        updateData.upForSale = 0;
+      }
+      if (paymentStatus === "paid") {
+        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + totalChargeForLot;
+      } else if (paymentStatus === "due") {
+        updateData.totalDueCharge = (lot.totalDueCharge || 0) + totalChargeForLot;
+      } else if (paymentStatus === "partial") {
+        const rawPaid = Math.max(0, paidAmount || 0);
+        const actualPaid = Math.min(rawPaid, totalChargeForLot);
+        const actualDue = totalChargeForLot - actualPaid;
+        updateData.totalPaidCharge = (lot.totalPaidCharge || 0) + actualPaid;
+        updateData.totalDueCharge = (lot.totalDueCharge || 0) + actualDue;
+      }
+
+      const chamber = await storage.getChamber(lot.chamberId);
+      let buyerEntry: { id: string; buyerId: string } | null = null;
+      if (buyerName && buyerName.trim() && !isSelfSale) {
+        buyerEntry = await storage.ensureBuyerLedgerEntry(lot.coldStorageId, { buyerName: buyerName.trim() });
+      }
+      let salePaidAmount = 0;
+      let saleDueAmount = 0;
+      if (paymentStatus === "paid") {
+        salePaidAmount = totalChargeForLot;
+      } else if (paymentStatus === "due") {
+        saleDueAmount = totalChargeForLot;
+      } else if (paymentStatus === "partial") {
+        const rawPaidForSale = Math.max(0, paidAmount || 0);
+        salePaidAmount = Math.min(rawPaidForSale, totalChargeForLot);
+        saleDueAmount = totalChargeForLot - salePaidAmount;
+      }
+
+      const createdSale = await storage.createSalesHistory({
+        coldStorageId: lot.coldStorageId,
+        farmerName: lot.farmerName,
+        village: lot.village,
+        tehsil: lot.tehsil,
+        district: lot.district,
+        state: lot.state,
+        contactNumber: lot.contactNumber,
+        lotNo: lot.lotNo,
+        marka: lot.marka || null,
+        lotId: lot.id,
+        chamberName: chamber?.name || "Unknown",
+        floor: lot.floor,
+        position: lot.position,
+        potatoType: lot.type,
+        bagType: lot.bagType,
+        bagTypeLabel: lot.bagTypeLabel || null,
+        quality: lot.quality,
+        originalLotSize: lot.size,
+        saleType: isLotFullySold ? "full" : "partial",
+        quantitySold,
+        pricePerBag: rate,
+        coldCharge: coldChargeRate,
+        hammali: hammaliRate,
+        coldStorageCharge: totalChargeForLot,
+        kataCharges: kataCharges || 0,
+        tulaiCharges: parsedTulai.data ?? null,
+        remarks: parsedRemark.data ?? null,
+        extraHammali: extraHammali || 0,
+        gradingCharges: gradingCharges || 0,
+        gradingPerBag: typeof gradingPerBag === "number" && Number.isFinite(gradingPerBag) ? gradingPerBag : null,
+        netWeight: netWeight || null,
+        buyerName: buyerName || null,
+        pricePerKg: pricePerKg || null,
+        paymentStatus,
+        paymentMode: (paymentStatus === "paid" || paymentStatus === "partial") ? paymentMode : null,
+        paidAmount: salePaidAmount,
+        dueAmount: saleDueAmount,
+        entryDate: lot.createdAt,
+        saleYear: saleDate.getFullYear(),
+        soldAt: saleDate,
+        chargeBasis: effectiveChargeBasis,
+        chargeUnitAtSale: effectiveChargeUnit,
+        initialNetWeightKg: lot.netWeight || null,
+        baseChargeAmountAtSale: storageCharge,
+        baseHammaliAmount,
+        remainingSizeAtSale: lot.remainingSize,
+        isSelfSale: isSelfSale ? 1 : 0,
+        adjReceivableSelfDueAmount: (!isSelfSale && adjReceivableSelfDueAmount > 0) ? adjReceivableSelfDueAmount : 0,
+        farmerLedgerId: lot.farmerLedgerId || null,
+        farmerId: lot.farmerId || null,
+        buyerLedgerId: buyerEntry?.id || null,
+        buyerId: buyerEntry?.buyerId || null,
+        deliveryType: (typeof deliveryType === "string" && DELIVERY_TYPES.has(deliveryType)) ? deliveryType : null,
+      }, {
+        userColdStorageBillNumber: typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0
+          ? coldStorageBillNumber
+          : null,
+      });
+
+      // A persisted sale now backs any CAS claim, so never release it later.
+      casClaimedForRevert = false;
+      casClaimedLotId = null;
+      const userSuppliedCsBill = typeof coldStorageBillNumber === "number" && coldStorageBillNumber > 0;
+      if (!userSuppliedCsBill && !baseAlreadyBilled) {
+        try {
+          await storage.assignBillNumber(createdSale.id, "coldStorage");
+        } catch (e) {
+          console.error("Failed to auto-assign cold storage bill number:", e);
+        }
+      }
+      if (position) {
+        await storage.updateLot(req.params.id, { position });
+      }
+      await storage.updateLot(req.params.id, updateData);
+      await storage.createEditHistory({
+        lotId: lot.id,
+        changeType: isLotFullySold ? "final_sale" : "partial_sale",
+        previousData: JSON.stringify(previousData),
+        newData: JSON.stringify(isLotFullySold ? { remainingSize: 0, saleStatus: "sold" } : { remainingSize: newRemainingSize }),
+        soldQuantity: quantitySold,
+        pricePerBag,
+        coldCharge: coldChargeRate,
+        hammali: hammaliRate,
+        pricePerKg: pricePerKg || null,
+        buyerName: buyerName || null,
+        totalPrice,
+        salePaymentStatus: paymentStatus,
+        saleCharge: storageCharge,
+      });
+      if (!isSelfSale && adjReceivableSelfDueAmount > 0 && lot.farmerName && lot.contactNumber && lot.village) {
+        await storage.recomputeFarmerPaymentsWithDiscounts(
+          coldStorageId, lot.farmerLedgerId || null, lot.farmerName, lot.contactNumber, lot.village
+        );
+      }
+      const updatedLot = await storage.getLot(req.params.id);
+      res.json(updatedLot);
+    } catch (error) {
+      console.error("Partial sale error:", error);
+      if (casClaimedForRevert && casClaimedLotId) {
+        try {
+          await storage.releaseBaseColdCharges(casClaimedLotId);
+        } catch (revertErr) {
+          console.error("Failed to revert baseColdChargesBilled CAS after partial-sale error:", revertErr);
+        }
+      }
+      const message = error instanceof Error ? error.message : "Failed to process partial sale";
+      if (/Cold Storage Bill #|Invalid cold storage bill number/i.test(message)) {
+        return res.status(400).json({ error: message, field: "coldStorageBillNumber" });
+      }
+      res.status(500).json({ error: "Failed to process partial sale" });
+    }
   });
 
   app.get("/api/sauda", requireAuth, async (req: AuthenticatedRequest, res) => {

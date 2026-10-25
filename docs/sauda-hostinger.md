@@ -67,5 +67,11 @@ NODE_ENV=development npm run test:sale-remarks-browser
 NODE_ENV=development npm run test:bills-archive-browser
 ```
 
-Historical individual-sale fixtures are inserted only by a guarded test helper,
-not through a production API. `/partial-sale` remains retired with HTTP 410.
+Individual Sale is available alongside Sauda again. Its original dialog and
+`/api/lots/:id/partial-sale` endpoint use the existing actual-sale tables and
+stock/financial behavior. This restoration needs no additional schema change
+beyond the Sauda migrations above. Individual Sale never changes Saudas.
+
+Historical individual-sale fixtures can still be inserted by the guarded test
+helper. New actual Individual Sales are also covered through the real endpoint
+and restored browser dialog, independently of Sauda.

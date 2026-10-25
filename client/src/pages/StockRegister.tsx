@@ -33,6 +33,7 @@ import { loadSalesSummaryBatches } from "@/lib/salesSummaryBatch";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
 import { SaleDialog } from "@/components/SaleDialog";
+import { SaudaDialog } from "@/components/SaudaDialog";
 import { ExitDialog } from "@/components/ExitDialog";
 import { PrintBillDialog } from "@/components/PrintBillDialog";
 import { MasterNikasiDialog } from "@/components/MasterNikasiDialog";
@@ -49,7 +50,7 @@ import {
 import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Lot, Chamber, LotEditHistory, SalesHistory, SalesHistoryWithLastPayment } from "@shared/schema";
+import type { Lot, Chamber, LotEditHistory, SalesHistory, SalesHistoryWithLastPayment, SaleLotInfo } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
 import { capitalizeFirstLetter } from "@/lib/utils";
@@ -142,7 +143,10 @@ export default function StockRegister() {
   const [printingSale, setPrintingSale] = useState<SalesHistoryWithLastPayment | null>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
-  const [saleLotInfo, setSaleLotInfo] = useState<Lot | null>(null);
+  const [saleLotInfo, setSaleLotInfo] = useState<SaleLotInfo | null>(null);
+  const [isFetchingSaleInfo, setIsFetchingSaleInfo] = useState(false);
+  const [saudaDialogOpen, setSaudaDialogOpen] = useState(false);
+  const [saudaLot, setSaudaLot] = useState<Lot | null>(null);
   const [masterNikasiOpen, setMasterNikasiOpen] = useState(false);
   const [masterNikasiCtx, setMasterNikasiCtx] = useState<{
     farmerName: string; village: string; contactNumber: string;
@@ -170,9 +174,25 @@ export default function StockRegister() {
     setMasterNikasiOpen(true);
   };
 
-  const handleOpenSale = (lot: Lot) => {
-    setSaleLotInfo(lot);
-    setSaleDialogOpen(true);
+  const handleOpenSale = async (lot: Lot) => {
+    if (isFetchingSaleInfo) return;
+    setIsFetchingSaleInfo(true);
+    try {
+      const response = await authFetch(`/api/lots/${lot.id}/sale-info`);
+      if (!response.ok) throw new Error("Failed to fetch sale info");
+      const info: SaleLotInfo = await response.json();
+      setSaleLotInfo(info);
+      setSaleDialogOpen(true);
+    } catch {
+      toast({ title: t("error"), description: "Failed to load sale details", variant: "destructive" });
+    } finally {
+      setIsFetchingSaleInfo(false);
+    }
+  };
+
+  const handleOpenSauda = (lot: Lot) => {
+    setSaudaLot(lot);
+    setSaudaDialogOpen(true);
   };
 
   const [editForm, setEditForm] = useState<{
@@ -2576,6 +2596,7 @@ export default function StockRegister() {
                     setPrintReceiptDialogOpen(true);
                   }}
                   onSale={handleOpenSale}
+                  onSauda={handleOpenSauda}
                   onExitSale={handleExitSale}
                   onPrintSale={handlePrintSale}
                   onEditSale={(saleId) => {
@@ -3167,6 +3188,18 @@ export default function StockRegister() {
           if (!open) {
             setSaleLotInfo(null);
           }
+        }}
+        onSaleSuccess={() => {
+          if (hasSearched) handleSearch();
+        }}
+      />
+
+      <SaudaDialog
+        lot={saudaLot}
+        open={saudaDialogOpen}
+        onOpenChange={(open) => {
+          setSaudaDialogOpen(open);
+          if (!open) setSaudaLot(null);
         }}
       />
 

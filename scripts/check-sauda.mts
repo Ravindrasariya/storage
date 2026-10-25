@@ -71,7 +71,6 @@ try {
   await api(`/api/lots/${lotA}/sauda`, { quantity: 10, buyerLedgerId: buyerA }, "POST", 401, { "Content-Type": "application/json" });
   await api(`/api/lots/${lotA}/sauda/${first.id}`, undefined, "DELETE", 401, {});
   await api(`/api/lots/${lotA}/sauda/${first.id}`, { quantity: 20, buyerLedgerId: buyerB }, "PATCH", 404);
-  await api(`/api/lots/${lotA}/partial-sale`, { quantitySold: 10, buyerName: "New buyer" }, "POST", 410);
   await remove(lotB, first.id, 404);
   await remove(lotA, "missing", 404);
   await pool.query(`UPDATE cold_storage_users SET access_type='view' WHERE id=$1`, [`${id}_user`]);
@@ -116,6 +115,73 @@ try {
   const paidSale = await api(`/api/sales-history/${saleId}`, undefined, "GET");
   await remove(lotA, first.id);
   assert.deepEqual(await api(`/api/sales-history/${saleId}`, undefined, "GET"), paidSale, "Deleting Sauda changed a paid actual sale");
+
+  // Original Individual Sale is a real sale, independent of every Sauda.
+  const saleBody = {
+    quantitySold: 10, pricePerBag: 60, paymentStatus: "due", paymentMode: "cash",
+    isSelfSale: false, buyerName: "Restored Individual Buyer", chargeBasis: "actual",
+    soldAt: "2016-06-15", kataCharges: 20, tulaiCharges: 12.5, extraHammali: 30,
+    gradingCharges: 40, gradingPerBag: 4, netWeight: 450, pricePerKg: 20, remarks: "Individual sale restored",
+  };
+  for (const [index, deliveryType] of ["gate", "gateWeighing", "bilty", "biltyWeighing"].entries()) {
+    const individualLot = await lot(`individual-${index}`);
+    await save(individualLot, 250, buyerA);
+    await save(individualLot, 75, buyerA);
+    const markersBefore = await list();
+    const paymentStatus = ["due", "partial", "paid", "due"][index];
+    const paymentMode = index === 1 ? "account" : "cash";
+    const body = { ...saleBody, deliveryType, paymentStatus, paymentMode, paidAmount: index === 1 ? 100 : 0,
+      isSelfSale: index === 3, position: "P2" };
+    const chamberBefore = (await pool.query(`SELECT current_fill FROM chambers WHERE cold_storage_id=$1`, [id])).rows;
+    await api(`/api/lots/${individualLot}/partial-sale`, body);
+    assert.deepEqual((await pool.query(`SELECT current_fill FROM chambers WHERE cold_storage_id=$1`, [id])).rows, chamberBefore,
+      "Individual Sale must not reduce physical chamber fill");
+    const saleRow = (await pool.query(`SELECT * FROM sales_history WHERE lot_id=$1`, [individualLot])).rows[0];
+    assert.ok(saleRow, "Individual Sale did not persist an actual sale");
+    assert.equal(saleRow.quantity_sold, 10);
+    assert.equal(saleRow.delivery_type, deliveryType);
+    assert.equal(saleRow.cold_storage_charge, 702.5);
+    assert.equal(saleRow.base_charge_amount_at_sale, 600);
+    assert.equal(saleRow.base_hammali_amount, 100);
+    assert.equal(saleRow.paid_amount, index === 1 ? 100 : index === 2 ? 702.5 : 0);
+    assert.equal(saleRow.due_amount, index === 1 ? 602.5 : index === 2 ? 0 : 702.5);
+    assert.equal(saleRow.payment_mode, paymentStatus === "due" ? null : paymentMode);
+    assert.equal(saleRow.remarks, saleBody.remarks);
+    assert.equal(saleRow.grading_per_bag, 4);
+    assert.equal(saleRow.net_weight, 450);
+    assert.equal(saleRow.is_self_sale, index === 3 ? 1 : 0);
+    if (index !== 3) assert.ok(saleRow.buyer_ledger_id, "Original free-text buyer creation/linking missing");
+    assert.ok(saleRow.cold_storage_bill_number > 0);
+    const readLot = (await pool.query(`SELECT * FROM lots WHERE id=$1`, [individualLot])).rows[0];
+    assert.equal(readLot.remaining_size, 90);
+    assert.equal(readLot.position, "P2");
+    assert.equal((await pool.query(`SELECT count(*)::int n FROM exit_history WHERE sales_history_id=$1`, [saleRow.id])).rows[0].n, 0,
+      "Sale must not create a physical exit");
+    assert.deepEqual(await list(), markersBefore, "Individual Sale changed informational Saudas");
+    // Original validations must reject before changing stock or Saudas.
+    await api(`/api/lots/${individualLot}/partial-sale`, { ...body, quantitySold: 91 }, "POST", 400);
+    for (const soldAt of ["2016-02-31", "2014-01-01", "wrong"]) {
+      await api(`/api/lots/${individualLot}/partial-sale`, { ...body, soldAt }, "POST", 400);
+    }
+    const duplicate = await api(`/api/lots/${individualLot}/partial-sale`,
+      { ...body, coldStorageBillNumber: saleRow.cold_storage_bill_number }, "POST", 400);
+    assert.equal(duplicate.field, "coldStorageBillNumber");
+    assert.equal((await pool.query(`SELECT remaining_size FROM lots WHERE id=$1`, [individualLot])).rows[0].remaining_size, 90);
+    await pool.query(`UPDATE cold_storage_users SET access_type='view' WHERE id=$1`, [`${id}_user`]);
+    await api(`/api/lots/${individualLot}/partial-sale`, body, "POST", 403);
+    await pool.query(`UPDATE cold_storage_users SET access_type='edit' WHERE id=$1`, [`${id}_user`]);
+    if (index === 0) {
+      await api(`/api/sales-history/${saleRow.id}`, { remarks: "Individual Sale Edit" }, "PATCH");
+      await api(`/api/sales-history/${saleRow.id}/exits`, { bagsExited: 4, exitDate: "2016-06-16" }, "POST", 201);
+      await api(`/api/sales-history/${saleRow.id}/exits`, { bagsExited: 7, exitDate: "2016-06-16" }, "POST", 400);
+      await api(`/api/sales/${saleRow.id}/manual-payment`, { receiptType: "cash", amount: 10, receivedAt: "2016-06-16" });
+      await api(`/api/sales-history/${saleRow.id}`, { remarks: "Must remain locked" }, "PATCH", 400);
+    }
+    assert.deepEqual(await list(), markersBefore);
+  }
+  await api(`/api/lots/${foreignLot}/partial-sale`, saleBody, "POST", 403);
+  await api(`/api/lots/missing/partial-sale`, saleBody, "POST", 404);
+  await api(`/api/lots/${lotB}/partial-sale`, saleBody, "POST", 401, {});
 
   // Concurrent creation keeps both entries; duplicate deletes affect exactly one.
   const raceLot = await lot("race");
@@ -165,7 +231,7 @@ try {
   assert.deepEqual(await list(), [], "Sauda read leaked another tenant");
   await save(lotB, 10, foreign, 404);
   await remove(lotA, blank.id, 404);
-  console.log("Sauda: multiple entries, no edits/caps, isolated delete/recreate, permissions/tenant scope, races, migration preservation/idempotency, unchanged Nikasi, legacy exits and Sale Edit/payment locks passed.");
+  console.log("Sauda and original Individual Sale: independent creation, real stock/charges/bills/payments, all delivery options, validation, tenant/viewer scope, delete/recreate, no edits/caps, races, migration preservation/idempotency, unchanged Nikasi, exits and Sale Edit/payment locks passed.");
 } finally {
   if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
   await cleanup();

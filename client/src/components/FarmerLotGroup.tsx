@@ -67,6 +67,7 @@ interface FarmerLotGroupProps {
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
   onSale?: (lot: Lot) => void;
+  onSauda?: (lot: Lot) => void;
   onExitSale?: (saleId: string) => void;
   onPrintSale?: (saleId: string) => void;
   onEditSale?: (saleId: string) => void;
@@ -144,6 +145,7 @@ export function FarmerLotGroup({
   onToggleSale,
   onPrintReceipt,
   onSale,
+  onSauda,
   onExitSale,
   onPrintSale,
   onEditSale,
@@ -635,11 +637,23 @@ export function FarmerLotGroup({
                               {t("print")}
                             </Button>
                           )}
-                          {onSale && canEdit && (
+                          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onSale && canEdit && (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => onSale(lot)}
+                              className="gap-2"
+                              data-testid={`button-sale-lot-${lot.id}`}
+                            >
+                              <ShoppingCart className="h-4 w-4" />
+                              {t("sale")}
+                            </Button>
+                          )}
+                          {onSauda && canEdit && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onSauda(lot)}
                               className="gap-2"
                               data-testid={`button-sauda-lot-${lot.id}`}
                             >

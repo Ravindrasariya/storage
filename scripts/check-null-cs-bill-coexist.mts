@@ -19,8 +19,8 @@
  * What this script asserts (against a real DB, exercising HTTP routes —
  * the same path the UI takes — so route-layer regressions are caught
  * too, not just storage-layer ones):
- *   1. POST /api/farmers/master-nikasi called twice for base-billed lots with
- *      sharedColdStorageBillNumber=null in the same year both succeed and the
+ *   1. POST /api/lots/:id/partial-sale called twice for base-billed lots with
+ *      coldStorageBillNumber=null in the same year both succeed and the
  *      DB rows land with NULL coldStorageBillNumber.
  *   2. POST /api/farmers/master-nikasi with sharedColdStorageBillNumber
  *      omitted on a batch where every selected lot is already
@@ -272,23 +272,32 @@ async function main(): Promise<void> {
 
   try {
     // ---------------------------------------------------------------------
-    // Test 1: two NULL-bill actual sales coexist through Master Nikasi.
+    // Test 1: two NULL-bill Individual Sales coexist through the original API.
     // ---------------------------------------------------------------------
     const partialSaleBody = (lotId: string) =>
       JSON.stringify({
-        farmerLedgerId: fixtures.farmerLedgerId,
-        sharedColdStorageBillNumber: null,
-        exitDate: TEST_DATE,
-        rows: [{ lotId, exitBags: 1 }],
+        quantitySold: 1,
+        pricePerBag: 0,
+        paymentStatus: "due",
+        paidAmount: 0,
+        dueAmount: 0,
+        position: "P1",
+        kataCharges: 0,
+        extraHammali: 0,
+        gradingCharges: 0,
+        chargeBasis: "actual",
+        isSelfSale: true,
+        coldStorageBillNumber: null,
+        soldAt: TEST_DATE,
       });
 
     await pool.query(`UPDATE lots SET base_cold_charges_billed=1 WHERE id=ANY($1::varchar[])`, [[lotIds[0], lotIds[1]]]);
-    const ps1Resp = await fetch(`${baseUrl}/api/farmers/master-nikasi`, {
+    const ps1Resp = await fetch(`${baseUrl}/api/lots/${lotIds[0]}/partial-sale`, {
       method: "POST",
       headers: authHeaders,
       body: partialSaleBody(lotIds[0]),
     });
-    const ps2Resp = await fetch(`${baseUrl}/api/farmers/master-nikasi`, {
+    const ps2Resp = await fetch(`${baseUrl}/api/lots/${lotIds[1]}/partial-sale`, {
       method: "POST",
       headers: authHeaders,
       body: partialSaleBody(lotIds[1]),
@@ -307,7 +316,7 @@ async function main(): Promise<void> {
       const sale1Bill = await getSaleBillNumber(sale1.id);
       const sale2Bill = await getSaleBillNumber(sale2.id);
       if (sale1Bill === null && sale2Bill === null) {
-        console.log("Test 1 (Master Nikasi x2 NULL): ok — both rows landed with NULL CS Bill #");
+        console.log("Test 1 (Individual Sale x2 NULL): ok — both rows landed with NULL CS Bill #");
       } else {
         failures++;
         console.error(

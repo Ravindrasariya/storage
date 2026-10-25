@@ -41,11 +41,7 @@ try {
     (await pool.query(`SELECT * FROM sales_history WHERE id=$1`, [saleId])).rows[0];
   async function sell(name: string, extra: object = {}) {
     const lotId = await lot(name);
-    const body = { ...saleBody, ...extra } as any;
-    await request("/api/farmers/master-nikasi", {
-      farmerLedgerId: farmerId, exitDate: body.soldAt, remarks: body.remarks,
-      rows: [{ lotId, soldBags: body.quantitySold, exitBags: 1 }],
-    }, "POST", 201);
+    await request(`/api/lots/${lotId}/partial-sale`, { ...saleBody, ...extra });
     return (await pool.query(`SELECT * FROM sales_history WHERE lot_id=$1`, [lotId])).rows[0];
   }
   async function snapshot(saleId: string) {
@@ -84,7 +80,7 @@ try {
   const invalidLot = await lot("invalid");
   const batchLot = await lot("invalid-batch");
   for (const value of invalid) {
-    await request(`/api/lots/${invalidLot}/partial-sale`, { ...saleBody, remarks: value }, "POST", 410);
+    await request(`/api/lots/${invalidLot}/partial-sale`, { ...saleBody, remarks: value }, "POST", 400);
     await request(`/api/sales-history/${sale.id}`, { remarks: value }, "PATCH", 400);
     await request("/api/farmers/master-nikasi", { farmerLedgerId: farmerId, exitDate: "2016-06-15",
       remarks: value, rows: [{ lotId: batchLot, exitBags: 1 }] }, "POST", 400);
@@ -130,7 +126,7 @@ try {
   await request(`/api/sales-history/${sale.id}`, { remarks: "View only" }, "PATCH", 403);
   await pool.query(`UPDATE cold_storage_users SET access_type='edit', cold_storage_id=$1 WHERE id=$2`, [`${id}_other`, `${id}_user`]);
   await request(`/api/sales-history/${sale.id}`, { remarks: "Wrong tenant" }, "PATCH", 404);
-  await request(`/api/lots/${invalidLot}/partial-sale`, { ...saleBody, remarks: "Wrong tenant" }, "POST", 410);
+  await request(`/api/lots/${invalidLot}/partial-sale`, { ...saleBody, remarks: "Wrong tenant" }, "POST", 403);
   assert.equal((await read(sale.id)).remarks, "Restorable");
   console.log("Sale remarks: validation, persistence, clear/omit, history, batch copies, sibling isolation, payment locks and authorization passed.");
 } finally {
