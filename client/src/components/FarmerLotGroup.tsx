@@ -42,8 +42,10 @@ export interface SaleSummary {
 }
 
 export interface SaudaSummary {
+  id: string;
   lotId: string;
   buyerLedgerId: string;
+  buyerName: string;
   quantity: number;
   buyerInitials: string | null;
 }
@@ -58,12 +60,13 @@ interface FarmerLotGroupProps {
   chamberMap: Record<string, string>;
   salesByLot?: Record<string, SaleSummary[]>;
   salesSummaryState?: "loading" | "error" | "ready";
-  saudaByLot?: Record<string, SaudaSummary>;
+  saudaByLot?: Record<string, SaudaSummary[]>;
   saudaState?: "loading" | "error" | "ready";
   onEdit: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
   onSale?: (lot: Lot) => void;
+  onEditSauda?: (lot: Lot, saudaId: string) => void;
   onExitSale?: (saleId: string) => void;
   onPrintSale?: (saleId: string) => void;
   onEditSale?: (saleId: string) => void;
@@ -141,6 +144,7 @@ export function FarmerLotGroup({
   onToggleSale,
   onPrintReceipt,
   onSale,
+  onEditSauda,
   onExitSale,
   onPrintSale,
   onEditSale,
@@ -335,9 +339,7 @@ export function FarmerLotGroup({
                   ? "Self"
                   : (sale.buyerInitials ?? "").trim()
                 : "";
-              const saudaInitials = firstRow && saudaState === "ready"
-                ? (saudaByLot?.[lot.id]?.buyerInitials ?? "").trim()
-                : "";
+              const lotSaudas = firstRow && saudaState === "ready" ? (saudaByLot?.[lot.id] ?? []) : [];
               return (
                 <>
                   <span
@@ -385,16 +387,29 @@ export function FarmerLotGroup({
                     data-testid={`cell-mr-${tid}`}
                   >
                     <span className="block max-w-full truncate">{mrValue}</span>
-                    {saudaInitials && (
-                      <span
-                        className="mt-0.5 inline-flex max-w-full items-center rounded border border-sky-700/25 bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-sky-900 dark:border-sky-300/25 dark:bg-sky-950/70 dark:text-sky-100"
-                        title={`Sauda · ${saudaInitials}`}
-                        aria-label={`Sauda buyer initials / सौदा खरीदार के शुरुआती अक्षर ${saudaInitials}`}
-                        data-testid={`cell-sauda-initials-${lot.id}`}
-                      >
-                        {saudaInitials}
-                      </span>
-                    )}
+                    {lotSaudas.map((sauda) => {
+                      const initials = (sauda.buyerInitials ?? "").trim();
+                      const accessibleLabel = `Edit Sauda for ${sauda.buyerName}${initials ? `, ${initials}` : ""}, ${sauda.quantity} bags / ${sauda.buyerName} का सौदा संपादित करें`;
+                      return (
+                        <Button
+                          key={sauda.id}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-0.5 h-6 min-w-6 max-w-full rounded border-sky-700/25 bg-sky-100 px-1.5 py-0 text-[10px] font-semibold leading-none text-sky-900 hover:bg-sky-200 dark:border-sky-300/25 dark:bg-sky-950/70 dark:text-sky-100 dark:hover:bg-sky-900"
+                          title={accessibleLabel}
+                          aria-label={accessibleLabel}
+                          data-testid={`button-edit-sauda-${sauda.id}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onEditSauda?.(lot, sauda.id);
+                          }}
+                          disabled={!canEdit || !onEditSauda}
+                        >
+                          {initials || "\u00a0"}
+                        </Button>
+                      );
+                    })}
                     {firstRow && saudaState === "loading" && (
                       <span className="mt-0.5 text-[10px] text-muted-foreground" aria-label="Loading Sauda / सौदा लोड हो रहा है">…</span>
                     )}
@@ -463,21 +478,30 @@ export function FarmerLotGroup({
               <div key={lot.id}>
                 {/* First row — left lot identity + first sale on right.
                     Click anywhere on the row toggles expansion. */}
-                <button
-                  type="button"
+                <div
                   onClick={() => toggleExpand(lot.id)}
-                  className={`${FULL_ROW_GRID} w-full px-2 py-2 text-sm hover-elevate text-left ${
+                  className={`${FULL_ROW_GRID} w-full px-2 py-2 text-sm hover-elevate text-left cursor-pointer ${
                     isExpanded ? "bg-muted/40" : ""
                   }`}
                   data-testid={`row-lot-${lot.id}`}
-                  aria-expanded={isExpanded}
+                  role="group"
+                  aria-label={`${t("lotNo")} ${lot.lotNo}`}
                 >
                   <span className="flex justify-center text-muted-foreground">
-                    {isExpanded ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      aria-label={`${isExpanded ? "Collapse" : "Expand"} lot ${lot.lotNo}`}
+                      aria-expanded={isExpanded}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleExpand(lot.id);
+                      }}
+                    >
+                      {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </Button>
                   </span>
                   <span className="font-mono truncate" data-testid={`cell-receipt-${lot.id}`}>
                     {lot.lotNo || "-"}
@@ -503,7 +527,7 @@ export function FarmerLotGroup({
                     {lot.remainingSize}
                   </span>
                   {renderRightCells(sales[0], true)}
-                </button>
+                </div>
 
                 {/* Continuation rows — one per additional sale. Left half
                     is intentionally blank; right half shows the next sale.

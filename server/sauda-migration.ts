@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { saudaMultiSql } from "./sauda-multi-sql";
 
 export async function initializeSauda() {
   await db.execute(sql`
@@ -12,4 +13,12 @@ export async function initializeSauda() {
     );
     CREATE INDEX IF NOT EXISTS lot_sauda_cold_storage_idx ON lot_sauda(cold_storage_id);
   `);
+  await initializeMultipleSaudas();
+}
+
+export async function initializeMultipleSaudas() {
+  await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(726308458)`);
+    await tx.execute(sql.raw(saudaMultiSql));
+  });
 }

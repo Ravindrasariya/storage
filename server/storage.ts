@@ -3,6 +3,7 @@ import { eq, and, or, like, ilike, desc, asc, sql, gte, lte, inArray, isNull, ty
 import { db } from "./db";
 import { SaleBuyerAdjustmentError } from "./sale-edit-errors";
 import { deleteSaleWithArchive, reverseExitsWithArchive } from "./bills-archive";
+import { prepareSaudaConversion, consumeSaudas, type SaudaSelection, type SaudaSource } from "./sauda";
 import {
   coldStorages,
   coldStorageUsers,
@@ -2919,6 +2920,7 @@ export class DatabaseStorage implements IStorage {
       // is derived from exit history). Sold-but-not-exited bags stay in the chamber and can
       // be physically exited later via the per-sale Exit dialog.
       soldBags?: number;
+      saudaSelections?: SaudaSelection[];
       // Per-row charge basis (mirrors the partial-sale dialog). When
       // "totalRemaining", base cold + hammali bill against the lot's
       // full remainingSize (before this row's deduction) and the lot's
@@ -2945,6 +2947,7 @@ export class DatabaseStorage implements IStorage {
     deliveryType: "gate" | "gateWeighing" | "bilty" | "biltyWeighing" | null;
     sales: Array<{
       saleId: string;
+      saudaSources: SaudaSource[];
       lotId: string;
       lotNo: string;
       marka: string | null;
@@ -3188,6 +3191,7 @@ export class DatabaseStorage implements IStorage {
 
       const createdSales: Array<{
         saleId: string;
+        saudaSources: SaudaSource[];
         lotId: string;
         lotNo: string;
         marka: string | null;
@@ -3210,7 +3214,7 @@ export class DatabaseStorage implements IStorage {
 
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex];
-        const [lot] = await tx.select().from(lots).where(eq(lots.id, row.lotId));
+        const [lot] = await tx.select().from(lots).where(eq(lots.id, row.lotId)).for("update");
         if (!lot) throw new Error(`Lot ${row.lotId} not found`);
         if (lot.coldStorageId !== coldStorageId) throw new Error("Lot does not belong to this cold storage");
         if (lot.farmerLedgerId !== farmerLedgerId) throw new Error("Lot does not belong to this farmer");
@@ -3230,6 +3234,7 @@ export class DatabaseStorage implements IStorage {
         if (soldBags > lot.remainingSize) {
           throw new Error(`Lot ${lot.lotNo}: only ${lot.remainingSize} bag(s) remaining`);
         }
+        const saudaSources = await prepareSaudaConversion(tx, lot, soldBags, row.saudaSelections);
 
         const useWaferRates = lot.bagType === "wafer";
         const defaultColdCharge = useWaferRates ? (coldStorage.waferColdCharge || 0) : (coldStorage.seedColdCharge || 0);
@@ -3420,13 +3425,9 @@ export class DatabaseStorage implements IStorage {
           remarks: args.remarks ?? null,
         }).returning();
 
-        // Single shared CS bill # — resolved once before the row loop.
-        // Advisory Sauda is consumed only by a committed actual sale; a
-        // later failure in this batch rolls this deletion back as well.
-        await tx.delete(lotSauda).where(and(
-          eq(lotSauda.lotId, lot.id),
-          eq(lotSauda.coldStorageId, coldStorageId),
-        ));
+        // Only explicitly selected portions are consumed; attribution and all
+        // financial/stock writes share this transaction and roll back together.
+        await consumeSaudas(tx, coldStorageId, lot.id, saleId, saudaSources);
 
         // Writing the same value to every row in this batch is what
         // enables the collective bill view: the print path identifies
@@ -3469,6 +3470,7 @@ export class DatabaseStorage implements IStorage {
 
         createdSales.push({
           saleId,
+          saudaSources,
           lotId: lot.id,
           lotNo: lot.lotNo,
           marka: lot.marka || null,

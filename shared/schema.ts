@@ -5,12 +5,27 @@ import { z } from "zod";
 
 // One-time data migrations registry
 export const lotSauda = pgTable("lot_sauda", {
-  lotId: varchar("lot_id").primaryKey().references(() => lots.id, { onDelete: "cascade" }),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()::text`),
+  lotId: varchar("lot_id").notNull().references(() => lots.id, { onDelete: "cascade" }),
   coldStorageId: varchar("cold_storage_id").notNull().references(() => coldStorages.id, { onDelete: "cascade" }),
   buyerLedgerId: varchar("buyer_ledger_id").notNull().references(() => buyerLedger.id, { onDelete: "cascade" }),
   quantity: integer("quantity").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
-}, table => [index("lot_sauda_cold_storage_idx").on(table.coldStorageId)]);
+}, table => [index("lot_sauda_cold_storage_idx").on(table.coldStorageId), index("lot_sauda_lot_idx").on(table.lotId)]);
+
+// Immutable, non-financial attribution. No sale/buyer FK: reversal and buyer
+// edits must not destroy the original promise assignment.
+export const saudaSaleSources = pgTable("sauda_sale_sources", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull().references(() => coldStorages.id, { onDelete: "cascade" }),
+  saleId: varchar("sale_id").notNull(),
+  lotId: varchar("lot_id").notNull(),
+  saudaId: varchar("sauda_id").notNull(),
+  buyerLedgerId: varchar("buyer_ledger_id").notNull(),
+  buyerName: text("buyer_name").notNull(),
+  quantity: integer("quantity").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, table => [index("sauda_sale_sources_sale_idx").on(table.coldStorageId, table.saleId)]);
 
 export const migrations = pgTable("migrations", {
   name: varchar("name").primaryKey(),

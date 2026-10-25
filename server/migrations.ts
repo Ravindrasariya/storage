@@ -4,7 +4,7 @@ import { cashReceiptApplications, migrations } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { storage } from "./storage";
 import { initializeBillsArchive } from "./bills-archive";
-import { initializeSauda } from "./sauda-migration";
+import { initializeSauda, initializeMultipleSaudas } from "./sauda-migration";
 
 interface Migration {
   name: string;
@@ -30,6 +30,10 @@ const MIGRATIONS: Migration[] = [
   {
     name: "2026-10-25_add_non_financial_sauda",
     up: initializeSauda,
+  },
+  {
+    name: "2026-10-25_multiple_saudas_explicit_conversion",
+    up: initializeMultipleSaudas,
   },
   {
     name: "2026-10-25_add_separate_reversal_archives",

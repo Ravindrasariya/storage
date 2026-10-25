@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
 import { SaleBuyerAdjustmentError } from "./sale-edit-errors";
 import { getBillsArchive } from "./bills-archive";
-import { readSauda, saveSauda, SaudaError } from "./sauda";
+import { readSauda, saveSauda, SaudaError, saudaSelectionsInput } from "./sauda";
 import { db } from "./db";
 import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema, exitHistory, buyerLedger } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
@@ -1499,6 +1499,17 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/lots/:id/sauda/:saudaId", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+    try {
+      res.json(await saveSauda(getColdStorageId(req), req.params.id, req.body, req.params.saudaId));
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: "Enter a positive whole bag quantity and select an existing buyer" });
+      if (error instanceof SaudaError) return res.status(error.status).json({ error: error.message });
+      console.error("Sauda edit error:", error);
+      res.status(500).json({ error: "Failed to update Sauda" });
+    }
+  });
+
   // Master Nikasi — bulk self-sale exit for one farmer/company. Each grid
   // row becomes its own sale_history + exit_history pair, but every exit
   // shares a single freshly allocated bill number and exit date.
@@ -1525,6 +1536,7 @@ export async function registerRoutes(
     deliveryType: z.enum(["gate", "gateWeighing", "bilty", "biltyWeighing"]).optional(),
     rows: z.array(z.object({
       lotId: z.string().min(1),
+      saudaSelections: saudaSelectionsInput.optional(),
       exitBags: z.number().int().min(1),
       // Optional commercial sold-bags. Defaults to exitBags when
       // omitted (legacy contract). Server-side createMasterNikasi
@@ -1658,6 +1670,7 @@ export async function registerRoutes(
         payment: parsedPayment,
         rows: body.rows.map(r => ({
           lotId: r.lotId,
+          saudaSelections: r.saudaSelections,
           exitBags: r.exitBags,
           // Defaults to exitBags inside createMasterNikasi when undefined.
           soldBags: r.soldBags,
@@ -1678,6 +1691,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid master nikasi data", details: error.errors });
       }
       console.error("Master nikasi error:", error);
+      if (error instanceof SaudaError) return res.status(error.status).json({ error: error.message, field: "saudaSelections" });
       const message = error instanceof Error ? error.message : "Failed to create master nikasi";
       // Single shared CS bill # — no row mapping anymore. The contract
       // exposes the field as `coldStorageBillNumber` (no rowIndex) to

@@ -11,8 +11,10 @@ import { useToast } from "@/hooks/use-toast";
 import type { Lot, BuyerLedgerEntry } from "@shared/schema";
 
 interface SaudaMarker {
+  id: string;
   lotId: string;
   buyerLedgerId: string;
+  buyerName: string;
   quantity: number;
   buyerInitials: string | null;
 }
@@ -21,16 +23,17 @@ interface SaleDialogProps {
   lot: Lot | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  saudaId?: string | null;
 }
 
-export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
+export function SaleDialog({ lot, open, onOpenChange, saudaId }: SaleDialogProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const [quantity, setQuantity] = useState("");
   const [buyerLedgerId, setBuyerLedgerId] = useState("");
   const [edited, setEdited] = useState(false);
 
-  const { data: savedSaudas, isLoading: saudasLoading } = useQuery<SaudaMarker[]>({
+  const { data: savedSaudas, isLoading: saudasLoading, isFetching: saudasFetching, isError: saudasError, refetch: refetchSaudas } = useQuery<SaudaMarker[]>({
     queryKey: ["/api/sauda"],
     enabled: open,
     staleTime: 0,
@@ -48,7 +51,7 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
     () => (buyerLedgerData?.buyers ?? []).filter((buyer) => buyer && buyer.id).slice().sort((a, b) => a.buyerName.localeCompare(b.buyerName)),
     [buyerLedgerData],
   );
-  const savedForLot = savedSaudas?.find((marker) => marker.lotId === lot?.id);
+  const savedEntry = saudaId ? savedSaudas?.find((marker) => marker.id === saudaId && marker.lotId === lot?.id) : undefined;
 
   // Initialize once when reopening or changing lots. A late marker response may
   // seed pristine fields, but never replaces anything the operator has edited.
@@ -57,19 +60,21 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
     setQuantity("");
     setBuyerLedgerId("");
     setEdited(false);
-  }, [open, lot?.id]);
+  }, [open, lot?.id, saudaId]);
   useEffect(() => {
-    if (!open || !lot || !savedForLot || edited) return;
-    setQuantity(String(savedForLot.quantity));
-    setBuyerLedgerId(savedForLot.buyerLedgerId);
-  }, [open, lot?.id, savedForLot, edited]);
+    if (!open || !lot || !saudaId || !savedEntry || edited) return;
+    setQuantity(String(savedEntry.quantity));
+    setBuyerLedgerId(savedEntry.buyerLedgerId);
+  }, [open, lot?.id, saudaId, savedEntry, edited]);
 
   const mutation = useMutation({
     mutationFn: async ({ lotId, quantity: count, buyerId }: { lotId: string; quantity: number; buyerId: string }) => {
-      const response = await apiRequest("POST", `/api/lots/${encodeURIComponent(lotId)}/sauda`, {
+      const body = {
         quantity: count,
         buyerLedgerId: buyerId,
-      });
+      };
+      const url = `/api/lots/${encodeURIComponent(lotId)}/sauda${saudaId ? `/${encodeURIComponent(saudaId)}` : ""}`;
+      const response = await apiRequest(saudaId ? "PATCH" : "POST", url, body);
       return response.json() as Promise<SaudaMarker>;
     },
     onSuccess: () => {
@@ -78,14 +83,20 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
       onOpenChange(false);
     },
     onError: (error: Error) => {
+      void refetchSaudas();
       toast({ title: t("error"), description: error.message || "Could not save Sauda", variant: "destructive" });
     },
   });
 
-  const maxQuantity = Math.max(0, Math.floor(lot?.remainingSize ?? 0));
+  const openSaudaTotal = (savedSaudas ?? [])
+    .filter((marker) => marker.lotId === lot?.id && marker.id !== saudaId)
+    .reduce((sum, marker) => sum + (Number(marker.quantity) || 0), 0);
+  const maxQuantity = Math.max(0, Math.floor((lot?.remainingSize ?? 0) - openSaudaTotal));
   const parsedQuantity = Number(quantity);
   const quantityValid = Number.isInteger(parsedQuantity) && parsedQuantity > 0 && parsedQuantity <= maxQuantity;
-  const canSubmit = !!lot && quantityValid && !!buyerLedgerId && !buyersLoading && !buyersError && !mutation.isPending;
+  const editEntryMissing = !!saudaId && !saudasLoading && !!savedSaudas && !savedEntry;
+  const canSubmit = !!lot && quantityValid && !!buyerLedgerId && !buyersLoading && !buyersError &&
+    !saudasLoading && !saudasFetching && !saudasError && !!savedSaudas && !editEntryMissing && !mutation.isPending;
   const handleSubmit = () => {
     if (!lot) return;
     if (!quantityValid) {
@@ -103,7 +114,7 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md [&>button.absolute]:hidden" onOpenAutoFocus={(event) => event.preventDefault()}>
         <DialogHeader>
-          <DialogTitle>Sauda (सौदा)</DialogTitle>
+          <DialogTitle>{saudaId ? "Edit Sauda (सौदा संपादित करें)" : "Sauda (सौदा)"}</DialogTitle>
           <DialogDescription>
             {lot ? `${lot.farmerName} · ${lot.lotNo}` : ""}
             {lot && <span className="block mt-1">{t("remaining")}: <strong className="tabular-nums">{maxQuantity}</strong> {t("bags")}</span>}
@@ -149,7 +160,15 @@ export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
                   </SelectContent>
                 </Select>
               )}
-              {saudasLoading && <p className="text-xs text-muted-foreground">Loading saved Sauda… / सहेजा सौदा लोड हो रहा है…</p>}
+              {(saudasLoading || saudasFetching) && <p className="text-xs text-muted-foreground">Loading saved Sauda… / सहेजा सौदा लोड हो रहा है…</p>}
+              {saudasError && (
+                <p className="rounded-md border border-destructive/40 p-2 text-xs" role="alert">
+                  Sauda quantities could not be verified. Close and reopen to retry / सौदे की मात्रा सत्यापित नहीं हुई। पुनः प्रयास के लिए बंद करके फिर खोलें।
+                </p>
+              )}
+              {editEntryMissing && !saudasError && (
+                <p className="text-xs text-destructive" role="alert">This Sauda is no longer open. Refresh and reopen / यह सौदा अब खुला नहीं है। ताज़ा करके फिर खोलें।</p>
+              )}
             </div>
             {mutation.isPending && <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full w-1/2 animate-pulse bg-primary" /></div>}
           </div>

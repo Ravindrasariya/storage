@@ -25,7 +25,7 @@ The promise dialog has only bag quantity (maximum current remaining bags), exist
 
 **Why:** The user explicitly reduced the current dialog to these inputs and actions using screenshots.
 
-**How to apply:** Validate the quantity without reserving or reducing stock. Do not add other fields or extra Clear/Delete actions.
+**How to apply:** Validate positive whole-number quantity without reserving or reducing stock. Keep the dialog inputs/actions minimal; the later user-requested confirmed delete icon belongs at the end of the saved Sauda entry.
 
 Sale Edit works as is with no impact from the promise change; new actual sales edited there will be Master Nikasi-led sales. Previously created actual individual-dialog sales remain actual sales.
 
@@ -45,14 +45,14 @@ Actual finalization through Nikasi allows the same or a different buyer. Master 
 
 **How to apply:** Do not equate actual sold bags with exited bags, require the promised buyer at finalization, or reinterpret previously completed individual-dialog sales as promises.
 
-Allow multiple Saudas per lot. The normal Sauda action creates another entry rather than replacing an earlier one; clicking a particular Sauda's initials opens that entry for changes, including switching buyer. The overall Sauda bags plus already-sold bags must not exceed total bags for that lot.
+Allow multiple Saudas per lot. The normal Sauda action creates another entry rather than replacing an earlier one; clicking a particular Sauda's initials opens that entry for changes, including switching buyer.
 
 **Why:** The user changed the lifecycle: after a Sauda for 50 of 100 bags, the next Sauda could be for another 25 bags, and requested editing by clicking the initials.
 
-**How to apply:** Treat this as superseding the earlier one-marker-per-lot replacement rule. Enforce the combined limit on creation and editing without reducing displayed Remaining Bags or making financial entries. Keep actual-sale controls separate from clickable Sauda initials.
+**How to apply:** Treat this as superseding the earlier one-marker-per-lot replacement rule. Keep actual-sale controls separate from clickable Sauda initials. The subsequent manual-decision rule below supersedes the initially requested combined quantity limit.
 
-Master Nikasi must let the operator explicitly pick the open Sauda portion being converted to an actual sale. Only selected quantities are consumed; unrelated Saudas remain. A sale cannot proceed without selecting sufficient Sauda quantities when unassigned bags alone are insufficient.
+Give each saved Sauda entry a delete icon at the end. Ask “Are you sure you want to delete this Sauda?” and delete only that entry if confirmed. Do not check overall Sauda/sale bags or add Sauda checks at Nikasi time; leave decisions to the operator.
 
-**Why:** The user warned that automatic clearing or partial clearing could cause confusion about which buyer the bags were assigned to, and requested explicit selection at Master Nikasi.
+**Why:** The user explicitly stopped the earlier approach: “No Check for overall Sauda or Sale bags, No niasi time check, let user take the decisions.”
 
-**How to apply:** Show each open Sauda's buyer and available quantity when selecting portions. Preserve the buyer association of unconsumed portions; fully consumed entries leave the open list only when the actual sale commits. Keep selection separate from physical exit quantities.
+**How to apply:** This supersedes aggregate caps, mandatory selection/conversion, automatic consumption and clearing at Master Nikasi. Keep Saudas independent and manually managed; preserve existing actual-sale safeguards and all non-financial isolation rules.
