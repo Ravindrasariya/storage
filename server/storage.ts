@@ -429,6 +429,8 @@ export interface IStorage {
     soldAt: Date;
     quantitySold: number;
     coldStorageBillNumber: number | null;
+    isSelfSale: number | null;
+    buyerInitials: string | null;
     totalExited: number;
     exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
   }>>>;
@@ -4247,6 +4249,8 @@ export class DatabaseStorage implements IStorage {
     soldAt: Date;
     quantitySold: number;
     coldStorageBillNumber: number | null;
+    isSelfSale: number | null;
+    buyerInitials: string | null;
     totalExited: number;
     exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
   }>>> {
@@ -4255,6 +4259,8 @@ export class DatabaseStorage implements IStorage {
       soldAt: Date;
       quantitySold: number;
       coldStorageBillNumber: number | null;
+      isSelfSale: number | null;
+      buyerInitials: string | null;
       totalExited: number;
       exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
     }>> = {};
@@ -4267,6 +4273,9 @@ export class DatabaseStorage implements IStorage {
       soldAt: salesHistory.soldAt,
       quantitySold: salesHistory.quantitySold,
       coldStorageBillNumber: salesHistory.coldStorageBillNumber,
+      isSelfSale: salesHistory.isSelfSale,
+      buyerLedgerId: salesHistory.buyerLedgerId,
+      buyerName: salesHistory.buyerName,
     })
       .from(salesHistory)
       .where(and(
@@ -4280,6 +4289,33 @@ export class DatabaseStorage implements IStorage {
       // can distinguish "no sales" from "lot not present".
       for (const lotId of lotIds) result[lotId] = [];
       return result;
+    }
+
+    // Resolve current initials once per batch, never by fetching each sale's
+    // buyer separately. An explicit (even dangling) ID must not fall back to
+    // a similarly named buyer. Legacy names are usable only when unambiguous.
+    const buyerIds = [...new Set(sales.filter(s => s.isSelfSale !== 1 && s.buyerLedgerId)
+      .map(s => s.buyerLedgerId!))];
+    const legacyNames = [...new Set(sales.filter(s => s.isSelfSale !== 1 && !s.buyerLedgerId)
+      .map(s => (s.buyerName ?? "").trim().toLowerCase()).filter(Boolean))];
+    const buyers = buyerIds.length || legacyNames.length
+      ? await db.select({
+          id: buyerLedger.id,
+          buyerName: buyerLedger.buyerName,
+          initials: buyerLedger.initials,
+        }).from(buyerLedger).where(and(
+          eq(buyerLedger.coldStorageId, coldStorageId),
+          or(
+            inArray(buyerLedger.id, buyerIds),
+            inArray(sql`lower(trim(${buyerLedger.buyerName}))`, legacyNames),
+          ),
+        ))
+      : [];
+    const buyersById = new Map(buyers.map(b => [b.id, b]));
+    const buyersByName = new Map<string, typeof buyers[number] | null>();
+    for (const buyer of buyers) {
+      const name = buyer.buyerName.trim().toLowerCase();
+      buyersByName.set(name, buyersByName.has(name) ? null : buyer);
     }
 
     // Fetch all active (non-reversed) exits for those sales in one go.
@@ -4317,6 +4353,13 @@ export class DatabaseStorage implements IStorage {
         soldAt: s.soldAt,
         quantitySold: s.quantitySold,
         coldStorageBillNumber: s.coldStorageBillNumber,
+        isSelfSale: s.isSelfSale,
+        buyerInitials: s.isSelfSale === 1 ? null : (
+          (s.buyerLedgerId
+            ? buyersById.get(s.buyerLedgerId)
+            : buyersByName.get((s.buyerName ?? "").trim().toLowerCase()))
+            ?.initials?.trim() || null
+        ),
         totalExited,
         exits: saleExits,
       });

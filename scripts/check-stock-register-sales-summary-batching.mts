@@ -11,7 +11,9 @@
  */
 
 import express from "express";
+import assert from "node:assert/strict";
 import pg from "pg";
+import { requireDevelopmentFixtures } from "./require-development-fixtures.mts";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
@@ -20,7 +22,7 @@ import {
 } from "../client/src/lib/salesSummaryBatch.ts";
 
 const { Pool } = pg;
-if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
+requireDevelopmentFixtures();
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const PREFIX = "__ssb_smoke_";
@@ -34,13 +36,12 @@ const SALE_ID = `${RUN_ID}_sale`;
 const EXIT_ID = `${RUN_ID}_exit`;
 
 async function cleanup(): Promise<void> {
-  await pool.query("DELETE FROM exit_history WHERE cold_storage_id LIKE $1", [`${PREFIX}%`]);
-  await pool.query("DELETE FROM sales_history WHERE cold_storage_id LIKE $1", [`${PREFIX}%`]);
-  await pool.query("DELETE FROM lots WHERE cold_storage_id LIKE $1", [`${PREFIX}%`]);
-  await pool.query("DELETE FROM chambers WHERE cold_storage_id LIKE $1", [`${PREFIX}%`]);
-  await pool.query("DELETE FROM user_sessions WHERE id LIKE $1", [`${PREFIX}%`]);
-  await pool.query("DELETE FROM cold_storage_users WHERE id LIKE $1", [`${PREFIX}%`]);
-  await pool.query("DELETE FROM cold_storages WHERE id LIKE $1", [`${PREFIX}%`]);
+  for (const table of ["exit_history", "sales_history", "buyer_ledger", "lots", "chambers"]) {
+    await pool.query(`DELETE FROM ${table} WHERE cold_storage_id IN ($1,$2)`, [CS_ID, `${CS_ID}_other`]);
+  }
+  await pool.query("DELETE FROM user_sessions WHERE id=$1", [SESSION_TOKEN]);
+  await pool.query("DELETE FROM cold_storage_users WHERE id=$1", [USER_ID]);
+  await pool.query("DELETE FROM cold_storages WHERE id IN ($1,$2)", [CS_ID, `${CS_ID}_other`]);
 }
 
 async function setup(): Promise<void> {
@@ -114,10 +115,9 @@ async function setup(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  await cleanup();
-  await setup();
-
+  let serverPool: { end: () => Promise<void> } | undefined;
   const { registerRoutes } = await import("../server/routes.ts");
+  serverPool = (await import("../server/db.ts")).pool;
   const app = express();
   app.use(express.json());
   const server = createServer(app);
@@ -128,6 +128,7 @@ async function main(): Promise<void> {
   const headers = { "x-auth-token": SESSION_TOKEN };
 
   try {
+    await setup();
     // UUID-length IDs reproduce both the API count pressure and the request
     // line size that occurs with real filtered production lots.
     const lotIds = [
@@ -196,11 +197,85 @@ async function main(): Promise<void> {
       throw new Error("batch failure was converted into an empty/no-sale result");
     }
     console.log("Test 2 (failed batch remains an error): ok");
+
+    // MR resolution, using several sales on the same lot and a second tenant.
+    await pool.query(`INSERT INTO cold_storages
+      (id,name,total_capacity,wafer_rate,seed_rate,linked_phones)
+      VALUES ($1,'Other tenant',1000,60,60,'{}')`, [`${CS_ID}_other`]);
+    const buyer = async (suffix: string, name: string, initials: string | null, cs = CS_ID) => {
+      const id = `${RUN_ID}_${suffix}`;
+      await pool.query(`INSERT INTO buyer_ledger (id,cold_storage_id,buyer_id,buyer_name,initials)
+        VALUES ($1,$2,$3,$4,$5)`, [id, cs, id, name, initials]);
+      return id;
+    };
+    const linked = await buyer("linked", "Canonical", "  rLt  ");
+    const legacy = await buyer("legacy", "Legacy Buyer", "एलबी");
+    await buyer("duplicate1", "Ambiguous", "Wrong1");
+    await buyer("duplicate2", " AMBIGUOUS ", "Wrong2");
+    const blank = await buyer("blank", "Blank", "   ");
+    const nullInitials = await buyer("null", "Null", null);
+    const emptyInitials = await buyer("empty", "Empty", "");
+    const foreign = await buyer("foreign", "Canonical", "LEAK", `${CS_ID}_other`);
+    await buyer("foreignLegacy", "Legacy Buyer", "LEAK", `${CS_ID}_other`);
+    await buyer("foreignOnly", "Foreign Only", "LEAK", `${CS_ID}_other`);
+    const addSale = async (suffix: string, buyerId: string | null, name: string | null, self = 0, cs = CS_ID) => {
+      const id = `${RUN_ID}_sale_${suffix}`;
+      await pool.query(`INSERT INTO sales_history (
+        id,cold_storage_id,farmer_name,village,tehsil,district,state,contact_number,lot_no,lot_id,
+        chamber_name,floor,position,potato_type,bag_type,quality,original_lot_size,sale_type,
+        quantity_sold,price_per_bag,cold_storage_charge,payment_status,sale_year,sold_at,
+        buyer_ledger_id,buyer_name,is_self_sale)
+        SELECT $1,$2,farmer_name,village,tehsil,district,state,contact_number,lot_no,lot_id,
+        chamber_name,floor,position,potato_type,bag_type,quality,original_lot_size,'partial',
+        1,60,60,'due',2026,sold_at,$3,$4,$5 FROM sales_history WHERE id=$6`,
+        [id, cs, buyerId, name, self, SALE_ID]);
+      return id;
+    };
+    const expected = new Map<string, [number, string | null]>();
+    for (const [suffix, ledgerId, name, self, initials] of [
+      ["linked", linked, "Stale sale name", 0, "rLt"],
+      ["legacy", null, "  LEGACY BUYER ", 0, "एलबी"],
+      ["ambiguous", null, "ambiguous", 0, null],
+      ["blank", blank, "Blank", 0, null],
+      ["null", nullInitials, "Null", 0, null],
+      ["empty", emptyInitials, "Empty", 0, null],
+      ["self", linked, "Canonical", 1, null],
+      ["unknown", null, "Unknown", 0, null],
+      ["noName", null, null, 0, null],
+      ["dangling", "does-not-exist", "Legacy Buyer", 0, null],
+      ["foreignId", foreign, "Legacy Buyer", 0, null],
+      ["foreignName", null, "Foreign Only", 0, null],
+    ] as Array<[string, string | null, string | null, number, string | null]>) {
+      expected.set(await addSale(suffix, ledgerId, name, self), [self, initials]);
+    }
+    const foreignSale = await addSale("foreign", foreign, "Canonical", 0, `${CS_ID}_other`);
+    const summary = async () => {
+      const response = await fetch(`${baseUrl}/api/lots/sales-summary?lotIds=${LOT_ID}`, { headers });
+      assert.equal(response.status, 200);
+      return (await response.json())[LOT_ID] as any[];
+    };
+    const rows = await summary();
+    assert.equal(rows.length, expected.size + 1);
+    assert.equal(rows.some(s => s.saleId === foreignSale), false);
+    for (const [saleId, [self, initials]] of expected) {
+      const row = rows.find(s => s.saleId === saleId);
+      assert.ok(row);
+      assert.equal(row.isSelfSale, self);
+      assert.equal(row.buyerInitials, initials, saleId);
+    }
+    await pool.query("UPDATE buyer_ledger SET initials='New' WHERE id=$1", [linked]);
+    assert.equal((await summary()).find(s => s.saleId === `${RUN_ID}_sale_linked`).buyerInitials, "New");
+    await pool.query("UPDATE buyer_ledger SET initials=NULL WHERE id IN ($1,$2)", [linked, legacy]);
+    for (const suffix of ["linked", "legacy"]) {
+      assert.equal((await summary()).find(s => s.saleId === `${RUN_ID}_sale_${suffix}`).buyerInitials, null);
+    }
+    console.log("Test 3 (MR): ok — live/cleared initials, mixed buyers, Self, legacy match, ambiguous/missing buyers, tenant isolation");
     console.log("\nStock Register sales-summary batching check passed.");
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await cleanup();
     await pool.end();
+    await serverPool?.end();
   }
 }
 

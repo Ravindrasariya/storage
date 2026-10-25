@@ -35,6 +35,8 @@ export interface SaleSummary {
   soldAt: string | Date;
   quantitySold: number;
   coldStorageBillNumber: number | null;
+  isSelfSale: number | null;
+  buyerInitials: string | null;
   totalExited: number;
   exits: Array<{ exitDate: string | Date; billNumber: number; bagsExited: number }>;
 }
@@ -65,7 +67,7 @@ interface FarmerLotGroupProps {
 // columns. Left fr-total ≈ right fr-total so the divider lands near 50/50
 // on wide screens. On mobile the row scrolls horizontally via min-width.
 const FULL_ROW_GRID =
-  "grid grid-cols-[24px_minmax(70px,0.9fr)_minmax(70px,0.9fr)_minmax(70px,0.8fr)_minmax(70px,0.9fr)_minmax(140px,1.6fr)_minmax(70px,0.7fr)_minmax(80px,0.8fr)_minmax(80px,1.5fr)_minmax(140px,2fr)_minmax(90px,1.7fr)_minmax(70px,1.4fr)_minmax(80px,auto)] gap-x-2 items-center min-w-[1080px] md:min-w-0";
+  "grid grid-cols-[24px_minmax(70px,0.9fr)_minmax(70px,0.9fr)_minmax(70px,0.8fr)_minmax(70px,0.9fr)_minmax(140px,1.6fr)_minmax(70px,0.7fr)_minmax(80px,0.8fr)_minmax(80px,1.5fr)_minmax(140px,2fr)_minmax(90px,1.7fr)_minmax(70px,1.4fr)_minmax(48px,0.65fr)_minmax(112px,auto)] gap-x-2 items-center min-w-[1220px]";
 
 // Tailwind class added to every column that belongs to the right (sale)
 // half — used by both the header and the per-row cells so the visual
@@ -162,7 +164,7 @@ export function FarmerLotGroup({
   const addressLine = [village, tehsil, district].filter(Boolean).join(", ");
 
   return (
-    <Card className="p-4" data-testid={`card-farmer-group-${farmerKey}`}>
+    <Card className="p-3" data-testid={`card-farmer-group-${farmerKey}`}>
       {/* Farmer header */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-3 pb-3 border-b">
         <h3 className="text-lg font-semibold" data-testid={`text-farmer-name-${farmerKey}`}>
@@ -239,8 +241,8 @@ export function FarmerLotGroup({
       <div className="overflow-x-auto bg-white dark:bg-zinc-800 rounded-md border border-border/60">
         {/* Inner relative wrapper carries the scroll min-width and hosts
             the two-tone background layer that sits behind all rows. */}
-        <div className="relative min-w-[1080px] md:min-w-0">
-          {/* Background bands — same 12-col grid template as the rows so
+        <div className="relative min-w-[1220px]">
+          {/* Background bands — same 14-col grid template as the rows so
               the green/orange divider lines up exactly with the
               Remaining ↔ Exited/Sold column boundary. `-mx-1` on each
               cell closes the `gap-x-2` so each band reads as solid. */}
@@ -262,8 +264,9 @@ export function FarmerLotGroup({
             <span className={`${LEFT_BAND_BG} h-full -ml-1 -mr-2`} />
             {/* Cell 9 starts cleanly at the divider line (no left bleed)
                 so the RIGHT band begins exactly where the LEFT band
-                ends. Cells 10-12 close their own inner gaps. */}
+                ends. Cells 10-14 close their own inner gaps. */}
             <span className={`${RIGHT_BAND_BG} h-full -mr-1`} />
+            <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
             <span className={`${RIGHT_BAND_BG} h-full -mx-1`} />
@@ -286,6 +289,7 @@ export function FarmerLotGroup({
           <span className="text-center">{t("exitDates")}</span>
           <span className="text-center">{t("exitBills")}</span>
           <span className="text-center">{t("coldBillNo")}</span>
+          <span className="text-center">MR</span>
           <span className="text-center"></span>
         </div>
 
@@ -315,6 +319,11 @@ export function FarmerLotGroup({
               const summaryPlaceholder = !sale && salesSummaryState !== "ready"
                 ? (salesSummaryState === "loading" ? t("loading") : t("error"))
                 : null;
+              const mrValue = sale && salesSummaryState === "ready"
+                ? sale.isSelfSale === 1
+                  ? "Self"
+                  : (sale.buyerInitials ?? "").trim()
+                : "";
               return (
                 <>
                   <span
@@ -354,6 +363,14 @@ export function FarmerLotGroup({
                       : sale && sale.coldStorageBillNumber != null
                         ? String(sale.coldStorageBillNumber)
                         : "—"}
+                  </span>
+                  <span
+                    className="block min-w-0 truncate text-center text-xs font-medium"
+                    title={mrValue || undefined}
+                    aria-label={mrValue || undefined}
+                    data-testid={`cell-mr-${tid}`}
+                  >
+                    {mrValue}
                   </span>
                   <span className="flex items-center justify-center gap-1">
                     {sale && onExitSale && (

@@ -465,6 +465,11 @@ export default function StockRegister() {
       );
     },
     enabled: renderedLotIds.length > 0,
+    // Initials are live ledger data, including edits made by other operators.
+    // Override the app-wide infinite cache when returning to this register.
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
 
   // Fetch summary totals for ALL lots (with optional bag type and year filter)
@@ -1826,7 +1831,7 @@ export default function StockRegister() {
   );
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1300px] mx-auto space-y-6">
+    <div className="w-full min-w-0 p-2 sm:p-3 lg:p-4 space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -1894,7 +1899,7 @@ export default function StockRegister() {
         </div>
       </div>
 
-      <Card className="p-4 sm:p-6">
+      <Card className="p-3 sm:p-4">
         <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)}>
           <TabsList className="grid w-full grid-cols-3 mb-4">
             <TabsTrigger value="farmerName" className="gap-2" data-testid="tab-search-farmer">
