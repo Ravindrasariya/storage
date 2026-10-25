@@ -45,8 +45,8 @@ Actual finalization through Nikasi allows the same or a different buyer. Master 
 
 **How to apply:** Do not equate actual sold bags with exited bags, require the promised buyer at finalization, or reinterpret previously completed individual-dialog sales as promises.
 
-Keep one active Sauda per lot; submitting again replaces it. Cancel writes nothing. Successful Master Nikasi consumes only its affected lots' markers atomically; failed batches retain them. Do not carry a promised-bag balance forward.
+Allow multiple Saudas per lot. The normal Sauda action creates another entry rather than replacing an earlier one; clicking a particular Sauda's initials opens that entry for changes, including switching buyer. The overall Sauda bags plus already-sold bags must not exceed total bags for that lot.
 
-**Why:** The accepted lifecycle treats Sauda as an informal lot-level marker, not a stock reservation or a financial agreement.
+**Why:** The user changed the lifecycle: after a Sauda for 50 of 100 bags, the next Sauda could be for another 25 bags, and requested editing by clicking the initials.
 
-**How to apply:** Keep Sauda outside all actual-sale accounting and historical reversal semantics. Never attach actual-sale exit/edit/print controls to a marker; genuine sales retain those controls even when unsold stock is zero.
+**How to apply:** Treat this as superseding the earlier one-marker-per-lot replacement rule. Enforce the combined limit on creation and editing without reducing displayed Remaining Bags or making financial entries. Keep actual-sale controls separate from clickable Sauda initials.
