@@ -11,6 +11,7 @@ import { chromium, type Browser } from "playwright";
 import { auth, cleanup, farmerId, id, lot, pool, setup, token, legacySaleFixture } from "./tulai-fixtures.mts";
 import { checkTulaiSubmissions } from "./tulai-browser-submissions.mts";
 import { checkNikasiLayout } from "./nikasi-browser-layout.mts";
+import { checkEditSaleCharges } from "./edit-sale-charges-browser.mts";
 const execFileAsync = promisify(execFile);
 const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
 let browser: Browser | undefined;
@@ -156,6 +157,7 @@ try {
   assert.equal(await page.getByTestId("input-edit-grading-charges").inputValue(), "20",
     "Layout correction must preserve per-bag grading auto-fill");
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await checkEditSaleCharges(page, mount, api, editSale);
   await page.locator('[data-testid="button-restore-tulai-edit"]').click();
   await page.waitForTimeout(700);
   const restored = await api(`/api/sales-history/${editSaleId}`, undefined, "GET");

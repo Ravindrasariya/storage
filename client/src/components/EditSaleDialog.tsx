@@ -1287,8 +1287,8 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
-                    <div className="space-y-1 sm:col-span-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
                       <Label className="text-xs">{t("coldStorageCharge")}/{isQuintalBased ? t("quintal") : t("bag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1303,7 +1303,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1 sm:col-span-3">
+                    <div className="space-y-1">
                       <Label className="text-xs">{t("hammali")}/{t("bag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1318,7 +1318,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1 sm:col-span-2">
+                    <div className="space-y-1">
                       <Label className="text-xs">{t("kataCharges")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1332,7 +1332,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1 sm:col-span-2">
+                    <div className="space-y-1">
                       <Label className="text-xs">{t("saleTulaiManualWeighing")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1341,7 +1341,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                           data-testid="input-edit-tulai-charges" />
                       </div>
                     </div>
-                    <div className="space-y-1 sm:col-span-2">
+                    <div className="space-y-1">
                       <Label className="text-xs">{t("extraHammaliPerBag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1355,7 +1355,21 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         />
                       </div>
                     </div>
-                    <div className="space-y-1 col-start-1 sm:col-start-auto sm:col-span-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-extra-hammali-total" className="text-xs">{t("totalExtraHammali")}</Label>
+                      <div className="flex items-center gap-1">
+                        <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
+                        <Input
+                          id="edit-extra-hammali-total"
+                          type="number"
+                          value={getEditableChargeValue(editExtraHammali, 0) * (sale.quantitySold || 0)}
+                          className="h-8"
+                          readOnly
+                          data-testid="input-edit-extra-hammali-total"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
                       <Label className="text-xs">{t("gradingPerBag")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />
@@ -1405,7 +1419,7 @@ export function EditSaleDialog({ sale, open, onOpenChange }: EditSaleDialogProps
                         return null;
                       })()}
                     </div>
-                    <div className="space-y-1 sm:col-span-3">
+                    <div className="space-y-1">
                       <Label className="text-xs">{t("totalGradingCharges")}</Label>
                       <div className="flex items-center gap-1">
                         <Currency amount="" showIcon={true} className="text-xs text-muted-foreground" />

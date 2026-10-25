@@ -418,6 +418,7 @@ export const translations: Translations = {
   gateCut: { en: "Gate Cut", hi: "गेट कट" },
   gateCutWeighing: { en: "Weighing + Gate Cut", hi: "तौल + गेट कट" },
   extraHammaliPerBag: { en: "Extra Hammali/bag", hi: "अतिरिक्त हमाली/बैग" },
+  totalExtraHammali: { en: "Total Extra Hammali", hi: "कुल अतिरिक्त हमाली" },
   // Task #300 — Grading/Bag input shown alongside Total Grading in
   // New Sale (Bilty), Edit Sale, and Master Nikasi. Audit/data-entry
   // only — Total Grading remains the source of truth for billing.
