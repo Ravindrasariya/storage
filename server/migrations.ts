@@ -26,6 +26,13 @@ interface Migration {
 
 const MIGRATIONS: Migration[] = [
   {
+    name: "2026-10-25_add_buyer_initials",
+    up: async () => {
+      // Optional metadata only; legacy buyers remain NULL.
+      await db.execute(sql`ALTER TABLE buyer_ledger ADD COLUMN IF NOT EXISTS initials TEXT`);
+    },
+  },
+  {
     name: "2026-10-19_add_sales_history_remarks",
     up: async () => {
       // Additive only: historical sales stay NULL; no table deletion/backfill.

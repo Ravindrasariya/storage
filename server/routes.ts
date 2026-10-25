@@ -5428,6 +5428,7 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const schema = z.object({
         buyerName: z.string().min(1),
+        initials: z.string().trim().nullable().optional(),
         address: z.string().optional(),
         contactNumber: z.string().optional(),
       });
@@ -5462,6 +5463,9 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const { confirmMerge, ...updates } = req.body;
+      const initials = z.string().trim().nullable().optional().safeParse(updates.initials);
+      if (!initials.success) return res.status(400).json({ error: "Invalid initials" });
+      if (initials.data !== undefined) updates.initials = initials.data;
       const modifiedBy = req.authContext?.userName || 'system';
       const result = await storage.updateBuyerLedger(id, updates, modifiedBy, confirmMerge);
       res.json(result);

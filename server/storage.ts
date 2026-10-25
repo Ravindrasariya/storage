@@ -715,6 +715,7 @@ export interface IStorage {
   }): Promise<{ id: string; buyerId: string }>;
   createManualBuyer(coldStorageId: string, buyerData: {
     buyerName: string;
+    initials?: string | null;
     address?: string;
     contactNumber?: string;
   }): Promise<{ id: string; buyerId: string }>;
@@ -13518,6 +13519,7 @@ export class DatabaseStorage implements IStorage {
           coldStorageId,
           buyerId,
           buyerName: buyerName.trim(),
+          initials: null,
           address: null,
           contactNumber: null,
           isFlagged: 0,
@@ -13763,6 +13765,7 @@ export class DatabaseStorage implements IStorage {
     // Regular update (no merge)
     const beforeValues = JSON.stringify({
       buyerName: currentBuyer.buyerName,
+      initials: currentBuyer.initials,
       address: currentBuyer.address,
       contactNumber: currentBuyer.contactNumber,
     });
@@ -13770,6 +13773,7 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(buyerLedger)
       .set({
         buyerName: updates.buyerName?.trim() || currentBuyer.buyerName,
+        initials: updates.initials === undefined ? currentBuyer.initials : updates.initials?.trim() || null,
         address: updates.address?.trim() || currentBuyer.address,
         contactNumber: updates.contactNumber?.trim() || currentBuyer.contactNumber,
       })
@@ -13778,6 +13782,7 @@ export class DatabaseStorage implements IStorage {
     
     const afterValues = JSON.stringify({
       buyerName: updated.buyerName,
+      initials: updated.initials,
       address: updated.address,
       contactNumber: updated.contactNumber,
     });
@@ -14016,6 +14021,7 @@ export class DatabaseStorage implements IStorage {
   // Create buyer manually — rejects if name already exists (unlike ensureBuyerLedgerEntry)
   async createManualBuyer(coldStorageId: string, buyerData: {
     buyerName: string;
+    initials?: string | null;
     address?: string;
     contactNumber?: string;
   }): Promise<{ id: string; buyerId: string }> {
@@ -14043,6 +14049,7 @@ export class DatabaseStorage implements IStorage {
           coldStorageId,
           buyerId,
           buyerName: buyerData.buyerName.trim(),
+          initials: buyerData.initials?.trim() || null,
           address: buyerData.address?.trim() || null,
           contactNumber: buyerData.contactNumber?.trim() || null,
           isFlagged: 0,

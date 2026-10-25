@@ -461,11 +461,13 @@ export default function BuyerLedger() {
   const [editingBuyer, setEditingBuyer] = useState<BuyerWithDues | null>(null);
   const [editFormData, setEditFormData] = useState({
     buyerName: "",
+    initials: "",
     address: "",
     contactNumber: "",
   });
   const [showAddBuyerDialog, setShowAddBuyerDialog] = useState(false);
   const [newBuyerName, setNewBuyerName] = useState("");
+  const [newBuyerInitials, setNewBuyerInitials] = useState("");
   const [newBuyerAddress, setNewBuyerAddress] = useState("");
   const [newBuyerContact, setNewBuyerContact] = useState("");
   const [addBuyerError, setAddBuyerError] = useState("");
@@ -505,7 +507,7 @@ export default function BuyerLedger() {
 
   // guardrail-allow: skip-sale-invalidation -- creates an empty buyer roster entry with no attached sales yet; targeted invalidations below cover all dependent views.
   const createBuyerMutation = useMutation({
-    mutationFn: async (data: { buyerName: string; address?: string; contactNumber?: string }) => {
+    mutationFn: async (data: { buyerName: string; initials?: string; address?: string; contactNumber?: string }) => {
       const response = await apiRequest('POST', '/api/buyer-ledger/manual', data);
       if (!response.ok) {
         const err = await response.json();
@@ -520,6 +522,7 @@ export default function BuyerLedger() {
       queryClient.invalidateQueries({ queryKey: ['/api/merchant-advances/buyers-with-dues'] });
       setShowAddBuyerDialog(false);
       setNewBuyerName("");
+      setNewBuyerInitials("");
       setNewBuyerAddress("");
       setNewBuyerContact("");
       setAddBuyerError("");
@@ -680,6 +683,7 @@ export default function BuyerLedger() {
   const handleEditClick = (buyer: BuyerWithDues) => {
     setEditFormData({
       buyerName: buyer.buyerName,
+      initials: buyer.initials || "",
       address: buyer.address || "",
       contactNumber: buyer.contactNumber || "",
     });
@@ -1227,14 +1231,15 @@ export default function BuyerLedger() {
       </div>
 
       <Dialog open={showAddBuyerDialog} onOpenChange={(open) => {
-        if (!open) { setShowAddBuyerDialog(false); setNewBuyerName(""); setNewBuyerAddress(""); setNewBuyerContact(""); setAddBuyerError(""); }
+        if (!open) { setShowAddBuyerDialog(false); setNewBuyerName(""); setNewBuyerInitials(""); setNewBuyerAddress(""); setNewBuyerContact(""); setAddBuyerError(""); }
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{t("addBuyer")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div>
+            <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-end gap-3">
+            <div className="min-w-0">
               <Label htmlFor="newBuyerName">{t("buyerName")} *</Label>
               <Input
                 id="newBuyerName"
@@ -1244,6 +1249,17 @@ export default function BuyerLedger() {
                 placeholder={t("buyerName")}
                 data-testid="input-new-buyer-name"
               />
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor="newBuyerInitials">{t("buyerInitials")}</Label>
+              <Input
+                id="newBuyerInitials"
+                value={newBuyerInitials}
+                onChange={(e) => setNewBuyerInitials(e.target.value)}
+                placeholder="RLT"
+                data-testid="input-new-buyer-initials"
+              />
+            </div>
             </div>
             <div>
               <Label htmlFor="newBuyerAddress">{t("address")}</Label>
@@ -1270,11 +1286,11 @@ export default function BuyerLedger() {
             )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => { setShowAddBuyerDialog(false); setNewBuyerName(""); setNewBuyerAddress(""); setNewBuyerContact(""); setAddBuyerError(""); }} data-testid="button-cancel-add-buyer">
+            <Button variant="outline" onClick={() => { setShowAddBuyerDialog(false); setNewBuyerName(""); setNewBuyerInitials(""); setNewBuyerAddress(""); setNewBuyerContact(""); setAddBuyerError(""); }} data-testid="button-cancel-add-buyer">
               {t("cancel")}
             </Button>
             <Button
-              onClick={() => createBuyerMutation.mutate({ buyerName: newBuyerName.trim(), address: newBuyerAddress.trim() || undefined, contactNumber: newBuyerContact.trim() || undefined })}
+              onClick={() => createBuyerMutation.mutate({ buyerName: newBuyerName.trim(), initials: newBuyerInitials.trim(), address: newBuyerAddress.trim() || undefined, contactNumber: newBuyerContact.trim() || undefined })}
               disabled={!newBuyerName.trim() || createBuyerMutation.isPending}
               data-testid="button-save-add-buyer"
             >
@@ -1294,7 +1310,8 @@ export default function BuyerLedger() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div>
+            <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,1fr)] items-end gap-3">
+            <div className="min-w-0">
               <Label htmlFor="buyerName">{t("buyerName")}</Label>
               <Input
                 id="buyerName"
@@ -1302,6 +1319,17 @@ export default function BuyerLedger() {
                 onChange={(e) => setEditFormData(prev => ({ ...prev, buyerName: capitalizeFirstLetter(e.target.value) }))}
                 data-testid="input-edit-buyer-name"
               />
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor="buyerInitials">{t("buyerInitials")}</Label>
+              <Input
+                id="buyerInitials"
+                value={editFormData.initials}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, initials: e.target.value }))}
+                placeholder="RLT"
+                data-testid="input-edit-buyer-initials"
+              />
+            </div>
             </div>
             <div>
               <Label htmlFor="address">{t("address")}</Label>

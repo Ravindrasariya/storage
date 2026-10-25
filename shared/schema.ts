@@ -702,6 +702,7 @@ export const buyerLedger = pgTable("buyer_ledger", {
   coldStorageId: varchar("cold_storage_id").notNull(),
   buyerId: text("buyer_id").notNull(), // Format: BYYYYYMMDD1, BYYYYYMMDD2, etc. Unique per cold storage
   buyerName: text("buyer_name").notNull(),
+  initials: text("initials"),
   address: text("address"),
   contactNumber: text("contact_number"),
   isFlagged: integer("is_flagged").notNull().default(0), // 0 = normal, 1 = flagged
