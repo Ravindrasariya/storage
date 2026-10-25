@@ -14,3 +14,4 @@
 - [Sale remark rules](sale-remark-rules.md) — Master Nikasi remarks copy once into independent sales; payment-recorded sales retain the full edit lock, including remarks.
 - [Stock Register MR scope](stock-register-mr-scope.md) — live Buyer Ledger initials per sale, exactly Self for self-sales, blanks stay blank; on-screen register only.
 - [Reversal archive scope](reversal-archive-scope.md) — additive tracking only; preserve existing tables/calculation logic and reversal semantics; Archive-prefixed tabs and copy-only legacy Nikasi backfill.
+- [Sale promise rules](sale-promise-rules.md) — individual dialog becomes non-financial; existing-buyer initials only, no stock quantity changes; final sale through Nikasi may use a different buyer.
