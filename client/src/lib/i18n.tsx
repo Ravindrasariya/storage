@@ -621,7 +621,6 @@ export const translations: Translations = {
   noExits: { en: "No exits found", hi: "कोई निकासी नहीं मिली" },
   monthsLabel: { en: "Months", hi: "महीना" },
   daysLabel: { en: "Days", hi: "दिन" },
-  allMonths: { en: "All", hi: "सभी" },
   allDays: { en: "All Days", hi: "सभी दिन" },
   monthsShort: {
     en: "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec",
