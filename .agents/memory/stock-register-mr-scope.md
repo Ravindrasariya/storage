@@ -8,3 +8,9 @@ Stock Register MR shows the buyer's current Buyer Ledger initials for each sale,
 **Why:** The user requested current Buyer Ledger initials, with explicit Self and blank behavior.
 
 **How to apply:** Preserve per-sale identity on lots with multiple sales. Keep this change limited to the on-screen register; print/PDF/CSV additions require a separate request.
+
+MR follows the sale's buyer, not the merchant receiving transferred dues. Keep that behavior when a merchant transfer is active or reversed.
+
+**Why:** The user explicitly confirmed that retaining the sale buyer's initials through merchant transfers is fine.
+
+**How to apply:** Do not substitute transfer-recipient initials into MR unless the user changes this requirement.
