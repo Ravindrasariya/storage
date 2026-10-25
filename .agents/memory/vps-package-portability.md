@@ -1,7 +1,13 @@
 ---
 name: External VPS package portability
-description: Replit-internal tarball URLs can make the same lockfile uninstallable on Hostinger.
+description: This project's production runs on a Hostinger VPS; external deployment package portability constraints.
 ---
+
+This project's production is on a Hostinger VPS.
+
+**Why:** The user explicitly asked to remember: “my production is in hostinger VPS”.
+
+**How to apply:** Treat production deployment and database instructions for this project as targeting the Hostinger VPS, not a Replit-hosted production environment.
 
 Package tooling in the Replit environment can leave package-firewall.replit.internal tarball URLs in the lockfile. They are not reachable from the user's Hostinger production VPS.
 
