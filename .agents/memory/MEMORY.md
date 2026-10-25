@@ -13,4 +13,4 @@
 - [VPS package portability](vps-package-portability.md) — verify lockfile tarball URLs are public before Hostinger deployment; a registry flag alone does not replace explicit internal URLs.
 - [Sale remark rules](sale-remark-rules.md) — Master Nikasi remarks copy once into independent sales; payment-recorded sales retain the full edit lock, including remarks.
 - [Stock Register MR scope](stock-register-mr-scope.md) — live Buyer Ledger initials per sale, exactly Self for self-sales, blanks stay blank; on-screen register only.
-- [Reversal archive scope](reversal-archive-scope.md) — user requires separate archives, removal from active tables, forward tracking and available older Nikasi data without deleted-sale reconstruction.
+- [Reversal archive scope](reversal-archive-scope.md) — additive tracking only; preserve existing tables/calculation logic and reversal semantics; Archive-prefixed tabs and copy-only legacy Nikasi backfill.
