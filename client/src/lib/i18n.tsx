@@ -325,6 +325,7 @@ export const translations: Translations = {
   available: { en: "Available", hi: "उपलब्ध" },
   buyerName: { en: "Buyer Name", hi: "खरीदार का नाम" },
   buyerInitials: { en: "Initials", hi: "संक्षिप्त नाम" },
+  buyerInitialsTooLong: { en: "Initials must be at most 4 characters.", hi: "संक्षिप्त नाम अधिकतम 4 अक्षरों का होना चाहिए।" },
   selfBuyerBlockedByAdjustment: {
     en: "Self is unavailable while Adj Receivable & Self Due is greater than zero.",
     hi: "बकाया व स्वयं बिक्री समायोजन शून्य से अधिक होने पर खरीदार को स्वयं नहीं कर सकते।",

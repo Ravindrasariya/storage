@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { BuyerLedgerEntry, BuyerLedgerEditHistoryEntry } from "@shared/schema";
+import { buyerInitialsTooLong, normalizeBuyerInitials } from "@shared/buyer-initials";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { LedgerPrintBillButton } from "@/components/LedgerPrintBillButton";
 
@@ -693,12 +694,12 @@ export default function BuyerLedger() {
   };
 
   const handleSaveEdit = async () => {
-    if (!editingBuyer) return;
+    if (!editingBuyer || buyerInitialsTooLong(editFormData.initials)) return;
     
     try {
       const mergeCheck = await checkMergeMutation.mutateAsync({
         id: editingBuyer.id,
-        updates: editFormData,
+        updates: { ...editFormData, initials: normalizeBuyerInitials(editFormData.initials) },
       });
       
       if (mergeCheck.willMerge) {
@@ -709,7 +710,7 @@ export default function BuyerLedger() {
       
       updateMutation.mutate({
         id: editingBuyer.id,
-        updates: editFormData,
+        updates: { ...editFormData, initials: normalizeBuyerInitials(editFormData.initials) },
       });
     } catch {
       toast({ title: t("saveFailed"), variant: "destructive" });
@@ -717,10 +718,10 @@ export default function BuyerLedger() {
   };
 
   const handleConfirmMerge = () => {
-    if (!editingBuyer) return;
+    if (!editingBuyer || buyerInitialsTooLong(editFormData.initials)) return;
     updateMutation.mutate({
       id: editingBuyer.id,
-      updates: editFormData,
+      updates: { ...editFormData, initials: normalizeBuyerInitials(editFormData.initials) },
       confirmMerge: true,
     });
   };
@@ -1257,12 +1258,17 @@ export default function BuyerLedger() {
               <Input
                 id="newBuyerInitials"
                 value={newBuyerInitials}
-                onChange={(e) => setNewBuyerInitials(e.target.value)}
-                placeholder="RLT"
+                onChange={(e) => setNewBuyerInitials(e.target.value.toUpperCase())}
+                autoCapitalize="characters"
+                aria-invalid={buyerInitialsTooLong(newBuyerInitials)}
+                aria-describedby={buyerInitialsTooLong(newBuyerInitials) ? "new-buyer-initials-error" : undefined}
                 data-testid="input-new-buyer-initials"
               />
             </div>
             </div>
+            {buyerInitialsTooLong(newBuyerInitials) && (
+              <p id="new-buyer-initials-error" className="text-sm text-destructive" role="alert">{t("buyerInitialsTooLong")}</p>
+            )}
             <div>
               <Label htmlFor="newBuyerAddress">{t("address")}</Label>
               <Input
@@ -1292,8 +1298,11 @@ export default function BuyerLedger() {
               {t("cancel")}
             </Button>
             <Button
-              onClick={() => createBuyerMutation.mutate({ buyerName: newBuyerName.trim(), initials: newBuyerInitials.trim(), address: newBuyerAddress.trim() || undefined, contactNumber: newBuyerContact.trim() || undefined })}
-              disabled={!newBuyerName.trim() || createBuyerMutation.isPending}
+              onClick={() => {
+                if (buyerInitialsTooLong(newBuyerInitials)) return;
+                createBuyerMutation.mutate({ buyerName: newBuyerName.trim(), initials: normalizeBuyerInitials(newBuyerInitials), address: newBuyerAddress.trim() || undefined, contactNumber: newBuyerContact.trim() || undefined });
+              }}
+              disabled={!newBuyerName.trim() || buyerInitialsTooLong(newBuyerInitials) || createBuyerMutation.isPending}
               data-testid="button-save-add-buyer"
             >
               {createBuyerMutation.isPending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
@@ -1327,12 +1336,17 @@ export default function BuyerLedger() {
               <Input
                 id="buyerInitials"
                 value={editFormData.initials}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, initials: e.target.value }))}
-                placeholder="RLT"
+                onChange={(e) => setEditFormData(prev => ({ ...prev, initials: e.target.value.toUpperCase() }))}
+                autoCapitalize="characters"
+                aria-invalid={buyerInitialsTooLong(editFormData.initials)}
+                aria-describedby={buyerInitialsTooLong(editFormData.initials) ? "edit-buyer-initials-error" : undefined}
                 data-testid="input-edit-buyer-initials"
               />
             </div>
             </div>
+            {buyerInitialsTooLong(editFormData.initials) && (
+              <p id="edit-buyer-initials-error" className="text-sm text-destructive" role="alert">{t("buyerInitialsTooLong")}</p>
+            )}
             <div>
               <Label htmlFor="address">{t("address")}</Label>
               <Input
@@ -1380,7 +1394,7 @@ export default function BuyerLedger() {
             <Button variant="outline" onClick={() => setEditingBuyer(null)} data-testid="button-cancel-edit">
               {t("cancel")}
             </Button>
-            <Button onClick={handleSaveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit">
+            <Button onClick={handleSaveEdit} disabled={buyerInitialsTooLong(editFormData.initials) || updateMutation.isPending} data-testid="button-save-edit">
               {updateMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : t("save")}
             </Button>
           </div>

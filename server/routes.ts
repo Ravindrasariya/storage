@@ -7,6 +7,7 @@ import { db } from "./db";
 import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema, exitHistory } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
 import { saleRemarkSchema } from "@shared/sale-remarks";
+import { buyerInitialsSchema } from "@shared/buyer-initials";
 import { sql, eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 
@@ -5428,12 +5429,15 @@ export async function registerRoutes(
       const coldStorageId = getColdStorageId(req);
       const schema = z.object({
         buyerName: z.string().min(1),
-        initials: z.string().trim().nullable().optional(),
+        initials: buyerInitialsSchema,
         address: z.string().optional(),
         contactNumber: z.string().optional(),
       });
       const parsed = schema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
+      if (!parsed.success) return res.status(400).json({
+        error: parsed.error.issues.find(issue => issue.path[0] === "initials")?.message || "Invalid request body",
+        details: parsed.error.issues,
+      });
       const result = await storage.createManualBuyer(coldStorageId, parsed.data);
       res.status(201).json(result);
     } catch (error: any) {
@@ -5463,8 +5467,11 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const { confirmMerge, ...updates } = req.body;
-      const initials = z.string().trim().nullable().optional().safeParse(updates.initials);
-      if (!initials.success) return res.status(400).json({ error: "Invalid initials" });
+      const initials = buyerInitialsSchema.safeParse(updates.initials);
+      if (!initials.success) return res.status(400).json({
+        error: initials.error.issues[0]?.message || "Invalid initials",
+        details: initials.error.issues.map(issue => ({ ...issue, path: ["initials", ...issue.path] })),
+      });
       if (initials.data !== undefined) updates.initials = initials.data;
       const modifiedBy = req.authContext?.userName || 'system';
       const result = await storage.updateBuyerLedger(id, updates, modifiedBy, confirmMerge);

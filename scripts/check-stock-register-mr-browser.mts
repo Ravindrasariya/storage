@@ -140,7 +140,7 @@ try {
     await page.locator(`a[href="${path}"]`).first().click();
     await page.waitForURL(`**${path}`);
   };
-  for (const next of ["Edited without reload", ""]) {
+   for (const next of ["EDIT", ""]) {
     await navigateTo("/buyer-ledger");
     await field("button-edit-buyer").click();
     await field("input-edit-buyer-initials").fill(next);

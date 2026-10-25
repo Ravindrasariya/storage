@@ -17,7 +17,7 @@ try {
     coldStorageId: "mock", isArchived: 0, isFlagged: 0, createdAt: "2026-10-25T12:00:00+05:30",
     pyReceivables: 0, advanceDue: 0, dueTransferOut: 0, dueTransferIn: 0, salesDue: 0, buyerExtras: 0, netDue: 0,
   });
-  const buyers = [buyer("1", "Roop Laxmi Traders", "rLt"), buyer("2", "Legacy Buyer", null)];
+   const buyers = [buyer("1", "Roop Laxmi Traders", "rLt"), buyer("2", "Legacy Buyer", "LegacyLong")];
   const writes: { path: string; data: any }[] = [];
   await context.route("**/api/**", async route => {
     const request = route.request();
@@ -68,9 +68,20 @@ try {
   await page.goto(`${base}/buyer-ledger`, { waitUntil: "networkidle" });
   await field("button-add-buyer").click();
   assert.equal(await field("input-new-buyer-initials").inputValue(), "");
+   assert.equal(await field("input-new-buyer-initials").getAttribute("placeholder"), null);
   assert.equal(await field("button-save-add-buyer").isDisabled(), true);
   await field("input-new-buyer-name").fill("Another Buyer");
-  await field("input-new-buyer-initials").fill("  aB  ");
+   await field("input-new-buyer-initials").pressSequentially("abcde");
+   assert.equal(await field("input-new-buyer-initials").inputValue(), "ABCDE");
+   assert.equal(await field("button-save-add-buyer").isDisabled(), true);
+   assert.equal(await field("input-new-buyer-initials").getAttribute("aria-invalid"), "true");
+   assert.match(await page.locator("#new-buyer-initials-error").innerText(), /at most 4/);
+   assert.equal(writes.length, 0);
+   // insertText exercises the same input path as pasted text, without clipboard permissions.
+   await field("input-new-buyer-initials").fill("");
+   await page.keyboard.insertText("  aBcD  ");
+   assert.equal(await field("input-new-buyer-initials").inputValue(), "  ABCD  ");
+   assert.equal(await field("button-save-add-buyer").isEnabled(), true);
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await layout("input-new-buyer-name", "input-new-buyer-initials");
@@ -78,7 +89,7 @@ try {
   }
   await field("button-save-add-buyer").click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
-  assert.equal(writes.find(w => w.path === "/api/buyer-ledger/manual")!.data.initials, "aB");
+   assert.equal(writes.find(w => w.path === "/api/buyer-ledger/manual")!.data.initials, "ABCD");
   await field("button-add-buyer").click();
   assert.equal(await field("input-new-buyer-initials").inputValue(), "");
   await field("input-new-buyer-initials").fill("abandoned");
@@ -93,20 +104,27 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await openEdit("1");
   assert.equal(await field("input-edit-buyer-initials").inputValue(), "rLt");
+   assert.equal(await field("input-edit-buyer-initials").getAttribute("placeholder"), null);
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await layout("input-edit-buyer-name", "input-edit-buyer-initials");
     await page.screenshot({ path: `/tmp/buyer-initials-edit-${width}.png` });
   }
-  await field("input-edit-buyer-initials").fill("Changed");
+   await field("input-edit-buyer-initials").fill("ßßa");
+   assert.equal(await field("input-edit-buyer-initials").inputValue(), "SSSSA");
+   assert.equal(await field("button-save-edit").isDisabled(), true);
+   assert.match(await page.locator("#edit-buyer-initials-error").innerText(), /at most 4/);
+   await field("input-edit-buyer-initials").fill("");
+   await page.keyboard.insertText("chng");
+   assert.equal(await field("input-edit-buyer-initials").inputValue(), "CHNG");
   await field("button-save-edit").click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   const patch = writes.find(w => w.path === "/api/buyer-ledger/1")!;
-  assert.equal(patch.data.initials, "Changed");
+   assert.equal(patch.data.initials, "CHNG");
   assert.equal(patch.data.buyerName, "Roop Laxmi Traders");
   await page.reload({ waitUntil: "networkidle" });
   await openEdit("1");
-  assert.equal(await field("input-edit-buyer-initials").inputValue(), "Changed");
+   assert.equal(await field("input-edit-buyer-initials").inputValue(), "CHNG");
   await field("input-edit-buyer-initials").fill("");
   await field("button-save-edit").click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
@@ -115,7 +133,22 @@ try {
   await field("input-edit-buyer-initials").fill("unsaved");
   await field("button-cancel-edit").click();
   await openEdit("2");
-  assert.equal(await field("input-edit-buyer-initials").inputValue(), "");
+   assert.equal(await field("input-edit-buyer-initials").inputValue(), "LegacyLong");
+   assert.equal(await field("button-save-edit").isDisabled(), true);
+   assert.match(await page.locator("#edit-buyer-initials-error").innerText(), /at most 4/);
+   await field("button-cancel-edit").click();
+   assert.equal(buyers[1].initials, "LegacyLong");
+   await openEdit("2");
+   await field("input-edit-buyer-initials").fill("lgcy");
+   await field("button-save-edit").click();
+   await page.getByRole("dialog").waitFor({ state: "hidden" });
+   await openEdit("2");
+   assert.equal(await field("input-edit-buyer-initials").inputValue(), "LGCY");
+   await field("input-edit-buyer-initials").fill("");
+   await field("button-save-edit").click();
+   await page.getByRole("dialog").waitFor({ state: "hidden" });
+   await openEdit("2");
+   assert.equal(await field("input-edit-buyer-initials").inputValue(), "");
   await page.keyboard.press("Escape");
   await openEdit("1");
   assert.equal(await field("input-edit-buyer-initials").inputValue(), "");
@@ -124,10 +157,13 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await field("button-add-buyer").click();
   assert.equal(await page.getByLabel("संक्षिप्त नाम", { exact: true }).isVisible(), true);
+   await field("input-new-buyer-initials").fill("abcde");
+   assert.match(await page.locator("#new-buyer-initials-error").innerText(), /अधिकतम 4/);
+   await field("input-new-buyer-initials").fill("आर");
   // The Hindi label may wrap; both input controls must still line up.
   await layout("input-new-buyer-name", "input-new-buyer-initials");
   assert.deepEqual(errors, []);
-  console.log("Buyer initials browser checks passed: actual Add/Edit dialogs, layout at 1280/390/320, payloads, saved reload, clear, legacy, reset/cancel/dismiss, Hindi.");
+   console.log("Buyer initials browser checks passed: no examples, uppercase typing/paste, four-character validation, case expansion, legacy preservation/correction, actual Add/Edit dialogs, layout at 1280/390/320, payloads, saved reload, clear, reset/cancel/dismiss, Hindi.");
 } finally {
   await browser.close();
 }
