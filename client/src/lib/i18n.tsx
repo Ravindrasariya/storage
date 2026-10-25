@@ -841,6 +841,7 @@ export const translations: Translations = {
   showWithDuesOnly: { en: "Show With Dues Only", hi: "केवल बकाया वाले दिखाएं" },
   searchFarmers: { en: "Search farmers...", hi: "किसान खोजें..." },
   searchFarmer: { en: "Search farmer...", hi: "किसान खोजें..." },
+  searchDiscountFarmer: { en: "Search name, village or mobile...", hi: "नाम, गाँव या मोबाइल से खोजें..." },
   searchBuyer: { en: "Search buyer...", hi: "खरीदार खोजें..." },
   saved: { en: "Saved", hi: "सहेजा गया" },
   archived: { en: "Archived", hi: "संग्रहीत" },

@@ -24,6 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { DateFilterBar, dateMatchesFilter } from "@/components/DateFilterBar";
 import { ReceiptColdBills } from "@/components/ReceiptColdBills";
+import { DiscountFarmerPicker } from "@/components/DiscountFarmerPicker";
 import type { CashReceiptWithBillNumbers as BaseCashReceipt, Expense as BaseExpense, CashTransfer, CashOpeningBalance, OpeningReceivable, SalesHistory, PaymentStats, Discount, BankAccount, Liability } from "@shared/schema";
 
 type Expense = BaseExpense & { advanceRateOfInterest?: number; advanceEffectiveDate?: string | null };
@@ -4313,35 +4314,14 @@ export default function CashManagement() {
                 {expensePaymentMode === "discount" ? (
                   <>
                     {/* Discount Form */}
-                    <div className="space-y-2">
-                      <Label>Farmer *</Label>
-                      <Select 
-                        value={discountFarmerId} 
-                        onValueChange={(v) => {
+                    <DiscountFarmerPicker
+                      farmers={farmersWithAllDues}
+                      value={discountFarmerId}
+                      onSelect={(v) => {
                           setDiscountFarmerId(v);
                           setDiscountBuyerAllocations([]);
-                        }}
-                      >
-                        <SelectTrigger data-testid="select-discount-farmer">
-                          <SelectValue placeholder="Select farmer..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {farmersWithAllDues.filter(f => f.totalDue >= 1).map((f) => (
-                            <SelectItem 
-                              key={f.id}
-                              value={f.id}
-                            >
-                              <div className="flex flex-col">
-                                <span className="font-medium">{f.farmerName}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {f.village} | {f.contactNumber} | Due: ₹{formatCurrency(f.totalDue)}
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      }}
+                    />
 
                     <div className="space-y-2">
                       <Label>Discount Amount (₹) *</Label>
