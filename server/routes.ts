@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
 import { SaleBuyerAdjustmentError } from "./sale-edit-errors";
 import { db } from "./db";
-import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema, exitHistory } from "@shared/schema";
+import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema, exitHistory, buyerLedger } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
 import { saleRemarkSchema } from "@shared/sale-remarks";
 import { buyerInitialsSchema } from "@shared/buyer-initials";
@@ -5398,6 +5398,25 @@ export async function registerRoutes(
 
   // ==================== BUYER LEDGER ROUTES ====================
 
+  // Authentication identifies the tenant; it does not authorize an arbitrary
+  // buyer ID. Run this before any buyer-specific read, merge preview or write.
+  const requireBuyerOwnership = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const [buyer] = await db.select({ id: buyerLedger.id })
+        .from(buyerLedger)
+        .where(and(
+          eq(buyerLedger.id, req.params.id),
+          eq(buyerLedger.coldStorageId, getColdStorageId(req)),
+        ));
+      // Do not reveal whether a buyer exists in another cold storage.
+      if (!buyer) return res.status(404).json({ error: "Buyer not found" });
+      next();
+    } catch (error) {
+      console.error("Error checking buyer ownership:", error);
+      res.status(500).json({ error: "Failed to verify buyer access" });
+    }
+  };
+
   // Get buyer ledger with dues breakdown
   app.get("/api/buyer-ledger", requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
@@ -5450,7 +5469,7 @@ export async function registerRoutes(
   });
 
   // Check if buyer update would cause a merge
-  app.post("/api/buyer-ledger/:id/check-merge", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/buyer-ledger/:id/check-merge", requireAuth, requireEditAccess, requireBuyerOwnership, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -5463,7 +5482,7 @@ export async function registerRoutes(
   });
 
   // Update buyer details
-  app.patch("/api/buyer-ledger/:id", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+  app.patch("/api/buyer-ledger/:id", requireAuth, requireEditAccess, requireBuyerOwnership, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const { confirmMerge, ...updates } = req.body;
@@ -5483,7 +5502,7 @@ export async function registerRoutes(
   });
 
   // Toggle buyer flag
-  app.post("/api/buyer-ledger/:id/flag", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/buyer-ledger/:id/flag", requireAuth, requireEditAccess, requireBuyerOwnership, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const modifiedBy = req.authContext?.userName || 'system';
@@ -5496,7 +5515,7 @@ export async function registerRoutes(
   });
 
   // Archive buyer (soft delete)
-  app.post("/api/buyer-ledger/:id/archive", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/buyer-ledger/:id/archive", requireAuth, requireEditAccess, requireBuyerOwnership, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const modifiedBy = req.authContext?.userName || 'system';
@@ -5509,7 +5528,7 @@ export async function registerRoutes(
   });
 
   // Reinstate archived buyer
-  app.post("/api/buyer-ledger/:id/reinstate", requireAuth, requireEditAccess, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/buyer-ledger/:id/reinstate", requireAuth, requireEditAccess, requireBuyerOwnership, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const modifiedBy = req.authContext?.userName || 'system';
@@ -5522,7 +5541,7 @@ export async function registerRoutes(
   });
 
   // Get buyer edit history
-  app.get("/api/buyer-ledger/:id/history", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.get("/api/buyer-ledger/:id/history", requireAuth, requireBuyerOwnership, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const history = await storage.getBuyerLedgerEditHistory(id);
@@ -5533,7 +5552,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/buyer-ledger/:id/transactions", requireAuth, async (req: AuthenticatedRequest, res) => {
+  app.get("/api/buyer-ledger/:id/transactions", requireAuth, requireBuyerOwnership, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const fy = parseInt(req.query.fy as string, 10);

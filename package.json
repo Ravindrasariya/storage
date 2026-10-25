@@ -20,6 +20,7 @@
     "test:discount-farmers-browser": "tsx scripts/check-discount-farmers-browser.mts",
     "test:buyer-initials": "tsx scripts/check-buyer-initials.mts",
     "test:buyer-initials-browser": "tsx scripts/check-buyer-initials-browser.mts",
+    "test:buyer-tenant-access": "tsx scripts/check-buyer-tenant-access.mts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
