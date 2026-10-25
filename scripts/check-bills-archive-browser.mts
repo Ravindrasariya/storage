@@ -39,6 +39,43 @@ try {
     if (request.url().includes("/api/") && !["GET", "HEAD"].includes(request.method())) mutations.push(request.url());
   });
   await page.goto(`${base}/sales-history`, { waitUntil: "networkidle" });
+  async function checkRecycleBin(language: "en" | "hi", width: number) {
+    await page.setViewportSize({ width, height: 900 });
+    const button = page.getByTestId("tab-bills-recycle-bin");
+    assert.ok(await button.isVisible());
+    assert.equal((await button.innerText()).trim(), "", "Recycle Bin must be icon-only");
+    assert.equal(await button.getAttribute("title"), language === "hi" ? "रीसायकल बिन" : "Recycle Bin");
+    assert.equal(await button.getAttribute("aria-label"), language === "hi" ? "रीसायकल बिन खोलें" : "Open Recycle Bin");
+    const tabs = page.getByRole("tablist");
+    assert.equal(await tabs.getByRole("tab").count(), 3);
+    const buttonBox = (await button.boundingBox())!;
+    const tabsBox = (await tabs.boundingBox())!;
+    assert.ok(buttonBox.x - tabsBox.x - tabsBox.width >= 15 ||
+      buttonBox.y - tabsBox.y - tabsBox.height >= 15, "Recycle Bin needs a clear gap outside the tabs");
+    const iconBox = (await button.locator("svg").boundingBox())!;
+    assert.ok(Math.abs(iconBox.x + iconBox.width / 2 - buttonBox.x - buttonBox.width / 2) < 1, "Icon not horizontally centered");
+    assert.ok(Math.abs(iconBox.y + iconBox.height / 2 - buttonBox.y - buttonBox.height / 2) < 1, "Icon not vertically centered");
+    assert.ok(buttonBox.x >= 0 && buttonBox.x + buttonBox.width <= width, "Recycle Bin overflows on narrow screens");
+    assert.ok(tabsBox.x >= 0 && tabsBox.x + tabsBox.width <= width, "Tabs overflow on narrow screens");
+    // Below 390px the existing page outside this navigation can overflow; check
+    // this task's navigation separately rather than changing unrelated UI.
+    if (width >= 390) {
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Page overflows on narrow screens");
+    }
+  }
+  await mkdir("generated-artifacts", { recursive: true });
+  for (const width of [1440, 390, 320]) {
+    await checkRecycleBin("en", width);
+    await page.screenshot({ path: `generated-artifacts/recycle-bin-en-${width}.jpg` });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByTestId("tab-tracker").click();
+  await page.getByTestId("tab-sales").click();
+  const recycleButton = page.getByTestId("tab-bills-recycle-bin");
+  await recycleButton.focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("heading", { name: "Archive Sales History", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Return to Bills History" }).click();
   await page.getByTestId("tab-bills-recycle-bin").click();
   await page.getByRole("heading", { name: "Archive Sales History", exact: true }).waitFor();
   await page.locator("tbody tr").filter({ hasText: "archive-ui" }).waitFor();
@@ -115,6 +152,14 @@ try {
   assert.ok(await page.getByTestId("tab-tracker").isVisible());
   await page.evaluate(() => localStorage.setItem("language", "hi"));
   await page.reload({ waitUntil: "networkidle" });
+  for (const width of [1440, 390, 320]) {
+    await checkRecycleBin("hi", width);
+    await page.screenshot({ path: `generated-artifacts/recycle-bin-hi-${width}.jpg` });
+  }
+  await page.getByTestId("tab-bills-recycle-bin").focus();
+  await page.keyboard.press("Space");
+  await page.getByRole("heading", { name: "अभिलेख बिक्री इतिहास" }).waitFor();
+  await page.getByRole("button", { name: "बिल इतिहास पर वापस" }).click();
   await page.getByTestId("tab-bills-recycle-bin").click();
   await page.getByRole("heading", { name: "अभिलेख बिक्री इतिहास" }).waitFor();
   assert.ok(await page.getByRole("tab", { name: "अभिलेख निकासी रजिस्टर" }).isVisible());

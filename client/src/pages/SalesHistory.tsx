@@ -655,8 +655,8 @@ export default function SalesHistoryPage() {
               {language === "hi" ? "अभिलेख बिक्री इतिहास" : "Archive Sales History"}
             </Button>
           </div>
-        ) : <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sales" | "tracker" | "exits")}>
-          <TabsList className="flex-wrap h-auto gap-1">
+        ) : <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sales" | "tracker" | "exits")} className="flex flex-wrap items-center gap-4">
+          <TabsList className="max-w-full flex-wrap h-auto gap-1">
             <TabsTrigger
               value="exits"
               data-testid="tab-exits"
@@ -678,20 +678,19 @@ export default function SalesHistoryPage() {
             >
               <HandCoins className="h-4 w-4 mr-1 hidden sm:inline-block" />{t("farmerPaymentTracker")}
             </TabsTrigger>
+          </TabsList>
             <Button
               type="button"
               variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs sm:text-sm"
+              size="icon"
+              className="h-8 w-8 shrink-0"
               onClick={() => setArchiveView("sales")}
               aria-label={language === "hi" ? "रीसायकल बिन खोलें" : "Open Recycle Bin"}
               title={language === "hi" ? "रीसायकल बिन" : "Recycle Bin"}
               data-testid="tab-bills-recycle-bin"
             >
-              <Archive className="mr-1 h-4 w-4" />
-              <span className="hidden sm:inline">{language === "hi" ? "रीसायकल बिन" : "Recycle Bin"}</span>
+              <Archive className="h-4 w-4" aria-hidden="true" />
             </Button>
-          </TabsList>
         </Tabs>}
       </div>
 
