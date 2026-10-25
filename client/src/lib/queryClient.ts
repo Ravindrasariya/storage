@@ -104,6 +104,8 @@ export const getQueryFn: <T>(options: {
  */
 export function invalidateSaleSideEffects(client: QueryClient): void {
   const keys: string[] = [
+    "/api/bills-archive/sales",
+    "/api/bills-archive/exits",
     "/api/sales-history",
     "/api/sales-history/by-buyer",
     "/api/sales-history/buyer-transfers",

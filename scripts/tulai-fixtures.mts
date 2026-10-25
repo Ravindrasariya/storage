@@ -48,7 +48,7 @@ export async function cleanup() {
     (SELECT id FROM sales_history WHERE cold_storage_id=$1)`, [id]);
   await pool.query(`DELETE FROM lot_edit_history WHERE lot_id IN
     (SELECT id FROM lots WHERE cold_storage_id=$1)`, [id]);
-  for (const table of ["cash_receipt_applications", "cash_receipts", "expenses",
+  for (const table of ["reversed_sales_archive", "reversed_exits_archive", "cash_receipt_applications", "cash_receipts", "expenses",
     "exit_history", "sales_history", "lots", "chambers", "farmer_ledger",
     "buyer_ledger", "bank_accounts", "cash_transfers"]) {
     await pool.query(`DELETE FROM ${table} WHERE cold_storage_id IN ($1,$2)`, [id, `${id}_other`]);

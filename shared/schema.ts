@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, uniqueIndex, index, jsonb } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -323,6 +323,27 @@ export const exitHistory = pgTable("exit_history", {
 });
 
 // Cash Receipts - tracks inward cash/account payments from buyers
+// Separate audit snapshots only. Never join these into live accounting/numbering.
+export const reversedSalesArchive = pgTable("reversed_sales_archive", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  operatorName: text("operator_name"),
+  source: text("source").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+}, table => ({ tenantIndex: index("reversed_sales_archive_tenant_idx").on(table.coldStorageId) }));
+
+export const reversedExitsArchive = pgTable("reversed_exits_archive", {
+  id: varchar("id").primaryKey(),
+  coldStorageId: varchar("cold_storage_id").notNull(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  operatorName: text("operator_name"),
+  source: text("source").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+}, table => ({ tenantIndex: index("reversed_exits_archive_tenant_idx").on(table.coldStorageId) }));
+
 export const cashReceipts = pgTable("cash_receipts", {
   id: varchar("id").primaryKey(),
   transactionId: varchar("transaction_id"), // Format: CFYYYYMMDD + natural number (e.g., CF202601220)

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Filter, Package, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent } from "lucide-react";
+import { Search, X, Filter, Package, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent, Archive } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +24,7 @@ import { calculateTotalColdCharges } from "@shared/schema";
 import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency, formatCurrency } from "@/components/Currency";
 import { DateFilterBar, dateMatchesFilter } from "@/components/DateFilterBar";
+import { ArchiveRegisters } from "@/components/bills-archive/ArchiveRegisters";
 
 type FarmerRecord = {
   farmerName: string;
@@ -67,6 +68,7 @@ export default function SalesHistoryPage() {
   const [coldBillFilter, setColdBillFilter] = useState<string>(savedFilters?.coldBillFilter ?? "");
 
   const [activeTab, setActiveTab] = useState<"sales" | "tracker" | "exits">(savedFilters?.activeTab ?? "sales");
+  const [archiveView, setArchiveView] = useState<"sales" | "exits" | null>(null);
 
   // Persist filters + active tab to localStorage whenever any change
   useEffect(() => {
@@ -639,9 +641,21 @@ export default function SalesHistoryPage() {
     <div className="p-4 md:p-6 space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <h1 className="text-2xl font-bold" data-testid="text-page-title">
-          {activeTab === "tracker" ? t("farmerPaymentTracker") : activeTab === "exits" ? t("exitRegister") : t("salesHistory")}
+          {archiveView ? (archiveView === "exits" ? (language === "hi" ? "अभिलेख निकासी रजिस्टर" : "Archive Nikasi Register") : (language === "hi" ? "अभिलेख बिक्री इतिहास" : "Archive Sales History")) : activeTab === "tracker" ? t("farmerPaymentTracker") : activeTab === "exits" ? t("exitRegister") : t("salesHistory")}
         </h1>
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sales" | "tracker" | "exits")}>
+        {archiveView ? (
+          <div className="flex flex-wrap items-center gap-1 rounded-md bg-muted p-1" role="tablist" aria-label={language === "hi" ? "अभिलेख रजिस्टर" : "Archive registers"}>
+            <Button variant="ghost" size="sm" className="text-xs sm:text-sm" onClick={() => setArchiveView(null)} aria-label={language === "hi" ? "बिल इतिहास पर वापस" : "Return to Bills History"}>
+              {language === "hi" ? "वापस" : "Back"}
+            </Button>
+            <Button role="tab" aria-selected={archiveView === "exits"} variant={archiveView === "exits" ? "default" : "ghost"} size="sm" className="text-xs sm:text-sm" onClick={() => setArchiveView("exits")}>
+              {language === "hi" ? "अभिलेख निकासी रजिस्टर" : "Archive Nikasi Register"}
+            </Button>
+            <Button role="tab" aria-selected={archiveView === "sales"} variant={archiveView === "sales" ? "default" : "ghost"} size="sm" className="text-xs sm:text-sm" onClick={() => setArchiveView("sales")}>
+              {language === "hi" ? "अभिलेख बिक्री इतिहास" : "Archive Sales History"}
+            </Button>
+          </div>
+        ) : <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sales" | "tracker" | "exits")}>
           <TabsList className="flex-wrap h-auto gap-1">
             <TabsTrigger
               value="exits"
@@ -664,11 +678,26 @@ export default function SalesHistoryPage() {
             >
               <HandCoins className="h-4 w-4 mr-1 hidden sm:inline-block" />{t("farmerPaymentTracker")}
             </TabsTrigger>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs sm:text-sm"
+              onClick={() => setArchiveView("sales")}
+              aria-label={language === "hi" ? "रीसायकल बिन खोलें" : "Open Recycle Bin"}
+              title={language === "hi" ? "रीसायकल बिन" : "Recycle Bin"}
+              data-testid="tab-bills-recycle-bin"
+            >
+              <Archive className="mr-1 h-4 w-4" />
+              <span className="hidden sm:inline">{language === "hi" ? "रीसायकल बिन" : "Recycle Bin"}</span>
+            </Button>
           </TabsList>
-        </Tabs>
+        </Tabs>}
       </div>
 
-      {activeTab === "tracker" ? (
+      {archiveView ? (
+        <ArchiveRegisters key={archiveView} kind={archiveView} />
+      ) : activeTab === "tracker" ? (
         <FarmerPaymentTracker />
       ) : activeTab === "exits" ? (
         <ExitRegister />

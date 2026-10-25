@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { eq, and, or, like, ilike, desc, asc, sql, gte, lte, inArray, isNull, type SQL } from "drizzle-orm";
 import { db } from "./db";
 import { SaleBuyerAdjustmentError } from "./sale-edit-errors";
+import { deleteSaleWithArchive, reverseExitsWithArchive } from "./bills-archive";
 import {
   coldStorages,
   coldStorageUsers,
@@ -322,7 +323,7 @@ export interface IStorage {
   getSalesByColdStorageBillNumber(coldStorageId: string, billNumber: number, entryYear: number): Promise<SalesHistoryWithLastPayment[]>;
   markSaleAsPaid(saleId: string): Promise<SalesHistory | undefined>;
   getSalesYears(coldStorageId: string): Promise<number[]>;
-  reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }>;
+  reverseSale(saleId: string, operatorName?: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }>;
   updateSalesHistoryForTransfer(saleId: string, updates: {
     transferToBuyerLedgerId?: string | null;
     clearanceType: string;
@@ -389,7 +390,7 @@ export interface IStorage {
   }): Promise<number>;
   getExitRegister(coldStorageId: string, filters: { year?: number; months?: number[]; days?: number[]; farmerName?: string; farmerContact?: string; buyerName?: string; village?: string; bagType?: string; coldStorageBillNumber?: number }): Promise<ExitRegisterResponse>;
   getExitRegisterYears(coldStorageId: string): Promise<number[]>;
-  reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }>;
+  reverseLatestExit(salesHistoryId: string, operatorName?: string): Promise<{ success: boolean; message?: string }>;
   updateExitsByBillNumber(
     coldStorageId: string,
     oldBillNumber: number,
@@ -2639,7 +2640,7 @@ export class DatabaseStorage implements IStorage {
     return uniqueYears;
   }
 
-  async reverseSale(saleId: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }> {
+  async reverseSale(saleId: string, operatorName?: string): Promise<{ success: boolean; lot?: Lot; message?: string; errorType?: string; buyerName?: string; coldStorageId?: string }> {
     const sale = await db.select().from(salesHistory).where(eq(salesHistory.id, saleId)).then(rows => rows[0]);
     if (!sale) {
       return { success: false, message: "Sale not found", errorType: "not_found" };
@@ -2709,6 +2710,21 @@ export class DatabaseStorage implements IStorage {
       return { success: false, message: "Associated lot not found", errorType: "not_found" };
     }
 
+    // Read-only capture before the existing reversal changes any source data.
+    // The archive helpers couple inserts to the actual delete/soft-reversal;
+    // no stock, charge, payment, or bill-number inputs below are changed.
+    const [archiveSales, archiveRegister, archiveExits] = await Promise.all([
+      this.getSalesHistory(sale.coldStorageId, {}),
+      this.getExitRegister(sale.coldStorageId, {}),
+      this.getExitsForSale(saleId),
+    ]);
+    const archiveSale = archiveSales.find(row => row.id === saleId) ?? sale;
+    const saleSnapshot = { sale, lot, exit: null, display: archiveSale };
+    const exitSnapshots = Object.fromEntries(archiveExits.map(exit => [exit.id, {
+      sale: archiveSale, lot, exit,
+      display: archiveRegister.rows.find(row => row.exitId === exit.id) ?? {},
+    }]));
+
     const quantityToRestore = sale.quantitySold;
     const paidToReverse = sale.paidAmount || 0;
     const dueToReverse = sale.dueAmount || 0;
@@ -2758,26 +2774,23 @@ export class DatabaseStorage implements IStorage {
       lotUpdateData.baseColdChargesBilled = 0;
     }
 
-    const [updatedLot] = await db.update(lots).set(lotUpdateData).where(eq(lots.id, sale.lotId)).returning();
+    // Persistence boundary only: an archive failure must not leave the
+    // existing stock update/cascade half-applied. All computed inputs above
+    // and the source-table write predicates/values remain unchanged.
+    const { updatedLot, cascadedExitsReversed, cascadedBagsRestored } = await db.transaction(async tx => {
+      const [updatedLot] = await tx.update(lots).set(lotUpdateData).where(eq(lots.id, sale.lotId)).returning();
 
-    // Cascade-reverse any non-reversed exits associated with this sale so they
-    // do not appear orphaned in the Exit Register or in raw exit_history reads
-    // after the sale row is hard-deleted below. Mirrors reverseLatestExit's
-    // soft-flag pattern (isReversed=1, reversedAt=now()) to preserve audit.
-    const cascadedExitsResult = await db.update(exitHistory)
-      .set({ isReversed: 1, reversedAt: new Date() })
-      .where(and(
-        eq(exitHistory.salesHistoryId, saleId),
-        eq(exitHistory.isReversed, 0),
-      ))
-      .returning({ id: exitHistory.id, bagsExited: exitHistory.bagsExited });
-    const cascadedExitsReversed = cascadedExitsResult.length;
-    const cascadedBagsRestored = cascadedExitsResult.reduce(
-      (sum, e) => sum + e.bagsExited,
-      0,
-    );
+      // Same non-reversed exit cascade as before, with separate audit copies.
+      const cascadedExitsResult = await reverseExitsWithArchive(saleId, exitSnapshots, operatorName, undefined, tx);
+      const cascadedExitsReversed = cascadedExitsResult.length;
+      const cascadedBagsRestored = cascadedExitsResult.reduce(
+        (sum, e) => sum + e.bagsExited,
+        0,
+      );
 
-    await db.delete(salesHistory).where(eq(salesHistory.id, saleId));
+      await deleteSaleWithArchive(saleId, saleSnapshot, operatorName, tx);
+      return { updatedLot, cascadedExitsReversed, cascadedBagsRestored };
+    });
 
     await this.createEditHistory({
       lotId: lot.id,
@@ -4751,7 +4764,7 @@ export class DatabaseStorage implements IStorage {
     return Number(row?.total ?? 0);
   }
 
-  async reverseLatestExit(salesHistoryId: string): Promise<{ success: boolean; message?: string }> {
+  async reverseLatestExit(salesHistoryId: string, operatorName?: string): Promise<{ success: boolean; message?: string }> {
     // Get the latest non-reversed exit
     const exits = await db.select()
       .from(exitHistory)
@@ -4767,13 +4780,19 @@ export class DatabaseStorage implements IStorage {
 
     const latestExit = exits[0];
 
-    // Mark the exit as reversed
-    await db.update(exitHistory)
-      .set({ 
-        isReversed: 1, 
-        reversedAt: new Date() 
-      })
-      .where(eq(exitHistory.id, latestExit.id));
+    const [archiveSales, archiveRegister, archiveLot] = await Promise.all([
+      this.getSalesHistory(latestExit.coldStorageId, {}),
+      this.getExitRegister(latestExit.coldStorageId, {}),
+      this.getLot(latestExit.lotId),
+    ]);
+    // Same selected exit and soft flag as before; only adds its immutable copy.
+    await reverseExitsWithArchive(salesHistoryId, {
+      [latestExit.id]: {
+        sale: archiveSales.find(row => row.id === salesHistoryId) ?? null,
+        exit: latestExit, lot: archiveLot ?? null,
+        display: archiveRegister.rows.find(row => row.exitId === latestExit.id) ?? {},
+      },
+    }, operatorName, latestExit.id);
 
     // Refresh denormalised exit info on the parent sale row
     await this.syncSaleExitSummary(salesHistoryId);

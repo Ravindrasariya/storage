@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, generateSequentialId } from "./storage";
 import { SaleBuyerAdjustmentError } from "./sale-edit-errors";
+import { getBillsArchive } from "./bills-archive";
 import { db } from "./db";
 import { lotFormSchema, insertChamberFloorSchema, Lot, insertAssetSchema, insertLiabilitySchema, insertLiabilityPaymentSchema, exitHistory, buyerLedger } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
@@ -316,6 +317,32 @@ export async function registerRoutes(
 
   // Initialize default data in database
   await storage.initializeDefaultData();
+
+  // Archive-only read surface; deliberately never passed to live register,
+  // bill-allocation, export, or accounting queries. No archive write routes.
+  app.get("/api/bills-archive/:kind", requireAuth, async (req: AuthenticatedRequest, res) => {
+    if (req.params.kind !== "sales" && req.params.kind !== "exits") {
+      return res.status(404).json({ error: "Archive not found" });
+    }
+    try {
+      res.json(await getBillsArchive(getColdStorageId(req), req.params.kind));
+    } catch (error) {
+      console.error("Archive read failed:", error);
+      res.status(500).json({ error: "Failed to fetch archive" });
+    }
+  });
+  app.get("/api/bills-archive/:kind/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
+    if (req.params.kind !== "sales" && req.params.kind !== "exits") {
+      return res.status(404).json({ error: "Archive not found" });
+    }
+    try {
+      const rows = await getBillsArchive(getColdStorageId(req), req.params.kind, req.params.id);
+      if (!rows.length) return res.status(404).json({ error: "Archived record not found" });
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch archived record" });
+    }
+  });
 
   // Dashboard stats
   app.get("/api/dashboard/stats", requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -3073,7 +3100,7 @@ export async function registerRoutes(
       const farmerName = sale.farmerName;
       const village = sale.village;
       
-      const result = await storage.reverseSale(req.params.id);
+      const result = await storage.reverseSale(req.params.id, req.authContext?.userName);
       if (!result.success) {
         const statusCode = result.errorType === "not_found" ? 404 : 400;
         return res.status(statusCode).json({ error: result.message, errorType: result.errorType });
@@ -3395,7 +3422,7 @@ export async function registerRoutes(
       if (!sale) {
         return res.status(404).json({ error: "Sale not found" });
       }
-      const result = await storage.reverseLatestExit(req.params.id);
+      const result = await storage.reverseLatestExit(req.params.id, req.authContext?.userName);
       if (!result.success) {
         return res.status(400).json({ error: result.message });
       }

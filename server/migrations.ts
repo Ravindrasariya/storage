@@ -3,6 +3,7 @@ import { db } from "./db";
 import { cashReceiptApplications, migrations } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { storage } from "./storage";
+import { initializeBillsArchive } from "./bills-archive";
 
 interface Migration {
   name: string;
@@ -25,6 +26,10 @@ interface Migration {
 // ============================================================
 
 const MIGRATIONS: Migration[] = [
+  {
+    name: "2026-10-25_add_separate_reversal_archives",
+    up: initializeBillsArchive,
+  },
   {
     name: "2026-10-25_add_buyer_initials",
     up: async () => {

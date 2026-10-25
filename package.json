@@ -21,6 +21,8 @@
     "test:buyer-initials": "tsx scripts/check-buyer-initials.mts",
     "test:buyer-initials-browser": "tsx scripts/check-buyer-initials-browser.mts",
     "test:buyer-tenant-access": "tsx scripts/check-buyer-tenant-access.mts",
+    "test:bills-archive": "tsx scripts/check-bills-archive.mts",
+    "test:bills-archive-browser": "tsx scripts/check-bills-archive-browser.mts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
