@@ -143,7 +143,6 @@ export default function StockRegister() {
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
   const [saleLotInfo, setSaleLotInfo] = useState<Lot | null>(null);
-  const [editingSaudaId, setEditingSaudaId] = useState<string | null>(null);
   const [masterNikasiOpen, setMasterNikasiOpen] = useState(false);
   const [masterNikasiCtx, setMasterNikasiCtx] = useState<{
     farmerName: string; village: string; contactNumber: string;
@@ -172,13 +171,6 @@ export default function StockRegister() {
   };
 
   const handleOpenSale = (lot: Lot) => {
-    setEditingSaudaId(null);
-    setSaleLotInfo(lot);
-    setSaleDialogOpen(true);
-  };
-
-  const handleEditSauda = (lot: Lot, saudaId: string) => {
-    setEditingSaudaId(saudaId);
     setSaleLotInfo(lot);
     setSaleDialogOpen(true);
   };
@@ -2584,7 +2576,6 @@ export default function StockRegister() {
                     setPrintReceiptDialogOpen(true);
                   }}
                   onSale={handleOpenSale}
-                  onEditSauda={handleEditSauda}
                   onExitSale={handleExitSale}
                   onPrintSale={handlePrintSale}
                   onEditSale={(saleId) => {
@@ -3171,12 +3162,10 @@ export default function StockRegister() {
       <SaleDialog
         lot={saleLotInfo}
         open={saleDialogOpen}
-        saudaId={editingSaudaId}
         onOpenChange={(open) => {
           setSaleDialogOpen(open);
           if (!open) {
             setSaleLotInfo(null);
-            setEditingSaudaId(null);
           }
         }}
       />

@@ -21,11 +21,11 @@ Disconnect the old individual-sale backend wiring from Sauda. Submit's only purp
 
 **How to apply:** Do not route Sauda through actual-sale creation with zero charges or hidden bills. Do not invoke stock/ledger/payment/FIFO/bill mutations or change existing buyer initials. Preserve shared actual-sale functions, existing tables, Master Nikasi, historical sales, and Sale Edit.
 
-The promise dialog has only bag quantity (maximum current remaining bags), existing buyer selection, Cancel, and Submit.
+The promise dialog has only bag quantity, existing buyer selection, Cancel, and Submit.
 
 **Why:** The user explicitly reduced the current dialog to these inputs and actions using screenshots.
 
-**How to apply:** Validate positive whole-number quantity without reserving or reducing stock. Keep the dialog inputs/actions minimal; the later user-requested confirmed delete icon belongs at the end of the saved Sauda entry.
+**How to apply:** Validate positive whole-number quantity without stock/remaining-bag comparisons, reservations or stock reductions under the later manual-decision rule. Keep the dialog minimal; the confirmed delete icon belongs at the end of the saved Sauda entry.
 
 Sale Edit works as is with no impact from the promise change; new actual sales edited there will be Master Nikasi-led sales. Previously created actual individual-dialog sales remain actual sales.
 
@@ -56,3 +56,9 @@ Give each saved Sauda entry a delete icon at the end. Ask “Are you sure you wa
 **Why:** The user explicitly stopped the earlier approach: “No Check for overall Sauda or Sale bags, No niasi time check, let user take the decisions.”
 
 **How to apply:** This supersedes aggregate caps, mandatory selection/conversion, automatic consumption and clearing at Master Nikasi. Keep Saudas independent and manually managed; preserve existing actual-sale safeguards and all non-financial isolation rules.
+
+Keep Sauda delete icons separate from initials, at the end of each Sauda row in the action column, vertically aligned with Print Bill controls on sold rows.
+
+**Why:** The user explicitly corrected the initials-attached placement and supplied a screenshot.
+
+**How to apply:** Give each Sauda its own right-side row, with informational initials in MR and the delete control in the trailing action cell; do not attach delete buttons to the initials badge.

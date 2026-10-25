@@ -73,16 +73,6 @@ interface RowState {
   // typed; typing here cascades to gradingCharges (perBag × soldBags)
   // so the total cell auto-fills. Operator can still override the total.
   gradingPerBag: string;
-  saudaSelections: Record<string, string>;
-}
-
-interface SaudaEntry {
-  id: string;
-  lotId: string;
-  buyerLedgerId: string;
-  buyerName: string;
-  buyerInitials: string | null;
-  quantity: number;
 }
 
 interface MasterNikasiResult {
@@ -117,12 +107,6 @@ interface MasterNikasiResult {
     // Task #403 — this exit row's true created timestamp, used as the
     // `asOf` cutoff for resolving its point-in-time Balance.
     exitCreatedAt: string;
-    saudaSources?: Array<{
-      saudaId: string;
-      buyerLedgerId: string;
-      buyerName: string;
-      quantity: number;
-    }>;
   }>;
   farmer: {
     farmerName: string;
@@ -160,7 +144,6 @@ const newRow = (lotNo = "", marka = ""): RowState => ({
   extraHammaliPerBag: "",
   gradingCharges: "",
   gradingPerBag: "",
-  saudaSelections: {},
 });
 
 function fmt(n: number): string {
@@ -184,18 +167,6 @@ export function MasterNikasiDialog({
   const { data: coldStorage } = useQuery<ColdStorage>({
     queryKey: ["/api/cold-storage"],
   });
-  const {
-    data: saudaEntries,
-    isLoading: saudasLoading,
-    isFetching: saudasFetching,
-    isError: saudasError,
-    refetch: refetchSaudas,
-  } = useQuery<SaudaEntry[]>({
-    queryKey: ["/api/sauda"],
-    enabled: open,
-    staleTime: 0,
-  });
-
   const { data: farmerLedgerData } = useQuery<{ farmers: Array<{ id: string; entityType: string; customColdChargeRate: number | null; customHammaliRate: number | null }> }>({
     queryKey: ["/api/farmer-ledger"],
   });
@@ -546,41 +517,6 @@ export function MasterNikasiDialog({
   const grandTotal = rowTotals.reduce((s, r) => s + r.total, 0);
   const totalExitBags = rowTotals.reduce((s, r) => s + r.exitBags, 0);
   const totalSoldBags = rowTotals.reduce((s, r) => s + r.soldBags, 0);
-  const getSaudaAllocation = (row: RowState, lwc: LotWithCharges | undefined, soldBags: number) => {
-    if (!lwc || !saudaEntries) {
-      return { valid: false, minimum: 0, selectedTotal: 0, unassigned: 0, selected: [] as Array<{ saudaId: string; quantity: number }>, error: "Sauda list is not available. Retry before submitting." };
-    }
-    const lotSaudas = saudaEntries.filter((entry) => entry.lotId === lwc.lot.id);
-    const openTotal = lotSaudas.reduce((sum, entry) => sum + (Number(entry.quantity) || 0), 0);
-    const unassigned = lwc.lot.remainingSize - openTotal;
-    const minimum = Math.max(0, soldBags - unassigned);
-    const knownIds = new Set(lotSaudas.map((entry) => entry.id));
-    let invalidEntry = false;
-    const selected: Array<{ saudaId: string; quantity: number }> = [];
-    for (const [saudaId, raw] of Object.entries(row.saudaSelections)) {
-      if (raw === "") continue;
-      const quantity = Number(raw);
-      const entry = lotSaudas.find((candidate) => candidate.id === saudaId);
-      if (!knownIds.has(saudaId) || !entry || !Number.isInteger(quantity) || quantity <= 0 || quantity > entry.quantity) {
-        invalidEntry = true;
-        continue;
-      }
-      selected.push({ saudaId, quantity });
-    }
-    const selectedTotal = selected.reduce((sum, selection) => sum + selection.quantity, 0);
-    const duplicatedIds = new Set(lotSaudas.map((entry) => entry.id)).size !== lotSaudas.length;
-    let error: string | null = null;
-    if (unassigned < 0) error = "Open Sauda quantities exceed current remaining bags. Refresh the list.";
-    else if (duplicatedIds) error = "Duplicate Sauda entries were returned. Refresh the list.";
-    else if (invalidEntry) error = "A selected Sauda changed or is no longer available. Refresh and review your quantities.";
-    else if (selectedTotal > soldBags) error = `Selected Sauda bags (${selectedTotal}) cannot exceed sold bags (${soldBags}).`;
-    else if (selectedTotal < minimum) error = `Select at least ${minimum} Sauda bag(s); only ${unassigned} bag(s) are unassigned.`;
-    return { valid: error === null, minimum, selectedTotal, unassigned, selected, error };
-  };
-  const rowSaudaAllocations = rows.map((row, index) =>
-    getSaudaAllocation(row, resolveLot(row.lotNo, row.marka), rowTotals[index]?.soldBags ?? 0),
-  );
-
   // Task #395 — Gate Cut isn't valid once any row in the batch carries
   // Extra Hammali/Bag, Grading/Bag, or a Grading amount, so both Gate Cut
   // options are disabled in that case. Checked directly against the raw
@@ -632,14 +568,10 @@ export function MasterNikasiDialog({
       if (!parsedRemark.success) throw new Error(t("saleRemarkInvalid"));
       setBuyerError(null);
       if (!farmerLedgerId) throw new Error("Missing farmer ledger");
-      if (saudasLoading || saudasError || !saudaEntries) {
-        throw new Error("Open Sauda could not be verified. Retry loading Sauda before submitting.");
-      }
       const cleaned: Array<{
         lotId: string;
         exitBags: number;
         soldBags: number;
-        saudaSelections?: Array<{ saudaId: string; quantity: number }>;
         chargeBasis: "actual" | "totalRemaining";
         kataCharges: number;
         tulaiCharges: number;
@@ -684,8 +616,6 @@ export function MasterNikasiDialog({
         if (sold > lwc.lot.remainingSize) {
           throw new Error(`Lot ${lwc.lot.lotNo}: only ${lwc.lot.remainingSize} bag(s) remaining`);
         }
-        const allocation = getSaudaAllocation(r, lwc, sold);
-        if (!allocation.valid) throw new Error(`Lot ${lwc.lot.lotNo}: ${allocation.error}`);
         const key = `${r.lotNo}::${canonMarka(r.marka)}`;
         if (seenKey.has(key)) throw new Error(t("duplicateReceipt"));
         seenKey.add(key);
@@ -694,7 +624,6 @@ export function MasterNikasiDialog({
           lotId: lwc.lot.id,
           exitBags: bags,
           soldBags: sold,
-          ...(allocation.selected.length > 0 ? { saudaSelections: allocation.selected } : {}),
           // Per-row basis (defaults to "actual" via newRow). When the
           // lot's baseColdChargesBilled flag is already 1 the server
           // forces this back to "actual" defensively, so we just send
@@ -816,9 +745,6 @@ export function MasterNikasiDialog({
       // cash-flow, buyer-ledger, farmer-ledger, bank-accounts — covering
       // the inline-payment side effects too.
       invalidateSaleSideEffects(queryClient);
-      // Master Nikasi is the only actual-sale path that clears lot-level
-      // Sauda markers; refresh only the isolated marker resource here.
-      queryClient.invalidateQueries({ queryKey: ["/api/sauda"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers"] });
@@ -847,11 +773,6 @@ export function MasterNikasiDialog({
     onError: (err: Error) => {
       const msg = err.message || "Failed";
       const body = (err as Error & { body?: { field?: string } }).body;
-      if (/sauda|promise/i.test(msg) || body?.field?.toLowerCase().includes("sauda")) {
-        // Keep every typed quantity in place while refreshing the server view;
-        // operators can correct the now-stale allocation without re-entry.
-        void refetchSaudas();
-      }
       // CS bill # is a single shared field now — no row mapping. Its
       // server error and the shared exit-bill error both render under
       // the matching shared input via substring on the message.
@@ -881,7 +802,7 @@ export function MasterNikasiDialog({
     printNikasiReceipt(printRef.current.innerHTML, t("masterNikasi"));
   };
 
-  const validRowCount = rows.filter((r, rowIndex) => {
+  const validRowCount = rows.filter((r) => {
     if (!r.lotNo || !r.marka) return false;
     const bags = Number(r.exitBags);
     if (!Number.isFinite(bags) || bags <= 0) return false;
@@ -902,11 +823,9 @@ export function MasterNikasiDialog({
     }
     if (sold < bags) return false;
     if (sold > lwc.lot.remainingSize) return false;
-    if (!rowSaudaAllocations[rowIndex]?.valid) return false;
     return true;
   }).length;
-  const canSubmit = !!farmerLedgerId && !saudasLoading && !saudasError && !!saudaEntries &&
-    validRowCount > 0 && !duplicateKey && !submitMutation.isPending && !result;
+  const canSubmit = !!farmerLedgerId && validRowCount > 0 && !duplicateKey && !submitMutation.isPending && !result;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1134,17 +1053,6 @@ export function MasterNikasiDialog({
             {entryYearError}
           </p>
         )}
-        {!result && saudasError && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm" role="alert" data-testid="error-mn-sauda-load">
-            <span>Could not verify open Sauda / खुले सौदे सत्यापित नहीं हो सके. Your entries are kept / आपकी प्रविष्टियाँ सुरक्षित हैं.</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => void refetchSaudas()} disabled={saudasFetching}>
-              {saudasFetching ? "Refreshing… / ताज़ा हो रहा है…" : "Retry / पुनः प्रयास"}
-            </Button>
-          </div>
-        )}
-        {!result && saudasFetching && !saudasError && (
-          <div className="h-8 animate-pulse rounded-md bg-muted/50" role="status" aria-label="Loading Sauda / सौदा लोड हो रहा है" />
-        )}
         {/* Same problem, caught before submit. The rows on screen already
             carry their lots' entry dates, so there's no reason to make the
             operator fill in the whole batch first. This also explains why
@@ -1190,7 +1098,6 @@ export function MasterNikasiDialog({
                   <th className="p-2 text-right">{t("remainingBagsShort")}</th>
                   <th className="p-2 text-right">{t("exitBags")}</th>
                   <th className="p-2 text-right">{t("soldBags") || "Sold Bags"}</th>
-                  <th className="p-2 text-left">Sauda allocation / सौदा आवंटन</th>
                   <th className="p-2 text-left">{t("chargeBasis")}</th>
                   <th className="p-2 text-right">{t("baseColdCharge")}</th>
                   <th className="p-2 text-center">{t("kataChargesShort")}</th>
@@ -1218,8 +1125,6 @@ export function MasterNikasiDialog({
                   const soldExceeds = !!lwc && soldEntered && soldRaw > remaining;
                   const soldBelowExit = soldEntered && totals.exitBags > 0 && soldRaw < totals.exitBags;
                   const soldInvalid = soldExceeds || soldBelowExit;
-                  const rowAllocation = rowSaudaAllocations[idx];
-                  const lotSaudas = lwc ? (saudaEntries ?? []).filter((entry) => entry.lotId === lwc.lot.id) : [];
 
                   // Receipt # options: distinct lotNos. If a marka is already
                   // chosen but no Receipt yet, narrow to lotNos that have that
@@ -1279,10 +1184,9 @@ export function MasterNikasiDialog({
                             updateRow(r.rowKey, {
                               lotNo: newLotNo,
                               marka: nextMarka,
-                              saudaSelections: newLotNo === r.lotNo && nextMarka === r.marka ? r.saudaSelections : {},
                             });
                           }}
-                          onClear={() => updateRow(r.rowKey, { lotNo: "", marka: "", saudaSelections: {} })}
+                          onClear={() => updateRow(r.rowKey, { lotNo: "", marka: "" })}
                           searchPlaceholder={t("searchReceipt") || "Search Receipt #"}
                           emptyText={t("noReceiptFound") || "No matching Receipt #"}
                           clearLabel={t("clear") || "Clear"}
@@ -1304,7 +1208,6 @@ export function MasterNikasiDialog({
                             updateRow(r.rowKey, {
                               marka: newMarkaSel,
                               lotNo: stillValid ? r.lotNo : "",
-                              saudaSelections: stillValid && newMarkaSel === r.marka ? r.saudaSelections : {},
                             });
                           }}
                           disabled={!!result || markaOptionsForRow.length === 0}
@@ -1362,78 +1265,6 @@ export function MasterNikasiDialog({
                                 : undefined
                           }
                         />
-                      </td>
-                      <td className="p-2 min-w-[230px]">
-                        {saudasLoading || saudasFetching ? (
-                          <div className="h-8 animate-pulse rounded bg-muted/50" aria-label="Loading Sauda" />
-                        ) : saudasError || !saudaEntries ? (
-                          <span className="text-[11px] text-destructive">Sauda unavailable / सौदा उपलब्ध नहीं</span>
-                        ) : !lwc ? (
-                          <span className="text-muted-foreground">Select a lot / लॉट चुनें</span>
-                        ) : (
-                          <div className="space-y-1.5">
-                            <div className="flex flex-wrap justify-between gap-x-2 text-[10px] text-muted-foreground">
-                              <span>Unassigned / बिना सौदा: {Math.max(0, rowAllocation.unassigned)}</span>
-                              <span>Selected / चुना: {rowAllocation.selectedTotal}</span>
-                            </div>
-                            {lotSaudas.length === 0 ? (
-                              <p className="text-[10px] text-muted-foreground">No open Sauda / कोई खुला सौदा नहीं</p>
-                            ) : lotSaudas.map((entry) => (
-                              <label key={entry.id} className="flex items-center justify-between gap-2 rounded bg-muted/30 px-1.5 py-1">
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium" title={entry.buyerName}>{entry.buyerName}</span>
-                                  <span className="block text-[10px] text-muted-foreground">{entry.quantity} available / उपलब्ध</span>
-                                </span>
-                                <Input
-                                  type="number"
-                                  inputMode="numeric"
-                                  min={1}
-                                  max={entry.quantity}
-                                  step={1}
-                                  value={r.saudaSelections[entry.id] ?? ""}
-                                  onChange={(event) => updateRow(r.rowKey, {
-                                    saudaSelections: { ...r.saudaSelections, [entry.id]: event.target.value },
-                                  })}
-                                  disabled={!!result || !lwc || saudasError}
-                                  aria-label={`${entry.buyerName} Sauda bags / सौदा बैग`}
-                                  className="h-7 w-16 text-right"
-                                  data-testid={`input-mn-sauda-${idx}-${entry.id}`}
-                                />
-                              </label>
-                            ))}
-                            {Object.entries(r.saudaSelections)
-                              .filter(([saudaId, raw]) => raw !== "" && !lotSaudas.some((entry) => entry.id === saudaId))
-                              .map(([saudaId, raw]) => (
-                                <div key={`stale-${saudaId}`} className="flex items-center justify-between gap-2 rounded border border-destructive/40 px-1.5 py-1 text-[10px]" role="alert">
-                                  <span>Unavailable Sauda · {raw} bags / अनुपलब्ध सौदा · {raw} बैग</span>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 px-1 text-destructive"
-                                    aria-label="Clear unavailable Sauda selection / अनुपलब्ध सौदा चयन हटाएँ"
-                                    onClick={() => {
-                                      const next = { ...r.saudaSelections };
-                                      delete next[saudaId];
-                                      updateRow(r.rowKey, { saudaSelections: next });
-                                    }}
-                                  >
-                                    Clear
-                                  </Button>
-                                </div>
-                              ))}
-                            {rowAllocation.minimum > 0 && (
-                              <p className="text-[10px] text-muted-foreground">
-                                Select at least {rowAllocation.minimum} / कम से कम {rowAllocation.minimum} चुनें
-                              </p>
-                            )}
-                            {rowAllocation.error && (r.exitBags !== "" || r.soldBags !== "") && (
-                              <p className="text-[10px] text-destructive" role="alert" data-testid={`error-mn-sauda-row-${idx}`}>
-                                {rowAllocation.error}
-                              </p>
-                            )}
-                          </div>
-                        )}
                       </td>
                       <td className="p-2 w-[136px]">
                         {/* Per-row charge basis: mirrors the partial-sale
@@ -1565,7 +1396,7 @@ export function MasterNikasiDialog({
                   <td className="p-2" colSpan={3}>{t("total") || "Total"}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-bags">{totalExitBags}</td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-total-sold">{totalSoldBags}</td>
-                  {/* colSpan covers [Sauda, chargeBasis, base, kata, tulai, extra, gradingPerBag, grading] */}
+                  {/* Footer spans the charge columns. */}
                   <td className="p-2" colSpan={8}></td>
                   <td className="p-2 text-right font-mono" data-testid="text-mn-grand-total">{fmt(grandTotal)}</td>
                   <td></td>
@@ -1591,31 +1422,6 @@ export function MasterNikasiDialog({
           </div>
         )}
 
-        {result && (
-          <section className="space-y-2 rounded-md border border-sky-700/20 bg-sky-50/70 p-3 text-sm dark:border-sky-300/20 dark:bg-sky-950/25" data-testid="section-mn-sauda-sources">
-            <h3 className="font-semibold">Sauda source attribution / सौदा स्रोत विवरण</h3>
-            <p className="text-xs text-muted-foreground">
-              Final sale buyer / अंतिम बिक्री खरीदार: <span className="font-medium text-foreground">{result.buyer?.buyerName ?? "Self"}</span>
-            </p>
-            {result.sales.filter((sale) => (sale.saudaSources ?? []).length > 0).length === 0 ? (
-              <p className="text-xs text-muted-foreground">No Sauda quantities converted / कोई सौदा मात्रा बिक्री में शामिल नहीं हुई</p>
-            ) : (
-              result.sales.filter((sale) => (sale.saudaSources ?? []).length > 0).map((sale) => (
-                <div key={sale.saleId} className="space-y-1 border-t border-sky-700/15 pt-2" data-testid={`mn-sauda-source-sale-${sale.saleId}`}>
-                  <div className="font-medium">{t("receiptNo") || "Receipt"} {sale.lotNo}{sale.marka ? ` · ${sale.marka}` : ""}</div>
-                  <ul className="space-y-0.5 text-xs text-muted-foreground">
-                    {(sale.saudaSources ?? []).map((source) => (
-                      <li key={source.saudaId} className="flex justify-between gap-3">
-                        <span>{source.buyerName}</span>
-                        <span className="font-mono">{source.quantity} bags / बैग</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))
-            )}
-          </section>
-        )}
 
         {/* Hidden printable content (rendered after submit) */}
         {result && (

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import type { Lot } from "@shared/schema";
 import { Currency } from "@/components/Currency";
+import { SaudaInitials, SaudaDeleteButton } from "@/components/SaudaEntry";
 
 export interface LotWithCharges {
   lot: Lot;
@@ -66,7 +67,6 @@ interface FarmerLotGroupProps {
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
   onSale?: (lot: Lot) => void;
-  onEditSauda?: (lot: Lot, saudaId: string) => void;
   onExitSale?: (saleId: string) => void;
   onPrintSale?: (saleId: string) => void;
   onEditSale?: (saleId: string) => void;
@@ -144,7 +144,6 @@ export function FarmerLotGroup({
   onToggleSale,
   onPrintReceipt,
   onSale,
-  onEditSauda,
   onExitSale,
   onPrintSale,
   onEditSale,
@@ -322,13 +321,14 @@ export function FarmerLotGroup({
             // Defensive: a sale grouping may contain null entries on imperfect
             // data — drop them so per-sale rendering never dereferences null.
             const sales = (salesByLot?.[lot.id] || []).filter((s) => s != null);
-            const rowCount = Math.max(1, sales.length);
+            const lotSaudas = saudaState === "ready" ? (saudaByLot?.[lot.id] ?? []) : [];
+            const rowCount = Math.max(1, sales.length + lotSaudas.length);
 
             // Build the right-half cells for a given sale (or empty placeholder
             // when the lot has no sales). Test IDs key off `saleId` per spec;
             // empty placeholder rows fall back to `empty-${lot.id}`.
-            const renderRightCells = (sale: SaleSummary | undefined, firstRow = false) => {
-              const tid = sale ? sale.saleId : `empty-${lot.id}`;
+            const renderRightCells = (sale: SaleSummary | undefined, firstRow = false, sauda?: SaudaSummary) => {
+              const tid = sale ? sale.saleId : sauda ? `sauda-${sauda.id}` : `empty-${lot.id}`;
               // Defensive: `exits` may be null on imperfect data; treat as [].
               const exits = sale && Array.isArray(sale.exits) ? sale.exits : [];
               const summaryPlaceholder = !sale && salesSummaryState !== "ready"
@@ -339,7 +339,6 @@ export function FarmerLotGroup({
                   ? "Self"
                   : (sale.buyerInitials ?? "").trim()
                 : "";
-              const lotSaudas = firstRow && saudaState === "ready" ? (saudaByLot?.[lot.id] ?? []) : [];
               return (
                 <>
                   <span
@@ -387,29 +386,7 @@ export function FarmerLotGroup({
                     data-testid={`cell-mr-${tid}`}
                   >
                     <span className="block max-w-full truncate">{mrValue}</span>
-                    {lotSaudas.map((sauda) => {
-                      const initials = (sauda.buyerInitials ?? "").trim();
-                      const accessibleLabel = `Edit Sauda for ${sauda.buyerName}${initials ? `, ${initials}` : ""}, ${sauda.quantity} bags / ${sauda.buyerName} का सौदा संपादित करें`;
-                      return (
-                        <Button
-                          key={sauda.id}
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="mt-0.5 h-6 min-w-6 max-w-full rounded border-sky-700/25 bg-sky-100 px-1.5 py-0 text-[10px] font-semibold leading-none text-sky-900 hover:bg-sky-200 dark:border-sky-300/25 dark:bg-sky-950/70 dark:text-sky-100 dark:hover:bg-sky-900"
-                          title={accessibleLabel}
-                          aria-label={accessibleLabel}
-                          data-testid={`button-edit-sauda-${sauda.id}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onEditSauda?.(lot, sauda.id);
-                          }}
-                          disabled={!canEdit || !onEditSauda}
-                        >
-                          {initials || "\u00a0"}
-                        </Button>
-                      );
-                    })}
+                    {sauda && <SaudaInitials entry={sauda} />}
                     {firstRow && saudaState === "loading" && (
                       <span className="mt-0.5 text-[10px] text-muted-foreground" aria-label="Loading Sauda / सौदा लोड हो रहा है">…</span>
                     )}
@@ -418,6 +395,7 @@ export function FarmerLotGroup({
                     )}
                   </span>
                   <span className="flex items-center justify-center gap-1">
+                    {sauda && <SaudaDeleteButton entry={sauda} canDelete={canEdit} />}
                     {sale && onExitSale && (
                       <Button
                         type="button"
@@ -526,7 +504,7 @@ export function FarmerLotGroup({
                   <span className="text-right font-bold text-chart-1" data-testid={`cell-remaining-${lot.id}`}>
                     {lot.remainingSize}
                   </span>
-                  {renderRightCells(sales[0], true)}
+                  {renderRightCells(sales[0], true, sales.length === 0 ? lotSaudas[0] : undefined)}
                 </div>
 
                 {/* Continuation rows — one per additional sale. Left half
@@ -544,7 +522,7 @@ export function FarmerLotGroup({
                       data-testid={`row-lot-${lot.id}-sale-${idx}`}
                     >
                       <span /><span /><span /><span /><span /><span /><span /><span />
-                      {renderRightCells(sales[idx])}
+                      {renderRightCells(sales[idx], false, idx >= sales.length ? lotSaudas[idx - sales.length] : undefined)}
                     </div>
                   );
                 })}
@@ -657,7 +635,7 @@ export function FarmerLotGroup({
                               {t("print")}
                             </Button>
                           )}
-                          {lot.saleStatus !== "sold" && lot.remainingSize > 0 && onSale && canEdit && (
+                          {onSale && canEdit && (
                             <Button
                               variant="outline"
                               size="sm"

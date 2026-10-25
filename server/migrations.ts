@@ -32,7 +32,7 @@ const MIGRATIONS: Migration[] = [
     up: initializeSauda,
   },
   {
-    name: "2026-10-25_multiple_saudas_explicit_conversion",
+    name: "2026-10-25_multiple_saudas_manual_deletion",
     up: initializeMultipleSaudas,
   },
   {

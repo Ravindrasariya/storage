@@ -1,4 +1,4 @@
-// Real HTTP/DB checks; shared fixture boundary permits local Helium only.
+// Real HTTP/DB checks. The shared fixture boundary permits local Helium only.
 import assert from "node:assert/strict";
 import express from "express";
 import { createServer } from "node:http";
@@ -48,115 +48,84 @@ try {
   const list = () => api("/api/sauda", undefined, "GET");
   const save = (lotId: string, quantity: unknown, buyerLedgerId: string, expected = 200) =>
     api(`/api/lots/${lotId}/sauda`, { quantity, buyerLedgerId }, "POST", expected);
-  const edit = (lotId: string, saudaId: string, quantity: number, buyerLedgerId: string, expected = 200) =>
-    api(`/api/lots/${lotId}/sauda/${encodeURIComponent(saudaId)}`, { quantity, buyerLedgerId }, "PATCH", expected);
+  const remove = (lotId: string, saudaId: string, expected = 200) =>
+    api(`/api/lots/${lotId}/sauda/${encodeURIComponent(saudaId)}`, undefined, "DELETE", expected);
   const before = await snapshot();
   assert.deepEqual(await list(), []);
   const first = await save(lotA, 50, buyerA);
-  const second = await save(lotA, 25, buyerB);
-  assert.notEqual(first.id, second.id);
-  assert.equal((await list()).length, 2);
-  assert.equal((await list()).find((s: any) => s.id === second.id).buyerInitials, null, "Blank initials must stay blank");
-  await edit(lotA, second.id, 30, buyerA);
-  assert.equal((await list()).find((s: any) => s.id === second.id).buyerLedgerId, buyerA);
-  await edit(lotA, second.id, 25, buyerB);
-  await edit(lotA, first.id, 76, buyerA, 409);
-  await edit(lotB, first.id, 5, buyerA, 409);
-  await edit(lotA, "missing", 5, buyerA, 409);
+  const second = await save(lotA, 25, buyerA);
+  const blank = await save(lotA, 250, buyerB);
+  assert.notEqual(first.id, second.id, "Same buyer/initials must still have separate identity");
+  assert.equal((await list()).length, 3, "No aggregate cap or replacement");
+  assert.equal((await list()).find((s: any) => s.id === blank.id).buyerInitials, null);
   await save(lotB, 50, buyerB);
   for (const quantity of [0, -1, 1.5, "10", null, {}, 2147483648]) await save(lotA, quantity, buyerA, 400);
-  await save(lotA, 26, buyerA, 409);
   await save(lotA, 10, foreign, 400);
   await save(lotA, 10, randomUUID(), 400);
+  await pool.query(`UPDATE buyer_ledger SET is_archived=1 WHERE id=$1`, [buyerB]);
+  await save(lotA, 10, buyerB, 400);
+  await pool.query(`UPDATE buyer_ledger SET is_archived=0 WHERE id=$1`, [buyerB]);
   await save(foreignLot, 10, buyerA, 404);
   await save("missing", 10, buyerA, 404);
   await api(`/api/lots/${lotA}/sauda`, { quantity: 10, buyerLedgerId: buyerA, kataCharges: 100 }, "POST", 400);
   await api(`/api/lots/${lotA}/sauda`, { quantity: 10, buyerLedgerId: buyerA }, "POST", 401, { "Content-Type": "application/json" });
+  await api(`/api/lots/${lotA}/sauda/${first.id}`, undefined, "DELETE", 401, {});
+  await api(`/api/lots/${lotA}/sauda/${first.id}`, { quantity: 20, buyerLedgerId: buyerB }, "PATCH", 404);
   await api(`/api/lots/${lotA}/partial-sale`, { quantitySold: 10, buyerName: "New buyer" }, "POST", 410);
+  await remove(lotB, first.id, 404);
+  await remove(lotA, "missing", 404);
   await pool.query(`UPDATE cold_storage_users SET access_type='view' WHERE id=$1`, [`${id}_user`]);
-  assert.equal((await list()).length, 3, "Viewers can read initials");
+  assert.equal((await list()).length, 4);
   await save(lotA, 10, buyerA, 403);
-  await edit(lotA, first.id, 10, buyerA, 403);
-  await api(`/api/lots/${lotA}/sauda`, undefined, "DELETE", 404);
+  await remove(lotA, first.id, 403);
   await pool.query(`UPDATE cold_storage_users SET access_type='edit' WHERE id=$1`, [`${id}_user`]);
-  assert.deepEqual(await snapshot(), before, "Sauda mutated stock, billing, ledger, audit, archives or numbering");
+  await remove(lotA, second.id);
+  await remove(lotA, second.id, 404);
+  assert.equal((await list()).find((s: any) => s.id === first.id).quantity, 50, "Deleting identical initials must not affect sibling");
+  const replacement = await save(lotA, 75, buyerB);
+  assert.notEqual(replacement.id, second.id);
+  assert.deepEqual(await snapshot(), before, "Create/delete/recreate mutated stock, billing, ledgers, audit, archives or numbering");
   await pool.query(`UPDATE buyer_ledger SET initials='LIVE' WHERE id=$1`, [buyerA]);
   assert.equal((await list()).find((s: any) => s.id === first.id).buyerInitials, "LIVE");
-  await assert.rejects(pool.query(`UPDATE lots SET remaining_size=20 WHERE id=$1`, [lotA]), /Open Sauda bags/);
-  await assert.rejects(pool.query(`UPDATE lots SET size=70 WHERE id=$1`, [lotA]), /Open Sauda bags/);
-  assert.equal((await list()).find((s: any) => s.id === first.id).quantity, 50);
+
+  // No Sauda constraint may block lot changes or actual sales.
+  await pool.query(`UPDATE lots SET size=90, remaining_size=90 WHERE id=$1`, [lotA]);
+  await pool.query(`UPDATE lots SET size=100, remaining_size=100 WHERE id=$1`, [lotA]);
   const batch = (rows: object[], buyerLedgerId = buyerB, extra: object = {}) =>
     ({ farmerLedgerId: farmerId, buyerLedgerId, exitDate: "2016-06-15", rows, ...extra });
+  const priorSales = await list();
   await api("/api/farmers/master-nikasi", batch([
-    { lotId: lotA, soldBags: 100, exitBags: 3, saudaSelections: [{ saudaId: first.id, quantity: 50 }, { saudaId: second.id, quantity: 25 }] }, { lotId: lotB, soldBags: 101, exitBags: 1 },
+    { lotId: lotA, soldBags: 100, exitBags: 3 }, { lotId: lotB, soldBags: 101, exitBags: 1 },
   ]), "POST", 400);
-  assert.equal((await list()).length, 3, "Failed batch discarded Sauda");
+  assert.deepEqual(await list(), priorSales, "Failed Nikasi changed Saudas");
   assert.equal((await pool.query(`SELECT count(*)::int n FROM sales_history WHERE cold_storage_id=$1`, [id])).rows[0].n, 0);
-  assert.equal((await pool.query(`SELECT count(*)::int n FROM sauda_sale_sources WHERE cold_storage_id=$1`, [id])).rows[0].n, 0);
-  const convert = (soldBags: number, selections: object[], expected = 409) =>
-    api("/api/farmers/master-nikasi", batch([{ lotId: lotA, soldBags, exitBags: 3, saudaSelections: selections }]), "POST", expected);
-  await convert(40, []);
-  await convert(40, [{ saudaId: first.id, quantity: 14 }]);
-  await convert(40, [{ saudaId: first.id, quantity: 41 }]);
-  await convert(40, [{ saudaId: first.id, quantity: 10 }, { saudaId: first.id, quantity: 10 }]);
-  await convert(40, [{ saudaId: second.id, quantity: 26 }]);
-  await convert(40, [{ saudaId: "missing", quantity: 20 }]);
-  const foreignEntry = (await pool.query(`INSERT INTO lot_sauda (lot_id,cold_storage_id,buyer_ledger_id,quantity)
-    VALUES ($1,$2,$3,10) RETURNING id`, [foreignLot, `${id}_other`, foreign])).rows[0];
-  await convert(40, [{ saudaId: foreignEntry.id, quantity: 20 }]);
-  const partial = await convert(40, [{ saudaId: first.id, quantity: 20 }], 201);
-  assert.equal((await list()).find((s: any) => s.id === first.id).quantity, 30);
-  assert.equal((await list()).find((s: any) => s.id === second.id).quantity, 25);
-  assert.equal(partial.sales[0].saudaSources[0].buyerLedgerId, buyerA);
-  const attribution = (await pool.query(`SELECT * FROM sauda_sale_sources WHERE sale_id=$1`, [partial.sales[0].saleId])).rows[0];
-  assert.equal(attribution.quantity, 20);
-  assert.equal(attribution.buyer_ledger_id, buyerA);
-  await save(lotA, 6, buyerA, 409);
-  await edit(lotA, first.id, 36, buyerA, 409);
-  // Unassigned-only sale, followed by explicitly consuming both entries.
-  await convert(5, [], 201);
-  const finalized = await convert(55, [{ saudaId: first.id, quantity: 30 }, { saudaId: second.id, quantity: 25 }], 201);
-  await edit(lotA, first.id, 1, buyerA, 409);
-  assert.equal((await list()).length, 1);
-  assert.equal((await list())[0].lotId, lotB, "Finalizing one lot cleared another marker");
+  const finalized = await api("/api/farmers/master-nikasi", batch([{ lotId: lotA, soldBags: 100, exitBags: 3 }]), "POST", 201);
+  assert.deepEqual(await list(), priorSales, "Successful Nikasi must leave all Saudas unchanged");
   const saleId = finalized.sales[0].saleId;
   const sale = await api(`/api/sales-history/${saleId}`, undefined, "GET");
-  assert.equal(sale.buyerLedgerId, buyerB, "Promised buyer overrode explicit final buyer");
-  assert.equal(sale.quantitySold, 55);
+  assert.equal(sale.buyerLedgerId, buyerB, "Promised buyer changed final buyer");
+  assert.equal(sale.quantitySold, 100);
   assert.equal((await pool.query(`SELECT remaining_size FROM lots WHERE id=$1`, [lotA])).rows[0].remaining_size, 0);
-  await api(`/api/sales-history/${saleId}/exits`, { bagsExited: 52, exitDate: "2016-06-16" }, "POST", 201);
+  const afterSold = await save(lotA, 150, buyerA);
+  await remove(lotA, afterSold.id);
+  await api(`/api/sales-history/${saleId}/exits`, { bagsExited: 97, exitDate: "2016-06-16" }, "POST", 201);
   await api(`/api/sales-history/${saleId}/exits`, { bagsExited: 1, exitDate: "2016-06-16" }, "POST", 400);
   await api(`/api/sales-history/${saleId}`, { remarks: "Sale Edit remains active", tulaiCharges: 25 }, "PATCH");
   await api(`/api/sales/${saleId}/manual-payment`, { receiptType: "cash", amount: 10, receivedAt: "2016-06-16" });
   await api(`/api/sales-history/${saleId}`, { remarks: "Must remain locked" }, "PATCH", 400);
-  // Tenant serialization must cover both create/create and create/actual-sale.
+  const paidSale = await api(`/api/sales-history/${saleId}`, undefined, "GET");
+  await remove(lotA, first.id);
+  assert.deepEqual(await api(`/api/sales-history/${saleId}`, undefined, "GET"), paidSale, "Deleting Sauda changed a paid actual sale");
+
+  // Concurrent creation keeps both entries; duplicate deletes affect exactly one.
   const raceLot = await lot("race");
-  const raced = await Promise.all([60, 60].map(quantity => fetch(base + `/api/lots/${raceLot}/sauda`,
-    { method: "POST", headers: auth, body: JSON.stringify({ quantity, buyerLedgerId: buyerA }) })));
-  assert.deepEqual(raced.map(r => r.status).sort(), [200, 409]);
-  const race2 = await lot("race-sale");
-  const raceResults = await Promise.all([
-    fetch(base + `/api/lots/${race2}/sauda`, { method: "POST", headers: auth, body: JSON.stringify({ quantity: 80, buyerLedgerId: buyerA }) }),
-    fetch(base + "/api/farmers/master-nikasi", { method: "POST", headers: auth, body: JSON.stringify(batch([{ lotId: race2, soldBags: 30, exitBags: 1 }])) }),
-  ]);
-  assert.equal(raceResults.filter(r => r.ok).length, 1);
-  const existing = await save(await lot("race-convert"), 100, buyerA);
-  const racePayload = batch([{ lotId: existing.lotId, soldBags: 60, exitBags: 1, saudaSelections: [{ saudaId: existing.id, quantity: 60 }] }]);
-  const competing = await Promise.all([1, 2].map(() => fetch(base + "/api/farmers/master-nikasi",
-    { method: "POST", headers: auth, body: JSON.stringify(racePayload) })));
-  assert.equal(competing.filter(r => r.ok).length, 1);
-  assert.equal((await list()).find((s: any) => s.id === existing.id).quantity, 40);
-  // Both migration variants are identical modulo comments/transaction wrapper,
-  // and repeated startup/manual application cannot resurrect consumed entries.
-  const normalizeSql = (s: string) => s.replace(/--[^\n]*/g, "").replace(/^\s*(BEGIN;|COMMIT;|SELECT pg_advisory_xact_lock\(726308458\);)\s*$/gm, "").replace(/\s+/g, " ").trim();
-  const manual = readFileSync("scripts/sql/multiple-saudas-hostinger.sql", "utf8");
-  assert.equal(normalizeSql(manual), normalizeSql(saudaMultiSql));
-  const prior = await list();
-  await pool.query(manual);
-  await (await import("../server/sauda-migration.ts")).initializeSauda();
-  assert.deepEqual(await list(), prior);
-  // Old individual sales retain their original ID and independent exit limit,
-  // including when no unsold bags remain on the parent lot.
+  const raced = await Promise.all([80, 80].map(quantity => save(raceLot, quantity, buyerA)));
+  assert.notEqual(raced[0].id, raced[1].id);
+  const deletes = await Promise.all([1, 2].map(() => fetch(base + `/api/lots/${raceLot}/sauda/${raced[0].id}`, { method: "DELETE", headers: auth })));
+  assert.deepEqual(deletes.map(r => r.status).sort(), [200, 404]);
+  assert.ok((await list()).some((s: any) => s.id === raced[1].id));
+
+  // Old actual individual sales retain original identity, edit and exit behavior.
   for (const name of ["no-exit", "partial-exit", "zero-unsold"]) {
     const legacyLot = await lot(name);
     const legacy = await legacySaleFixture(legacyLot);
@@ -166,10 +135,37 @@ try {
     await api(`/api/sales-history/${legacy.id}/exits`, { bagsExited: 1, exitDate: "2016-06-17" }, "POST", 400);
     await api(`/api/sales-history/${legacy.id}`, { remarks: "Historical edit" }, "PATCH");
   }
+  // Startup and manual SQL stay equivalent, idempotent, and preserve IDs.
+  const normalizeSql = (s: string) => s.replace(/--[^\n]*/g, "").replace(/^\s*(BEGIN;|COMMIT;|SELECT pg_advisory_xact_lock\(726308458\);)\s*$/gm, "").replace(/\s+/g, " ").trim();
+  const manual = readFileSync("scripts/sql/multiple-saudas-hostinger.sql", "utf8");
+  assert.equal(normalizeSql(manual), normalizeSql(saudaMultiSql));
+  const prior = await list();
+  await pool.query(manual);
+  await (await import("../server/sauda-migration.ts")).initializeSauda();
+  assert.deepEqual(await list(), prior, "Rerunning migration changed or resurrected entries");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`CREATE SCHEMA "${id}_migration"`);
+    await client.query(`SET LOCAL search_path TO "${id}_migration",public`);
+    await client.query(`CREATE TABLE lot_sauda (lot_id varchar PRIMARY KEY, cold_storage_id varchar, buyer_ledger_id varchar, quantity int, updated_at timestamptz DEFAULT now());
+      CREATE TABLE lots (id varchar); CREATE TABLE sales_history (id varchar)`);
+    await client.query(`INSERT INTO lot_sauda (lot_id,cold_storage_id,buyer_ledger_id,quantity) VALUES ('old-lot','old-tenant','old-buyer',50)`);
+    await client.query(saudaMultiSql);
+    assert.deepEqual((await client.query(`SELECT id,lot_id,buyer_ledger_id,quantity FROM lot_sauda`)).rows,
+      [{ id: "legacy:old-lot", lot_id: "old-lot", buyer_ledger_id: "old-buyer", quantity: 50 }]);
+    await client.query(`INSERT INTO lot_sauda (lot_id,quantity) VALUES ('old-lot',25)`);
+    await client.query(saudaMultiSql);
+    assert.equal((await client.query(`SELECT count(*)::int n FROM lot_sauda`)).rows[0].n, 2);
+  } finally {
+    await client.query("ROLLBACK");
+    client.release();
+  }
   await pool.query(`UPDATE cold_storage_users SET cold_storage_id=$1 WHERE id=$2`, [`${id}_other`, `${id}_user`]);
   assert.deepEqual(await list(), [], "Sauda read leaked another tenant");
   await save(lotB, 10, foreign, 404);
-  console.log("Sauda: independent entries, exact edits, aggregate cap, selected partial/full conversion, source snapshots, rollback, concurrency, idempotent migration, tenant/access restrictions, legacy exits and Sale Edit/payment locks passed.");
+  await remove(lotA, blank.id, 404);
+  console.log("Sauda: multiple entries, no edits/caps, isolated delete/recreate, permissions/tenant scope, races, migration preservation/idempotency, unchanged Nikasi, legacy exits and Sale Edit/payment locks passed.");
 } finally {
   if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
   await cleanup();

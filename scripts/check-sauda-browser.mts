@@ -91,25 +91,25 @@ try {
   assert.equal(await dialog.getByRole("combobox").count(), 1);
   assert.equal(await dialog.getByRole("button").count(), 2, "Only Cancel and Submit");
   assert.equal(await field("button-submit-sauda").isDisabled(), true);
-  await field("input-sauda-quantity").fill("101");
+  await field("input-sauda-quantity").fill("2147483648");
   assert.equal(await field("button-submit-sauda").isDisabled(), true);
   await field("input-sauda-quantity").fill("1.5");
   assert.equal(await field("button-submit-sauda").isDisabled(), true);
-  await field("input-sauda-quantity").fill("25");
+  await field("input-sauda-quantity").fill("250");
   await field("select-sauda-buyer").click();
   await page.getByRole("option", { name: "Sauda Existing A", exact: true }).click();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   assert.deepEqual(await api("/api/sauda"), [], "Cancel wrote a marker");
   await mount("SaleDialog", { lot: info });
   assert.equal(await field("input-sauda-quantity").inputValue(), "", "Cancel leaked into reopening");
-  await field("input-sauda-quantity").fill("25");
+  await field("input-sauda-quantity").fill("250");
   await field("select-sauda-buyer").click();
   await page.getByRole("option", { name: "Sauda Existing A", exact: true }).click();
   for (const [language, width] of [["en", 1440], ["hi", 390], ["hi", 320]] as const) {
     await page.evaluate(lang => localStorage.setItem("language", lang), language);
     await page.setViewportSize({ width, height: 900 });
     await mount("SaleDialog", { lot: info });
-    await field("input-sauda-quantity").fill("25");
+    await field("input-sauda-quantity").fill("250");
     await field("select-sauda-buyer").click();
     await page.getByRole("option", { name: "Sauda Existing A", exact: true }).click();
     const bounds = await dialog.boundingBox();
@@ -122,28 +122,46 @@ try {
   assert.equal((await response).status(), 200);
   const writes = requests.filter(r => !["GET", "HEAD"].includes(r.method));
   assert.equal(writes.length, 1);
-  assert.deepEqual(writes[0].body, { quantity: 25, buyerLedgerId: buyerA });
+  assert.deepEqual(writes[0].body, { quantity: 250, buyerLedgerId: buyerA });
   assert.ok(requests.every(r => !/partial-sale|next-cs-bill|farmer-dues|sale-info|cash-receipts|manual-payment/.test(r.path)),
     "Sauda called old financial/bill/payment wiring");
   await mount("SaleDialog", { lot: info });
-  assert.equal(await field("input-sauda-quantity").inputValue(), "25");
+  assert.equal(await field("input-sauda-quantity").inputValue(), "", "New Sauda must never seed an old entry");
+  await field("input-sauda-quantity").fill("150");
   await field("select-sauda-buyer").click();
   await page.getByRole("option", { name: "Sauda Existing B", exact: true }).click();
-  const replacement = page.waitForResponse(r => r.url().endsWith(`/api/lots/${markerLot}/sauda`) && r.request().method() === "POST");
+  const additional = page.waitForResponse(r => r.url().endsWith(`/api/lots/${markerLot}/sauda`) && r.request().method() === "POST");
   await field("button-submit-sauda").click();
-  await replacement;
-  assert.equal((await api("/api/sauda"))[0].buyerInitials, null);
-  await api(`/api/lots/${markerLot}/sauda`, { quantity: 25, buyerLedgerId: buyerA }, "POST");
-  await api(`/api/lots/${mixedLot}/sauda`, { quantity: 20, buyerLedgerId: buyerA }, "POST");
+  await additional;
+  assert.equal((await api("/api/sauda")).length, 2);
+  assert.equal((await api("/api/sauda"))[1].buyerInitials, null);
+  const duplicate = await api(`/api/lots/${markerLot}/sauda`, { quantity: 25, buyerLedgerId: buyerA }, "POST");
+  const mixedMarker = await api(`/api/lots/${mixedLot}/sauda`, { quantity: 20, buyerLedgerId: buyerA }, "POST");
+  const firstMarker = (await api("/api/sauda"))[0];
   const summary = await api(`/api/lots/sales-summary?lotIds=${encodeURIComponent([markerLot, mixedLot, zeroLot, masterLot].join(","))}`);
-  const markers = Object.fromEntries((await api("/api/sauda")).map((s: any) => [s.lotId, s]));
+  const markers = (await api("/api/sauda")).reduce((map: any, s: any) => {
+    (map[s.lotId] ??= []).push(s); return map;
+  }, {});
   const groupProps = { farmerName: "Tulai Farmer", village: "Tulai Village", contactNumber: "0000000000",
     lots: wrappers, chamberMap: { [`${id}_chamber`]: "Tulai Chamber" },
     salesByLot: summary, saudaByLot: markers, canEdit: true };
   await page.setViewportSize({ width: 1440, height: 1000 });
   await mount("FarmerLotGroup", groupProps);
-  assert.match(await field(`cell-sauda-initials-${markerLot}`).innerText(), /AB/);
-  assert.match(await field(`cell-sauda-initials-${mixedLot}`).innerText(), /AB/);
+  assert.match(await field(`sauda-initials-${firstMarker.id}`).innerText(), /AB/);
+  assert.match(await field(`sauda-initials-${duplicate.id}`).innerText(), /AB/);
+  assert.match(await field(`sauda-initials-${mixedMarker.id}`).innerText(), /AB/);
+  // Sauda actions belong in the same trailing action column as sale bill
+  // controls, never inside or alongside the initials badge.
+  assert.equal(await field(`sauda-entry-${mixedMarker.id}`).getByRole("button").count(), 0);
+  const printBounds = await field(`button-print-sale-${mixedSale.id}`).boundingBox();
+  const deleteBounds = await field(`button-delete-sauda-${mixedMarker.id}`).boundingBox();
+  const initialsBounds = await field(`sauda-initials-${mixedMarker.id}`).boundingBox();
+  assert.ok(printBounds && deleteBounds && initialsBounds);
+  assert.ok(Math.abs((printBounds.x + printBounds.width / 2) - (deleteBounds.x + deleteBounds.width / 2)) < 2,
+    "Sauda delete must align vertically with the sale Print Bill action");
+  assert.ok(deleteBounds.x > initialsBounds.x + initialsBounds.width, "Delete must be separate from initials");
+  assert.ok(Math.abs((deleteBounds.y + deleteBounds.height / 2) - (initialsBounds.y + initialsBounds.height / 2)) < 2,
+    "Each Sauda's initials and delete action must share their own row");
   assert.match(await field(`cell-mr-${mixedSale.id}`).innerText(), /Self/);
   assert.equal(await field(`cell-remaining-${markerLot}`).innerText(), "100");
   assert.equal(await field(`button-exit-sale-empty-${markerLot}`).count(), 0);
@@ -162,8 +180,83 @@ try {
   const exitResponse = page.waitForResponse(r => r.url().endsWith(`/api/sales-history/${zeroSale.id}/exits`) && r.request().method() === "POST");
   await page.getByTestId("button-submit-exit").click();
   assert.equal((await exitResponse).status(), 201);
+
+  // The actual Stock Register wiring, not just isolated components: confirmed
+  // deletion refreshes the list and exact duplicate-initial siblings survive.
+  await page.evaluate(() => sessionStorage.setItem("stockRegisterState", JSON.stringify({ selectedYear: 2016 })));
+  await page.goto(base + "/stock-register", { waitUntil: "networkidle" });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await field(`sauda-entry-${firstMarker.id}`).waitFor();
+  assert.equal(await field(`sauda-initials-${firstMarker.id}`).evaluate(el => el.tagName), "SPAN");
+  await field(`sauda-initials-${firstMarker.id}`).click();
+  assert.equal(await page.getByRole("dialog").count(), 0, "Initials must not open an edit dialog");
+  const deleteCount = () => requests.filter(r => r.method === "DELETE").length;
+  const beforeCancel = deleteCount();
+  await field(`button-delete-sauda-${firstMarker.id}`).click();
+  const confirmation = field(`dialog-confirm-delete-sauda-${firstMarker.id}`);
+  await confirmation.waitFor();
+  assert.match(await confirmation.innerText(), /Are you sure you want to delete this Sauda\?/);
+  assert.match(await confirmation.innerText(), /Sauda Existing A/);
+  assert.match(await confirmation.innerText(), /250 bags/);
+  await field(`button-cancel-delete-sauda-${firstMarker.id}`).click();
+  await confirmation.waitFor({ state: "hidden" });
+  assert.equal(deleteCount(), beforeCancel, "Cancel sent a delete");
+  assert.ok((await api("/api/sauda")).some((s: any) => s.id === firstMarker.id));
+
+  // Deletion failure leaves the row and confirmation intact, allowing retry.
+  const deletePath = `/api/lots/${markerLot}/sauda/${firstMarker.id}`;
+  await page.route("**" + deletePath, route => route.fulfill({
+    status: 500, contentType: "application/json", body: JSON.stringify({ error: "Synthetic deletion failure" }),
+  }));
+  await field(`button-delete-sauda-${firstMarker.id}`).click();
+  await field(`button-confirm-delete-sauda-${firstMarker.id}`).click();
+  await page.getByText("Synthetic deletion failure", { exact: false }).first().waitFor();
+  assert.equal(await field(`sauda-entry-${firstMarker.id}`).count(), 1);
+  assert.equal(await confirmation.isVisible(), true);
+  await page.unroute("**" + deletePath);
+  const deleting = page.waitForResponse(r => new URL(r.url()).pathname === deletePath && r.request().method() === "DELETE");
+  await field(`button-confirm-delete-sauda-${firstMarker.id}`).click();
+  assert.equal((await deleting).status(), 200);
+  await field(`sauda-entry-${firstMarker.id}`).waitFor({ state: "hidden" });
+  await field(`sauda-entry-${duplicate.id}`).waitFor();
+
+  // Delete-and-recreate correction uses only POST, never PATCH.
+  if (await field(`expanded-lot-${markerLot}`).getAttribute("aria-hidden") === "true") {
+    await field(`row-lot-${markerLot}`).getByRole("button", { name: `Expand lot SAUDA`, exact: true }).click();
+  }
+  assert.equal(await field(`expanded-lot-${markerLot}`).getAttribute("aria-hidden"), "false");
+  await field(`button-sauda-lot-${markerLot}`).click();
+  assert.equal(await field("input-sauda-quantity").inputValue(), "");
+  await field("input-sauda-quantity").fill("175");
+  await field("select-sauda-buyer").click();
+  await page.getByRole("option", { name: "Sauda Existing A", exact: true }).click();
+  const recreatedResponse = page.waitForResponse(r => new URL(r.url()).pathname === `/api/lots/${markerLot}/sauda` && r.request().method() === "POST");
+  await field("button-submit-sauda").click();
+  const recreated = await (await recreatedResponse).json();
+  assert.notEqual(recreated.id, firstMarker.id);
+  await field(`sauda-entry-${recreated.id}`).waitFor();
+  // Fully sold lots still allow informational creation.
+  await field(`row-lot-${zeroLot}`).click();
+  assert.equal(await field(`button-sauda-lot-${zeroLot}`).isVisible(), true);
+  assert.equal(await field(`cell-remaining-${markerLot}`).innerText(), "100");
+  await page.screenshot({ path: "/tmp/sauda-manual-register-desktop.png" });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await field(`button-delete-sauda-${recreated.id}`).click();
+  const mobileConfirm = field(`dialog-confirm-delete-sauda-${recreated.id}`);
+  await mobileConfirm.waitFor();
+  const mobileBounds = await mobileConfirm.boundingBox();
+  assert.ok(mobileBounds && mobileBounds.x >= 0 && mobileBounds.x + mobileBounds.width <= 390);
+  await page.screenshot({ path: "/tmp/sauda-manual-delete-mobile.png" });
+  await field(`button-cancel-delete-sauda-${recreated.id}`).click();
+  // Viewers see markers, but no create or delete controls.
+  await pool.query(`UPDATE cold_storage_users SET access_type='view' WHERE id=$1`, [`${id}_user`]);
+  await page.reload({ waitUntil: "networkidle" });
+  await field(`sauda-entry-${duplicate.id}`).waitFor();
+  assert.equal(await page.locator('[data-testid^="button-delete-sauda-"]').count(), 0);
+  assert.equal(await page.locator('[data-testid^="button-sauda-lot-"]').count(), 0);
+  assert.equal(requests.filter(r => r.method === "PATCH" && r.path.includes("/sauda")).length, 0);
   assert.deepEqual(errors, []);
-  console.log("Sauda browser: exact fields/actions, English/Hindi desktop/mobile, cancel/reopen, submit/replacement, request isolation, mixed initials, genuine historical sale controls and zero-unsold exit submission passed.");
+  console.log("Sauda browser: actual register create/delete/recreate, confirmation/cancel/error retry, exact identity, no edits/caps, viewer restrictions, English/Hindi desktop/mobile, isolated writes, legacy controls and zero-unsold exits passed.");
 } finally {
   await browser?.close();
   await cleanup();
