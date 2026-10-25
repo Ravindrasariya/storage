@@ -45,11 +45,11 @@ Actual finalization through Nikasi allows the same or a different buyer. Master 
 
 **How to apply:** Do not equate actual sold bags with exited bags, require the promised buyer at finalization, or reinterpret previously completed individual-dialog sales as promises.
 
-Allow multiple Saudas per lot. The normal Sauda action creates another entry rather than replacing an earlier one; clicking a particular Sauda's initials opens that entry for changes, including switching buyer.
+Allow multiple Saudas per lot. The normal Sauda action creates another entry rather than replacing an earlier one. Saved Saudas cannot be edited, including by clicking initials; to correct one, delete it and create a new entry.
 
-**Why:** The user changed the lifecycle: after a Sauda for 50 of 100 bags, the next Sauda could be for another 25 bags, and requested editing by clicking the initials.
+**Why:** The user confirmed “Multiple Saudas per lot—each can be deleted, but not edited” and said the user can delete and create a new one.
 
-**How to apply:** Treat this as superseding the earlier one-marker-per-lot replacement rule. Keep actual-sale controls separate from clickable Sauda initials. The subsequent manual-decision rule below supersedes the initially requested combined quantity limit.
+**How to apply:** This supersedes both the earlier one-marker-per-lot replacement rule and initials-click editing. Initials are informational; provide confirmed entry-specific deletion instead of edit UI/endpoints. The manual-decision rule below supersedes the initially requested combined quantity limit.
 
 Give each saved Sauda entry a delete icon at the end. Ask “Are you sure you want to delete this Sauda?” and delete only that entry if confirmed. Do not check overall Sauda/sale bags or add Sauda checks at Nikasi time; leave decisions to the operator.
 
