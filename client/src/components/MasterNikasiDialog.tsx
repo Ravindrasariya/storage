@@ -747,6 +747,9 @@ export function MasterNikasiDialog({
       // cash-flow, buyer-ledger, farmer-ledger, bank-accounts — covering
       // the inline-payment side effects too.
       invalidateSaleSideEffects(queryClient);
+      // Master Nikasi is the only actual-sale path that clears lot-level
+      // Sauda markers; refresh only the isolated marker resource here.
+      queryClient.invalidateQueries({ queryKey: ["/api/sauda"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
       queryClient.invalidateQueries({ queryKey: ["/api/farmers"] });

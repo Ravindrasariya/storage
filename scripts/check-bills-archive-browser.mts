@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { chromium, type Browser } from "playwright";
-import { auth, cleanup, id, lot, pool, setup, token } from "./tulai-fixtures.mts";
+import { auth, cleanup, id, lot, pool, setup, token, legacySaleFixture } from "./tulai-fixtures.mts";
 
 const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
 let browser: Browser | undefined;
@@ -14,11 +14,7 @@ try {
     return response.json();
   }
   const lotId = await lot("archive-ui");
-  await api(`/api/lots/${lotId}/partial-sale`, {
-    quantitySold: 10, pricePerBag: 60, paymentStatus: "due", paidAmount: 0,
-    isSelfSale: true, chargeBasis: "actual", soldAt: "2016-06-15",
-    tulaiCharges: 25, remarks: "<script>window.archiveInjected=true</script>",
-  });
+  await legacySaleFixture(lotId, { tulaiCharges: 25, remarks: "<script>window.archiveInjected=true</script>" });
   const sale = (await pool.query(`SELECT * FROM sales_history WHERE lot_id=$1`, [lotId])).rows[0];
   await api(`/api/sales-history/${sale.id}/exits`, { bagsExited: 4, exitDate: "2016-06-16" });
   await api(`/api/sales-history/${sale.id}/reverse`, {});
@@ -48,11 +44,21 @@ try {
     assert.equal(await button.getAttribute("aria-label"), language === "hi" ? "रीसायकल बिन खोलें" : "Open Recycle Bin");
     const tabs = page.getByRole("tablist");
     assert.equal(await tabs.getByRole("tab").count(), 3);
-    const buttonBox = (await button.boundingBox())!;
-    const tabsBox = (await tabs.boundingBox())!;
+    // Read all rectangles in one frame: viewport changes and font loading can
+    // otherwise move this navigation between separate protocol round-trips.
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    const { buttonBox, tabsBox, iconBox } = await button.evaluate(element => {
+      const rect = (node: Element) => {
+        const r = node.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      };
+      return { buttonBox: rect(element), tabsBox: rect(document.querySelector('[role="tablist"]')!), iconBox: rect(element.querySelector("svg")!) };
+    });
     assert.ok(buttonBox.x - tabsBox.x - tabsBox.width >= 15 ||
       buttonBox.y - tabsBox.y - tabsBox.height >= 15, "Recycle Bin needs a clear gap outside the tabs");
-    const iconBox = (await button.locator("svg").boundingBox())!;
     assert.ok(Math.abs(iconBox.x + iconBox.width / 2 - buttonBox.x - buttonBox.width / 2) < 1, "Icon not horizontally centered");
     assert.ok(Math.abs(iconBox.y + iconBox.height / 2 - buttonBox.y - buttonBox.height / 2) < 1, "Icon not vertically centered");
     assert.ok(buttonBox.x >= 0 && buttonBox.x + buttonBox.width <= width, "Recycle Bin overflows on narrow screens");

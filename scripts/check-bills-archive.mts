@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import express from "express";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { auth, cleanup, id, lot, pool, setup } from "./tulai-fixtures.mts";
+import { auth, cleanup, id, lot, pool, setup, legacySaleFixture } from "./tulai-fixtures.mts";
 
 process.env.TZ = "Asia/Kolkata";
 const app = express();
@@ -37,12 +37,7 @@ try {
   const list = (kind: string) => api(`/api/bills-archive/${kind}`);
   async function sell(name: string) {
     const lotId = await lot(name);
-    await api(`/api/lots/${lotId}/partial-sale`, {
-      quantitySold: 10, pricePerBag: 60, paymentStatus: "due", paidAmount: 0,
-      isSelfSale: true, chargeBasis: "actual", soldAt: "2016-06-15",
-      remarks: `Archive ${name} <b>literal</b>`, tulaiCharges: 25,
-    }, "POST");
-    return (await pool.query(`SELECT * FROM sales_history WHERE lot_id=$1`, [lotId])).rows[0];
+    return legacySaleFixture(lotId, { remarks: `Archive ${name} <b>literal</b>`, tulaiCharges: 25 });
   }
   async function exit(saleId: string, bags: number, date: string) {
     await api(`/api/sales-history/${saleId}/exits`, { bagsExited: bags, exitDate: date }, "POST", 201);

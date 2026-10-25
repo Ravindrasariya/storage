@@ -61,6 +61,9 @@ import pg from "pg";
 import express from "express";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { requireDevelopmentFixtures } from "./require-development-fixtures.mts";
+
+requireDevelopmentFixtures();
 
 const { Pool } = pg;
 
@@ -604,23 +607,14 @@ async function main(): Promise<void> {
     const lotNewSeason = await insertLot("newseason", ENTRY_B);
 
     const partialSale = async (lotId: string, soldAt: string, csBill: number) =>
-      fetch(`${baseUrl}/api/lots/${lotId}/partial-sale`, {
+      fetch(`${baseUrl}/api/farmers/master-nikasi`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
-          quantitySold: 1,
-          pricePerBag: 0,
-          paymentStatus: "due",
-          paidAmount: 0,
-          dueAmount: 0,
-          position: "P1",
-          kataCharges: 0,
-          extraHammali: 0,
-          gradingCharges: 0,
-          chargeBasis: "actual",
-          isSelfSale: true,
-          coldStorageBillNumber: csBill,
-          soldAt,
+          farmerLedgerId,
+          sharedColdStorageBillNumber: csBill,
+          exitDate: soldAt,
+          rows: [{ lotId, exitBags: 1 }],
         }),
       });
 

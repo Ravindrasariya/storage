@@ -10,6 +10,7 @@ import {
   chambers,
   chamberFloors,
   lots,
+  lotSauda,
   lotEditHistory,
   salesHistory,
   saleEditHistory,
@@ -3420,6 +3421,13 @@ export class DatabaseStorage implements IStorage {
         }).returning();
 
         // Single shared CS bill # — resolved once before the row loop.
+        // Advisory Sauda is consumed only by a committed actual sale; a
+        // later failure in this batch rolls this deletion back as well.
+        await tx.delete(lotSauda).where(and(
+          eq(lotSauda.lotId, lot.id),
+          eq(lotSauda.coldStorageId, coldStorageId),
+        ));
+
         // Writing the same value to every row in this batch is what
         // enables the collective bill view: the print path identifies
         // siblings by (coldStorageId, coldStorageBillNumber, year(soldAt)).

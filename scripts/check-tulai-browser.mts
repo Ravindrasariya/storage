@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { format } from "date-fns";
 import { chromium, type Browser } from "playwright";
-import { auth, cleanup, farmerId, id, lot, pool, setup, token } from "./tulai-fixtures.mts";
+import { auth, cleanup, farmerId, id, lot, pool, setup, token, legacySaleFixture } from "./tulai-fixtures.mts";
 import { checkTulaiSubmissions } from "./tulai-browser-submissions.mts";
 import { checkNikasiLayout } from "./nikasi-browser-layout.mts";
 const execFileAsync = promisify(execFile);
@@ -53,11 +53,8 @@ try {
     assert.ok(response.ok, `${path}: ${await response.clone().text()}`);
     return response.json();
   }
-  const body = { quantitySold: 10, pricePerBag: 60, paymentStatus: "due", paidAmount: 0,
-    kataCharges: 20, tulaiCharges: 50, extraHammali: 30, gradingCharges: 40,
-    isSelfSale: true, soldAt: "2016-06-15", pricePerKg: 20, netWeight: 500 };
-  await api(`/api/lots/${lotId}/partial-sale`, body);
-  await api(`/api/lots/${editLotId}/partial-sale`, body);
+  await legacySaleFixture(lotId);
+  await legacySaleFixture(editLotId);
   const saleId = (await pool.query(`SELECT id FROM sales_history WHERE lot_id=$1`, [lotId])).rows[0].id;
   const editSaleId = (await pool.query(`SELECT id FROM sales_history WHERE lot_id=$1`, [editLotId])).rows[0].id;
   // Distinct date/amount pairs distinguish every bottom row from summary
@@ -129,19 +126,6 @@ try {
     }, { component, props });
     await page.waitForTimeout(450);
   }
-  await mount("SaleDialog", { lot: lotInfo });
-  assert.equal(await page.locator('[data-testid="input-partial-tulai-charges"]').count(), 1);
-  assert.equal(await page.getByText("Tulai (Manual Weighing)", { exact: false }).count(), 1,
-    "Individual sale must explain Tulai without relabelling other surfaces");
-  const kata = await page.locator('[data-testid="input-partial-kata-charges"]').boundingBox();
-  const tulai = await page.locator('[data-testid="input-partial-tulai-charges"]').boundingBox();
-  assert.ok(kata && tulai && Math.abs(kata.y - tulai.y) < 2 && kata.x < tulai.x, "Sale Kata/Tulai must share a row");
-  await page.locator('[data-testid="input-partial-tulai-charges"]').fill("50");
-  await page.screenshot({ path: "/tmp/tulai-sale-desktop.png" });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('[data-testid="input-partial-tulai-charges"]').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: "/tmp/tulai-sale-mobile.png" });
-  await page.setViewportSize({ width: 1440, height: 1000 });
   await mount("EditSaleDialog", { sale: editSale });
   await page.getByRole("button", { name: /^Cold Storage Charges/ }).click();
   await page.getByTestId("input-edit-grading-per-bag").waitFor({ state: "visible" });
@@ -297,7 +281,7 @@ try {
   await page.goto(base, { waitUntil: "networkidle" });
   await checkTulaiSubmissions(page, mount, api);
   assert.deepEqual(browserErrors, [], "No browser runtime errors in tested components");
-  console.log("Tulai browser checks passed: real new-sale and Master Nikasi submissions, decimal/blank/zero persistence, totals and validation, sale/edit/Master Nikasi desktop/mobile layouts, latest Tulai edit restoration, and both real print/shared PDF paths with four bottom payment entries.");
+  console.log("Tulai browser checks passed: Master Nikasi submissions, decimal/blank/zero persistence, totals and validation, historical Sale Edit/Master Nikasi desktop/mobile layouts, latest Tulai edit restoration, and both real print/shared PDF paths with four bottom payment entries.");
 } finally {
   try {
     await browser?.close();

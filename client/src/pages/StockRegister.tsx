@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { FarmerLotGroup, type LotWithCharges, type SaleSummary } from "@/components/FarmerLotGroup";
+import { FarmerLotGroup, type LotWithCharges, type SaleSummary, type SaudaSummary } from "@/components/FarmerLotGroup";
 import { loadSalesSummaryBatches } from "@/lib/salesSummaryBatch";
 import { EditHistoryAccordion } from "@/components/EditHistoryAccordion";
 import { PrintEntryReceiptDialog } from "@/components/PrintEntryReceiptDialog";
@@ -49,7 +49,7 @@ import {
 import { shareReceiptAsPdf } from "@/lib/shareReceipt";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Lot, Chamber, LotEditHistory, SalesHistory, SalesHistoryWithLastPayment, SaleLotInfo } from "@shared/schema";
+import type { Lot, Chamber, LotEditHistory, SalesHistory, SalesHistoryWithLastPayment } from "@shared/schema";
 import { calculateTotalColdCharges } from "@shared/schema";
 import { farmerGroupKey } from "@shared/farmer-key";
 import { capitalizeFirstLetter } from "@/lib/utils";
@@ -142,8 +142,7 @@ export default function StockRegister() {
   const [printingSale, setPrintingSale] = useState<SalesHistoryWithLastPayment | null>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
-  const [saleLotInfo, setSaleLotInfo] = useState<SaleLotInfo | null>(null);
-  const [isFetchingSaleInfo, setIsFetchingSaleInfo] = useState(false);
+  const [saleLotInfo, setSaleLotInfo] = useState<Lot | null>(null);
   const [masterNikasiOpen, setMasterNikasiOpen] = useState(false);
   const [masterNikasiCtx, setMasterNikasiCtx] = useState<{
     farmerName: string; village: string; contactNumber: string;
@@ -171,20 +170,9 @@ export default function StockRegister() {
     setMasterNikasiOpen(true);
   };
 
-  const handleOpenSale = async (lot: Lot) => {
-    if (isFetchingSaleInfo) return;
-    setIsFetchingSaleInfo(true);
-    try {
-      const res = await authFetch(`/api/lots/${lot.id}/sale-info`);
-      if (!res.ok) throw new Error("Failed to fetch sale info");
-      const info: SaleLotInfo = await res.json();
-      setSaleLotInfo(info);
-      setSaleDialogOpen(true);
-    } catch (e) {
-      toast({ title: t("error"), description: "Failed to load sale details", variant: "destructive" });
-    } finally {
-      setIsFetchingSaleInfo(false);
-    }
+  const handleOpenSale = (lot: Lot) => {
+    setSaleLotInfo(lot);
+    setSaleDialogOpen(true);
   };
 
   const [editForm, setEditForm] = useState<{
@@ -471,6 +459,19 @@ export default function StockRegister() {
     refetchOnMount: "always",
     refetchOnWindowFocus: "always",
   });
+
+  // A single tenant-scoped Sauda read is shared by every visible lot. These
+  // markers are informational only and never participate in stock totals.
+  const { data: saudaMarkers, isLoading: saudaLoading, isError: saudaError } = useQuery<SaudaSummary[]>({
+    queryKey: ["/api/sauda"],
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+  });
+  const saudaByLot = useMemo(
+    () => Object.fromEntries((saudaMarkers ?? []).filter((marker) => marker?.lotId).map((marker) => [marker.lotId, marker])),
+    [saudaMarkers],
+  );
 
   // Fetch summary totals for ALL lots (with optional bag type and year filter)
   // Single source of truth for the summary card: ALWAYS pulled fresh from
@@ -2562,6 +2563,8 @@ export default function StockRegister() {
                   salesSummaryState={
                     salesByLotError ? "error" : salesByLotLoading ? "loading" : "ready"
                   }
+                  saudaByLot={saudaByLot}
+                  saudaState={saudaError ? "error" : saudaLoading ? "loading" : "ready"}
                   onEdit={handleEditClick}
                   onToggleSale={handleToggleSale}
                   onPrintReceipt={(lot) => {
@@ -3158,9 +3161,6 @@ export default function StockRegister() {
         onOpenChange={(open) => {
           setSaleDialogOpen(open);
           if (!open) setSaleLotInfo(null);
-        }}
-        onSaleSuccess={() => {
-          if (hasSearched) handleSearch();
         }}
       />
 

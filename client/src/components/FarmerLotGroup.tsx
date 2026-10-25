@@ -41,6 +41,13 @@ export interface SaleSummary {
   exits: Array<{ exitDate: string | Date; billNumber: number; bagsExited: number }>;
 }
 
+export interface SaudaSummary {
+  lotId: string;
+  buyerLedgerId: string;
+  quantity: number;
+  buyerInitials: string | null;
+}
+
 interface FarmerLotGroupProps {
   farmerName: string;
   village: string;
@@ -51,6 +58,8 @@ interface FarmerLotGroupProps {
   chamberMap: Record<string, string>;
   salesByLot?: Record<string, SaleSummary[]>;
   salesSummaryState?: "loading" | "error" | "ready";
+  saudaByLot?: Record<string, SaudaSummary>;
+  saudaState?: "loading" | "error" | "ready";
   onEdit: (lot: Lot) => void;
   onToggleSale?: (lot: Lot, upForSale: boolean) => void;
   onPrintReceipt?: (lot: Lot) => void;
@@ -126,6 +135,8 @@ export function FarmerLotGroup({
   chamberMap,
   salesByLot,
   salesSummaryState = "ready",
+  saudaByLot,
+  saudaState = "ready",
   onEdit,
   onToggleSale,
   onPrintReceipt,
@@ -312,7 +323,7 @@ export function FarmerLotGroup({
             // Build the right-half cells for a given sale (or empty placeholder
             // when the lot has no sales). Test IDs key off `saleId` per spec;
             // empty placeholder rows fall back to `empty-${lot.id}`.
-            const renderRightCells = (sale: SaleSummary | undefined) => {
+            const renderRightCells = (sale: SaleSummary | undefined, firstRow = false) => {
               const tid = sale ? sale.saleId : `empty-${lot.id}`;
               // Defensive: `exits` may be null on imperfect data; treat as [].
               const exits = sale && Array.isArray(sale.exits) ? sale.exits : [];
@@ -323,6 +334,9 @@ export function FarmerLotGroup({
                 ? sale.isSelfSale === 1
                   ? "Self"
                   : (sale.buyerInitials ?? "").trim()
+                : "";
+              const saudaInitials = firstRow && saudaState === "ready"
+                ? (saudaByLot?.[lot.id]?.buyerInitials ?? "").trim()
                 : "";
               return (
                 <>
@@ -365,12 +379,28 @@ export function FarmerLotGroup({
                         : "—"}
                   </span>
                   <span
-                    className="block min-w-0 truncate text-center text-xs font-medium"
+                    className="flex min-w-0 flex-col items-center justify-center text-center text-xs font-medium"
                     title={mrValue || undefined}
                     aria-label={mrValue || undefined}
                     data-testid={`cell-mr-${tid}`}
                   >
-                    {mrValue}
+                    <span className="block max-w-full truncate">{mrValue}</span>
+                    {saudaInitials && (
+                      <span
+                        className="mt-0.5 inline-flex max-w-full items-center rounded border border-sky-700/25 bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-sky-900 dark:border-sky-300/25 dark:bg-sky-950/70 dark:text-sky-100"
+                        title={`Sauda · ${saudaInitials}`}
+                        aria-label={`Sauda buyer initials / सौदा खरीदार के शुरुआती अक्षर ${saudaInitials}`}
+                        data-testid={`cell-sauda-initials-${lot.id}`}
+                      >
+                        {saudaInitials}
+                      </span>
+                    )}
+                    {firstRow && saudaState === "loading" && (
+                      <span className="mt-0.5 text-[10px] text-muted-foreground" aria-label="Loading Sauda / सौदा लोड हो रहा है">…</span>
+                    )}
+                    {firstRow && saudaState === "error" && (
+                      <span className="mt-0.5 text-[10px] text-destructive" title="Sauda unavailable / सौदा उपलब्ध नहीं">Sauda —</span>
+                    )}
                   </span>
                   <span className="flex items-center justify-center gap-1">
                     {sale && onExitSale && (
@@ -472,7 +502,7 @@ export function FarmerLotGroup({
                   <span className="text-right font-bold text-chart-1" data-testid={`cell-remaining-${lot.id}`}>
                     {lot.remainingSize}
                   </span>
-                  {renderRightCells(sales[0])}
+                  {renderRightCells(sales[0], true)}
                 </button>
 
                 {/* Continuation rows — one per additional sale. Left half
@@ -609,10 +639,10 @@ export function FarmerLotGroup({
                               size="sm"
                               onClick={() => onSale(lot)}
                               className="gap-2"
-                              data-testid={`button-sale-lot-${lot.id}`}
+                              data-testid={`button-sauda-lot-${lot.id}`}
                             >
                               <ShoppingCart className="h-4 w-4" />
-                              {t("sale")}
+                              Sauda (सौदा)
                             </Button>
                           )}
                         </div>

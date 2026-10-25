@@ -44,3 +44,9 @@ Actual finalization through Nikasi allows the same or a different buyer. Master 
 **Why:** The user clarified that Master Nikasi already preserves sell-now/exit-later flexibility and that a promised buyer can change if the promise fails.
 
 **How to apply:** Do not equate actual sold bags with exited bags, require the promised buyer at finalization, or reinterpret previously completed individual-dialog sales as promises.
+
+Keep one active Sauda per lot; submitting again replaces it. Cancel writes nothing. Successful Master Nikasi consumes only its affected lots' markers atomically; failed batches retain them. Do not carry a promised-bag balance forward.
+
+**Why:** The accepted lifecycle treats Sauda as an informal lot-level marker, not a stock reservation or a financial agreement.
+
+**How to apply:** Keep Sauda outside all actual-sale accounting and historical reversal semantics. Never attach actual-sale exit/edit/print controls to a marker; genuine sales retain those controls even when unsold stock is zero.

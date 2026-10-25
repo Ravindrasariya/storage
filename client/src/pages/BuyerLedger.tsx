@@ -500,6 +500,7 @@ export default function BuyerLedger() {
       queryClient.invalidateQueries({ queryKey: ['/api/buyer-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['/api/buyers/lookup'] });
       queryClient.invalidateQueries({ queryKey: ['/api/lots/sales-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sauda'] });
       toast({ title: t("buyersSynced") });
     },
     onError: () => {
@@ -521,6 +522,7 @@ export default function BuyerLedger() {
       queryClient.invalidateQueries({ queryKey: ['/api/buyer-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['/api/buyers/lookup'] });
       queryClient.invalidateQueries({ queryKey: ['/api/lots/sales-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sauda'] });
       queryClient.invalidateQueries({ queryKey: ['/api/cash-receipts/buyers-with-dues'] });
       queryClient.invalidateQueries({ queryKey: ['/api/merchant-advances/buyers-with-dues'] });
       setShowAddBuyerDialog(false);
@@ -560,6 +562,7 @@ export default function BuyerLedger() {
         return;
       }
       invalidateSaleSideEffects(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['/api/sauda'] });
       queryClient.invalidateQueries({ queryKey: ['/api/buyer-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['/api/buyers/lookup'] });
       queryClient.invalidateQueries({ queryKey: ['/api/lots'] });

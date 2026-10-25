@@ -1,1006 +1,163 @@
-import { useState, useEffect, useMemo } from "react";
-import { useDropdownNavigation } from "@/hooks/use-dropdown-navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient, authFetch, invalidateSaleSideEffects } from "@/lib/queryClient";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiRequest, authFetch, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { SaleLotInfo, ColdStorage } from "@shared/schema";
-import { capitalizeFirstLetter } from "@/lib/utils";
-import { Currency } from "@/components/Currency";
-import { SaleRemarkInput } from "@/components/SaleRemarkInput";
-import { saleRemarkSchema } from "@shared/sale-remarks";
+import type { Lot, BuyerLedgerEntry } from "@shared/schema";
 
-interface SaleDialogProps {
-  lot: SaleLotInfo | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSaleSuccess?: () => void;
+interface SaudaMarker {
+  lotId: string;
+  buyerLedgerId: string;
+  quantity: number;
+  buyerInitials: string | null;
 }
 
-export function SaleDialog({ lot, open, onOpenChange, onSaleSuccess }: SaleDialogProps) {
+interface SaleDialogProps {
+  lot: Lot | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function SaleDialog({ lot, open, onOpenChange }: SaleDialogProps) {
   const { t } = useI18n();
   const { toast } = useToast();
-  const [paymentStatus, setPaymentStatus] = useState<"paid" | "due" | "partial">("due");
-  const [partialQuantity, setPartialQuantity] = useState<number>(0);
-  const [buyerName, setBuyerName] = useState<string>("");
-  const [pricePerKg, setPricePerKg] = useState<string>("");
-  const [customPaidAmount, setCustomPaidAmount] = useState<string>("");
-  const [editPosition, setEditPosition] = useState<string>("");
-  const [kataCharges, setKataCharges] = useState<string>("");
-  const [tulaiCharges, setTulaiCharges] = useState<string>("");
-  // Task #392 — Gate Cut / Bilty Cut each split into a plain variant and a
-  // "+ Weighing" variant, purely for the operator's record-keeping about
-  // whether the lot was weighed. Calculations are unchanged: both gate*
-  // variants behave like the old "gate", both bilty* variants behave like
-  // the old "bilty". isBiltyLike() below is the single place that decides
-  // this grouping so every branch stays in sync automatically.
-  const [deliveryType, setDeliveryType] = useState<"gate" | "gateWeighing" | "bilty" | "biltyWeighing">("gate");
-  const isBiltyLike = (dt: typeof deliveryType) => dt === "bilty" || dt === "biltyWeighing";
-  const [extraHammaliPerBag, setExtraHammaliPerBag] = useState<string>("");
-  // Task #300 — operator-entered per-bag grading rate. Audit/data-entry only;
-  // typing here auto-fills totalGradingCharges (perBag × current sold qty)
-  // ONCE so the operator can still override the total afterward. The total
-  // remains the single source of truth for billing.
-  const [gradingPerBag, setGradingPerBag] = useState<string>("");
-  const [totalGradingCharges, setTotalGradingCharges] = useState<string>("");
-  const [paymentMode, setPaymentMode] = useState<"cash" | "account">("cash");
-  const [netWeight, setNetWeight] = useState<string>("");
-  const [remarks, setRemarks] = useState("");
-  const [editableColdCharge, setEditableColdCharge] = useState<string>("");
-  const [editableHammali, setEditableHammali] = useState<string>("");
-  const [showBuyerSuggestions, setShowBuyerSuggestions] = useState(false);
-  const buyerNav = useDropdownNavigation();
-  const [chargeBasis, setChargeBasis] = useState<"actual" | "totalRemaining">("actual");
-  const [isSelfBuyer, setIsSelfBuyer] = useState(false);
-  const [adjAmount, setAdjAmount] = useState<string>("");
-  // Editable cold-storage receipt-book bill #. Pre-filled from the cold
-  // storage's running counter when the dialog opens; operator may
-  // override to match their physical receipt book.
-  const [coldStorageBillInput, setColdStorageBillInput] = useState<string>("");
-  const [coldStorageBillEdited, setColdStorageBillEdited] = useState(false);
-  // Inline error shown right under the CS # input when the server
-  // rejects a duplicate bill number, so the operator can correct it
-  // without hunting through a toast.
-  const [coldStorageBillError, setColdStorageBillError] = useState<string | null>(null);
-  // Editable sale date pill — defaults to today (IST). When edited,
-  // the chosen date becomes the authoritative `soldAt` for the new
-  // sales-history row, and drives the year window for the CS bill #
-  // duplicate check on the server. Format: YYYY-MM-DD; the server
-  // anchors it at noon IST so the calendar day is unambiguous.
-  const [saleDateInput, setSaleDateInput] = useState<string>("");
-  const [saleDateEdited, setSaleDateEdited] = useState(false);
+  const [quantity, setQuantity] = useState("");
+  const [buyerLedgerId, setBuyerLedgerId] = useState("");
+  const [edited, setEdited] = useState(false);
 
-  const { data: coldStorage } = useQuery<ColdStorage>({
-    queryKey: ["/api/cold-storage"],
+  const { data: savedSaudas, isLoading: saudasLoading } = useQuery<SaudaMarker[]>({
+    queryKey: ["/api/sauda"],
+    enabled: open,
+    staleTime: 0,
   });
-
-  // Live preview of the next CS bill # the server would auto-assign.
-  // Best-effort hint only — the server recomputes at submit time, so a
-  // stale value here is safe.
-  //
-  // Task #354 — the CS bill series is keyed to the lot's STOCK ENTRY year,
-  // not the sale date, so we send `lotId` and let the server resolve the
-  // year. Changing the sale date no longer changes the hint: selling this
-  // lot in January still draws from the season it was stored in.
-  const { data: nextCsBillData, isFetching: nextCsBillFetching } = useQuery<{ nextBillNumber: number; entryYear: number }>({
-    queryKey: ["/api/cold-storages", coldStorage?.id, "next-cs-bill", lot?.id],
-    enabled: open && !!coldStorage?.id && !!lot?.id,
+  const { data: buyerLedgerData, isLoading: buyersLoading, isError: buyersError } = useQuery<{ buyers: BuyerLedgerEntry[] }>({
+    queryKey: ["/api/buyer-ledger", { includeArchived: false }],
     queryFn: async () => {
-      const res = await authFetch(`/api/cold-storages/${coldStorage!.id}/next-cs-bill?lotId=${encodeURIComponent(lot!.id)}`);
-      if (!res.ok) throw new Error(`${res.status}`);
-      return res.json();
+      const response = await authFetch("/api/buyer-ledger?includeArchived=false");
+      if (!response.ok) throw new Error("Could not load buyers");
+      return response.json();
     },
+    enabled: open,
   });
+  const buyers = useMemo(
+    () => (buyerLedgerData?.buyers ?? []).filter((buyer) => buyer && buyer.id).slice().sort((a, b) => a.buyerName.localeCompare(b.buyerName)),
+    [buyerLedgerData],
+  );
+  const savedForLot = savedSaudas?.find((marker) => marker.lotId === lot?.id);
 
-  const { data: buyersData } = useQuery<{ buyerName: string; isSelfSale: boolean }[]>({
-    queryKey: ["/api/buyers/lookup"],
-  });
-
-  const { data: farmerDuesData } = useQuery<{ pyReceivables: number; freightDue: number; advanceDue: number; selfDue: number; totalDue: number }>({
-    queryKey: ["/api/farmer-dues", lot?.farmerLedgerId],
-    enabled: !!lot?.farmerLedgerId && open,
-  });
-
-  const buyerSuggestions = (() => {
-    if (!buyersData || !buyerName.trim()) return [];
-    const query = buyerName.toLowerCase();
-    return buyersData
-      .filter(b => b.buyerName.toLowerCase().includes(query))
-      .filter(b => !b.isSelfSale)
-      .slice(0, 8);
-  })();
-
-  const selectBuyerSuggestion = (buyer: { buyerName: string }) => {
-    setBuyerName(buyer.buyerName);
-    setShowBuyerSuggestions(false);
-  };
-
-  // Initialize / reset form fields whenever dialog opens, closes, or the lot changes
+  // Initialize once when reopening or changing lots. A late marker response may
+  // seed pristine fields, but never replaces anything the operator has edited.
   useEffect(() => {
-    if (open && lot) {
-      // Full reset on (re)open or when switching to a different lot, then seed lot-derived fields
-      setPartialQuantity(0);
-      setPaymentStatus("due");
-      setPaymentMode("cash");
-      setBuyerName("");
-      setPricePerKg("");
-      setCustomPaidAmount("");
-      setKataCharges("");
-      setTulaiCharges("");
-      setDeliveryType("gate");
-      setExtraHammaliPerBag("");
-      setGradingPerBag("");
-      setTotalGradingCharges("");
-      setNetWeight("");
-      setRemarks("");
-      setIsSelfBuyer(false);
-      setAdjAmount("");
-      setEditPosition(lot.position);
-      setEditableColdCharge(lot.coldCharge.toString());
-      setEditableHammali(lot.hammali.toString());
-      setChargeBasis(lot.baseColdChargesBilled === 1 ? "actual" : "actual");
-      // Pre-fill is now driven by the live nextCsBillData query in the
-      // follow-up effect below; start empty so a stale value never shows.
-      setColdStorageBillInput("");
-      setColdStorageBillEdited(false);
-      setColdStorageBillError(null);
-      setSaleDateInput(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()));
-      setSaleDateEdited(false);
-    } else if (!open) {
-      // Reset all state when closing
-      setPartialQuantity(0);
-      setPaymentStatus("due");
-      setPaymentMode("cash");
-      setBuyerName("");
-      setPricePerKg("");
-      setCustomPaidAmount("");
-      setEditPosition("");
-      setKataCharges("");
-      setTulaiCharges("");
-      setDeliveryType("gate");
-      setExtraHammaliPerBag("");
-      setGradingPerBag("");
-      setTotalGradingCharges("");
-      setNetWeight("");
-      setRemarks("");
-      setIsSelfBuyer(false);
-      setEditableColdCharge("");
-      setEditableHammali("");
-      setChargeBasis("actual");
-      setAdjAmount("");
-      setColdStorageBillInput("");
-      setColdStorageBillEdited(false);
-      setSaleDateInput("");
-      setSaleDateEdited(false);
-    }
+    if (!open || !lot) return;
+    setQuantity("");
+    setBuyerLedgerId("");
+    setEdited(false);
   }, [open, lot?.id]);
-
-  // Pre-fill / refresh the CS bill # input from the live preview, but
-  // only while the operator hasn't typed into it AND the query is
-  // settled (not currently fetching). React-query exposes cached data
-  // immediately on a refetch, so without the isFetching gate we'd
-  // briefly show the previous (now stale) value before the new one
-  // lands. Clearing to empty during fetch keeps the displayed number
-  // honest — either it's the current server hint or it's empty. Once
-  // the user edits the input we leave it alone — coldStorageBillEdited
-  // stays true until the dialog reopens.
-  //
-  // Task #256 — when the lot is already base-billed (baseColdChargesBilled
-  // === 1) we suppress the autofill entirely. Auto-numbering a sale
-  // whose cold-storage charges were already collected on a prior bill
-  // would burn a fresh bill # for what's effectively a bill-less sale.
-  // Operators who DO want to assign a bill # here can still type one
-  // manually; coldStorageBillEdited then locks the input.
   useEffect(() => {
-    if (!open || !lot || coldStorageBillEdited) return;
-    if (lot.baseColdChargesBilled === 1) {
-      // Force the input blank so the (unedited) submit path sends NULL.
-      setColdStorageBillInput("");
-      return;
-    }
-    if (nextCsBillFetching) {
-      setColdStorageBillInput("");
-      return;
-    }
-    if (nextCsBillData?.nextBillNumber) {
-      setColdStorageBillInput(String(nextCsBillData.nextBillNumber));
-    } else {
-      setColdStorageBillInput("");
-    }
-  }, [open, lot?.id, lot?.baseColdChargesBilled, coldStorageBillEdited, nextCsBillData?.nextBillNumber, nextCsBillFetching]);
+    if (!open || !lot || !savedForLot || edited) return;
+    setQuantity(String(savedForLot.quantity));
+    setBuyerLedgerId(savedForLot.buyerLedgerId);
+  }, [open, lot?.id, savedForLot, edited]);
 
-  const partialSaleMutation = useMutation({
-    mutationFn: async ({ lotId, quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt }: { lotId: string; quantity: number; pricePerBag: number; paymentStatus: "paid" | "due" | "partial"; paymentMode?: "cash" | "account"; buyerName?: string; pricePerKg?: number; paidAmount?: number; dueAmount?: number; position?: string; kataCharges?: number; tulaiCharges?: number; extraHammali?: number; gradingCharges?: number; gradingPerBag?: number; netWeight?: number; customColdCharge?: number; customHammali?: number; chargeBasis?: "actual" | "totalRemaining"; isSelfSale?: boolean; adjReceivableSelfDueAmount?: number; coldStorageBillNumber?: number; soldAt?: string }) => {
-      return apiRequest("POST", `/api/lots/${lotId}/partial-sale`, { quantitySold: quantity, pricePerBag, paymentStatus, paymentMode, buyerName, pricePerKg, paidAmount, dueAmount, position, kataCharges, tulaiCharges, extraHammali, gradingCharges, gradingPerBag, netWeight, customColdCharge, customHammali, chargeBasis, isSelfSale, adjReceivableSelfDueAmount, coldStorageBillNumber, soldAt, deliveryType, remarks: saleRemarkSchema.parse(remarks) });
+  const mutation = useMutation({
+    mutationFn: async ({ lotId, quantity: count, buyerId }: { lotId: string; quantity: number; buyerId: string }) => {
+      const response = await apiRequest("POST", `/api/lots/${encodeURIComponent(lotId)}/sauda`, {
+        quantity: count,
+        buyerLedgerId: buyerId,
+      });
+      return response.json() as Promise<SaudaMarker>;
     },
     onSuccess: () => {
-      invalidateSaleSideEffects(queryClient);
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/reports/") });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/dashboard/stats") });
-      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/lots/sales-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/lots/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/merchants"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/quality"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics/chambers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/chambers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/years"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/buyers/lookup"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/up-for-sale"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cash-receipts/buyers-with-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmers-with-dues"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-receivables-with-dues") });
-      queryClient.invalidateQueries({ queryKey: ["/api/buyer-dues"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/by-buyer"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-history/buyer-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-dropdown"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/farmer-ledger/dues-for-discount"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/buyer-ledger"] });
-      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/farmer-dues") });
-      // Refresh the cold-storage counter so the next sale dialog opens
-      // with an up-to-date pre-filled cold-storage bill #.
-      queryClient.invalidateQueries({ queryKey: ["/api/cold-storage"] });
-      toast({
-        title: t("success"),
-        description: "Partial sale recorded successfully",
-        variant: "success",
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/sauda"] });
+      toast({ title: t("success"), description: "Sauda saved / सौदा सहेजा गया", variant: "success" });
       onOpenChange(false);
-      onSaleSuccess?.();
     },
-    onError: (err: Error) => {
-      const msg = err.message || "Failed to record partial sale";
-      // Map duplicate-bill errors to the inline field error so the
-      // operator can fix the number directly in the header strip.
-      if (/Cold Storage Bill #|cold storage bill number/i.test(msg)) {
-        setColdStorageBillError(msg);
-      }
-      toast({
-        title: t("error"),
-        description: msg,
-        variant: "destructive",
-      });
+    onError: (error: Error) => {
+      toast({ title: t("error"), description: error.message || "Could not save Sauda", variant: "destructive" });
     },
   });
 
-  const getEditableRate = (l: SaleLotInfo) => {
-    const parsedColdCharge = parseFloat(editableColdCharge);
-    const parsedHammali = parseFloat(editableHammali);
-    const coldCharge = Number.isFinite(parsedColdCharge) ? parsedColdCharge : l.coldCharge;
-    const hammali = Number.isFinite(parsedHammali) ? parsedHammali : l.hammali;
-    return coldCharge + hammali;
-  };
-
-  const getEditableColdCharge = (l: SaleLotInfo) => {
-    const parsedColdCharge = parseFloat(editableColdCharge);
-    return Number.isFinite(parsedColdCharge) ? parsedColdCharge : l.coldCharge;
-  };
-
-  const getEditableHammali = (l: SaleLotInfo) => {
-    const parsedHammali = parseFloat(editableHammali);
-    return Number.isFinite(parsedHammali) ? parsedHammali : l.hammali;
-  };
-
-  const getChargeQuantity = (l: SaleLotInfo, actualQty?: number) => {
-    if (chargeBasis === "totalRemaining") {
-      return l.remainingSize;
-    }
-    return actualQty ?? l.remainingSize;
-  };
-
-  const calculateBaseCharge = (l: SaleLotInfo, quantity?: number, useChargeBasis: boolean = true) => {
-    if (l.baseColdChargesBilled === 1) {
-      return 0;
-    }
-    const actualQty = quantity ?? l.remainingSize;
-    const chargeQty = useChargeBasis ? getChargeQuantity(l, actualQty) : actualQty;
-    const coldChargeRate = getEditableColdCharge(l);
-    const hammaliRate = getEditableHammali(l);
-    if (l.chargeUnit === "quintal") {
-      const coldChargeQuintal = (l.netWeight && l.originalSize > 0) ? (l.netWeight * chargeQty * coldChargeRate) / (l.originalSize * 100) : 0;
-      const hammaliPerBag = hammaliRate * chargeQty;
-      return coldChargeQuintal + hammaliPerBag;
-    }
-    return (coldChargeRate + hammaliRate) * chargeQty;
-  };
-
-  const calculateTotalCharge = (l: SaleLotInfo, quantity?: number, customRate?: number) => {
-    const actualQty = quantity ?? l.remainingSize;
-    const chargeQty = getChargeQuantity(l, actualQty);
-    const coldChargeRate = getEditableColdCharge(l);
-    const hammaliRate = getEditableHammali(l);
-    const rate = customRate ?? (coldChargeRate + hammaliRate);
-    let baseCharge: number = 0;
-    if (l.baseColdChargesBilled !== 1) {
-      if (l.chargeUnit === "quintal") {
-        if (customRate !== undefined) {
-          baseCharge = (l.netWeight && l.originalSize > 0) ? (l.netWeight * chargeQty * rate) / (l.originalSize * 100) : 0;
-        } else {
-          const coldChargeQuintal = (l.netWeight && l.originalSize > 0) ? (l.netWeight * chargeQty * coldChargeRate) / (l.originalSize * 100) : 0;
-          const hammaliPerBag = hammaliRate * chargeQty;
-          baseCharge = coldChargeQuintal + hammaliPerBag;
-        }
-      } else {
-        baseCharge = rate * chargeQty;
-      }
-    }
-    const kata = parseFloat(kataCharges) || 0;
-    const tulai = parseFloat(tulaiCharges) || 0;
-    const extraHammali = isBiltyLike(deliveryType) ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
-    const grading = isBiltyLike(deliveryType) ? (parseFloat(totalGradingCharges) || 0) : 0;
-    return baseCharge + kata + tulai + extraHammali + grading;
-  };
-
-  const handleConfirmSale = () => {
+  const maxQuantity = Math.max(0, Math.floor(lot?.remainingSize ?? 0));
+  const parsedQuantity = Number(quantity);
+  const quantityValid = Number.isInteger(parsedQuantity) && parsedQuantity > 0 && parsedQuantity <= maxQuantity;
+  const canSubmit = !!lot && quantityValid && !!buyerLedgerId && !buyersLoading && !buyersError && !mutation.isPending;
+  const handleSubmit = () => {
     if (!lot) return;
-    if (!saleRemarkSchema.safeParse(remarks).success) {
-      toast({ title: t("error"), description: t("saleRemarkInvalid"), variant: "destructive" });
+    if (!quantityValid) {
+      toast({ title: t("error"), description: `Enter a whole number from 1 to ${maxQuantity} / 1 से ${maxQuantity} तक पूरी संख्या दर्ज करें`, variant: "destructive" });
       return;
     }
-    if (!buyerName.trim()) {
-      toast({
-        title: t("error"),
-        description: "Buyer name is required / खरीदार का नाम आवश्यक है",
-        variant: "destructive",
-      });
+    if (!buyers.some((buyer) => buyer.id === buyerLedgerId)) {
+      toast({ title: t("error"), description: "Select an existing buyer / मौजूदा खरीदार चुनें", variant: "destructive" });
       return;
     }
-    if (!partialQuantity || partialQuantity <= 0) {
-      toast({
-        title: t("error"),
-        description: "Quantity must be greater than zero / मात्रा शून्य से अधिक होनी चाहिए",
-        variant: "destructive",
-      });
-      return;
-    }
-    const tulaiRaw = tulaiCharges.trim();
-    const parsedTulai = tulaiRaw === "" ? 0 : Number(tulaiRaw);
-    if (!Number.isFinite(parsedTulai) || parsedTulai < 0) {
-      toast({ title: t("error"), description: t("tulaiAmountInvalid"), variant: "destructive" });
-      return;
-    }
-
-    const parsedPricePerKg = pricePerKg ? parseFloat(pricePerKg) : undefined;
-    const actualQty = partialQuantity;
-    const parsedColdCharge = parseFloat(editableColdCharge);
-    const parsedHammali = parseFloat(editableHammali);
-    const customColdCharge = Number.isFinite(parsedColdCharge) ? parsedColdCharge : undefined;
-    const customHammali = Number.isFinite(parsedHammali) ? parsedHammali : undefined;
-    const editableRate = (customColdCharge ?? lot.coldCharge) + (customHammali ?? lot.hammali);
-
-    const baseChargeTotal = calculateTotalCharge(lot, partialQuantity);
-    const adjAmountForSale = (!isSelfBuyer && parseFloat(adjAmount) > 0) ? parseFloat(adjAmount) : 0;
-    const totalCharge = baseChargeTotal + adjAmountForSale;
-
-    const kata = parseFloat(kataCharges) || 0;
-    const tulai = parsedTulai;
-    const extraHammaliTotal = isBiltyLike(deliveryType) ? (parseFloat(extraHammaliPerBag) || 0) * actualQty : 0;
-    const grading = isBiltyLike(deliveryType) ? (parseFloat(totalGradingCharges) || 0) : 0;
-
-    let paidAmount: number | undefined;
-    let dueAmount: number | undefined;
-    if (paymentStatus === "paid") {
-      paidAmount = totalCharge;
-      dueAmount = 0;
-    } else if (paymentStatus === "due") {
-      paidAmount = 0;
-      dueAmount = totalCharge;
-    } else if (paymentStatus === "partial") {
-      const customPaid = parseFloat(customPaidAmount) || 0;
-      paidAmount = Math.min(customPaid, totalCharge);
-      dueAmount = totalCharge - paidAmount;
-    }
-
-    const modeToSend = (paymentStatus === "paid" || paymentStatus === "partial") ? paymentMode : undefined;
-    const parsedNetWeight = netWeight ? parseFloat(netWeight) : undefined;
-    const effectiveChargeBasis = lot.baseColdChargesBilled === 1 ? "actual" : chargeBasis;
-
-    partialSaleMutation.mutate({
-      lotId: lot.id,
-      quantity: partialQuantity,
-      pricePerBag: editableRate,
-      paymentStatus,
-      paymentMode: modeToSend,
-      buyerName: buyerName || undefined,
-      pricePerKg: parsedPricePerKg,
-      paidAmount,
-      dueAmount,
-      position: editPosition || undefined,
-      kataCharges: kata > 0 ? kata : undefined,
-      tulaiCharges: tulai,
-      extraHammali: extraHammaliTotal > 0 ? extraHammaliTotal : undefined,
-      gradingCharges: grading > 0 ? grading : undefined,
-      // Task #300 — persist the per-bag rate ONLY when the operator
-      // actually typed a finite number. Omit otherwise so the column
-      // stays NULL (matches the legacy-row shape).
-      gradingPerBag: (() => {
-        const v = parseFloat(gradingPerBag);
-        return gradingPerBag !== "" && Number.isFinite(v) ? v : undefined;
-      })(),
-      netWeight: parsedNetWeight,
-      customColdCharge,
-      customHammali,
-      chargeBasis: effectiveChargeBasis,
-      isSelfSale: isSelfBuyer,
-      adjReceivableSelfDueAmount: !isSelfBuyer ? (parseFloat(adjAmount) || 0) : 0,
-      coldStorageBillNumber: (() => {
-        const n = parseInt(coldStorageBillInput);
-        return Number.isFinite(n) && n > 0 ? n : undefined;
-      })(),
-      // Always send the (IST-defaulted) saleDateInput so the server's
-      // year(soldAt) matches the live preview key, even when the operator
-      // didn't edit the date pill. Cross-year IST scenarios (e.g.
-      // Jan-1 IST early hours on a UTC postgres session) would otherwise
-      // bucket the row in the previous year and diverge from the
-      // displayed CS bill # hint. Server still applies its own IST-noon
-      // anchoring + duplicate check, so a stale or invalid value is safe.
-      soldAt: saleDateInput && /^\d{4}-\d{2}-\d{2}$/.test(saleDateInput) ? saleDateInput : undefined,
-    });
+    mutation.mutate({ lotId: lot.id, quantity: parsedQuantity, buyerId: buyerLedgerId });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <DialogContent className="sm:max-w-md [&>button.absolute]:hidden" onOpenAutoFocus={(event) => event.preventDefault()}>
         <DialogHeader>
-          {/* Title + Sale Date pill + CS # pill all share one tidy row.
-              flex-wrap lets the pills drop together below the title on
-              very narrow widths instead of splitting awkwardly across
-              two flex regions (which is what justify-between caused). */}
-          <div className="flex items-center gap-2 flex-wrap pr-6">
-            <DialogTitle className="flex-shrink-0">{t("sale")}</DialogTitle>
-            {/* Editable Sale Date — defaults to today (IST) so back-
-                dated entries (sale recorded a day or two late) carry
-                the real sale date through the row's `soldAt`, the
-                CS-bill # year window, and every downstream register /
-                ledger / export. Same amber-vs-blue treatment as the
-                CS # pill on the right. */}
-            <div className={`flex items-center gap-2 rounded-md px-2 py-1 border ${
-              saleDateEdited
-                ? "border-blue-400 dark:border-blue-600 bg-blue-100/80 dark:bg-blue-900/40 ring-1 ring-blue-300/50"
-                : "border-amber-400 dark:border-amber-600 bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-300/50"
-            }`}>
-              <Label
-                htmlFor="partial-sale-date"
-                className={`text-xs font-semibold whitespace-nowrap ${
-                  saleDateEdited
-                    ? "text-blue-800 dark:text-blue-200"
-                    : "text-amber-800 dark:text-amber-200"
-                }`}
-              >
-                {t("date") || "Date"}
-              </Label>
-              <Input
-                id="partial-sale-date"
-                type="date"
-                value={saleDateInput}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setSaleDateInput(next);
-                  // Treat clearing the field as "back to auto" so the
-                  // pill's visual state stays in sync with what we
-                  // actually send (an empty value omits soldAt).
-                  setSaleDateEdited(next.length > 0);
-                }}
-                min="2015-01-01"
-                max={new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })}
-                className="h-7 w-36 text-sm bg-background"
-                data-testid="input-partial-sale-date"
-              />
-              <span className={`text-[10px] uppercase tracking-wide ${
-                saleDateEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
-              }`}>
-                {saleDateEdited ? "edited" : "auto"}
-              </span>
-            </div>
-            {/* Cold-storage receipt-book bill #, surfaced inline with the
-                Sale title so the operator sees and verifies it before
-                anything else. Amber = auto-filled from the running
-                counter, blue = explicitly edited. */}
-            <div className={`flex items-center gap-2 rounded-md px-2 py-1 border ${
-              coldStorageBillEdited
-                ? "border-blue-400 dark:border-blue-600 bg-blue-100/80 dark:bg-blue-900/40 ring-1 ring-blue-300/50"
-                : "border-amber-400 dark:border-amber-600 bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-300/50"
-            }`}>
-              <Label
-                htmlFor="partial-cs-bill"
-                className={`text-xs font-semibold whitespace-nowrap ${
-                  coldStorageBillEdited
-                    ? "text-blue-800 dark:text-blue-200"
-                    : "text-amber-800 dark:text-amber-200"
-                }`}
-              >
-                CS #
-              </Label>
-              <Input
-                id="partial-cs-bill"
-                type="number"
-                min={1}
-                value={coldStorageBillInput}
-                onChange={(e) => {
-                  setColdStorageBillInput(e.target.value);
-                  setColdStorageBillEdited(true);
-                  if (coldStorageBillError) setColdStorageBillError(null);
-                }}
-                placeholder="—"
-                className={`h-7 w-14 text-sm bg-background ${coldStorageBillError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-                data-testid="input-partial-cs-bill"
-                aria-invalid={!!coldStorageBillError}
-              />
-              {/* Task #256: when the lot's base cold-storage charges were
-                  already billed AND the operator hasn't typed an override,
-                  surface "skip" instead of "auto" so it's clear the sale
-                  will be saved with no CS Bill # (NULL). */}
-              <span className={`text-[10px] uppercase tracking-wide ${
-                coldStorageBillEdited ? "text-blue-700 dark:text-blue-300" : "text-amber-700 dark:text-amber-300"
-              }`}>
-                {coldStorageBillEdited
-                  ? "edited"
-                  : (lot?.baseColdChargesBilled === 1 ? "skip" : "auto")}
-              </span>
-            </div>
-          </div>
-          {coldStorageBillError && (
-            <p
-              className="text-xs text-red-600 dark:text-red-400 mt-1"
-              data-testid="error-partial-cs-bill"
-            >
-              {coldStorageBillError}
-            </p>
-          )}
-          {/* Task #256: hint that blank input on an already-base-billed
-              lot is intentional (sale will be saved with no CS Bill #). */}
-          {lot?.baseColdChargesBilled === 1 && !coldStorageBillEdited && !coldStorageBillError && (
-            <p
-              className="text-[11px] text-muted-foreground mt-1"
-              data-testid="hint-partial-cs-bill-skip"
-            >
-              {t("skipCsBillHint")}
-            </p>
-          )}
+          <DialogTitle>Sauda (सौदा)</DialogTitle>
           <DialogDescription>
-            {lot && `${lot.farmerName} - ${lot.lotNo}`}
+            {lot ? `${lot.farmerName} · ${lot.lotNo}` : ""}
+            {lot && <span className="block mt-1">{t("remaining")}: <strong className="tabular-nums">{maxQuantity}</strong> {t("bags")}</span>}
           </DialogDescription>
         </DialogHeader>
-
-        {lot && (
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/50 border">
-              <div>
-                <Label className="text-xs text-muted-foreground">{t("chamber")}</Label>
-                <div className="font-medium">{lot.chamberName}</div>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">{t("floor")}</Label>
-                <div className="font-medium">{lot.floor}</div>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">{t("position")}</Label>
-                <Input
-                  type="text"
-                  value={editPosition}
-                  onChange={(e) => setEditPosition(e.target.value)}
-                  className="h-8 mt-0.5"
-                  data-testid="input-partial-edit-position"
-                />
-              </div>
-            </div>
-
-            <div className="p-4 rounded-lg bg-muted/50 border space-y-3">
-              <div className="text-sm font-medium">{t("rateBreakdown")}</div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">{t("coldStorageCharge")} {lot.chargeUnit === "quintal" ? t("perQuintal") : t("perBag")}</Label>
-                  <div className="flex items-center gap-1">
-                    <Currency amount="" showIcon={true} className="text-muted-foreground" />
-                    <Input
-                      type="number"
-                      min={0}
-                      value={editableColdCharge}
-                      onChange={(e) => setEditableColdCharge(e.target.value)}
-                      className="h-8 w-20"
-                      data-testid="input-partial-cold-charge"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">{t("hammali")} {t("perBag")}</Label>
-                  <div className="flex items-center gap-1">
-                    <Currency amount="" showIcon={true} className="text-muted-foreground" />
-                    <Input
-                      type="number"
-                      min={0}
-                      value={editableHammali}
-                      onChange={(e) => setEditableHammali(e.target.value)}
-                      className="h-8 w-20"
-                      data-testid="input-partial-hammali"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="border-t pt-2 flex justify-between text-sm">
-                <span className="text-muted-foreground">{t("total")} {t("rate")}:</span>
-                <span className="font-bold">
-                  {lot.chargeUnit === "quintal" ? (
-                    <><Currency amount={getEditableColdCharge(lot)} />{t("perQuintal")} + <Currency amount={getEditableHammali(lot)} />{t("perBag")}</>
-                  ) : (
-                    <><Currency amount={getEditableRate(lot)} />{t("perBag")}</>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-lg bg-muted text-sm space-y-1">
-              <div>
-                <span className="text-muted-foreground">{t("remaining")}: </span>
-                <span className="font-bold">{lot.remainingSize} {t("bags")}</span>
-              </div>
-              {lot.netWeight && (
-                <div>
-                  <span className="text-muted-foreground">{t("initialNetWeight")}: </span>
-                  <span className="font-bold">{lot.netWeight} {t("kg")}</span>
-                </div>
-              )}
-            </div>
-
+        {!lot ? null : (
+          <div className="space-y-5 py-2">
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label>{t("quantity")} <span className="text-destructive">*</span></Label>
-                {partialQuantity > lot.remainingSize && (
-                  <span className="text-xs text-destructive font-medium">
-                    {t("quantityExceedsRemaining")}
-                  </span>
-                )}
-              </div>
+              <Label htmlFor="sauda-quantity">Bag Quantity / बैग मात्रा <span className="text-muted-foreground font-normal">(max {maxQuantity})</span></Label>
               <Input
+                id="sauda-quantity"
                 type="number"
+                inputMode="numeric"
                 min={1}
-                max={lot.remainingSize}
-                value={partialQuantity || ""}
-                onChange={(e) => setPartialQuantity(Number(e.target.value))}
-                placeholder={`Max: ${lot.remainingSize}`}
-                className={partialQuantity > lot.remainingSize ? "border-destructive" : ""}
-                data-testid="input-partial-quantity"
+                max={maxQuantity}
+                step={1}
+                value={quantity}
+                onChange={(event) => { setEdited(true); setQuantity(event.target.value); }}
+                aria-invalid={quantity !== "" && !quantityValid}
+                data-testid="input-sauda-quantity"
               />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label>{t("buyerName")} <span className="text-destructive">*</span></Label>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="self-buyer-partial"
-                    checked={isSelfBuyer}
-                    onCheckedChange={(checked) => {
-                      setIsSelfBuyer(!!checked);
-                      if (checked && lot) {
-                        const compositeName = `${lot.farmerName} - ${lot.contactNumber} - ${lot.village}`;
-                        setBuyerName(compositeName);
-                        setShowBuyerSuggestions(false);
-                      } else {
-                        setBuyerName("");
-                      }
-                    }}
-                    data-testid="checkbox-partial-self-buyer"
-                  />
-                  <Label htmlFor="self-buyer-partial" className="text-sm font-normal cursor-pointer">{t("self")}</Label>
-                </div>
-              </div>
-              <div className="relative">
-                <Input
-                  type="text"
-                  value={buyerName}
-                  onChange={(e) => {
-                    setBuyerName(capitalizeFirstLetter(e.target.value));
-                    setShowBuyerSuggestions(true);
-                  }}
-                  onFocus={() => { setShowBuyerSuggestions(true); buyerNav.resetActive(); }}
-                  onBlur={() => setTimeout(() => { setShowBuyerSuggestions(false); buyerNav.resetActive(); }, 200)}
-                  onKeyDown={(e) => buyerNav.handleKeyDown(e, buyerSuggestions.length, (i) => { selectBuyerSuggestion(buyerSuggestions[i]); setShowBuyerSuggestions(false); }, () => setShowBuyerSuggestions(false))}
-                  placeholder={t("buyerName")}
-                  autoComplete="off"
-                  disabled={isSelfBuyer}
-                  className={isSelfBuyer ? "bg-muted" : ""}
-                  data-testid="input-partial-buyer-name"
-                />
-                {!isSelfBuyer && showBuyerSuggestions && buyerSuggestions.length > 0 && buyerName && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
-                    {buyerSuggestions.map((buyer, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        className={`w-full px-3 py-2 text-left hover-elevate text-sm ${buyerNav.activeIndex === idx ? "bg-accent" : ""}`}
-                        onClick={() => selectBuyerSuggestion(buyer)}
-                        data-testid={`suggestion-partial-buyer-${idx}`}
-                      >
-                        {buyer.buyerName}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("pricePerKg")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={pricePerKg}
-                onChange={(e) => setPricePerKg(e.target.value)}
-                placeholder={t("pricePerKg")}
-                data-testid="input-partial-price-per-kg"
-              />
-            </div>
-
-            {lot.chargeUnit === "quintal" && (
-              <div className="space-y-2">
-                <Label>{t("initialNetWeightFromRegister")}</Label>
-                <Input
-                  type="number"
-                  value={lot.netWeight || 0}
-                  disabled
-                  className="bg-muted"
-                  data-testid="input-partial-initial-net-weight-readonly"
-                />
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>{t("finalNetWeight")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={netWeight}
-                onChange={(e) => setNetWeight(e.target.value)}
-                placeholder={t("netWeightKg")}
-                data-testid="input-partial-net-weight"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 items-end gap-3">
-            <div className="space-y-2">
-              <Label>{t("kataCharges")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
-              <Input
-                type="number"
-                min={0}
-                value={kataCharges}
-                onChange={(e) => setKataCharges(e.target.value)}
-                placeholder="0"
-                data-testid="input-partial-kata-charges"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("saleTulaiManualWeighing")} <span className="text-muted-foreground text-xs">({t("optional")})</span></Label>
-              <Input type="number" min={0} step="0.01" value={tulaiCharges}
-                onChange={(e) => setTulaiCharges(e.target.value)} placeholder="0"
-                data-testid="input-partial-tulai-charges" />
-            </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("chargeBasis")}</Label>
-              <Select
-                value={chargeBasis}
-                onValueChange={(value: "actual" | "totalRemaining") => setChargeBasis(value)}
-                disabled={lot?.baseColdChargesBilled === 1}
-              >
-                <SelectTrigger
-                  data-testid="select-partial-charge-basis"
-                  className={lot?.baseColdChargesBilled === 1 ? "bg-muted cursor-not-allowed" : ""}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="actual">{t("actualBags")}</SelectItem>
-                  <SelectItem value="totalRemaining">{t("allRemainingBags")}</SelectItem>
-                </SelectContent>
-              </Select>
-              {lot?.baseColdChargesBilled === 1 && (
-                <p className="text-xs text-muted-foreground">{t("baseChargesBilledChargeBasisHint") || "Base charges already billed - using actual bags only"}</p>
+              {quantity !== "" && !quantityValid && (
+                <p className="text-sm text-destructive" role="alert">Enter a whole number from 1 to {maxQuantity}.</p>
               )}
             </div>
-
             <div className="space-y-2">
-              <Label>{t("deliveryType")}</Label>
-              <Select value={deliveryType} onValueChange={(value: "gate" | "gateWeighing" | "bilty" | "biltyWeighing") => setDeliveryType(value)}>
-                <SelectTrigger data-testid="select-partial-delivery-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gate">{t("gateCut")}</SelectItem>
-                  <SelectItem value="gateWeighing">{t("gateCutWeighing")}</SelectItem>
-                  <SelectItem value="bilty">{t("biltyCut")}</SelectItem>
-                  <SelectItem value="biltyWeighing">{t("biltyCutWeighing")}</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="sauda-buyer">Buyer Name / खरीदार का नाम</Label>
+              {buyersLoading ? (
+                <div className="h-10 rounded-md border bg-muted/40 animate-pulse" aria-label="Loading buyers" />
+              ) : buyersError ? (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 p-3 text-sm">
+                  <span>Could not load Buyer Ledger / खरीदार सूची लोड नहीं हुई</span>
+                </div>
+              ) : buyers.length === 0 ? (
+                <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">No existing buyers available / कोई मौजूदा खरीदार उपलब्ध नहीं</p>
+              ) : (
+                <Select value={buyerLedgerId} onValueChange={(value) => { setEdited(true); setBuyerLedgerId(value); }}>
+                  <SelectTrigger id="sauda-buyer" data-testid="select-sauda-buyer">
+                    <SelectValue placeholder="Select an existing buyer / मौजूदा खरीदार चुनें" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {buyers.map((buyer) => <SelectItem key={buyer.id} value={buyer.id}>{buyer.buyerName}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+              {saudasLoading && <p className="text-xs text-muted-foreground">Loading saved Sauda… / सहेजा सौदा लोड हो रहा है…</p>}
             </div>
-
-            {isBiltyLike(deliveryType) && (
-              <div className="space-y-4 p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20">
-                <div className="space-y-2">
-                  <Label>{t("extraHammaliPerBag")}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={extraHammaliPerBag}
-                    onChange={(e) => setExtraHammaliPerBag(e.target.value)}
-                    placeholder="0"
-                    data-testid="input-partial-extra-hammali"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>{t("gradingPerBag")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={gradingPerBag}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        setGradingPerBag(raw);
-                        // Task #300 — auto-fill total from per-bag rate ×
-                        // current sold qty so the operator gets the math
-                        // for free; they can still override the total
-                        // afterwards. Blank input clears the cascade.
-                        const perBag = parseFloat(raw);
-                        const qty = partialQuantity || 0;
-                        if (Number.isFinite(perBag) && qty > 0) {
-                          setTotalGradingCharges(String(perBag * qty));
-                        } else if (raw === "") {
-                          setTotalGradingCharges("");
-                        }
-                      }}
-                      placeholder="0"
-                      data-testid="input-partial-grading-per-bag"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t("totalGradingCharges")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={totalGradingCharges}
-                      onChange={(e) => setTotalGradingCharges(e.target.value)}
-                      placeholder="0"
-                      data-testid="input-partial-grading-charges"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!isSelfBuyer && (
-              <div className="space-y-2">
-                <Label>{t("adjReceivableSelfDueAmount") || "Adj Receivable & Self Due Amt / बकाया व स्वयं बिक्री समायोजन"}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={farmerDuesData ? (farmerDuesData.pyReceivables || 0) + (farmerDuesData.advanceDue || 0) + (farmerDuesData.freightDue || 0) + (farmerDuesData.selfDue || 0) : 0}
-                  step="0.01"
-                  value={adjAmount}
-                  onChange={(e) => {
-                    const maxDue = farmerDuesData ? (farmerDuesData.pyReceivables || 0) + (farmerDuesData.advanceDue || 0) + (farmerDuesData.freightDue || 0) + (farmerDuesData.selfDue || 0) : 0;
-                    const val = parseFloat(e.target.value);
-                    if (maxDue > 0 && val > maxDue) {
-                      setAdjAmount(String(maxDue));
-                    } else {
-                      setAdjAmount(e.target.value);
-                    }
-                  }}
-                  placeholder="0"
-                  data-testid="input-adj-receivable-self-due"
-                />
-                {farmerDuesData && ((farmerDuesData.pyReceivables || 0) + (farmerDuesData.advanceDue || 0) + (farmerDuesData.freightDue || 0) + (farmerDuesData.selfDue || 0)) > 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    {t("maxAdjAmount") || "Max"}: <Currency amount={(farmerDuesData.pyReceivables || 0) + (farmerDuesData.advanceDue || 0) + (farmerDuesData.freightDue || 0) + (farmerDuesData.selfDue || 0)} />
-                    {farmerDuesData.pyReceivables > 0 && <span> | PY: <Currency amount={farmerDuesData.pyReceivables} /></span>}
-                    {farmerDuesData.freightDue > 0 && <span> | Freight: <Currency amount={farmerDuesData.freightDue} /></span>}
-                    {farmerDuesData.advanceDue > 0 && <span> | Advance: <Currency amount={farmerDuesData.advanceDue} /></span>}
-                    {farmerDuesData.selfDue > 0 && <span> | Self: <Currency amount={farmerDuesData.selfDue} /></span>}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {t("noFarmerDues") || "No farmer dues found / किसान पर कोई बकाया नहीं"}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <SaleRemarkInput id="input-partial-remarks" value={remarks} onChange={setRemarks} />
-
-            {partialQuantity > 0 && (
-              <div className="p-4 rounded-lg bg-muted">
-                {lot.chargeUnit === "quintal" && !lot.netWeight ? (
-                  <div className="text-red-600 dark:text-red-400 font-medium text-center py-2">
-                    {t("addInitialNetWeightWarning")}
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">{t("total")} {t("storageCharge")}:</span>
-                      <span className="text-2xl font-bold text-chart-2">
-                        <Currency amount={calculateTotalCharge(lot, partialQuantity) + (!isSelfBuyer ? (parseFloat(adjAmount) || 0) : 0)} />
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                      {lot.baseColdChargesBilled === 1 ? (
-                        <div className="text-teal-600 dark:text-teal-400 font-medium">{t("baseColdChargesBilled")} - <Currency amount={0} /></div>
-                      ) : lot.chargeUnit === "quintal" && lot.netWeight ? (
-                        <div>
-                          ({lot.netWeight} {t("kg")} × {getChargeQuantity(lot, partialQuantity)} × <Currency amount={getEditableColdCharge(lot)} />) / ({lot.originalSize} × 100) + (<Currency amount={getEditableHammali(lot)} /> × {getChargeQuantity(lot, partialQuantity)}) = <Currency amount={calculateBaseCharge(lot, partialQuantity)} />
-                        </div>
-                      ) : (
-                        <div>{getChargeQuantity(lot, partialQuantity)} {t("bags")} x <Currency amount={getEditableRate(lot)} /> = <Currency amount={calculateBaseCharge(lot, partialQuantity)} /></div>
-                      )}
-                      {chargeBasis === "totalRemaining" && lot.baseColdChargesBilled !== 1 && (
-                        <div className="text-xs text-amber-600 dark:text-amber-400">({t("chargeBasis")}: {t("allRemainingBags")} - {lot.remainingSize} {t("bags")})</div>
-                      )}
-                      {(parseFloat(kataCharges) || 0) > 0 && (
-                        <div>+ {t("kataCharges")}: <Currency amount={parseFloat(kataCharges)} /></div>
-                      )}
-                      {(parseFloat(tulaiCharges) || 0) > 0 && (
-                        <div>+ {t("tulaiCharges")}: <Currency amount={parseFloat(tulaiCharges)} /></div>
-                      )}
-                      {isBiltyLike(deliveryType) && (parseFloat(extraHammaliPerBag) || 0) > 0 && (
-                        <div>+ {t("extraHammaliPerBag")}: <Currency amount={(parseFloat(extraHammaliPerBag) || 0) * partialQuantity} /> ({partialQuantity} x <Currency amount={parseFloat(extraHammaliPerBag) || 0} />)</div>
-                      )}
-                      {isBiltyLike(deliveryType) && (parseFloat(totalGradingCharges) || 0) > 0 && (
-                        <div>+ {t("totalGradingCharges")}: <Currency amount={parseFloat(totalGradingCharges)} /></div>
-                      )}
-                      {!isSelfBuyer && (parseFloat(adjAmount) || 0) > 0 && (
-                        <div>+ {t("adjReceivableSelfDueAmount") || "Adj Receivable & Self Due"}: <Currency amount={parseFloat(adjAmount) || 0} /></div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            {mutation.isPending && <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full w-1/2 animate-pulse bg-primary" /></div>}
           </div>
         )}
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            data-testid="button-cancel-sale"
-          >
-            {t("cancel")}
-          </Button>
-          <Button
-            onClick={handleConfirmSale}
-            disabled={
-              (lot?.chargeUnit === "quintal" && !lot?.netWeight) ||
-              partialSaleMutation.isPending ||
-              partialQuantity <= 0 ||
-              partialQuantity > (lot?.remainingSize || 0)
-            }
-            data-testid="button-confirm-sale"
-          >
-            {partialSaleMutation.isPending ? t("loading") : t("confirm")}
+        <DialogFooter className="flex-row justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>{t("cancel")}</Button>
+          <Button type="button" onClick={handleSubmit} disabled={!canSubmit} data-testid="button-submit-sauda">
+            {mutation.isPending ? t("loading") : t("submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

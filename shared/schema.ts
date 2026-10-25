@@ -4,6 +4,14 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // One-time data migrations registry
+export const lotSauda = pgTable("lot_sauda", {
+  lotId: varchar("lot_id").primaryKey().references(() => lots.id, { onDelete: "cascade" }),
+  coldStorageId: varchar("cold_storage_id").notNull().references(() => coldStorages.id, { onDelete: "cascade" }),
+  buyerLedgerId: varchar("buyer_ledger_id").notNull().references(() => buyerLedger.id, { onDelete: "cascade" }),
+  quantity: integer("quantity").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, table => [index("lot_sauda_cold_storage_idx").on(table.coldStorageId)]);
+
 export const migrations = pgTable("migrations", {
   name: varchar("name").primaryKey(),
   appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),

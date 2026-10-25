@@ -35,61 +35,6 @@ export async function checkTulaiSubmissions(page: Page, mount: Mount, api: Api) 
   };
   page.on("request", captureWrite);
   try {
-    for (const [name, typed, expected] of [
-      ["decimal", "50.25", 50.25],
-      ["blank", "", 0],
-      ["zero", "0", 0],
-    ] as const) {
-      const lotId = await lot(`UI-${name}`);
-      const info = await api(`/api/lots/${lotId}/sale-info`, undefined, "GET");
-      await mount("SaleDialog", { lot: info });
-      await field("input-partial-quantity").fill("10");
-      await field("checkbox-partial-self-buyer").click();
-      await field("input-partial-sale-date").fill("2016-06-15");
-      await field("input-partial-kata-charges").fill("20");
-      const tulai = field("input-partial-tulai-charges");
-      // Clearing a previously typed amount must save zero, not retain it.
-      await tulai.fill("99");
-      await tulai.fill(typed);
-      assert.equal(await tulai.inputValue(), typed);
-      if (name === "decimal") {
-        const before = writes.length;
-        await tulai.fill("-1");
-        await field("button-confirm-sale").click();
-        await page.getByText(invalidMessage, { exact: true }).waitFor({ state: "visible" });
-        assert.equal(writes.length, before, "Invalid Tulai must be rejected before the sale API");
-        await unchanged([lotId]);
-        await tulai.fill(typed);
-      }
-      const total = 600 + 20 + expected;
-      const summary = page.locator('[role="dialog"] .text-2xl.font-bold');
-      // Currency intentionally displays one decimal; persisted values below
-      // must still retain both decimal places.
-      assert.equal(Number((await summary.innerText()).replace(/[^\d.-]/g, "")), Math.round(total * 10) / 10,
-        "Sale preview must include Tulai using the normal currency formatting");
-      const responsePromise = page.waitForResponse(response =>
-        new URL(response.url()).pathname === `/api/lots/${lotId}/partial-sale` &&
-        response.request().method() === "POST");
-      await field("button-confirm-sale").click();
-      const response = await responsePromise;
-      assert.equal(response.status(), 200, await response.text());
-      const sent = response.request().postDataJSON();
-      assert.equal(sent.tulaiCharges, expected, "Sale payload must retain typed/cleared Tulai");
-      const rows = await persisted(lotId);
-      assert.equal(rows.length, 1, "UI must create exactly one sale");
-      const stored = rows[0];
-      assert.equal(stored.tulai_charges, expected);
-      assert.equal(stored.kata_charges, 20, "Kata must remain separate from Tulai");
-      assert.equal(stored.cold_storage_charge, total);
-      assert.equal(stored.due_amount, total);
-      assert.equal(stored.paid_amount, 0);
-      assert.equal((await pool.query("SELECT remaining_size FROM lots WHERE id=$1", [lotId])).rows[0].remaining_size, 90);
-      const saved = await api(`/api/sales-history/${stored.id}`, undefined, "GET");
-      assert.equal(saved.tulaiCharges, expected, "Saved sale readback must retain Tulai");
-      assert.equal(saved.coldStorageCharge, total);
-      console.log(`UI sale ${name}: Tulai ${expected}, total/due ${total}`);
-    }
-
     // Use only fresh lots, including a pre-billed row, to make each row's
     // base and surcharge totals independent and predictable.
     const batchLots = [
@@ -184,7 +129,7 @@ export async function checkTulaiSubmissions(page: Page, mount: Mount, api: Api) 
     assert.equal(receipts.amount - initialReceipts.amount, 60,
       "Only the attached batch payment should create additional receipts");
     assert.equal(receipts.round_off - initialReceipts.round_off, 10);
-    assert.equal((await api("/api/analytics/payments", undefined, "GET")).tulaiDue, initialTulaiDue + 50.25 + 20.25,
+    assert.equal((await api("/api/analytics/payments", undefined, "GET")).tulaiDue, initialTulaiDue + 20.25,
       "Customer collection must not pay down Tulai owed to Himmal");
     console.log(`UI Master Nikasi: decimal/blank/zero Tulai retained, total ${total}, payment 60, due ${due}; invalid Tulai/payment blocked`);
   } finally {

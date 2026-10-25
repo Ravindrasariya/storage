@@ -32,14 +32,24 @@ try {
   };
   async function sell(name: string, tulai: unknown = undefined, overrides: object = {}, billed = 0) {
     const lotId = await lot(name, billed);
-    await request(`/api/lots/${lotId}/partial-sale`, {
-      ...saleBody, ...(tulai === undefined ? {} : { tulaiCharges: tulai }), ...overrides,
-    });
+    const body = { ...saleBody, ...overrides } as any;
+    let buyerLedgerId: string | undefined;
+    if (!body.isSelfSale) {
+      const { storage } = await import("../server/storage.ts");
+      buyerLedgerId = (await storage.ensureBuyerLedgerEntry(id, { buyerName: body.buyerName })).id;
+    }
+    await request("/api/farmers/master-nikasi", {
+      farmerLedgerId: farmerId, buyerLedgerId, exitDate: body.soldAt,
+      rows: [{ lotId, soldBags: body.quantitySold, exitBags: 1, chargeBasis: body.chargeBasis,
+        kataCharges: body.kataCharges, tulaiCharges: tulai, extraHammaliPerBag: body.extraHammali / body.quantitySold,
+        gradingCharges: body.gradingCharges }],
+    }, "POST", 201);
     return (await pool.query(`SELECT * FROM sales_history WHERE lot_id=$1`, [lotId])).rows[0];
   }
   for (const value of [-1, "nope", "Infinity", "NaN", {}]) {
     const lotId = await lot(`bad${String(value)}`);
-    await request(`/api/lots/${lotId}/partial-sale`, { ...saleBody, tulaiCharges: value }, "POST", 400);
+    await request("/api/farmers/master-nikasi", { farmerLedgerId: farmerId, exitDate: saleBody.soldAt,
+      rows: [{ lotId, exitBags: 1, tulaiCharges: value }] }, "POST", 400);
     assert.equal((await pool.query(`SELECT remaining_size FROM lots WHERE id=$1`, [lotId])).rows[0].remaining_size, 100);
   }
   for (const [index, value] of [undefined, null, "", 0].entries()) {

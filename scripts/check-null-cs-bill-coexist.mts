@@ -19,8 +19,8 @@
  * What this script asserts (against a real DB, exercising HTTP routes —
  * the same path the UI takes — so route-layer regressions are caught
  * too, not just storage-layer ones):
- *   1. POST /api/lots/:id/partial-sale called twice with
- *      coldStorageBillNumber=null in the same year both succeed and the
+ *   1. POST /api/farmers/master-nikasi called twice for base-billed lots with
+ *      sharedColdStorageBillNumber=null in the same year both succeed and the
  *      DB rows land with NULL coldStorageBillNumber.
  *   2. POST /api/farmers/master-nikasi with sharedColdStorageBillNumber
  *      omitted on a batch where every selected lot is already
@@ -52,6 +52,9 @@ import pg from "pg";
 import express from "express";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { requireDevelopmentFixtures } from "./require-development-fixtures.mts";
+
+requireDevelopmentFixtures();
 
 const { Pool } = pg;
 
@@ -269,32 +272,23 @@ async function main(): Promise<void> {
 
   try {
     // ---------------------------------------------------------------------
-    // Test 1: two NULL-bill partial sales coexist in the same year via
-    // the partial-sale HTTP endpoint.
+    // Test 1: two NULL-bill actual sales coexist through Master Nikasi.
     // ---------------------------------------------------------------------
     const partialSaleBody = (lotId: string) =>
       JSON.stringify({
-        quantitySold: 1,
-        pricePerBag: 0,
-        paymentStatus: "due",
-        paidAmount: 0,
-        dueAmount: 0,
-        position: "P1",
-        kataCharges: 0,
-        extraHammali: 0,
-        gradingCharges: 0,
-        chargeBasis: "actual",
-        isSelfSale: true,
-        coldStorageBillNumber: null,
-        soldAt: TEST_DATE,
+        farmerLedgerId: fixtures.farmerLedgerId,
+        sharedColdStorageBillNumber: null,
+        exitDate: TEST_DATE,
+        rows: [{ lotId, exitBags: 1 }],
       });
 
-    const ps1Resp = await fetch(`${baseUrl}/api/lots/${lotIds[0]}/partial-sale`, {
+    await pool.query(`UPDATE lots SET base_cold_charges_billed=1 WHERE id=ANY($1::varchar[])`, [[lotIds[0], lotIds[1]]]);
+    const ps1Resp = await fetch(`${baseUrl}/api/farmers/master-nikasi`, {
       method: "POST",
       headers: authHeaders,
       body: partialSaleBody(lotIds[0]),
     });
-    const ps2Resp = await fetch(`${baseUrl}/api/lots/${lotIds[1]}/partial-sale`, {
+    const ps2Resp = await fetch(`${baseUrl}/api/farmers/master-nikasi`, {
       method: "POST",
       headers: authHeaders,
       body: partialSaleBody(lotIds[1]),
@@ -313,7 +307,7 @@ async function main(): Promise<void> {
       const sale1Bill = await getSaleBillNumber(sale1.id);
       const sale2Bill = await getSaleBillNumber(sale2.id);
       if (sale1Bill === null && sale2Bill === null) {
-        console.log("Test 1 (partial-sale x2 NULL): ok — both rows landed with NULL CS Bill #");
+        console.log("Test 1 (Master Nikasi x2 NULL): ok — both rows landed with NULL CS Bill #");
       } else {
         failures++;
         console.error(

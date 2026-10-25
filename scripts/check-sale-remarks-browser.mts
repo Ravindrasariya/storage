@@ -93,31 +93,12 @@ try {
     assert.ok(result.width > 100);
     assert.equal(result.documentOverflow, false);
   }
-  await mount("SaleDialog", { lot: info });
-  assert.equal(await field("input-partial-remarks").count(), 1, "Remark must exist with zero quantity/no preview");
-  await field("input-partial-quantity").fill("10");
-  await field("checkbox-partial-self-buyer").click();
-  await field("input-partial-sale-date").fill("2016-06-15");
-  await field("input-partial-remarks").fill("टिप्पणी <script>literal only</script>");
-  await mount("SaleDialog", { lot: { ...info } }, true);
-  assert.equal(await field("input-partial-remarks").inputValue(), "टिप्पणी <script>literal only</script>", "Refetch reset sale typing");
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
-    await placement("input-partial-remarks", ".text-2xl.font-bold");
-    await field("input-partial-remarks").scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `/tmp/sale-remarks-create-${width}.png` });
-  }
-  const saleResponse = page.waitForResponse(response => response.url().endsWith(`/api/lots/${lotId}/partial-sale`) && response.request().method() === "POST");
-  await field("button-confirm-sale").click();
-  assert.equal((await saleResponse).status(), 200);
+  // Creation now belongs only to Master Nikasi; individual Sauda has no remarks.
+  await api("/api/farmers/master-nikasi", { farmerLedgerId: farmerId,
+    exitDate: "2016-06-15", remarks: "टिप्पणी <script>literal only</script>",
+    rows: [{ lotId, soldBags: 10, exitBags: 1 }] });
   const created = (await pool.query(`SELECT id FROM sales_history WHERE lot_id=$1`, [lotId])).rows[0];
   assert.equal((await read(created.id)).remarks, "टिप्पणी <script>literal only</script>");
-  await mount("SaleDialog", { lot: secondInfo }, true);
-  assert.equal(await field("input-partial-remarks").inputValue(), "", "Switching lots leaked a remark");
-  await field("input-partial-remarks").fill("Discard me");
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await mount("SaleDialog", { lot: secondInfo }, true);
-  assert.equal(await field("input-partial-remarks").inputValue(), "", "Reopening leaked a cancelled remark");
 
   // A deliberately different historical total must not be repaired by note edits.
   await pool.query(`UPDATE sales_history SET cold_storage_charge=777,due_amount=777 WHERE id=$1`, [created.id]);
