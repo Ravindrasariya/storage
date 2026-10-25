@@ -50,3 +50,9 @@ Allow multiple Saudas per lot. The normal Sauda action creates another entry rat
 **Why:** The user changed the lifecycle: after a Sauda for 50 of 100 bags, the next Sauda could be for another 25 bags, and requested editing by clicking the initials.
 
 **How to apply:** Treat this as superseding the earlier one-marker-per-lot replacement rule. Enforce the combined limit on creation and editing without reducing displayed Remaining Bags or making financial entries. Keep actual-sale controls separate from clickable Sauda initials.
+
+Master Nikasi must let the operator explicitly pick the open Sauda portion being converted to an actual sale. Only selected quantities are consumed; unrelated Saudas remain. A sale cannot proceed without selecting sufficient Sauda quantities when unassigned bags alone are insufficient.
+
+**Why:** The user warned that automatic clearing or partial clearing could cause confusion about which buyer the bags were assigned to, and requested explicit selection at Master Nikasi.
+
+**How to apply:** Show each open Sauda's buyer and available quantity when selecting portions. Preserve the buyer association of unconsumed portions; fully consumed entries leave the open list only when the actual sale commits. Keep selection separate from physical exit quantities.
