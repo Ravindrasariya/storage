@@ -15,3 +15,4 @@
 - [Stock Register MR scope](stock-register-mr-scope.md) — live Buyer Ledger initials per sale, exactly Self for self-sales, blanks stay blank; on-screen register only.
 - [Reversal archive scope](reversal-archive-scope.md) — additive tracking only; preserve existing tables/calculation logic and reversal semantics; Archive-prefixed tabs and copy-only legacy Nikasi backfill.
 - [Sauda rules](sale-promise-rules.md) — preserve the original Individual Sale alongside independent non-financial Sauda; existing-buyer initials and confirmed deletion only.
+- [Edit Sale charges](edit-sale-charge-layout.md) — four two-column rows; read-only extra-Hammali total beside its rate, editable grading total below.
