@@ -1131,19 +1131,21 @@ export default function StockRegister() {
     .farmer-charges .ch-blue { font-weight: bold; color: #2563eb; }
     .farmer-charges .ch-green { font-weight: bold; color: #16a34a; }
     .farmer-charges .ch-red { font-weight: bold; color: #dc2626; }
-    /* 11-column lot table */
+    /* 13-column lot table */
     .lot-table {
       width: 100%; border-collapse: collapse;
       font-size: 11px; table-layout: fixed;
     }
     .lot-table th, .lot-table td {
-      padding: 5px 4px; vertical-align: middle;
-      border-bottom: 1px solid #eee; overflow: hidden;
-      text-overflow: ellipsis;
+      padding: 4px 3px; vertical-align: middle;
+      border-bottom: 1px solid #eee;
+      overflow-wrap: anywhere; word-break: normal;
+      white-space: normal; line-height: 1.25;
     }
     .lot-table th {
       font-weight: bold; color: #333; font-size: 10px;
       text-align: left; border-bottom: 1px solid #bbb;
+      hyphens: auto;
     }
     .lot-table th.t-right { text-align: right; }
     .lot-table th.t-center { text-align: center; }
@@ -1173,6 +1175,16 @@ export default function StockRegister() {
     .pill-wafer  { background: #dbeafe; color: #1e40af; }
     .pill-seed   { background: #dcfce7; color: #166534; }
     .pill-ration { background: #fce7f3; color: #9d174d; }
+    .payment-pill {
+      display: inline-block; width: auto; max-width: 100%;
+      padding: 2px 4px; border-radius: 8px; vertical-align: middle;
+      font-size: 10px; line-height: 1.6; font-weight: bold;
+      text-align: center; white-space: normal; overflow-wrap: anywhere;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .payment-due { background: #dc2626 !important; color: #fff !important; }
+    .payment-paid { background: #16a34a !important; color: #fff !important; }
+    .payment-partial { background: #e2e8f0 !important; color: #1e293b !important; }
     @media print {
       body { padding: 10px; }
       .farmer-card { break-inside: avoid; page-break-inside: avoid; }
@@ -1185,6 +1197,10 @@ export default function StockRegister() {
 
     const coldStoreName = coldStorage?.name || "Cold Storage";
     const formatCurrency = (amount: number) => `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    const escapeHtml = (s: unknown) => String(s ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const salesSummaryReady = !salesByLotError && !salesByLotLoading;
 
     // Format an exit date as IST `dd-mm-yyyy` (matches FarmerLotGroup).
     const fmtDateShort = (d: string | Date | null | undefined) => {
@@ -1279,10 +1295,6 @@ export default function StockRegister() {
       });
     }
 
-    const escapeHtml = (s: unknown) => String(s ?? "")
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
     const bagTypePill = (bagType: string) => {
       const cls = bagType === "wafer"
         ? "pill-wafer"
@@ -1332,8 +1344,8 @@ export default function StockRegister() {
         </div>
       `;
 
-      // 11-column lot table. LEFT 7 columns share `.lh` (sky-blue),
-      // RIGHT 4 columns share `.rh` (amber). Multi-sale lots use
+      // 13-column lot table. LEFT 7 columns share `.lh` (sky-blue),
+      // RIGHT 6 columns share `.rh` (amber). Multi-sale lots use
       // `rowspan` on the LEFT cells; lots with no sales render the
       // RIGHT cells once with em-dashes.
       const lotRows = group.items.map(({ lot }) => {
@@ -1342,7 +1354,7 @@ export default function StockRegister() {
           ? chamberName.replace(/chamber\s*/i, "Ch-")
           : `Ch-${chamberName}`;
         const locationStr = `${chamberAbbrev}, FL-${lot.floor}, ${lot.position}`;
-        const sales = (salesByLot && salesByLot[lot.id]) || [];
+        const sales = (salesByLot && salesByLot[lot.id] || []).filter((sale) => sale != null);
         const rowCount = Math.max(1, sales.length);
         const rs = rowCount > 1 ? ` rowspan="${rowCount}"` : '';
 
@@ -1353,20 +1365,36 @@ export default function StockRegister() {
               <td class="rh t-center small tnum">—</td>
               <td class="rh t-center mono tnum tight">—</td>
               <td class="rh t-center mono tnum">—</td>
+              <td class="rh t-center"></td>
+              <td class="rh t-center"></td>
             `;
           }
-          const exitDates = sale.exits.length > 0
-            ? sale.exits.map(e => fmtDateShort(e.exitDate)).join(", ")
+          const exits = Array.isArray(sale.exits) ? sale.exits : [];
+          const exitDates = exits.length > 0
+            ? exits.map(e => fmtDateShort(e.exitDate)).join(", ")
             : "—";
-          const exitBills = sale.exits.length > 0
-            ? sale.exits.map(e => String(e.billNumber)).join(", ")
+          const exitBills = exits.length > 0
+            ? exits.map(e => String(e.billNumber)).join(", ")
             : "—";
           const coldBill = sale.coldStorageBillNumber != null ? String(sale.coldStorageBillNumber) : "—";
+          const mrValue = salesSummaryReady
+            ? sale.isSelfSale === 1
+              ? "Self"
+              : (sale.buyerInitials ?? "").trim()
+            : "";
+          const paymentStatus = salesSummaryReady &&
+            (sale.paymentStatus === "due" || sale.paymentStatus === "paid" || sale.paymentStatus === "partial")
+              ? sale.paymentStatus
+              : null;
+          const paymentLabel = paymentStatus ? t(paymentStatus) : "";
+          const paymentClass = paymentStatus ? `payment-${paymentStatus}` : "";
           return `
-            <td class="rh t-center tnum">${sale.totalExited} / ${sale.quantitySold}</td>
+            <td class="rh t-center tnum">${escapeHtml(`${sale.totalExited} / ${sale.quantitySold}`)}</td>
             <td class="rh t-center small tnum">${escapeHtml(exitDates)}</td>
             <td class="rh t-center mono tnum tight">${escapeHtml(exitBills)}</td>
             <td class="rh t-center mono tnum">${escapeHtml(coldBill)}</td>
+            <td class="rh t-center">${escapeHtml(mrValue)}</td>
+            <td class="rh t-center">${paymentLabel ? `<span class="payment-pill ${paymentClass}">${escapeHtml(paymentLabel)}</span>` : ""}</td>
           `;
         };
 
@@ -1377,8 +1405,8 @@ export default function StockRegister() {
             <td class="lh"${rs}>${bagTypePill(lot.bagType)}</td>
             <td class="lh"${rs}>${escapeHtml(lot.type || "-")}</td>
             <td class="lh"${rs}>${escapeHtml(locationStr)}</td>
-            <td class="lh t-right tnum"${rs}>${lot.size}</td>
-            <td class="lh t-right col-remaining"${rs}>${lot.remainingSize}</td>
+            <td class="lh t-right tnum"${rs}>${escapeHtml(lot.size)}</td>
+            <td class="lh t-right col-remaining"${rs}>${escapeHtml(lot.remainingSize)}</td>
             ${renderRightCells(sales[0])}
           </tr>
         `;
@@ -1393,17 +1421,19 @@ export default function StockRegister() {
       const tableHtml = `
         <table class="lot-table">
           <colgroup>
-            <col style="width:8%"/>
-            <col style="width:8%"/>
-            <col style="width:8%"/>
-            <col style="width:8%"/>
-            <col style="width:13%"/>
             <col style="width:6%"/>
             <col style="width:6%"/>
+            <col style="width:6%"/>
+            <col style="width:6%"/>
+            <col style="width:10%"/>
+            <col style="width:5%"/>
+            <col style="width:5%"/>
             <col style="width:8%"/>
-            <col style="width:13%"/>
             <col style="width:14%"/>
-            <col style="width:8%"/>
+            <col style="width:13%"/>
+            <col style="width:7%"/>
+            <col style="width:5%"/>
+            <col style="width:9%"/>
           </colgroup>
           <thead>
             <tr>
@@ -1418,6 +1448,8 @@ export default function StockRegister() {
               <th class="rh t-center">${escapeHtml(t("exitDates") || "Exit Dates")}</th>
               <th class="rh t-center">${escapeHtml(t("exitBills") || "Exit Bill No(s)")}</th>
               <th class="rh t-center">${escapeHtml(t("coldBillNo") || "Cold Bill No")}</th>
+              <th class="rh t-center">MR</th>
+              <th class="rh t-center">PS</th>
             </tr>
           </thead>
           <tbody>${lotRows}</tbody>
@@ -1429,7 +1461,7 @@ export default function StockRegister() {
 
     const bodyHtml = `
       <div class="header">
-        <div class="main-title">${coldStoreName}</div>
+        <div class="main-title">${escapeHtml(coldStoreName)}</div>
         <div class="sub-title">Farmer Lot Details</div>
         <div class="print-date">Printed On: ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}</div>
       </div>
@@ -1467,7 +1499,7 @@ export default function StockRegister() {
       </div>
     `;
 
-    return { bodyHtml, coldStoreName };
+    return { bodyHtml, coldStoreName, printTitle: escapeHtml(coldStoreName) };
   };
 
   const handlePrintFiltered = () => {
@@ -1483,7 +1515,7 @@ export default function StockRegister() {
       return;
     }
 
-    const htmlContent = `<!DOCTYPE html><html><head><title>${result.coldStoreName} - Farmer Lot Details</title><style>${STOCK_REPORT_CSS}</style></head><body>${result.bodyHtml}<script>window.onload=function(){window.print()}<\/script></body></html>`;
+    const htmlContent = `<!DOCTYPE html><html><head><title>${result.printTitle} - Farmer Lot Details</title><style>${STOCK_REPORT_CSS}</style></head><body>${result.bodyHtml}<script>window.onload=function(){window.print()}<\/script></body></html>`;
     printWindow.document.write(htmlContent);
     printWindow.document.close();
   };

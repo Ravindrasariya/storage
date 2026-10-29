@@ -26,6 +26,7 @@
     "test:buyer-initials-browser": "tsx scripts/check-buyer-initials-browser.mts",
     "test:stock-ps": "tsx scripts/check-stock-register-ps.mts",
     "test:stock-ps-browser": "tsx scripts/check-stock-register-ps-browser.mts",
+    "test:stock-print-mr-ps": "tsx scripts/check-stock-register-print-mr-ps.mts",
     "test:buyer-tenant-access": "tsx scripts/check-buyer-tenant-access.mts",
     "test:sauda": "tsx scripts/check-sauda.mts",
     "test:sauda-browser": "tsx scripts/check-sauda-browser.mts",
