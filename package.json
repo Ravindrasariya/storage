@@ -13,6 +13,8 @@
     "test:package-urls": "node --test scripts/check-package-urls.test.mjs",
     "test:tulai": "tsx scripts/check-tulai.mts",
     "test:sales-csv-choices": "tsx scripts/check-sales-csv-choices.mts",
+    "test:sales-column-sort": "tsx scripts/check-sales-column-sort.mts",
+    "test:sales-column-sort-browser": "tsx scripts/check-sales-column-sort-browser.mts",
     "test:tulai-browser": "tsx scripts/check-tulai-browser.mts",
     "test:sale-remarks": "tsx scripts/check-sale-remarks.mts",
     "test:sale-remarks-browser": "tsx scripts/check-sale-remarks-browser.mts",

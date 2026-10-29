@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { Search, X, Filter, Package, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent, Archive } from "lucide-react";
+import { Search, X, Filter, Package, Clock, LogOut, ArrowLeftRight, Download, Loader2, Warehouse, FileCheck, HandCoins, ChevronDown, Users, AlertTriangle, CreditCard, Banknote, Printer, BadgePercent, Archive, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,6 +25,7 @@ import { capitalizeFirstLetter } from "@/lib/utils";
 import { Currency, formatCurrency } from "@/components/Currency";
 import { DateFilterBar, dateMatchesFilter } from "@/components/DateFilterBar";
 import { ArchiveRegisters } from "@/components/bills-archive/ArchiveRegisters";
+import { nextSalesSort, sortSalesHistory, type SalesSort } from "@/lib/sales-history-sort";
 
 type FarmerRecord = {
   farmerName: string;
@@ -52,6 +53,7 @@ export default function SalesHistoryPage() {
   const { token } = useAuth();
   const { toast } = useToast();
   const [isExporting, setIsExporting] = useState(false);
+  const [salesSort, setSalesSort] = useState<SalesSort | null>(null);
   
   // Load persisted filters or use defaults
   const savedFilters = loadSavedFilters();
@@ -186,6 +188,7 @@ export default function SalesHistoryPage() {
   });
 
   const clearFilters = () => {
+    setSalesSort(null);
     setYearFilter("");
     setSelectedMonths([]);
     setSelectedDays([]);
@@ -340,6 +343,33 @@ export default function SalesHistoryPage() {
     }
     return list;
   }, [salesHistory, yearFilter, selectedMonths, selectedDays, typeFilter]);
+
+  const sortedSalesHistory = useMemo(
+    () => sortSalesHistory(filteredSalesHistory, salesSort, language),
+    [filteredSalesHistory, salesSort, language],
+  );
+
+  const renderSalesSortControl = (field: SalesSort["field"], labelKey: string) => {
+    const active = salesSort?.field === field;
+    const label = `${t("sortBy")} ${t(labelKey)}`;
+    const SortIcon = active
+      ? salesSort.direction === "asc" ? ArrowUp : ArrowDown
+      : ArrowUpDown;
+
+    return (
+      <button
+        type="button"
+        data-testid={`sort-sales-${field}`}
+        aria-label={label}
+        title={label}
+        onClick={() => setSalesSort((current) => nextSalesSort(current, field))}
+        className="inline-flex items-center gap-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        <span>{t(labelKey)}</span>
+        <SortIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+      </button>
+    );
+  };
 
   const paymentCutoff = useMemo(() => {
     if (!yearFilter || yearFilter === "all") return null;
@@ -936,7 +966,7 @@ export default function SalesHistoryPage() {
               />
             </div>
 
-            {hasActiveFilters && (
+            {(hasActiveFilters || salesSort) && (
               <Button variant="outline" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
                 <X className="h-4 w-4 mr-1" />
                 {t("clearFilters")}
@@ -1105,8 +1135,8 @@ export default function SalesHistoryPage() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead className="text-xs font-semibold whitespace-nowrap">{t("saleDate")}</TableHead>
-                    <TableHead className="text-xs font-semibold">{t("farmerName")}</TableHead>
+                    <TableHead className="text-xs font-semibold whitespace-nowrap" aria-sort={salesSort?.field === "soldAt" ? (salesSort.direction === "asc" ? "ascending" : "descending") : "none"}>{renderSalesSortControl("soldAt", "saleDate")}</TableHead>
+                    <TableHead className="text-xs font-semibold" aria-sort={salesSort?.field === "farmerName" ? (salesSort.direction === "asc" ? "ascending" : "descending") : "none"}>{renderSalesSortControl("farmerName", "farmerName")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("village")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("lotNo")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("marka")}</TableHead>
@@ -1115,7 +1145,7 @@ export default function SalesHistoryPage() {
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("remainingBagsAfterSale")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("bagType")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("quantitySold")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("totalColdStorageCharges")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-right whitespace-nowrap" aria-sort={salesSort?.field === "coldStorageCharge" ? (salesSort.direction === "asc" ? "ascending" : "descending") : "none"}>{renderSalesSortControl("coldStorageCharge", "totalColdStorageCharges")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("buyerName")}</TableHead>
                     <TableHead className="text-xs font-semibold text-right whitespace-nowrap">{t("pricePerKg")}</TableHead>
                     <TableHead className="text-xs font-semibold whitespace-nowrap">{t("paymentStatus")}</TableHead>
@@ -1123,7 +1153,7 @@ export default function SalesHistoryPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredSalesHistory.map((sale) => (
+                  {sortedSalesHistory.map((sale) => (
                     <TableRow key={sale.id} data-testid={`row-sale-${sale.id}`}>
                       <TableCell className="whitespace-nowrap text-xs">
                         {format(new Date(sale.soldAt), "dd MMM yyyy")}
