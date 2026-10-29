@@ -64,6 +64,43 @@ try {
         node.getAttribute("data-testid")!.replace("row-sale-", ""))) === JSON.stringify(expected), expected);
     assert.deepEqual(await ids(), expected);
   };
+  // Capture the actual print document without opening the system print dialog.
+  const capturePrint = async () => {
+    await page.evaluate(() => {
+      (window as any).salesPrintedHtml = "";
+      window.open = (() => ({
+        document: {
+          write(html: string) { (window as any).salesPrintedHtml = html; },
+          close() {},
+        },
+      })) as any;
+    });
+    await page.getByTestId("button-print-sales").click();
+    return page.evaluate(() => {
+      const html = (window as any).salesPrintedHtml as string;
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return {
+        rows: Array.from(doc.querySelectorAll("tbody tr")).map(row =>
+          Array.from(row.querySelectorAll("td")).map(cell => cell.textContent)),
+        headers: Array.from(doc.querySelectorAll("th")).map(cell => cell.textContent),
+        totals: doc.querySelector(".cards")?.textContent,
+        filters: doc.querySelector(".meta")?.textContent,
+        columns: doc.querySelector("colgroup")?.innerHTML,
+        styles: doc.querySelector("style")?.textContent,
+      };
+    });
+  };
+  const checkPrint = async (baseline: Awaited<ReturnType<typeof capturePrint>>, expected: string[]) => {
+    const printed = await capturePrint();
+    const byId = new Map(baseline.rows.map(row => [row[3]!.replace("receipt-", ""), row]));
+    assert.deepEqual(printed, {
+      ...baseline,
+      rows: expected.map(id => {
+        assert.ok(byId.has(id), `Missing baseline print row ${id}`);
+        return byId.get(id);
+      }),
+    }, "Print must match table order without changing row cells, totals, filters, columns or styles");
+  };
   for (const language of ["en", "hi"]) {
     await page.goto(base, { waitUntil: "networkidle" });
     await page.evaluate(language => {
@@ -72,9 +109,16 @@ try {
     }, language);
     await page.goto(`${base}/sales-history`, { waitUntil: "networkidle" });
     await waitOrder(sales.map(row => row.id));
+    // Use the same filter state as Clear Filters/reload for full-document comparisons.
+    await page.getByTestId("button-clear-filters").click();
+    await waitOrder(sales.map(row => row.id));
     const summaries = await page.locator('[data-testid^="card-summary-"]').allTextContents();
+    const defaultPrint = await capturePrint();
+    assert.equal(defaultPrint.headers.length, 14);
+    assert.deepEqual(defaultPrint.rows.map(row => row[3]), sales.map(row => row.lotNo));
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await checkPrint(defaultPrint, await ids());
       for (const field of ["soldAt", "farmerName", "coldStorageCharge"] as const) {
         const button = page.getByTestId(`sort-sales-${field}`);
         assert.equal(await button.count(), 1);
@@ -84,6 +128,7 @@ try {
           await waitOrder(expected);
           assert.equal(await button.locator("..").getAttribute("aria-sort"), direction === "asc" ? "ascending" : "descending");
           assert.deepEqual(await page.locator('[data-testid^="card-summary-"]').allTextContents(), summaries);
+          await checkPrint(defaultPrint, expected);
         }
       }
       assert.equal(await page.locator('th button[data-testid^="sort-sales-"]').count(), 3);
@@ -102,17 +147,33 @@ try {
     await page.getByTestId("select-type-filter").click();
     await page.getByRole("option", { name: language === "en" ? "Seed" : "बीज", exact: true }).click();
     await waitOrder(["a", "e", "c"]);
+    const filteredPrint = await capturePrint();
+    assert.deepEqual(filteredPrint.rows.map(row => row[3]), ["receipt-a", "receipt-e", "receipt-c"]);
+    assert.notEqual(filteredPrint.filters, defaultPrint.filters);
+    assert.notEqual(filteredPrint.totals, defaultPrint.totals);
     assert.equal(await page.getByTestId("sort-sales-coldStorageCharge").locator("..").getAttribute("aria-sort"), "descending");
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      for (const field of ["soldAt", "farmerName", "coldStorageCharge"] as const) {
+        for (let click = 0; click < 2; click++) {
+          await page.getByTestId(`sort-sales-${field}`).click();
+          await checkPrint(filteredPrint, await ids());
+        }
+      }
+    }
     await page.getByTestId("button-clear-filters").click();
     await waitOrder(["a", "b", "c", "d", "e"]);
+    await checkPrint(defaultPrint, sales.map(row => row.id));
     for (const field of ["soldAt", "farmerName", "coldStorageCharge"]) {
       assert.equal(await page.getByTestId(`sort-sales-${field}`).locator("..").getAttribute("aria-sort"), "none");
     }
     await page.getByTestId("sort-sales-farmerName").click();
     await page.getByTestId("input-farmer-filter").fill("arun");
     await waitOrder(["b", "c"]);
+    assert.deepEqual((await capturePrint()).rows.map(row => row[3]), ["receipt-b", "receipt-c"]);
     await page.getByTestId("input-cold-bill-filter").fill("999999");
     await waitOrder([]);
+    assert.equal(await page.getByTestId("button-print-sales").isDisabled(), true);
     await page.getByTestId("button-clear-filters").click();
     await waitOrder(["a", "b", "c", "d", "e"]);
     await page.getByTestId("sort-sales-coldStorageCharge").click();
@@ -123,12 +184,13 @@ try {
     assert.equal(new URL(exports.at(-1)!).searchParams.has("sort"), false);
     await page.reload({ waitUntil: "networkidle" });
     await waitOrder(["a", "b", "c", "d", "e"]);
+    await checkPrint(defaultPrint, sales.map(row => row.id));
     assert.equal(await page.getByTestId("sort-sales-coldStorageCharge").locator("..").getAttribute("aria-sort"), "none");
   }
   assert.deepEqual(errors, []);
   assert.deepEqual(unexpectedWrites, []);
   assert.equal(exports.length, 2);
-  console.log("Sales sorting browser checks passed: three headers, both directions, keyboard, stable ties, English/Hindi desktop/mobile, unchanged totals, filters/reset/empty/reload and unchanged CSV requests. All API traffic intercepted; no database changes.");
+  console.log("Sales sorting and printing browser checks passed: three headers, both directions, keyboard, stable ties, English/Hindi desktop/mobile print invocation, unchanged print cells/columns/totals/styles, filters/reset/empty/reload and unchanged CSV requests. All API traffic intercepted; no database changes.");
 } finally {
   await browser.close();
 }

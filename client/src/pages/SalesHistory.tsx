@@ -560,7 +560,7 @@ export default function SalesHistoryPage() {
       return lines.map((l) => escape(l)).join("<br/>");
     };
 
-    const rowsHtml = filteredSalesHistory
+    const rowsHtml = sortedSalesHistory
       .map((sale) => {
         const remainingAfter =
           sale.remainingSizeAtSale != null ? sale.remainingSizeAtSale - sale.quantitySold : null;
