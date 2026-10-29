@@ -89,16 +89,46 @@ try {
     assert.equal(headings.length, 15);
     assert.equal(headings[headings.indexOf("PS") - 1], "MR");
     assert.equal(headings.indexOf("PS"), 13);
-    for (const width of [1440, 1280, 768, 390]) {
+    for (const width of [1920, 1440, 1280, 768, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       for (const id of ["s0", "s1", "s2"]) {
         const geometry = await ps(id).evaluate(el => {
           const badge = el.firstElementChild!;
           const rect = el.getBoundingClientRect(), br = badge.getBoundingClientRect();
           const mr = el.previousElementSibling!.getBoundingClientRect();
-          const actions = el.nextElementSibling!.getBoundingClientRect();
+          const actionCell = el.nextElementSibling!;
+          const actions = actionCell.getBoundingClientRect();
+          const firstAction = actionCell.firstElementChild!.getBoundingClientRect();
+          const lastAction = actionCell.lastElementChild!.getBoundingClientRect();
+          const row = el.parentElement!;
+          const rowRect = row.getBoundingClientRect();
+          const cells = Array.from(row.children);
+          const middleWidth = cells.slice(8, 13).reduce((total, cell) => total + cell.getBoundingClientRect().width, 0);
+          // Measure the old layout in this same viewport without changing the
+          // application or fixtures. This guards actual reclaimed space, not
+          // merely a smaller CSS gap or a shifted/wider table.
+          const oldGrid = [
+            "24px", "minmax(70px,0.9fr)", "minmax(70px,0.9fr)", "minmax(70px,0.8fr)",
+            "minmax(70px,0.9fr)", "minmax(140px,1.6fr)", "minmax(70px,0.7fr)", "minmax(80px,0.8fr)",
+            "minmax(80px,1.5fr)", "minmax(140px,2fr)", "minmax(90px,1.7fr)", "minmax(70px,1.4fr)",
+            "minmax(48px,0.65fr)", "minmax(120px,1.15fr)", "minmax(112px,auto)",
+          ].join(" ");
+          const savedGrid = row.style.gridTemplateColumns;
+          const savedPSAlign = (el as HTMLElement).style.justifyContent;
+          const savedActionAlign = (actionCell as HTMLElement).style.justifyContent;
+          row.style.gridTemplateColumns = oldGrid;
+          (el as HTMLElement).style.justifyContent = "center";
+          (actionCell as HTMLElement).style.justifyContent = "center";
+          const oldGap = actionCell.firstElementChild!.getBoundingClientRect().left - badge.getBoundingClientRect().right;
+          const oldMiddleWidth = cells.slice(8, 13).reduce((total, cell) => total + cell.getBoundingClientRect().width, 0);
+          row.style.gridTemplateColumns = savedGrid;
+          (el as HTMLElement).style.justifyContent = savedPSAlign;
+          (actionCell as HTMLElement).style.justifyContent = savedActionAlign;
           return { left: rect.left, right: rect.right, badgeLeft: br.left, badgeRight: br.right,
             mrRight: mr.right, actionsLeft: actions.left, cellWidth: rect.width,
+            actionGap: firstAction.left - br.right, trailingGap: rowRect.right - lastAction.right,
+            oldGap, middleWidth, oldMiddleWidth,
+            rowMinWidth: Number.parseFloat(getComputedStyle(row).minWidth),
             badgeScroll: badge.scrollWidth, badgeWidth: badge.clientWidth,
             background: getComputedStyle(badge).backgroundColor };
         });
@@ -106,17 +136,26 @@ try {
         assert.ok(geometry.left >= geometry.mrRight && geometry.right <= geometry.actionsLeft, "MR/PS/actions must not overlap");
         assert.ok(geometry.cellWidth <= 135, "PS remains narrow");
         assert.ok(geometry.badgeScroll <= geometry.badgeWidth + 1, `Badge text is not clipped: ${JSON.stringify(geometry)}`);
+        assert.ok(geometry.actionGap >= 6 && geometry.actionGap <= 32, `Compact PS-to-action gap: ${JSON.stringify(geometry)}`);
+        assert.ok(geometry.trailingGap >= 6 && geometry.trailingGap <= 16, "Actions stay near the table edge");
+        assert.ok(geometry.rowMinWidth <= 1340, "Do not widen the table minimum");
+        if (width >= 1440) {
+          assert.ok(geometry.actionGap < geometry.oldGap - 10, "Visibly reduce the old trailing gap");
+          assert.ok(geometry.middleWidth > geometry.oldMiddleWidth + 10, "Return reclaimed space to the other sale columns");
+          if (id === "s0") console.log(`${language}/${width}: badge→action ${geometry.oldGap.toFixed(1)}→${geometry.actionGap.toFixed(1)}px; other sale columns gain ${(geometry.middleWidth - geometry.oldMiddleWidth).toFixed(1)}px`);
+        }
         if (id === "s1") assert.equal(geometry.background, "rgb(22, 163, 74)");
         if (id === "s2") assert.equal(geometry.background, "rgb(226, 232, 240)");
       }
       const row = field("row-lot-sold");
-      for (const target of [header.locator(".."), field("row-lot-sold-sale-1")]) {
+      const band = row.locator("xpath=../../../..").locator(':scope > [aria-hidden="true"]');
+      for (const target of [header.locator(".."), field("row-lot-sold-sale-1"), field("row-lot-sold-sale-6"), band]) {
         assert.equal(await target.evaluate(el => getComputedStyle(el).gridTemplateColumns),
           await row.evaluate(el => getComputedStyle(el).gridTemplateColumns));
       }
       assert.ok(await page.locator(".max-h-\\[70vh\\]").evaluate(el => el.scrollWidth <= el.clientWidth));
       await ps("s2").scrollIntoViewIfNeeded();
-      if (width === 1440 || width === 390) await page.screenshot({ path: `${output}/${language}-${width}.png` });
+      if (width === 1920 || width === 1440 || width === 390) await page.screenshot({ path: `${output}/${language}-${width}.png` });
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
     // Simulate another operator recording and reversing a payment: focus triggers

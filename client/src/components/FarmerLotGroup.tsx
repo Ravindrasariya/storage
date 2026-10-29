@@ -81,7 +81,7 @@ interface FarmerLotGroupProps {
 // columns. Left fr-total ≈ right fr-total so the divider lands near 50/50
 // on wide screens. On mobile the row scrolls horizontally via min-width.
 const FULL_ROW_GRID =
-  "grid grid-cols-[24px_minmax(70px,0.9fr)_minmax(70px,0.9fr)_minmax(70px,0.8fr)_minmax(70px,0.9fr)_minmax(140px,1.6fr)_minmax(70px,0.7fr)_minmax(80px,0.8fr)_minmax(80px,1.5fr)_minmax(140px,2fr)_minmax(90px,1.7fr)_minmax(70px,1.4fr)_minmax(48px,0.65fr)_minmax(120px,1.15fr)_minmax(112px,auto)] gap-x-2 items-center min-w-[1340px]";
+  "grid grid-cols-[24px_minmax(70px,0.9fr)_minmax(70px,0.9fr)_minmax(70px,0.8fr)_minmax(70px,0.9fr)_minmax(140px,1.6fr)_minmax(70px,0.7fr)_minmax(80px,0.8fr)_minmax(80px,1.5fr)_minmax(140px,2fr)_minmax(90px,1.7fr)_minmax(70px,1.4fr)_minmax(48px,0.65fr)_98px_92px] gap-x-2 items-center min-w-[1340px]";
 
 // Tailwind class added to every column that belongs to the right (sale)
 // half — used by both the header and the per-row cells so the visual
@@ -309,7 +309,7 @@ export function FarmerLotGroup({
           <span className="text-center">{t("coldBillNo")}</span>
           <span className="text-center">MR</span>
           <span
-            className="text-center"
+            className="text-right pr-1"
             title={t("paymentStatus")}
             aria-label={t("paymentStatus")}
           >
@@ -406,7 +406,7 @@ export function FarmerLotGroup({
                     )}
                   </span>
                   <span
-                    className="flex min-w-0 items-center justify-center"
+                    className="flex min-w-0 items-center justify-end pr-1"
                     title={sale && salesSummaryState === "ready" ? t("paymentStatus") : undefined}
                     aria-label={sale && salesSummaryState === "ready" ? t("paymentStatus") : undefined}
                     data-testid={`cell-payment-status-${tid}`}
@@ -429,7 +429,7 @@ export function FarmerLotGroup({
                         </Badge>
                       )}
                   </span>
-                  <span className="flex items-center justify-center gap-1">
+                  <span className="flex items-center justify-between gap-1">
                     {sauda && <SaudaDeleteButton entry={sauda} canDelete={canEdit} />}
                     {sale && onExitSale && (
                       <Button
