@@ -126,7 +126,7 @@ try {
     const groupList = page.locator(".max-h-\\[70vh\\]");
     assert.equal(await groupList.evaluate(el => el.scrollWidth <= el.clientWidth), true, `table group overflow at ${width}`);
     const geometry = await row.evaluate(el => {
-      const scroller = el.parentElement!.parentElement!.parentElement!.parentElement!;
+      const scroller = el.closest(".overflow-x-auto")!;
       return { rowWidth: el.getBoundingClientRect().width, scrollWidth: scroller.scrollWidth, clientWidth: scroller.clientWidth };
     });
     assert.ok(geometry.rowWidth >= 1220);

@@ -23,7 +23,9 @@ const summaryRows = () => [status, "paid", "partial", null, "unknown", undefined
   saleId: `s${index}`, buyerInitials: index === 1 ? "WRONG" : "BY", isSelfSale: index === 1 ? 1 : 0,
   paymentStatus, soldAt: `${year}-08-20T06:30:00Z`, quantitySold: 10, totalExited: 5,
   coldStorageBillNumber: 300 + index,
-  exits: [{ billNumber: 600 + index, bagsExited: 5, exitDate: `${year}-08-21T06:30:00Z` }],
+  exits: Array.from({ length: index === 1 ? 3 : 1 }, (_, exit) => ({
+    billNumber: 600 + index + exit, bagsExited: 5, exitDate: `${year}-08-${21 + exit}T06:30:00Z`,
+  })),
 }));
 const browser = await chromium.launch({ executablePath: "/repl/tools/bin/chromium", args: ["--no-sandbox"] });
 try {
@@ -103,6 +105,7 @@ try {
           const row = el.parentElement!;
           const rowRect = row.getBoundingClientRect();
           const cells = Array.from(row.children);
+          const yellowWidths = cells.slice(8, 14).map(cell => cell.getBoundingClientRect().width);
           const middleWidth = cells.slice(8, 13).reduce((total, cell) => total + cell.getBoundingClientRect().width, 0);
           // Measure the old layout in this same viewport without changing the
           // application or fixtures. This guards actual reclaimed space, not
@@ -116,44 +119,61 @@ try {
           const savedGrid = row.style.gridTemplateColumns;
           const savedPSAlign = (el as HTMLElement).style.justifyContent;
           const savedActionAlign = (actionCell as HTMLElement).style.justifyContent;
+          const savedBadgeMin = (badge as HTMLElement).style.minWidth;
           row.style.gridTemplateColumns = oldGrid;
           (el as HTMLElement).style.justifyContent = "center";
           (actionCell as HTMLElement).style.justifyContent = "center";
+          (badge as HTMLElement).style.minWidth = "0px";
           const oldGap = actionCell.firstElementChild!.getBoundingClientRect().left - badge.getBoundingClientRect().right;
           const oldMiddleWidth = cells.slice(8, 13).reduce((total, cell) => total + cell.getBoundingClientRect().width, 0);
           row.style.gridTemplateColumns = savedGrid;
           (el as HTMLElement).style.justifyContent = savedPSAlign;
           (actionCell as HTMLElement).style.justifyContent = savedActionAlign;
+          (badge as HTMLElement).style.minWidth = savedBadgeMin;
           return { left: rect.left, right: rect.right, badgeLeft: br.left, badgeRight: br.right,
             mrRight: mr.right, actionsLeft: actions.left, cellWidth: rect.width,
             actionGap: firstAction.left - br.right, trailingGap: rowRect.right - lastAction.right,
-            oldGap, middleWidth, oldMiddleWidth,
+            oldGap, middleWidth, oldMiddleWidth, yellowWidths,
             rowMinWidth: Number.parseFloat(getComputedStyle(row).minWidth),
             badgeScroll: badge.scrollWidth, badgeWidth: badge.clientWidth,
             background: getComputedStyle(badge).backgroundColor };
         });
         assert.ok(geometry.badgeLeft >= geometry.left && geometry.badgeRight <= geometry.right + 0.5, JSON.stringify(geometry));
         assert.ok(geometry.left >= geometry.mrRight && geometry.right <= geometry.actionsLeft, "MR/PS/actions must not overlap");
-        assert.ok(geometry.cellWidth <= 135, "PS remains narrow");
+        assert.ok(geometry.yellowWidths[0] >= geometry.yellowWidths[3]
+          && geometry.yellowWidths[1] >= geometry.yellowWidths[3] + 40
+          && geometry.yellowWidths[2] >= geometry.yellowWidths[3] + 15,
+          `First three sale columns get more room than compact Cold Bill/MR/PS: ${JSON.stringify(geometry.yellowWidths)}`);
+        assert.equal(geometry.yellowWidths[3], 78);
+        assert.equal(geometry.yellowWidths[4], 54);
+        assert.equal(geometry.yellowWidths[5], 86);
         assert.ok(geometry.badgeScroll <= geometry.badgeWidth + 1, `Badge text is not clipped: ${JSON.stringify(geometry)}`);
+        if (language === "en") assert.ok(geometry.badgeWidth <= 60, "Keep compact, intrinsic English badge sizes");
         assert.ok(geometry.actionGap >= 6 && geometry.actionGap <= 32, `Compact PS-to-action gap: ${JSON.stringify(geometry)}`);
         assert.ok(geometry.trailingGap >= 6 && geometry.trailingGap <= 16, "Actions stay near the table edge");
         assert.ok(geometry.rowMinWidth <= 1340, "Do not widen the table minimum");
         if (width >= 1440) {
-          assert.ok(geometry.actionGap < geometry.oldGap - 10, "Visibly reduce the old trailing gap");
-          assert.ok(geometry.middleWidth > geometry.oldMiddleWidth + 10, "Return reclaimed space to the other sale columns");
-          if (id === "s0") console.log(`${language}/${width}: badge→action ${geometry.oldGap.toFixed(1)}→${geometry.actionGap.toFixed(1)}px; other sale columns gain ${(geometry.middleWidth - geometry.oldMiddleWidth).toFixed(1)}px`);
+          assert.ok(geometry.actionGap < geometry.oldGap - (id === "s0" ? 10 : 0), `Reduce the old trailing gap: ${JSON.stringify(geometry)}`);
+          if (id === "s0") console.log(`${language}/${width}: badge→action ${geometry.oldGap.toFixed(1)}→${geometry.actionGap.toFixed(1)}px; sale/date/exit-bill widths ${geometry.yellowWidths.slice(0, 3).map(value => value.toFixed(1)).join("/")}`);
         }
         if (id === "s1") assert.equal(geometry.background, "rgb(22, 163, 74)");
         if (id === "s2") assert.equal(geometry.background, "rgb(226, 232, 240)");
       }
       const row = field("row-lot-sold");
+      const headerBox = (await header.boundingBox())!;
+      for (const id of ["s0", "s1", "s2"]) {
+        const badgeBox = (await ps(id).locator(":scope > *").boundingBox())!;
+        assert.ok(Math.abs(headerBox.x + headerBox.width / 2 - badgeBox.x - badgeBox.width / 2) < 1,
+          "PS heading is centered directly above every status badge");
+      }
       const band = row.locator("xpath=../../../..").locator(':scope > [aria-hidden="true"]');
       for (const target of [header.locator(".."), field("row-lot-sold-sale-1"), field("row-lot-sold-sale-6"), band]) {
         assert.equal(await target.evaluate(el => getComputedStyle(el).gridTemplateColumns),
           await row.evaluate(el => getComputedStyle(el).gridTemplateColumns));
       }
       assert.ok(await page.locator(".max-h-\\[70vh\\]").evaluate(el => el.scrollWidth <= el.clientWidth));
+      await expect(field("cell-exit-dates-s1")).toHaveAttribute("title", "21-08-" + year + ", 22-08-" + year + ", 23-08-" + year);
+      await expect(field("cell-exit-bills-s1")).toHaveAttribute("title", "601, 602, 603");
       await ps("s2").scrollIntoViewIfNeeded();
       if (width === 1920 || width === 1440 || width === 390) await page.screenshot({ path: `${output}/${language}-${width}.png` });
     }
