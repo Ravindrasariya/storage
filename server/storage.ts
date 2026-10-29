@@ -314,7 +314,7 @@ export interface IStorage {
     farmerName?: string;
     village?: string;
     contactNumber?: string;
-    paymentStatus?: "paid" | "due";
+    paymentStatus?: "paid" | "due" | "partial" | "due_partial";
     buyerName?: string;
   }): Promise<SalesHistoryWithLastPayment[]>;
   // Sibling sales sharing the same Cold Storage bill # within one stock
@@ -384,7 +384,7 @@ export interface IStorage {
     farmerName?: string;
     village?: string;
     contactNumber?: string;
-    paymentStatus?: "paid" | "due";
+    paymentStatus?: "paid" | "due" | "partial" | "due_partial";
     buyerName?: string;
     coldStorageBillNumber?: number;
   }): Promise<number>;
@@ -2055,7 +2055,7 @@ export class DatabaseStorage implements IStorage {
     farmerName?: string;
     village?: string;
     contactNumber?: string;
-    paymentStatus?: "paid" | "due" | "partial";
+    paymentStatus?: "paid" | "due" | "partial" | "due_partial";
     buyerName?: string;
     coldStorageBillNumber?: number;
   }): Promise<SalesHistoryWithLastPayment[]> {
@@ -2077,7 +2077,9 @@ export class DatabaseStorage implements IStorage {
       conditions.push(sql`trim(${salesHistory.contactNumber}) LIKE ${`%${normalizedContact}%`}`);
     }
     if (filters?.paymentStatus) {
-      conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
+      conditions.push(filters.paymentStatus === "due_partial"
+        ? inArray(salesHistory.paymentStatus, ["due", "partial"])
+        : eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     if (filters?.coldStorageBillNumber != null) {
       conditions.push(eq(salesHistory.coldStorageBillNumber, filters.coldStorageBillNumber));
@@ -4701,7 +4703,7 @@ export class DatabaseStorage implements IStorage {
     farmerName?: string;
     village?: string;
     contactNumber?: string;
-    paymentStatus?: "paid" | "due";
+    paymentStatus?: "paid" | "due" | "partial" | "due_partial";
     buyerName?: string;
     coldStorageBillNumber?: number;
   }): Promise<number> {
@@ -4739,7 +4741,9 @@ export class DatabaseStorage implements IStorage {
       conditions.push(sql`trim(${salesHistory.contactNumber}) LIKE ${`%${normalizedContact}%`}`);
     }
     if (filters?.paymentStatus) {
-      conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
+      conditions.push(filters.paymentStatus === "due_partial"
+        ? inArray(salesHistory.paymentStatus, ["due", "partial"])
+        : eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     if (filters?.coldStorageBillNumber != null) {
       conditions.push(eq(salesHistory.coldStorageBillNumber, filters.coldStorageBillNumber));
@@ -7989,7 +7993,9 @@ export class DatabaseStorage implements IStorage {
       }
     }
     if (filters?.paymentStatus && filters.paymentStatus !== "all") {
-      conditions.push(eq(salesHistory.paymentStatus, filters.paymentStatus));
+      conditions.push(filters.paymentStatus === "due_partial"
+        ? inArray(salesHistory.paymentStatus, ["due", "partial"])
+        : eq(salesHistory.paymentStatus, filters.paymentStatus));
     }
     
     return db.select()

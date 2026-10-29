@@ -2240,7 +2240,7 @@ export async function registerRoutes(
         farmerName?: string;
         village?: string;
         contactNumber?: string;
-        paymentStatus?: "paid" | "due" | "partial";
+        paymentStatus?: "paid" | "due" | "partial" | "due_partial";
         buyerName?: string;
         coldStorageBillNumber?: number;
       } = {};
@@ -2249,7 +2249,7 @@ export async function registerRoutes(
       if (farmerName) filters.farmerName = farmerName as string;
       if (village) filters.village = village as string;
       if (contactNumber) filters.contactNumber = contactNumber as string;
-      if (paymentStatus === "paid" || paymentStatus === "due" || paymentStatus === "partial") {
+      if (paymentStatus === "paid" || paymentStatus === "due" || paymentStatus === "partial" || paymentStatus === "due_partial") {
         filters.paymentStatus = paymentStatus;
       }
       if (buyerName) filters.buyerName = buyerName as string;
@@ -2528,7 +2528,7 @@ export async function registerRoutes(
       if (farmerName) filters.farmerName = farmerName as string;
       if (village) filters.village = village as string;
       if (contactNumber) filters.contactNumber = contactNumber as string;
-      if (paymentStatus === "paid" || paymentStatus === "due") filters.paymentStatus = paymentStatus;
+      if (paymentStatus === "paid" || paymentStatus === "due" || paymentStatus === "partial" || paymentStatus === "due_partial") filters.paymentStatus = paymentStatus;
       if (buyerName) filters.buyerName = buyerName as string;
       if (coldStorageBillNumber) {
         const n = parseInt(coldStorageBillNumber as string, 10);

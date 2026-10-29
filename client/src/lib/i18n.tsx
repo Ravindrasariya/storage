@@ -290,6 +290,7 @@ export const translations: Translations = {
   paymentStatus: { en: "Payment Status", hi: "भुगतान स्थिति" },
   paid: { en: "Paid", hi: "भुगतान किया" },
   partialPayment: { en: "Partial Payment", hi: "आंशिक भुगतान" },
+  due_partial: { en: "Due+Partial", hi: "बकाया+आंशिक" },
   paymentMode: { en: "Payment Mode", hi: "भुगतान का तरीका" },
   transactionType: { en: "Transaction Type", hi: "लेन-देन प्रकार" },
   allTransactions: { en: "All", hi: "सभी" },

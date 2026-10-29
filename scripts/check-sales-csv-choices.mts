@@ -85,6 +85,23 @@ try {
       sale_type,quantity_sold,price_per_bag,cold_storage_charge,payment_status,sale_year,sold_at
     FROM sales_history WHERE id=$3`, [`${id}_other_sale`, `${id}_other`, `${id}_A`]);
 
+  for (const receipt of ["A", "B", "C", "D"]) {
+    await pool.query(`INSERT INTO exit_history
+      (id,sales_history_id,lot_id,cold_storage_id,bags_exited,bill_number,exit_date,is_reversed)
+      VALUES ($1,$2,$3,$4,7,1,'2026-10-01',0)`,
+    [`${id}_exit_${receipt}`, `${id}_${receipt}`, `${id}_lot`, id]);
+  }
+  // Reversed exits and another tenant's matching sales must not affect the summary.
+  for (const [suffix, sale, tenant, reversed] of [
+    ["reversed", `${id}_A`, id, 1],
+    ["other", `${id}_other_sale`, `${id}_other`, 0],
+  ] as const) {
+    await pool.query(`INSERT INTO exit_history
+      (id,sales_history_id,lot_id,cold_storage_id,bags_exited,bill_number,exit_date,is_reversed)
+      VALUES ($1,$2,$3,$4,99,2,'2026-10-01',$5)`,
+    [`${id}_exit_${suffix}`, sale, `${id}_lot`, tenant, reversed]);
+  }
+
   async function download(type: string | undefined, filters: Record<string, string> = {}, language = "en") {
     const params = new URLSearchParams({ fromDate: "2000-01-01", toDate: "2099-12-31", language, ...filters });
     if (type) params.set("exportType", type);
@@ -137,6 +154,11 @@ try {
     [{ paymentStatus: "due" }, ["A", "D"]],
     [{ paymentStatus: "partial" }, ["C"]],
     [{ paymentStatus: "paid" }, ["B"]],
+    [{ paymentStatus: "all" }, ["A", "B", "C", "D"]],
+    [{ paymentStatus: "due_partial" }, ["A", "C", "D"]],
+    [{ paymentStatus: "due_partial", buyerName: "Merchant" }, ["C"]],
+    [{ paymentStatus: "due_partial", bagType: "wafer" }, []],
+    [{ paymentStatus: "due_partial", year: "2019", months: "7", days: "20", bagType: "seed", coldStorageBillNumber: "11" }, ["A"]],
     [{ coldStorageBillNumber: "11" }, ["A", "D"]],
     [{ year: "all", months: "7", days: "20" }, ["A", "C"]],
     [{ year: "2019", months: "7", days: "20", farmerName: "किसान", village: 'गाँव, "a"',
@@ -150,6 +172,30 @@ try {
       assert.deepEqual(receipts, expected, `${type}: ${JSON.stringify(filters)}`);
     }
   }
+  const statusCases: Array<[Record<string, string>, string[]]> = [
+    [{}, ["A", "B", "C", "D"]],
+    [{ paymentStatus: "all" }, ["A", "B", "C", "D"]],
+    [{ paymentStatus: "due" }, ["A", "D"]],
+    [{ paymentStatus: "partial" }, ["C"]],
+    [{ paymentStatus: "paid" }, ["B"]],
+    [{ paymentStatus: "due_partial" }, ["A", "C", "D"]],
+    [{ paymentStatus: "due_partial", buyerName: "Merchant" }, ["C"]],
+    [{ paymentStatus: "due_partial", year: "2019", coldStorageBillNumber: "11", farmerName: "किसान" }, ["A", "D"]],
+    [{ paymentStatus: "due_partial", farmerName: "Other Farmer" }, []],
+  ];
+  for (const [filters, expected] of statusCases) {
+    const query = new URLSearchParams(filters);
+    const response = await fetch(`${base}/api/sales-history?${query}`, { headers: auth });
+    assert.equal(response.status, 200);
+    const rows = await response.json() as Array<{ lotNo: string; paymentStatus: string }>;
+    assert.deepEqual(rows.map(row => row.lotNo).sort(), expected, `Live sales ${query}`);
+    assert.ok(rows.every(row => ["due", "partial", "paid"].includes(row.paymentStatus)), "Combined filter must never become a stored sale status");
+    const exits = await fetch(`${base}/api/sales-history/exits-summary?${query}`, { headers: auth });
+    assert.equal(exits.status, 200);
+    assert.deepEqual(await exits.json(), { totalBagsExited: expected.length * 7 }, `Sold/Exit ${query}`);
+  }
+  const combinedType = await fetch(`${base}/api/sales-history/exits-summary?paymentStatus=due_partial&bagType=wafer`, { headers: auth });
+  assert.deepEqual(await combinedType.json(), { totalBagsExited: 0 });
   const unauthorized = await fetch(`${base}/api/export/sales?fromDate=2000-01-01&toDate=2099-12-31&exportType=kata`);
   assert.equal(unauthorized.status, 401);
   for (const query of ["months=13", "days=0", "exportType=unknown", "coldStorageBillNumber=nope"]) {
@@ -162,8 +208,9 @@ try {
   const tokenURL = `${base}/api/export/sales?fromDate=2000-01-01&toDate=2099-12-31&exportType=kata&downloadToken=${downloadToken}`;
   assert.equal((await fetch(tokenURL)).status, 200);
   assert.equal((await fetch(tokenURL)).status, 401);
-  console.log(`Sales CSV choices passed: adjacent Kata/Tulai headers and positive/null values, Overall compatibility, ${cases.length} filter cases for all three exports, tenant isolation, token auth, and CSV escaping.`);
+  console.log(`Sales CSV choices passed: adjacent Kata/Tulai headers and positive/null values, Overall compatibility, ${cases.length} filter cases for all three exports, ${statusCases.length} live sales/exit-summary status cases, combined Due+Partial intersections, tenant isolation, reversed-exit exclusion, token auth, and CSV escaping.`);
 } finally {
+  await pool.query("DELETE FROM exit_history WHERE cold_storage_id = ANY($1)", [[id, `${id}_other`]]);
   await pool.query("DELETE FROM sales_history WHERE cold_storage_id = ANY($1)", [[id, `${id}_other`]]);
   await pool.query("DELETE FROM user_sessions WHERE cold_storage_id=$1", [id]);
   await pool.query("DELETE FROM cold_storage_users WHERE cold_storage_id=$1", [id]);
