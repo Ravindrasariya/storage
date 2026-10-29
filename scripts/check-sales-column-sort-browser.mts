@@ -114,7 +114,10 @@ try {
     await waitOrder(sales.map(row => row.id));
     const summaries = await page.locator('[data-testid^="card-summary-"]').allTextContents();
     const defaultPrint = await capturePrint();
-    assert.equal(defaultPrint.headers.length, 14);
+    assert.equal(defaultPrint.headers.length, 15);
+    assert.equal(defaultPrint.headers.at(-1), language === "en" ? "DueAmount" : "बकायाराशि");
+    assert.deepEqual(defaultPrint.rows.map(row => row[14]),
+      sales.map(sale => `₹${(Math.round(sale.coldStorageCharge * 100) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`));
     assert.deepEqual(defaultPrint.rows.map(row => row[3]), sales.map(row => row.lotNo));
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });

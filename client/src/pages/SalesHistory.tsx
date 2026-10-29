@@ -554,10 +554,10 @@ export default function SalesHistoryPage() {
       const account = Number(sale.paidAccount) || 0;
       const cash = Number(sale.paidCash) || 0;
       const lines: string[] = [];
-      if (account > 0) lines.push(`Account - ${fmtINR(account)}`);
-      if (cash > 0) lines.push(`${t("cash")} - ${fmtINR(cash)}`);
+      if (account > 0) lines.push(`Account - <span class="pay-amount">${escape(fmtINR(account))}</span>`);
+      if (cash > 0) lines.push(`${escape(t("cash"))} - <span class="pay-amount">${escape(fmtINR(cash))}</span>`);
       if (lines.length === 0) return "—";
-      return lines.map((l) => escape(l)).join("<br/>");
+      return lines.join("<br/>");
     };
 
     const rowsHtml = sortedSalesHistory
@@ -578,8 +578,9 @@ export default function SalesHistoryPage() {
           <td class="nowrap r">${escape(sale.quantitySold)}</td>
           <td class="nowrap r">${escape(fmtINR(calculateTotalColdCharges(sale)))}</td>
           <td class="wrap">${renderBuyerCell(sale)}</td>
-          <td class="nowrap">${escape(t(sale.paymentStatus))}</td>
-          <td class="nowrap">${renderPaymentModeCell(sale)}</td>
+          <td class="status">${escape(t(sale.paymentStatus))}</td>
+          <td class="paymode">${renderPaymentModeCell(sale)}</td>
+          <td class="nowrap r due">${escape(fmtINR(Math.max(0, (sale.coldStorageCharge || 0) - (sale.paidAmount || 0)) + (sale.extraDueToMerchant || 0)))}</td>
         </tr>
       `;
       })
@@ -606,11 +607,18 @@ export default function SalesHistoryPage() {
   .nowrap{white-space:nowrap;}
   .wrap{word-break:break-word;overflow-wrap:anywhere;white-space:normal;}
   .bag-badge{display:inline-block;padding:1px 6px;border:1px solid #d4d4d8;border-radius:9999px;font-size:10px;font-weight:600;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  col.c-date{width:6.5%;} col.c-farmer{width:13.3%;} col.c-village{width:8%;}
-  col.c-lot{width:4.5%;} col.c-marka{width:5%;} col.c-cbill{width:5%;}
-  col.c-obags{width:5%;} col.c-rbags{width:5%;} col.c-btype{width:6%;}
-  col.c-qty{width:5%;} col.c-charges{width:8%;} col.c-buyer{width:11.2%;}
-  col.c-status{width:8%;} col.c-paymode{width:9.5%;}
+  col.c-date{width:6.5%;} col.c-farmer{width:12%;} col.c-village{width:7.5%;}
+  col.c-lot{width:4.5%;} col.c-marka{width:4.8%;} col.c-cbill{width:4.8%;}
+  col.c-obags{width:4.7%;} col.c-rbags{width:4.7%;} col.c-btype{width:5.7%;}
+  col.c-qty{width:4.7%;} col.c-charges{width:7.3%;} col.c-buyer{width:11%;}
+  col.c-status{width:6%;} col.c-paymode{width:8.8%;} col.c-due{width:7%;}
+  td:first-child{padding-left:3px;padding-right:3px;}
+  th.paymode,td.paymode{padding-left:3px;padding-right:3px;}
+  td.paymode{line-height:1.35;white-space:normal;word-break:normal;overflow-wrap:normal;}
+  .pay-amount{display:inline-block;white-space:nowrap;}
+  tr{break-inside:avoid;page-break-inside:avoid;}
+  td.status{white-space:normal;overflow-wrap:anywhere;}
+  th.due,td.due{padding-left:2px;padding-right:2px;white-space:nowrap;}
   @media print{body{margin:8mm;} .cards{grid-template-columns:repeat(6,1fr);}}
 </style></head><body>
   <h1>${escape(t("salesHistory"))}</h1>
@@ -632,6 +640,7 @@ export default function SalesHistoryPage() {
       <col class="c-buyer"/>
       <col class="c-status"/>
       <col class="c-paymode"/>
+      <col class="c-due"/>
     </colgroup>
     <thead><tr>
       <th>${escape(t("saleDate"))}</th>
@@ -648,6 +657,7 @@ export default function SalesHistoryPage() {
       <th>${escape(t("buyerName"))}</th>
       <th>${escape(t("paymentStatus"))}</th>
       <th>${escape(t("paymentMode"))}</th>
+      <th class="r due">${t("salesPrintDueHeader").split("\n").map((part) => escape(part)).join("<br/>")}</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
