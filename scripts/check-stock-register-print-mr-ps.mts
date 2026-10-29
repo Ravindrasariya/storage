@@ -1,6 +1,7 @@
 // Exercise the real print and shared-PDF buttons with fully intercepted APIs.
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { chromium, expect } from "playwright/test";
 
 assert.match(process.env.REPLIT_DEV_DOMAIN ?? "", /^[a-z0-9.-]+\.replit\.dev$/i);
@@ -8,11 +9,11 @@ const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const output = "generated-artifacts/stock-print-mr-ps";
 await mkdir(output, { recursive: true });
 const year = new Date().getFullYear();
-const lots = ["sold", "unsold"].map((id, index) => ({
+const lots = ["sold", "unsold", "ration"].map((id, index) => ({
   id, coldStorageId: "fixture", farmerName: "Print Fixture", village: "Village",
   contactNumber: "0000000000", lotNo: String(index + 1), marka: "131/36",
   size: 150, remainingSize: 50, chamberId: "chamber", floor: 3, position: "38/25+37/11",
-  type: "LR", bagType: "seed", quality: "good", potatoSize: "large",
+  type: "LR", bagType: ["seed", "wafer", "Ration"][index], quality: "good", potatoSize: "large",
   upForSale: 0, saleStatus: "available", createdAt: `${year}-03-01T06:30:00Z`,
 }));
 const statuses = ["due", "paid", "partial", null, "unknown", "due"];
@@ -26,6 +27,10 @@ const sales = statuses.map((paymentStatus, index) => ({
   })),
 }));
 let mode = "ready";
+let extraSales = 0;
+const reportSales = () => [...sales, ...Array.from({ length: extraSales }, (_, index) => ({
+  ...sales[0], saleId: `large-${index}`, coldStorageBillNumber: 900 + index, exits: sales[1].exits,
+}))];
 let release: (() => void) | undefined;
 const browser = await chromium.launch({ executablePath: "/repl/tools/bin/chromium", args: ["--no-sandbox"] });
 try {
@@ -51,14 +56,14 @@ try {
     if (path === "/api/lots/sales-summary") {
       if (mode === "error") return route.fulfill({ status: 500, json: { error: "Fixture unavailable" } });
       if (mode === "loading") await new Promise<void>(resolve => { release = resolve; });
-      return route.fulfill({ json: { sold: sales, unsold: [] } });
+      return route.fulfill({ json: { sold: reportSales(), unsold: [], ration: [] } });
     }
     const responses: Record<string, unknown> = {
       "/api/auth/session": {
         user: { id: "user", name: "Operator", mobileNumber: "0000000000", accessType: "edit", coldStorageId: "fixture" },
         coldStorage: { id: "fixture", name: "Stock print fixture", totalCapacity: 1000 },
       },
-      "/api/lots": { lots, totalCount: 2, totalGroups: 1, returnedGroups: 1, nextGroupOffset: 1 },
+      "/api/lots": { lots, totalCount: 3, totalGroups: 1, returnedGroups: 1, nextGroupOffset: 1 },
       "/api/lots/search": lots,
       "/api/analytics/years": [year],
       "/api/chambers": [{ id: "chamber", name: "Chamber 1", capacity: 1000 }],
@@ -67,7 +72,7 @@ try {
       "/api/lots/summary": { totalBags: 300, remainingBags: 100, totalSold: 60, totalSoldNotExited: 30,
         expectedColdCharges: 15000, chargesPaid: 600, chargesDue: 1200 },
       "/api/sauda": [],
-      "/api/sales-history": sales.map(sale => ({
+      "/api/sales-history": reportSales().map(sale => ({
         id: sale.saleId, lotId: "sold", ...sale, farmerName: "Print Fixture", village: "Village",
         contactNumber: "0000000000", bagType: "seed", coldStorageCharge: 600,
         paidAmount: 0, extraDueToMerchant: 0, payments: [],
@@ -105,7 +110,7 @@ try {
     assert.equal(headings.length, 13);
     assert.deepEqual(headings.slice(-2), ["MR", "PS"]);
     const rows = table.locator("tbody tr");
-    assert.equal(await rows.count(), 7);
+    assert.equal(await rows.count(), 8);
     for (const [index, mr] of [[0, "RLT"], [1, "Self"], [3, ""], [4, "<b>BY</b>"], [5, "Self"], [6, ""]] as const) {
       const cells = rows.nth(index).locator("td.rh");
       assert.equal(await cells.count(), 6);
@@ -139,6 +144,22 @@ try {
     });
     assert.equal(widths.total, 100);
     assert.ok(widths.blue < 50 && widths.width <= widths.parentWidth);
+    if (language === "en") {
+      const pills = table.locator(".pill");
+      assert.deepEqual((await pills.allTextContents()).map(value => value.toLowerCase()), ["seed", "wafer", "ration"]);
+      for (const pill of await pills.all()) {
+        const geometry = await pill.evaluate(el => {
+          const box = el.getBoundingClientRect(), cell = el.parentElement!.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return { lines: range.getClientRects().length, height: box.height,
+            left: box.left, right: box.right, cellLeft: cell.left, cellRight: cell.right };
+        });
+        assert.equal(geometry.lines, 1, "Potato Type labels stay on one line");
+        assert.ok(geometry.height <= 20 && geometry.left >= geometry.cellLeft && geometry.right <= geometry.cellRight,
+          `Potato Type fits its widened print column: ${JSON.stringify(geometry)}`);
+      }
+    }
     await popup.screenshot({ path: `${output}/print-${language}.png`, fullPage: true });
     await popup.pdf({ path: `${output}/print-${language}.pdf`, format: "A4", printBackground: true });
     await popup.close();
@@ -149,6 +170,26 @@ try {
     assert.match(download.suggestedFilename(), /Stock_Report\.pdf$/);
     await download.saveAs(`${output}/shared-${language}.pdf`);
   }
+  // A large farmer card must start on page one, not move the whole table
+  // past the summary and leave an apparently blank first page.
+  extraSales = 28;
+  for (const language of ["en", "hi"]) {
+    await page.evaluate(value => localStorage.setItem("language", value), language);
+    await search();
+    await expect(field("cell-payment-status-large-0")).toBeVisible();
+    const popup = await print();
+    const path = `${output}/multipage-${language}.pdf`;
+    await popup.pdf({ path, format: "A4", printBackground: true,
+      margin: { top: "12mm", bottom: "12mm", left: "10mm", right: "10mm" } });
+    const firstPage = execFileSync("pdftotext", ["-f", "1", "-l", "1", path, "-"], { encoding: "utf8" });
+    assert.ok(firstPage.includes("MR") && firstPage.includes("PS") && firstPage.includes("RLT"),
+      `The first printed page must include the sale table, not just its summary (${language}): ${firstPage}`);
+    const allPages = execFileSync("pdftotext", [path, "-"], { encoding: "utf8" });
+    assert.ok(allPages.includes("927"), "The last sale is not lost across page breaks");
+    assert.ok(allPages.split("\f").filter(value => value.trim()).length > 1, "Exercise actual multi-page output");
+    await popup.close();
+  }
+  extraSales = 0;
   // Error/loading summaries must not invent status badges or Self identity.
   for (const state of ["error", "loading"]) {
     mode = state;

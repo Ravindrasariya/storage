@@ -16,3 +16,4 @@
 - [Reversal archive scope](reversal-archive-scope.md) — additive tracking only; preserve existing tables/calculation logic and reversal semantics; Archive-prefixed tabs and copy-only legacy Nikasi backfill.
 - [Sauda rules](sale-promise-rules.md) — preserve the original Individual Sale alongside independent non-financial Sauda; existing-buyer initials and confirmed deletion only.
 - [Edit Sale charges](edit-sale-charge-layout.md) — four two-column rows; read-only extra-Hammali total beside its rate, editable grading total below.
+- [Print pagination validation](print-pagination-validation.md) — inspect actual multi-page A4 output; small fixtures and continuous browser screenshots miss summary-only first pages.

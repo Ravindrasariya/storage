@@ -1111,7 +1111,7 @@ export default function StockRegister() {
     /* Per-farmer card */
     .farmer-card {
       border: 1px solid #ddd; border-radius: 8px; padding: 12px;
-      margin-bottom: 14px; page-break-inside: avoid; break-inside: avoid;
+      margin-bottom: 14px;
     }
     .farmer-header {
       display: flex; flex-wrap: wrap; align-items: center;
@@ -1170,6 +1170,7 @@ export default function StockRegister() {
     .pill {
       display: inline-block; padding: 1px 6px; border-radius: 10px;
       font-size: 10px; text-transform: capitalize;
+      white-space: nowrap; overflow-wrap: normal;
       background: #e5e7eb; color: #374151;
     }
     .pill-wafer  { background: #dbeafe; color: #1e40af; }
@@ -1187,7 +1188,14 @@ export default function StockRegister() {
     .payment-partial { background: #e2e8f0 !important; color: #1e293b !important; }
     @media print {
       body { padding: 10px; }
-      .farmer-card { break-inside: avoid; page-break-inside: avoid; }
+      /* Large farmer groups must start below the summary and continue
+         across pages instead of moving the entire card to a new page. */
+      .farmer-card { break-inside: auto; page-break-inside: auto; }
+      .farmer-header, .farmer-charges { break-inside: avoid; }
+      .lot-table thead { display: table-header-group; }
+      /* A row-spanned identity cell can cover the whole group. Keeping
+         its row unbroken would make every sale in that group unbreakable. */
+      .lot-table td.rh { break-inside: avoid; page-break-inside: avoid; }
     }
   `;
 
@@ -1423,9 +1431,9 @@ export default function StockRegister() {
           <colgroup>
             <col style="width:6%"/>
             <col style="width:6%"/>
-            <col style="width:6%"/>
-            <col style="width:6%"/>
-            <col style="width:10%"/>
+            <col style="width:8%"/>
+            <col style="width:5%"/>
+            <col style="width:9%"/>
             <col style="width:5%"/>
             <col style="width:5%"/>
             <col style="width:8%"/>
