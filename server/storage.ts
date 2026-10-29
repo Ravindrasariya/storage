@@ -432,6 +432,7 @@ export interface IStorage {
     coldStorageBillNumber: number | null;
     isSelfSale: number | null;
     buyerInitials: string | null;
+    paymentStatus: string | null;
     totalExited: number;
     exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
   }>>>;
@@ -4267,6 +4268,7 @@ export class DatabaseStorage implements IStorage {
     coldStorageBillNumber: number | null;
     isSelfSale: number | null;
     buyerInitials: string | null;
+    paymentStatus: string | null;
     totalExited: number;
     exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
   }>>> {
@@ -4277,6 +4279,7 @@ export class DatabaseStorage implements IStorage {
       coldStorageBillNumber: number | null;
       isSelfSale: number | null;
       buyerInitials: string | null;
+      paymentStatus: string | null;
       totalExited: number;
       exits: Array<{ exitDate: Date; billNumber: number; bagsExited: number }>;
     }>> = {};
@@ -4292,6 +4295,7 @@ export class DatabaseStorage implements IStorage {
       isSelfSale: salesHistory.isSelfSale,
       buyerLedgerId: salesHistory.buyerLedgerId,
       buyerName: salesHistory.buyerName,
+      paymentStatus: salesHistory.paymentStatus,
     })
       .from(salesHistory)
       .where(and(
@@ -4370,6 +4374,7 @@ export class DatabaseStorage implements IStorage {
         quantitySold: s.quantitySold,
         coldStorageBillNumber: s.coldStorageBillNumber,
         isSelfSale: s.isSelfSale,
+        paymentStatus: s.paymentStatus,
         buyerInitials: s.isSelfSale === 1 ? null : (
           (s.buyerLedgerId
             ? buyersById.get(s.buyerLedgerId)

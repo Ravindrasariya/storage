@@ -24,6 +24,8 @@
     "test:discount-farmers-browser": "tsx scripts/check-discount-farmers-browser.mts",
     "test:buyer-initials": "tsx scripts/check-buyer-initials.mts",
     "test:buyer-initials-browser": "tsx scripts/check-buyer-initials-browser.mts",
+    "test:stock-ps": "tsx scripts/check-stock-register-ps.mts",
+    "test:stock-ps-browser": "tsx scripts/check-stock-register-ps-browser.mts",
     "test:buyer-tenant-access": "tsx scripts/check-buyer-tenant-access.mts",
     "test:sauda": "tsx scripts/check-sauda.mts",
     "test:sauda-browser": "tsx scripts/check-sauda-browser.mts",

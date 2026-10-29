@@ -12,7 +12,7 @@
 - [Master Nikasi layout](nikasi-layout.md) — keep long headers on one line; narrow Receipt #/Marka and reclaim unused trailing space instead of wrapping labels.
 - [Hostinger production VPS](vps-package-portability.md) — production runs on Hostinger, not Replit; verify public lockfile URLs before external deployment.
 - [Sale remark rules](sale-remark-rules.md) — Master Nikasi remarks copy once into independent sales; payment-recorded sales retain the full edit lock, including remarks.
-- [Stock Register MR scope](stock-register-mr-scope.md) — live Buyer Ledger initials per sale, exactly Self for self-sales, blanks stay blank; on-screen register only.
+- [Stock Register sale columns](stock-register-mr-scope.md) — live buyer initials for MR; PS Partial stays silver against the yellow sale section; on-screen register only.
 - [Reversal archive scope](reversal-archive-scope.md) — additive tracking only; preserve existing tables/calculation logic and reversal semantics; Archive-prefixed tabs and copy-only legacy Nikasi backfill.
 - [Sauda rules](sale-promise-rules.md) — preserve the original Individual Sale alongside independent non-financial Sauda; existing-buyer initials and confirmed deletion only.
 - [Edit Sale charges](edit-sale-charge-layout.md) — four two-column rows; read-only extra-Hammali total beside its rate, editable grading total below.

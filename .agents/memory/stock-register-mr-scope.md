@@ -14,3 +14,9 @@ MR follows the sale's buyer, not the merchant receiving transferred dues. Keep t
 **Why:** The user explicitly confirmed that retaining the sale buyer's initials through merchant transfers is fine.
 
 **How to apply:** Do not substitute transfer-recipient initials into MR unless the user changes this requirement.
+
+Use silver/light gray for Partial in the Stock Register's PS badges, not yellow.
+
+**Why:** The user said, “Keep Partial as Silver given overall its Yello background in the right side.”
+
+**How to apply:** Preserve the silver Partial badge against the existing yellow sale section when restyling PS, including dark mode. This is not a request to recolor global badges or other reports.
